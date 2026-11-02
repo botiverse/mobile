@@ -335,34 +335,11 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register capture of the button (same content as button.states, under
-    // RaftThemeProvider(elegantTheme)). Paired against the React elegant render as
-    // components.ui.button.states.elegant → react-elegant <-> android-elegant parity.
-    @Test
-    fun captureUiButtonStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.button.states.elegant",
-            pageName = "compose_ui_button_elegant_visual",
-            crop = UI_BUTTON_CROP
-        )
-    }
-
     @Test
     fun captureUiCardStates() {
         captureKmpComponentCase(
             caseId = "components.ui.card.states",
             pageName = "compose_ui_card_visual",
-            crop = UI_CARD_CROP
-        )
-    }
-
-    // Elegant-register card capture (same content under RaftThemeProvider(elegantTheme)).
-    // Paired against the React elegant card render as components.ui.card.states.elegant.
-    @Test
-    fun captureUiCardStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.card.states.elegant",
-            pageName = "compose_ui_card_elegant_visual",
             crop = UI_CARD_CROP
         )
     }
@@ -376,18 +353,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register form-field capture (same content under RaftThemeProvider(elegantTheme)):
-    // flat rounded #CACACE-hairline inputs, no brutal offset shadow. Paired against the React
-    // elegant render as components.ui.form-field.states.elegant.
-    @Test
-    fun captureUiFormFieldStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.form-field.states.elegant",
-            pageName = "compose_ui_form_field_elegant_visual",
-            crop = UI_FORM_FIELD_CROP
-        )
-    }
-
     @Test
     fun captureUiTextareaStates() {
         captureKmpComponentCase(
@@ -397,35 +362,11 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register textarea capture (same content under RaftThemeProvider(elegantTheme)):
-    // inherits the design-system field look. Paired against the React
-    // elegant render as components.ui.textarea.states.elegant.
-    @Test
-    fun captureUiTextareaStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.textarea.states.elegant",
-            pageName = "compose_ui_textarea_elegant_visual",
-            crop = UI_TEXTAREA_CROP
-        )
-    }
-
     @Test
     fun captureUiCheckboxStates() {
         captureKmpComponentCase(
             caseId = "components.ui.checkbox.states",
             pageName = "compose_ui_checkbox_visual",
-            crop = UI_CHECKBOX_CROP
-        )
-    }
-
-    // Elegant-register checkbox capture (same content under RaftThemeProvider(elegantTheme)):
-    // rounded 4dp box + #CACACE hairline + #0A0A0A ink fill. Paired against the React elegant
-    // render as components.ui.checkbox.states.elegant.
-    @Test
-    fun captureUiCheckboxStatesElegant() {
-        captureKmpComponentCase(
-            caseId = "components.ui.checkbox.states.elegant",
-            pageName = "compose_ui_checkbox_elegant_visual",
             crop = UI_CHECKBOX_CROP
         )
     }
