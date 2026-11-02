@@ -61,6 +61,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -177,12 +179,6 @@ private val ThreadComposerInputPaddingHorizontal = 2.dp
 // the visible gap.
 private val ThreadComposerLeftActionGroupSpacing = ThreadComposerEmbeddedInset
 private val ThreadComposerRightActionGroupSpacing = ThreadComposerEmbeddedInset
-// raft-ui `ComposerAttachments`: the composer's 321dp less the tray's 6dp `pe-1.5`; 64dp image
-// tiles and 176dp file tiles (`size-16`, `w-44`), 8dp apart (`gap-2`).
-private const val ThreadComposerAttachmentTrayMaxWidthDp = 315
-private const val ThreadComposerAttachmentImageTileSizeDp = 64
-private const val ThreadComposerAttachmentFileTileWidthDp = 176
-private const val ThreadComposerAttachmentRowGapDp = 8
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
@@ -4831,32 +4827,28 @@ internal fun ComposerAttachmentTray(
     previewEnabled: Boolean,
     onEvent: (action: String, attachmentId: String) -> Unit
 ) {
-    // raft-ui `ComposerAttachments` (`flex-wrap gap-2 pt-1.5 pe-1.5`): the top and end room
-    // keeps each tile's overhanging remove sticker inside the tray.
+    // raft-ui `ComposerAttachments` (`gap-2 pt-1.5 pe-1.5`): the top and end room keeps each
+    // tile's overhanging remove sticker inside the tray. One row that scrolls sideways (#4067): on
+    // a phone a file tile fills a wrapped row, and a few of them pushed the text field off the
+    // screen. The tile cut off at the edge shows there is more.
     RaftDesignSystemTheme {
-        Column(
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(top = RaftComposerAttachmentRemoveOverhang, end = RaftComposerAttachmentRemoveOverhang),
-            verticalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
+            horizontalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
         ) {
-            composerAttachmentRows(attachments).forEach { rowAttachments ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
-                ) {
-                    rowAttachments.forEach { attachment ->
-                        ComposerAttachmentPreviewChip(
-                            attachment = attachment,
-                            enabled = enabled,
-                            previewEnabled = previewEnabled,
-                            onPreview = { onEvent("previewAttachment", attachment.id) },
-                            onRemove = { onEvent("removeAttachment", attachment.id) },
-                            onRetry = { onEvent("retryAttachments", attachment.id) }
-                        )
-                    }
-                }
+            attachments.forEach { attachment ->
+                ComposerAttachmentPreviewChip(
+                    attachment = attachment,
+                    enabled = enabled,
+                    previewEnabled = previewEnabled,
+                    onPreview = { onEvent("previewAttachment", attachment.id) },
+                    onRemove = { onEvent("removeAttachment", attachment.id) },
+                    onRetry = { onEvent("retryAttachments", attachment.id) }
+                )
             }
         }
     }
@@ -4940,46 +4932,6 @@ private fun RaftComposerUploadPhase.toComposerAttachmentPhase(): RaftComposerAtt
         RaftComposerUploadPhase.Uploading -> RaftComposerAttachmentPhase.Uploading
         RaftComposerUploadPhase.Finishing -> RaftComposerAttachmentPhase.Finishing
         RaftComposerUploadPhase.Failed -> RaftComposerAttachmentPhase.Failed
-    }
-
-internal fun composerAttachmentRows(
-    attachments: List<RaftPendingAttachmentItem>,
-    maxWidthDp: Int = ThreadComposerAttachmentTrayMaxWidthDp
-): List<List<RaftPendingAttachmentItem>> {
-    if (attachments.isEmpty()) return emptyList()
-    val rows = mutableListOf<MutableList<RaftPendingAttachmentItem>>()
-    var row = mutableListOf<RaftPendingAttachmentItem>()
-    var rowWidthDp = 0
-    attachments.forEach { attachment ->
-        val widthDp = attachment.composerAttachmentPreviewWidthDp()
-        val nextWidthDp =
-            if (row.isEmpty()) {
-                widthDp
-            } else {
-                rowWidthDp + ThreadComposerAttachmentRowGapDp + widthDp
-            }
-        if (row.isNotEmpty() && nextWidthDp > maxWidthDp) {
-            rows += row
-            row = mutableListOf()
-            rowWidthDp = 0
-        }
-        row += attachment
-        rowWidthDp =
-            if (rowWidthDp == 0) {
-                widthDp
-            } else {
-                rowWidthDp + ThreadComposerAttachmentRowGapDp + widthDp
-            }
-    }
-    if (row.isNotEmpty()) rows += row
-    return rows
-}
-
-internal fun RaftPendingAttachmentItem.composerAttachmentPreviewWidthDp(): Int =
-    if (isComposerImageAttachment()) {
-        ThreadComposerAttachmentImageTileSizeDp
-    } else {
-        ThreadComposerAttachmentFileTileWidthDp
     }
 
 internal fun RaftPendingAttachmentItem.isComposerImageAttachment(): Boolean {
