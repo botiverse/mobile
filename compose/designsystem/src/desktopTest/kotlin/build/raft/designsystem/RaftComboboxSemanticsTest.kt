@@ -21,7 +21,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasScrollToNodeAction
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import build.raft.designsystem.components.RaftComboboxListAction
 import androidx.compose.ui.test.performClick
