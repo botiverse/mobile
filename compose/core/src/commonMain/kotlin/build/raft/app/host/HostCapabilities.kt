@@ -31,9 +31,18 @@ interface HostCapabilities :
     HostRealtimeCapability,
     HostAppBadgeCapability
 
+/** How long a [HostFeedbackCapability.briefToast] stays (artin 2026-11-02: "Copied" sat 5s). */
+const val RaftBriefToastMillis: Long = 1_500
+
 /** Transient user feedback: `toast`, `copyToPasteboard`. */
 interface HostFeedbackCapability {
     fun toast(content: String)
+
+    /**
+     * A confirmation that needs no reading, such as "Copied": shown briefly
+     * ([RaftBriefToastMillis]) where the host draws its own toasts, else as [toast].
+     */
+    fun briefToast(content: String) = toast(content)
 
     fun copyToPasteboard(content: String)
 }

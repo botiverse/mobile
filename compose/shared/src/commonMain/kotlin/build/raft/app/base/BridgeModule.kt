@@ -7,6 +7,7 @@ import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
 import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.host.HostCapabilities
+import build.raft.app.host.RaftBriefToastMillis
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.raftLogDebug
 import build.raft.app.raftLogError
@@ -336,6 +337,14 @@ internal class BridgeModule : Module() {
      */
     fun toast(content: String) {
         if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities)) return
+        val methodArgs = JSONObject()
+        methodArgs.put("content", content)
+        callNativeMethod("toast", methodArgs, null)
+    }
+
+    /** [toast] for a confirmation that needs no reading ("Copied"): 1.5s, not a notification's 5s. */
+    fun briefToast(content: String) {
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, durationMillis = RaftBriefToastMillis)) return
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
         callNativeMethod("toast", methodArgs, null)

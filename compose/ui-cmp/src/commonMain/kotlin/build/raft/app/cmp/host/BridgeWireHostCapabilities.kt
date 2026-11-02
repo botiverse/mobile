@@ -2,6 +2,7 @@ package build.raft.app.cmp.host
 
 import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.host.HostCapabilities
+import build.raft.app.host.RaftBriefToastMillis
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
 import kotlinx.atomicfu.atomic
@@ -54,6 +55,12 @@ class BridgeWireHostCapabilities(
      */
     override fun toast(content: String) {
         if (!RaftCmpToasts.post(content, origin = this)) send("toast", params("content" to content))
+    }
+
+    override fun briefToast(content: String) {
+        if (!RaftCmpToasts.post(content, origin = this, durationMillis = RaftBriefToastMillis)) {
+            send("toast", params("content" to content))
+        }
     }
 
     override fun copyToPasteboard(content: String) = send("copyToPasteboard", params("content" to content))
