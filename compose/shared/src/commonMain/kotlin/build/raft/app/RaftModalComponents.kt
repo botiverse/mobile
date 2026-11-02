@@ -395,7 +395,7 @@ internal fun RaftUnifiedDialog(
     // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
     // content in a separate native window, where the page host's top-inset local is not retained.
-    val topInset = raftTopSafeAreaPadding()
+    val topInset = raftWindowTopSafeAreaPadding()
     // Read here for the same reason as topInset (ModalView rehosts the content).
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val hostState = LocalRaftUnifiedDialogHostState.current

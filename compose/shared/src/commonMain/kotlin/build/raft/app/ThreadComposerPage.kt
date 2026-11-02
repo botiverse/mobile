@@ -115,6 +115,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
@@ -2011,7 +2012,7 @@ internal fun ThreadComposerContent(
      * frame's own box after the frame, given whether the composer holds text or an attachment
      * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     ThreadComposerContent(
         surface =
@@ -2068,7 +2069,7 @@ internal fun ThreadComposerContent(
      * frame's own box after the frame, given whether the composer holds text or an attachment
      * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -2138,7 +2139,7 @@ internal fun ThreadComposerContentLeaf(
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
     externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2199,6 +2200,8 @@ internal fun ThreadComposerContentLeaf(
             suggestionAnchorRef.resolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
         }
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
+    // Something sits above the composer frame (see the measured column below).
+    var contentAboveFrame by remember(state.instanceId) { mutableStateOf(false) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, editorSessionId, state.focusRequestNonce) {
         val explicitFocusRequest = state.focusRequestNonce > handledFocusRequestNonce
@@ -2743,73 +2746,85 @@ internal fun ThreadComposerContentLeaf(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = contentPaddingTop, bottom = contentPaddingBottom),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(top = contentPaddingTop, bottom = contentPaddingBottom)
         ) {
-            state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
-                Text(
-                    text = localizedThreadComposerStatusLabel(status),
-                    style = RaftType.Caption.copy(
-                        color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray
-                    ),
-                    color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (state.pendingAttachments.isNotEmpty()) {
-                ComposerAttachmentTray(
-                    attachments = state.pendingAttachments,
-                    enabled = state.enabled,
-                    previewEnabled = state.enabled && attachmentPreviewEnabled
-                ) { action, attachmentId ->
-                    onEvent(action, null, null, attachmentId)
+            // Everything stacked above the composer frame (status, attachment tray, mention
+            // notice and cards): measured, so whatever sits on the frame's top edge (the otter)
+            // can make way for any of it without listing them (artin 11-02).
+            Column(
+                modifier = Modifier.fillMaxWidth().onSizeChanged { size ->
+                    val stacked = size.height > 0
+                    if (contentAboveFrame != stacked) contentAboveFrame = stacked
+                },
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
+                    Text(
+                        text = localizedThreadComposerStatusLabel(status),
+                        style = RaftType.Caption.copy(
+                            color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray
+                        ),
+                        color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-            }
-            val localizedMentionActionNotice =
-                state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-                    if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
-                        stringResource(Res.string.thread_composer_mention_batch_error_member_authority)
-                    } else {
-                        notice
+                if (state.pendingAttachments.isNotEmpty()) {
+                    ComposerAttachmentTray(
+                        attachments = state.pendingAttachments,
+                        enabled = state.enabled,
+                        previewEnabled = state.enabled && attachmentPreviewEnabled
+                    ) { action, attachmentId ->
+                        onEvent(action, null, null, attachmentId)
                     }
                 }
-            val localizedMentionActionNoticeTitle =
-                state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
-                    if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
-                        stringResource(Res.string.thread_composer_mention_batch_result_summary, 1, 3)
-                    } else {
-                        title
+                val localizedMentionActionNotice =
+                    state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
+                        if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
+                            stringResource(Res.string.thread_composer_mention_batch_error_member_authority)
+                        } else {
+                            notice
+                        }
                     }
+                val localizedMentionActionNoticeTitle =
+                    state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                        if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
+                            stringResource(Res.string.thread_composer_mention_batch_result_summary, 1, 3)
+                        } else {
+                            title
+                        }
+                    }
+                localizedMentionActionNotice?.let { notice ->
+                    MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
                 }
-            localizedMentionActionNotice?.let { notice ->
-                MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
-            }
-            if (state.pendingMentionActions.isNotEmpty()) {
-                PendingMentionActionBanner(
-                    actions = state.pendingMentionActions,
-                    memberSuggestions = state.memberSuggestions,
-                    channelLabel = surface.localizedMentionScopeChannelLabel(),
-                    actionStates = state.mentionActionStates,
-                    removingIds = state.removingMentionActionIds.toSet(),
-                    executingIds = state.executingMentionActionIds.toSet(),
-                    executingStates = state.executingMentionActionStates,
-                    onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
-                    onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
-                    onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
-                    onAddAll = { onEvent("addAllMentions", null, null, null) },
-                    mentionActionNoticeTitle = localizedMentionActionNoticeTitle,
-                    mentionActionNotice = localizedMentionActionNotice,
-                    initialDetailsVisible = initialMentionActionDetailsVisible,
-                    onOpenDetails = {
-                        currentDismissSuggestions()
-                        softwareKeyboardController?.hide()
-                    }
-                )
+                if (state.pendingMentionActions.isNotEmpty()) {
+                    PendingMentionActionBanner(
+                        actions = state.pendingMentionActions,
+                        memberSuggestions = state.memberSuggestions,
+                        channelLabel = surface.localizedMentionScopeChannelLabel(),
+                        actionStates = state.mentionActionStates,
+                        removingIds = state.removingMentionActionIds.toSet(),
+                        executingIds = state.executingMentionActionIds.toSet(),
+                        executingStates = state.executingMentionActionStates,
+                        onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
+                        onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
+                        onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
+                        onAddAll = { onEvent("addAllMentions", null, null, null) },
+                        mentionActionNoticeTitle = localizedMentionActionNoticeTitle,
+                        mentionActionNotice = localizedMentionActionNotice,
+                        initialDetailsVisible = initialMentionActionDetailsVisible,
+                        onOpenDetails = {
+                            currentDismissSuggestions()
+                            softwareKeyboardController?.hide()
+                        }
+                    )
+                }
             }
             Box(
                 modifier =
                     Modifier
+                        // The 6dp gap to what is stacked above, only when something is.
+                        .padding(top = if (contentAboveFrame) 6.dp else 0.dp)
                         .fillMaxWidth()
                         .raftCaptureLiveRootAnchor(suggestionAnchorRef) { nextSize ->
                             if (composerCardSize != nextSize) composerCardSize = nextSize
@@ -3075,7 +3090,11 @@ internal fun ThreadComposerContentLeaf(
                 }
                 // Web MessageInput `frameEdge`: drawn on the frame's top edge, after the frame (the
                 // assistant's otter). Neither this box nor its parents clip, so it reaches up over the list.
-                frameEdge?.invoke(threadComposerComposing(text, state.pendingAttachments.size), focused)
+                frameEdge?.invoke(
+                    threadComposerComposing(text, state.pendingAttachments.size),
+                    focused,
+                    contentAboveFrame,
+                )
             }
         }
     }

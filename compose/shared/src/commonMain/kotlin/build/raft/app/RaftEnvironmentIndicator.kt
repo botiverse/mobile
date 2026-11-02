@@ -89,7 +89,7 @@ internal fun RaftEnvironmentIndicatorHost(
     }
 
     val density = LocalDensity.current
-    val topSafeArea = raftTopSafeAreaPadding()
+    val topSafeArea = raftWindowTopSafeAreaPadding()
     val bottomSafeArea = raftBottomSafeAreaPadding()
     var badgeSize by remember { mutableStateOf(IntSize.Zero) }
     // Deliberately window-scoped rather than durable configuration: tabs and in-shell routes keep

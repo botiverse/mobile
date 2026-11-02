@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
@@ -231,6 +232,25 @@ private fun raftHostWindowIdEnsuringObserver(): String {
  */
 @Composable
 internal fun raftTopSafeAreaPadding(): Dp {
+    if (LocalRaftTopSafeAreaConsumed.current) return 0.dp
+    return raftWindowTopSafeAreaPadding()
+}
+
+/**
+ * True inside the wide shell's content, under its top bar (RaftAppShellSurface): the bar already
+ * clears the status bar, so a page there (a list, a right-pane detail: Members, Settings, Tasks,
+ * Computers, Activity) keeps no top safe area of its own. A [Modal] resets it: it is a
+ * full-window layer again.
+ */
+internal val LocalRaftTopSafeAreaConsumed = staticCompositionLocalOf { false }
+
+/**
+ * The window's top safe area, whatever is above the caller: for layers that cover the whole window
+ * (a [Modal]'s content read before it rehosts, a fullscreen viewer) and for the shell itself.
+ * Page content uses [raftTopSafeAreaPadding].
+ */
+@Composable
+internal fun raftWindowTopSafeAreaPadding(): Dp {
     val host = raftHostTopSafeAreaPadding()
     return if (LocalRaftSideColumnPosture.current.sideColumn) maxOf(host, RaftSideColumnTopInset) else host
 }

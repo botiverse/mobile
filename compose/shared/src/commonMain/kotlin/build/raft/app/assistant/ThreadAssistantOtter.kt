@@ -281,6 +281,8 @@ internal fun ThreadAssistantOtterFrameEdge(
     otter: ThreadAssistantOtter,
     composing: Boolean,
     focused: Boolean,
+    /** Something is stacked above the composer frame (measured by the composer): the otter goes in. */
+    covered: Boolean = false,
     animateEntrance: Boolean = true,
 ) {
     DisposableEffect(otter.hosts, otter.hostId) {
@@ -296,7 +298,7 @@ internal fun ThreadAssistantOtterFrameEdge(
     RaftAssistantOtter(
         mood = otter.mood,
         // Into the composer while the person types, and further while its panel is open.
-        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen),
+        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen, covered = covered),
         onClick = otter.onOpen,
         modifier = Modifier.fillMaxWidth().testTag(ThreadAssistantOtterTestTag),
         scale = otter.scale,
@@ -305,10 +307,11 @@ internal fun ThreadAssistantOtterFrameEdge(
     )
 }
 
-/** Web `data-[open]` over `data-composing`: the panel's tuck wins. */
-internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean): RaftOtterTuck =
+/** Web `data-[open]` over `data-composing`: the panel's tuck wins; a card above the composer hides it too. */
+internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean, covered: Boolean = false): RaftOtterTuck =
     when {
         panelOpen -> RaftOtterTuck.PanelOpen
+        covered -> RaftOtterTuck.Covered
         composing -> RaftOtterTuck.Composing
         else -> RaftOtterTuck.None
     }
