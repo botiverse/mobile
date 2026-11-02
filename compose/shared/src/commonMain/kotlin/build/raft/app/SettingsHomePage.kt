@@ -2174,6 +2174,8 @@ private fun RaftAppShellReadyContent(
     val stackRootTab = build.raft.app.nav.LocalRaftStackRootTab.current
     if (stackRootTab != null) SideEffect { stackRootTab.tab = selectedTab }
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
+    // artin 2026-11-02: the tabs picked before this one; Back on a tab root walks back through them.
+    var appShellTabHistory by remember { mutableStateOf(AppShellTabHistory()) }
     var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
@@ -3334,6 +3336,8 @@ private fun RaftAppShellReadyContent(
             selectedTab = "home"
             retainedAppShellTabs = retainedAppShellTabs + "home"
         }
+        // Back never returns to a tab that is no longer available.
+        appShellTabHistory = appShellTabHistory.sanitized(allowedKeys)
     }
 
     // task #45: rail-only transient surfaces must not leak into the single-column
@@ -4306,15 +4310,37 @@ private fun RaftAppShellReadyContent(
                 }
                 .withTimeFormat(sessionTimeFormat)
         }
-    fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
+    fun selectAppShellTab(
+        nextTab: String,
+        directChildSwitch: Boolean = false,
+        source: AppShellTabSwitchSource = AppShellTabSwitchSource.Programmatic,
+    ) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
         serverMenuState.dismiss()
         val retainedTab = retainedAppShellSelectedTab(nextTab)
+        appShellTabHistory =
+            when (source) {
+                AppShellTabSwitchSource.User ->
+                    appShellTabHistory.selected(
+                        from = selectedTab,
+                        to = retainedTab,
+                        roots =
+                            appShellTabHistoryRoots(
+                                raftAdaptiveNavRailActive(
+                                    desktopModeEnabled = desktopModeOnLargeScreen,
+                                    paneState = shellScope.adaptivePane
+                                )
+                            ),
+                    )
+                AppShellTabSwitchSource.Back -> appShellTabHistory.arrivedByBack(retainedTab)
+                AppShellTabSwitchSource.Programmatic -> AppShellTabHistory()
+            }
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
         val direct = directChildSwitch && retainedTab in slackNavTabKeys
         bridge.log(
             "app_shell_select_tab next=$nextTab retained=$retainedTab from=$selectedTab " +
-                "epoch=$childTabSwitchEpoch->$nextEpoch direct=$direct mode=single_child"
+                "epoch=$childTabSwitchEpoch->$nextEpoch direct=$direct mode=single_child " +
+                "source=${source.name} history=${appShellTabHistory.tabs.size}"
         )
         childTabSwitchEpoch = nextEpoch
         selectedTab = retainedTab
@@ -5343,25 +5369,34 @@ private fun RaftAppShellReadyContent(
         }
         // A server page (Members, Settings) goes back to the page the server panel opened it
         // from, or Home after a deep link, on the phone layout; focus returns to the server tab.
+        val backNavRail =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
         appShellMoreChildBackTarget(
             selectedTab = selectedTab,
-            navRailActive =
-                raftAdaptiveNavRailActive(
-                    desktopModeEnabled = desktopModeOnLargeScreen,
-                    paneState = shellScope.adaptivePane
-                ),
+            navRailActive = backNavRail,
             origin = serverPageOrigin,
         )?.let { target ->
-            selectAppShellTab(target, directChildSwitch = true)
+            selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
             retainedAppShellTabs = retainedAppShellTabs + target
             serverTabFocusPending = true
             return true
         }
-        if (selectedTab != "home") {
-            selectAppShellTab("home")
-            homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        // artin 2026-11-02: Back on a tab root returns to the tab picked before it (Activity ->
+        // Search -> Back = Activity); with none left it goes Home, and Home leaves the app.
+        fun backToEarlierTab(): Boolean {
+            val target =
+                appShellTabHistory.backTarget(selectedTab, appShellTabHistoryRoots(backNavRail))
+                    ?: return false
+            bridge.log("app_back_tab_history from=$selectedTab to=$target history=${appShellTabHistory.tabs.size}")
+            selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
+            if (isRetainedAppShellTab(target)) retainedAppShellTabs = retainedAppShellTabs + target
+            if (target == "home") homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
+        if (selectedTab != "home") return backToEarlierTab()
         if (
             desktopModeOnLargeScreen &&
             adaptiveWorkspaceState?.presentation == RaftAdaptiveWorkspacePresentation.DetailOnly
@@ -5369,7 +5404,7 @@ private fun RaftAppShellReadyContent(
             dismissAdaptiveDetailSelection()
             return true
         }
-        return false
+        return backToEarlierTab()
     }
 
     fun openAppShellActivityTab(source: String) {
@@ -5379,7 +5414,7 @@ private fun RaftAppShellReadyContent(
             homeFocusLossDismissEpoch += 1
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
         }
-        selectAppShellTab("activity", directChildSwitch = true)
+        selectAppShellTab("activity", directChildSwitch = true, source = AppShellTabSwitchSource.User)
         retainedAppShellTabs = retainedAppShellTabs + "activity"
     }
 
@@ -5414,7 +5449,7 @@ private fun RaftAppShellReadyContent(
             homeFocusLossDismissEpoch += 1
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
         }
-        selectAppShellTab(AppShellSearchTabKey, directChildSwitch = true)
+        selectAppShellTab(AppShellSearchTabKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
         retainedAppShellTabs = retainedAppShellTabs + AppShellSearchTabKey
     }
 
@@ -6256,7 +6291,7 @@ private fun RaftAppShellReadyContent(
             railInlineSecondaryDestination = null
             if (retainedAppShellSelectedTab(selectedTab) != entry.surface) {
                 // As a rail tap selects a tab (onAppShellTabSelected).
-                selectAppShellTab(entry.surface, directChildSwitch = true)
+                selectAppShellTab(entry.surface, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
                 if (isRetainedAppShellTab(entry.surface)) retainedAppShellTabs = retainedAppShellTabs + entry.surface
             }
             // A Home entry is the Home list, never a Home secondary page.
@@ -6855,7 +6890,7 @@ private fun RaftAppShellReadyContent(
                         SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
                     )
                 }
-                selectAppShellTab(nextTab, directChildSwitch = true)
+                selectAppShellTab(nextTab, directChildSwitch = true, source = AppShellTabSwitchSource.User)
                 if (isRetainedAppShellTab(nextTab)) {
                     retainedAppShellTabs = retainedAppShellTabs + nextTab
                 }
@@ -6921,7 +6956,7 @@ private fun RaftAppShellReadyContent(
                     surface = RaftNavSurface.MobileMore,
                     wasActive = retainedAppShellSelectedTab(selectedTab) == "members",
                 )
-                selectAppShellTab("members", directChildSwitch = true)
+                selectAppShellTab("members", directChildSwitch = true, source = AppShellTabSwitchSource.User)
                 retainedAppShellTabs = retainedAppShellTabs + "members"
             }
             RaftServerMenuEntry.Computers -> {
@@ -6942,7 +6977,7 @@ private fun RaftAppShellReadyContent(
                     surface = RaftNavSurface.MobileMore,
                     wasActive = retainedAppShellSelectedTab(selectedTab) == settingsKey,
                 )
-                selectAppShellTab(settingsKey, directChildSwitch = true)
+                selectAppShellTab(settingsKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
                 retainedAppShellTabs = retainedAppShellTabs + settingsKey
             }
         }
@@ -8220,7 +8255,7 @@ private fun RaftAppShellReadyContent(
                     val moreChildBack: (() -> Unit)? =
                         appShellMoreChildBackTarget(selectedTab, navRailActive, serverPageOrigin)?.let { target ->
                             {
-                                selectAppShellTab(target, directChildSwitch = true)
+                                selectAppShellTab(target, directChildSwitch = true, source = AppShellTabSwitchSource.Back)
                                 retainedAppShellTabs = retainedAppShellTabs + target
                                 serverTabFocusPending = true
                             }
