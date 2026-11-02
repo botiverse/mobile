@@ -717,7 +717,7 @@ internal fun RaftDraftRow(
                 .then(
                     when {
                         selected -> Modifier.background(colors.infoSoft)
-                        pressed -> Modifier.background(colors.fillPressed)
+                        pressed -> Modifier.background(colors.fillMedium)
                         else -> Modifier
                     }
                 )

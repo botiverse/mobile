@@ -217,7 +217,7 @@ internal fun <T> RaftForwardPickerTargetRow(
                 .fillMaxWidth()
                 .padding(horizontal = ForwardPickerBodyPadding)
                 .alpha(if (interactive) 1f else 0.72f)
-                .background(if (pressed) colors.fillPressed else Color.Transparent, shape)
+                .background(if (pressed) colors.fillMedium else Color.Transparent, shape)
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .heightIn(min = ForwardPickerRowMinHeight)
                 .padding(horizontal = ForwardPickerRowPaddingHorizontal, vertical = ForwardPickerRowPaddingVertical),

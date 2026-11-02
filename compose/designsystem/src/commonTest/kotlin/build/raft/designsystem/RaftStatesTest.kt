@@ -75,7 +75,7 @@ class RaftActiveStickerTest {
         assertEquals(RaftUiPalette.selected, look.fill)
         assertEquals(RaftUiPalette.stickerInk, look.edge)
         assertEquals(RaftUiPalette.stickerInk, look.ink)
-        assertEquals(RaftUiPalette.stickerPressed, look.pressOverlay)
+        assertEquals(RaftUiPalette.stickerMedium, look.pressOverlay)
         // Same in both modes, plus the die-cut edge in dark only.
         val darkLook = raftActiveStickerLook(active = true, colors = dark)
         assertEquals(look.fill, darkLook.fill)
@@ -89,14 +89,14 @@ class RaftActiveStickerTest {
         assertEquals(Color.Transparent, look.edge)
         assertEquals(Color.Transparent, look.dieCut)
         assertEquals(dark.foregroundMuted, look.ink)
-        assertEquals(dark.fillPressed, look.pressOverlay)
+        assertEquals(dark.fillMedium, look.pressOverlay)
     }
 
     @Test
     fun pressOverlayFollowsTheSurface() {
-        assertEquals(light.fillPressed, raftPressOverlayColor(RaftPressSurface.Paper, light))
-        assertEquals(RaftUiPalette.stickerPressed, raftPressOverlayColor(RaftPressSurface.Sticker, light))
-        assertEquals(light.fillFramePressed, raftPressOverlayColor(RaftPressSurface.Frame, light))
+        assertEquals(light.fillMedium, raftPressOverlayColor(RaftPressSurface.Paper, light))
+        assertEquals(RaftUiPalette.stickerMedium, raftPressOverlayColor(RaftPressSurface.Sticker, light))
+        assertEquals(light.fillFrameMedium, raftPressOverlayColor(RaftPressSurface.Frame, light))
     }
 }
 
@@ -112,7 +112,7 @@ class RaftButtonLookTest {
             assertEquals(fill, look.fill, "$variant")
             assertEquals(RaftUiPalette.stickerInk, look.ink, "$variant")
             assertEquals(dark.stickerEdge, look.outerRing, "$variant")
-            assertEquals(RaftUiPalette.stickerPressed, look.pressOverlay, "$variant")
+            assertEquals(RaftUiPalette.stickerMedium, look.pressOverlay, "$variant")
         }
     }
 

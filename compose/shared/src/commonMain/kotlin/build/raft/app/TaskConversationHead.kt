@@ -777,7 +777,7 @@ private fun TaskHeadLinkValue(
             // The padding hangs outward: the text starts where a plain fact's does.
             .offset(x = (-6).dp)
             .clip(shape)
-            .then(if (pressed) Modifier.background(colors.fillPressed, shape) else Modifier)
+            .then(if (pressed) Modifier.background(colors.fillMedium, shape) else Modifier)
             .then(
                 if (onClick != null) {
                     Modifier.clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)

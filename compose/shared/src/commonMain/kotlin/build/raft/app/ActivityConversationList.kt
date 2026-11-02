@@ -846,9 +846,9 @@ internal fun ActivityConversationListRow(
                     .then(
                         when {
                             selected -> Modifier.background(colors.infoSoft)
-                            menuOpen -> Modifier.background(colors.fillRowOpen)
+                            menuOpen -> Modifier.background(colors.fillSubtle)
                             // raft-ui 0.20: an inbox row presses with the medium tier.
-                            pressed -> Modifier.background(colors.fillPressed)
+                            pressed -> Modifier.background(colors.fillMedium)
                             else -> Modifier
                         }
                     )

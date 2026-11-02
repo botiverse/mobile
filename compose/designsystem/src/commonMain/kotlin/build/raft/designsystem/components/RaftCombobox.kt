@@ -679,7 +679,7 @@ internal fun RaftComboboxChipRemove(
         Modifier
             .size(size)
             .then(if (widenTouchTarget) Modifier.raftTouchTarget(true, source, onClick) else Modifier)
-            .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Sticker)
+            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Sticker)
             .raftInsetFocusOutline(focused, colors.foreground, RaftRadius.Sticker)
             .raftPointerHover(source)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
@@ -708,7 +708,7 @@ private fun RaftComboboxClear(text: String, onClick: () -> Unit) {
             .heightIn(min = 28.dp)
             .raftTouchTarget(true, source, onClick)
             .raftFocusRing(focused, RaftRadius.Control, colors)
-            .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Control)
+            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
             .raftPointerHover(source)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
             .padding(horizontal = 8.dp),

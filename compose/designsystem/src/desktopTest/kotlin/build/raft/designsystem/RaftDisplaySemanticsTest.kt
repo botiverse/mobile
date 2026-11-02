@@ -281,12 +281,52 @@ class RaftDisplaySemanticsTest {
             assertEquals(28f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
         }
 
-    /** A group header's controls are 28dp (`h-7 min-w-7`)... */
+    /** A group header's controls are 24dp (`h-6 min-w-6`, raft-ui 0.55 #916)... */
     @Test
-    fun sidebarHeaderControlsAre28dp() =
+    fun sidebarHeaderControlsAre24dp() =
         runComposeUiTest {
             setSidebarWebMetricsContent()
-            assertEquals(28f, boundsOf("sort").height / density.density, 0.5f)
+            assertEquals(24f, boundsOf("sort").height / density.density, 0.5f)
+            assertEquals(24f, boundsOf("sort").width / density.density, 0.5f)
+        }
+
+    /**
+     * ...4dp apart, and the last one's 14dp icon box, not its button, ends on the header's
+     * 8dp line: the button hangs its 5dp of empty space past it (`-mr-icon-inset`, 0.56 #922).
+     */
+    @Test
+    fun theLastSidebarHeaderControlsIconEndsOnTheHeadersLine() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(4f, (boundsOf("create").left - boundsOf("sort").right) / density.density, 0.5f)
+            assertEquals(3f, (boundsOf("header").right - boundsOf("create").right) / density.density, 0.5f)
+        }
+
+    /** A tap in the 4dp gap between two controls goes to the nearer one (raft-ui 0.57 #935). */
+    @Test
+    fun aTapBetweenTwoSidebarHeaderControlsGoesToTheNearerOne() =
+        runComposeUiTest {
+            var sorts = 0
+            var creates = 0
+            setContent(
+                themed {
+                    Column(Modifier.width(393.dp)) {
+                        RaftSidebarSectionHeader(
+                            "Channels",
+                            expanded = true,
+                            onExpandedChange = {},
+                            actions = {
+                                RaftSidebarSectionAction(RaftGlyph.ArrowUpDown, "Sort Channels", { sorts++ })
+                                RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", { creates++ })
+                            },
+                        )
+                    }
+                },
+            )
+            onNodeWithContentDescription("Sort Channels").performTouchInput { click(Offset(width + 1.dp.toPx(), centerY)) }
+            onNodeWithContentDescription("Create Channel").performTouchInput { click(Offset(-1.dp.toPx(), centerY)) }
+            assertEquals(1, sorts, "1dp past Sort's end is Sort's")
+            assertEquals(1, creates, "1dp before Create's start is Create's")
         }
 
     /** ...and 4dp apart (`gap-1`). */
@@ -611,7 +651,7 @@ class RaftDisplaySemanticsTest {
             assertEquals(listOf("RaftIconButton needs a name: pass tooltip or contentDescription"), reports.distinct())
         }
 
-    /** The sidebar section control's 28dp button takes a tap 6dp above its box (inside the 44dp target). */
+    /** The sidebar section control's 24dp button takes a tap 6dp above its box (inside the 44dp target). */
     @Test
     fun aSmallIconButtonTakesTapsInItsWidenedTarget() =
         runComposeUiTest {

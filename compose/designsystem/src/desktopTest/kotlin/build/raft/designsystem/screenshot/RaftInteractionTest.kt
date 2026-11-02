@@ -93,7 +93,7 @@ class RaftInteractionTest {
      */
     @Test
     fun aMouseOverAnIconButtonDrawsThePressFill() {
-        val pressedFill = RaftUiThemeColors.RaftLight.fillPressed.compositeOver(canvas)
+        val pressedFill = RaftUiThemeColors.RaftLight.fillMedium.compositeOver(canvas)
         ImageComposeScene(width = 200, height = 120, density = Density(1f)) {
             RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
                 Box(Modifier.background(RaftTheme.colors.layerCanvas).padding(20.dp)) {

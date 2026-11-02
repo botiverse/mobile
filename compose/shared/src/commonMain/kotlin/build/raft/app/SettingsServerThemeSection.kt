@@ -236,7 +236,7 @@ private fun SettingsServerThemeSwatch(
             modifier
                 .clip(shape)
                 .background(colors.layerCard)
-                .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.lineStrong else colors.line, shape)
+                .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.lineStrong else colors.lineSeam, shape)
                 .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
                 .semantics { contentDescription = description }
                 .padding(8.dp),
