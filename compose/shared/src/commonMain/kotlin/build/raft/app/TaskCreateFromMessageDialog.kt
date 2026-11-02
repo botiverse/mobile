@@ -73,6 +73,15 @@ internal fun TaskCreateFromMessageDialog(
     var titles by remember(source.messageId) { mutableStateOf(listOf(taskTitleFromMessage(source.text))) }
     val filled = titles.map { it.trim() }.filter { it.isNotBlank() }
     val batch = titles.size > 1
+    // The one commit: the footer's Create on a wide window, the phone sheet's head button.
+    val commitLabel =
+        when {
+            submitting -> stringResource(Res.string.tasks_create_action_creating)
+            // web `task.create.submit`: "Create" for one filled title, "Create N Tasks" for more.
+            filled.size > 1 -> stringResource(Res.string.tasks_create_submit_many, filled.size)
+            else -> stringResource(Res.string.tasks_create_action)
+        }
+    val commitEnabled = filled.isNotEmpty() && !submitting
     RaftUnifiedDialog(
         title =
             stringResource(
@@ -84,6 +93,10 @@ internal fun TaskCreateFromMessageDialog(
         keyboardAvoidanceEnabled = true,
         contentPadding = RaftAppSpacing.Md,
         contentSpacing = RaftAppSpacing.Md,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = { onSubmit(filled) },
+        commitEnabled = commitEnabled,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
@@ -154,15 +167,9 @@ internal fun TaskCreateFromMessageDialog(
                 size = RaftButtonSize.Lg,
             )
             RaftButton(
-                text =
-                    when {
-                        submitting -> stringResource(Res.string.tasks_create_action_creating)
-                        // web `task.create.submit`: "Create" for one filled title, "Create N Tasks" for more.
-                        filled.size > 1 -> stringResource(Res.string.tasks_create_submit_many, filled.size)
-                        else -> stringResource(Res.string.tasks_create_action)
-                    },
+                text = commitLabel,
                 onClick = { onSubmit(filled) },
-                enabled = filled.isNotEmpty() && !submitting,
+                enabled = commitEnabled,
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg,
             )

@@ -41,6 +41,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -147,11 +148,14 @@ object RaftDialogSheetDefaults {
 
     /**
      * The narrowest window that shows the dialog centred instead of as a sheet. raft-ui Dialog
-     * "On a phone": "On a desktop and a tablet every dialog stays centered". 600dp is the
-     * narrowest tablet window (Android's compact/medium width class), so a tablet in portrait
-     * and the app's 768dp two-pane layout both get the centred dialog, a phone never does.
+     * "On a phone": "On a desktop and a tablet every dialog stays centered". The web switches
+     * at its `md` breakpoint (768px), the same width where its layout goes wide; the app goes
+     * wide at [RaftScale.WideMinWidth] (744, the iPad mini upright), so a dialog switches with
+     * the layout and the type: a window with the rail and two panes gets the centred dialog, a
+     * phone or a split-screen half gets the sheet. Every form dialog reads this one constant
+     * (this sheet and the app's `RaftUnifiedDialog`).
      */
-    val CenteredMinWindowWidth = 600.dp
+    val CenteredMinWindowWidth = RaftScale.WideMinWidth
 
     /** The centred dialog's width: raft-ui Dialog `md`, a small task. */
     val CenteredWidth = RaftDialogSize.Md.maxWidth

@@ -11679,16 +11679,42 @@ private fun SharedCreateChannelDialog(
         }
     val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
+    // The one commit: the footer's Create on a wide window, the phone sheet's head button.
+    val commitLabel =
+        if (submitting) {
+            stringResource(Res.string.channel_create_action_creating)
+        } else {
+            stringResource(Res.string.channel_create_action_create)
+        }
+    val commit: () -> Unit = {
+        val selectedMembers =
+            selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
+        onSubmit(
+            name,
+            description.text,
+            visibility.wireValue,
+            selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
+            selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
+        )
+    }
     RaftUnifiedDialog(
         title = stringResource(Res.string.channel_create_title),
         dismissEnabled = !submitting,
         dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = commit,
+        commitEnabled = canSubmit
     ) {
         val focusedEditorBounds = rememberRaftFocusedInputBoundsResolver()
         val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
 
+        // The dialog's own handler first: it lifts the centred card, or shrinks the phone sheet
+        // onto the keyboard. Two frames later the list below (the card's or the sheet's body,
+        // whichever is drawn) has its keyboard-reduced viewport, and the focused field is kept
+        // inside it.
         fun keepFocusedCreateChannelEditorVisible(params: KeyboardParams) {
             dialogKeyboardHeightChange(params)
             val requestGeneration = createChannelScrollCoordinator.begin()
@@ -11860,27 +11886,12 @@ private fun SharedCreateChannelDialog(
                 size = RaftButtonSize.Lg
             )
             RaftButton(
-                text =
-                    if (submitting) {
-                        stringResource(Res.string.channel_create_action_creating)
-                    } else {
-                        stringResource(Res.string.channel_create_action_create)
-                    },
+                text = commitLabel,
                 enabled = canSubmit,
                 modifier = Modifier.widthIn(min = 126.dp),
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg,
-                onClick = {
-                    val selectedMembers =
-                        selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
-                    onSubmit(
-                        name,
-                        description.text,
-                        visibility.wireValue,
-                        selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
-                        selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
-                    )
-                }
+                onClick = commit
             )
         }
     }

@@ -5,6 +5,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDialogSheetDefaults
 import build.raft.designsystem.components.raftDialogSheetCentered
 import build.raft.designsystem.components.raftDialogSheetConstraints
+import build.raft.designsystem.theme.RaftScale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,15 +15,20 @@ import kotlin.test.assertTrue
 class RaftDialogSheetLayoutTest {
     @Test
     fun phonesGetTheSheetTabletsAndLargeScreensTheCentredDialog() {
-        // Phones in portrait and landscape-narrow windows.
-        listOf(320.dp, 390.dp, 430.dp, 599.dp).forEach { width ->
+        // Phones in portrait, landscape-narrow windows and split-screen halves: the compact layout.
+        listOf(320.dp, 390.dp, 430.dp, 600.dp, 743.dp).forEach { width ->
             assertFalse(raftDialogSheetCentered(width), "width=$width")
         }
-        // A tablet in portrait (600..839dp), the two-pane layout (840dp+), a desktop-size window.
-        listOf(600.dp, 800.dp, 840.dp, 1280.dp).forEach { width ->
+        // The app's wide layout (an iPad mini upright at 744dp and up), a desktop-size window.
+        listOf(744.dp, 768.dp, 840.dp, 1280.dp).forEach { width ->
             assertTrue(raftDialogSheetCentered(width), "width=$width")
         }
         assertTrue(RaftDialogSheetDefaults.CenteredWidth < RaftDialogSheetDefaults.CenteredMinWindowWidth)
+    }
+
+    @Test
+    fun theDialogSwitchesWhereTheAppLayoutGoesWide() {
+        assertEquals(RaftScale.WideMinWidth, RaftDialogSheetDefaults.CenteredMinWindowWidth)
     }
 
     @Test
