@@ -37,7 +37,7 @@ import org.robolectric.annotation.Config
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w900dp-h600dp-mdpi")
 class RaftChildPageWindowAnchorUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
