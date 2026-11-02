@@ -2084,8 +2084,8 @@
     <string name="home_action_add_channel">Add channel</string>
     <string name="home_state_no_servers">No servers available</string>
     <string name="home_server_switcher_join_chinese_community">Join Chinese Community</string>
-    <string name="home_server_switcher_join_community">Join community server</string>
-    <string name="home_server_switcher_switch_or_create">Switch or create server</string>
+    <string name="home_server_switcher_join_community">Join Community</string>
+    <string name="home_server_switcher_switch_or_create">Switch or Create Server</string>
     <string name="home_server_switcher_invite_human">Invite Human</string>
     <string name="home_server_switch_failed">Could not switch servers. Please try again.</string>
     <string name="home_error_open_direct_message">Unable to open direct message</string>

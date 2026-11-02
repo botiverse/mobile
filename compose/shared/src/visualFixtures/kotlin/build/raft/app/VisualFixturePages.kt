@@ -113,8 +113,9 @@ private fun HomeLoadingVisualContent() {
             channels = emptyList(),
             directMessages = emptyList(),
             showLoadingSkeletons = true,
-            // web's sidebar keeps empty sections (Pinned with its drag hint, Joint Channels)
-            // while the lists load: the "Hide empty sidebar sections" preference is off.
+            // web's sidebar keeps empty sections while the lists load (the "Hide empty sidebar
+            // sections" preference is off): Pinned with no hint or rows, Joint Channels with 2
+            // loading rows, Channels 4, Direct Messages 3.
             hideEmptySections = false,
             showBottomBar = true,
             outerPadding = 0.dp

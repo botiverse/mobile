@@ -35,6 +35,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import androidx.compose.ui.text.font.FontWeight
+import build.raft.designsystem.components.RaftIconTileVariant
 import build.raft.designsystem.components.RaftRowTone
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
@@ -1689,6 +1690,22 @@ class RaftHomeComponentsTest {
                 directMessageSkeletonCount = 3
             )
         )
+        // Web's loading rows: 2 in an empty Joint Channels section as well.
+        assertEquals(
+            17,
+            homeLazyItemCount(
+                channelsCount = 0,
+                jointCount = 0,
+                directMessagesCount = 0,
+                channelsExpanded = false,
+                jointChannelsExpanded = false,
+                directMessagesExpanded = false,
+                hasInlineError = true,
+                channelSkeletonCount = 4,
+                directMessageSkeletonCount = 3,
+                jointSkeletonCount = 2
+            )
+        )
     }
 
     @Test
@@ -2051,9 +2068,9 @@ class RaftHomeComponentsTest {
 
     @Test
     fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
-        // 56dp raft panel head + the 4dp popover gap.
-        assertEquals(60.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
-        assertEquals(84.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
+        // The bell's button ends 49.25dp into the head; web's popover hangs 8dp under it.
+        assertEquals(57.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
+        assertEquals(81.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
     }
 
     @Test
@@ -2082,41 +2099,32 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun notificationActionButtonsUseBoldFontFamily() {
-        assertEquals(raftFontFamilyForWeight(FontWeight.Bold), HomeNotificationActionButtonTextStyle.fontFamily)
-        assertEquals(RaftType.ButtonBold.fontWeight, HomeNotificationActionButtonTextStyle.fontWeight)
+    fun titlebarVisualBoardRendersTheManifestVariants() {
+        // sharedCases.json components.home.titlebar.states, in order.
+        assertEquals(
+            listOf("other-server-unread", "short-name-avatar", "long-name-ellipsis", "switcher-open"),
+            HomeTitlebarVisualStates.map { it.id }
+        )
+        val byId = HomeTitlebarVisualStates.associateBy { it.id }
+        val unread = byId.getValue("other-server-unread").visualServers()
+        assertTrue(homeServerSwitcherHasOtherUnread(unread.first().id, unread))
+        assertEquals(null, unread.first().avatarUrl)
+        val avatar = byId.getValue("short-name-avatar").visualServers()
+        assertEquals(1, avatar.size)
+        assertFalse(avatar.single().avatarUrl.isNullOrBlank())
+        val open = byId.getValue("switcher-open")
+        assertTrue(open.switcherOpen)
+        val openServers = open.visualServers()
+        assertEquals(listOf("visual", "raft-community"), openServers.map { it.slug })
+        assertFalse(homeServerSwitcherHasOtherUnread(openServers.first().id, openServers))
     }
 
     @Test
-    fun appUpdateNotificationActionUsesActiveShadowAfterDownloadStarts() {
-        assertEquals(
-            2.dp,
-            RaftHomeNotificationItem(
-                id = APP_UPDATE_HOME_NOTIFICATION_ID,
-                actionLabel = "Download"
-            ).primaryActionShadowOffset()
-        )
-        assertEquals(
-            4.dp,
-            RaftHomeNotificationItem(
-                id = APP_UPDATE_HOME_NOTIFICATION_ID,
-                actionLabel = "Downloading"
-            ).primaryActionShadowOffset()
-        )
-        assertEquals(
-            4.dp,
-            RaftHomeNotificationItem(
-                id = APP_UPDATE_HOME_NOTIFICATION_ID,
-                actionLabel = "Install"
-            ).primaryActionShadowOffset()
-        )
-        assertEquals(
-            2.dp,
-            RaftHomeNotificationItem(
-                id = "machine-offline:1",
-                actionLabel = "Install"
-            ).primaryActionShadowOffset()
-        )
+    fun notificationIconTileFollowsKind() {
+        // raft-ui NotificationCenterItemIcon: error and warning on warning-soft, info on info-soft.
+        assertEquals(RaftIconTileVariant.Warning, RaftHomeNotificationKind.Warning.iconTileVariant())
+        assertEquals(RaftIconTileVariant.Warning, RaftHomeNotificationKind.Error.iconTileVariant())
+        assertEquals(RaftIconTileVariant.Information, RaftHomeNotificationKind.Info.iconTileVariant())
     }
 
     @Test
