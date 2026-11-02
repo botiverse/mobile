@@ -15,6 +15,7 @@ import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.app.components.rememberRaftTextareaEditorModifier
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -943,16 +944,22 @@ internal fun MachinePicker(
                         requiredComputer = requiredComputer,
                         offlineSuffix = stringResource(Res.string.agent_create_suffix_offline)
                     )
-                // Jasper's picker rule: radios up to 5 computers, a sheet list up to 10, then search.
-                // Each computer carries the chosen runtime's quota line there.
+                // Web CreateAgentDialog: a select at any count (artin 2026-11-02: no radios), raft-ui
+                // ComboboxSelect — the list under the trigger up to ten, a searchable sheet above.
+                // Each computer carries the chosen runtime's quota line.
                 val quotaLines = rememberCreateAgentMachineQuotaLines(usageAccess, machines, runtimeId)
-                RuntimePickerChoice(
+                val computerLabel = stringResource(Res.string.agent_create_label_computer)
+                val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
+                RaftCombobox(
                     value = selectedMachineId,
                     options = createAgentMachineChoiceOptions(machineItems, quotaLines),
                     onValueChange = onSelect,
-                    title = stringResource(Res.string.agent_create_label_computer),
+                    emptyText = { query -> noMatches.replace("\u0001", query) },
                     placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
-                    enabled = enabled
+                    title = computerLabel,
+                    searchPlaceholder = stringResource(Res.string.runtime_picker_search),
+                    enabled = enabled,
+                    label = computerLabel
                 )
             }
         }
