@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-02T12:57:26.447Z",
+  "generatedAt": "2026-11-02T13:27:03.714Z",
   "latestRunId": "2d44f513-20261102125634",
   "latest": {
     "runId": "2d44f513-20261102125634",
     "commit": "2d44f513-20261102125634",
     "commitSubject": "feat(ui): runtime chips show the usage card on hover, pinned by a click (#4135)",
-    "generatedAt": "2026-11-02T12:57:26.447Z",
+    "generatedAt": "2026-11-02T13:27:03.714Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 102,
-      "ready": 30,
-      "pending": 72
+      "ready": 37,
+      "pending": 65
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "2d44f513-20261102125634",
       "commit": "2d44f513-20261102125634",
       "commitSubject": "feat(ui): runtime chips show the usage card on hover, pinned by a click (#4135)",
-      "generatedAt": "2026-11-02T12:57:26.447Z",
+      "generatedAt": "2026-11-02T13:27:03.714Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 102,
-        "ready": 30,
-        "pending": 72
+        "ready": 37,
+        "pending": 65
       },
       "comparisons": [
         "react__android"

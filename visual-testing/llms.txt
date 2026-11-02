@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-02 12:57:26 UTC
+Generated: 2026-11-02 13:27:03 UTC
 Latest run: 2d44f513-20261102125634
 Latest commit: 2d44f513-20261102125634
 Commit subject: feat(ui): runtime chips show the usage card on hover, pinned by a click (#4135)
 Providers: react vs android
 Summary: total 102, same 0, pass 2, basic-pass 9, different 86, missing 5
-AI analysis: ready 30 / total 102, pending 72
+AI analysis: ready 37 / total 102, pending 65
 Visual coverage matrix: active 111 / total 131, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
