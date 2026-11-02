@@ -26,9 +26,11 @@ class RaftMessageImageGalleryTest {
     }
 
     @Test
-    fun rowsFillByThreeAndFourSplitsTwoAndTwo() {
+    fun rowsFillByTwo() {
+        assertEquals(listOf(2, 2, 2), buildRaftMessageImageGalleryRows(List(6) { normal }).map { it.items.size })
         assertEquals(listOf(2, 2), buildRaftMessageImageGalleryRows(List(4) { normal }).map { it.items.size })
-        assertEquals(listOf(3, 2), buildRaftMessageImageGalleryRows(List(5) { normal }).map { it.items.size })
+        assertEquals(listOf(2, 2, 1), buildRaftMessageImageGalleryRows(List(5) { normal }).map { it.items.size })
+        assertEquals(listOf(2, 1), buildRaftMessageImageGalleryRows(List(3) { normal }).map { it.items.size })
         assertEquals(listOf(2), buildRaftMessageImageGalleryRows(List(2) { normal }).map { it.items.size })
     }
 
