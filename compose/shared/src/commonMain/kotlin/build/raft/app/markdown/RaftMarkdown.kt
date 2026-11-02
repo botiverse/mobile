@@ -2059,13 +2059,16 @@ internal suspend fun prepareRaftMarkdownFullRendererBodies(
 }
 
 internal fun String.preparedRaftMarkdownFullRendererContentOrNull(): MarkdownParserContent? {
-    val (content, _) =
-        RaftMarkdownPreparedBodyCache.getOrPut(this) {
-            normalizeThreadMarkdownBody()
-        }
+    val content = raftMarkdownPreparedBody(this)
     if (content.isBlank()) return null
-    return MarkdownParserContent.from(content)
+    return RaftMarkdownRenderInputCache.parserContent(content)
 }
+
+/** [body] normalised for rendering, through the same cache [RaftMarkdownBody] uses. */
+internal fun raftMarkdownPreparedBody(body: String): String =
+    RaftMarkdownPreparedBodyCache.getOrPut(body) {
+        body.normalizeThreadMarkdownBody()
+    }.first
 
 private const val RaftMarkdownDefaultPreparseLimit = 20
 
@@ -2389,8 +2392,11 @@ fun RaftMarkdownBody(
     val typography = remember(markdownTextStyle, markdownThemeColors, minInlineLineHeight) {
         raftMarkdownTypography(markdownTextStyle, minInlineLineHeight)
     }
+    // The pure per-body builds below go through process-wide caches (RaftMarkdownDocumentCache.kt):
+    // `remember` dies with the lazy row, so a tall row scrolled back into view used to rebuild them
+    // on the main thread; the Thread page also warms them off-main for rows about to appear.
     val markdownParserContent = remember(content) {
-        MarkdownParserContent.from(content)
+        RaftMarkdownRenderInputCache.parserContent(content)
     }
     val parserContent = markdownParserContent.parserContent
     // #367 light path (override-gated, default OFF): gate-first — with the
@@ -2437,7 +2443,7 @@ fun RaftMarkdownBody(
         }
     val richTextDocument: RaftRichTextDocument =
         remember(body, parserContent, tokenPlan, bodyActiveTagKey, bodyActiveActionId, activeActionIndicator) {
-        buildRaftRichTextDocumentFromMarkdownPlan(
+        RaftMarkdownRenderInputCache.document(
             source = body,
             content = parserContent,
             tokenPlan = tokenPlan,
