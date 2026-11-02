@@ -3,9 +3,10 @@ package build.raft.app.nav
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -66,20 +74,35 @@ class RaftMobileStackScene<T : Any>(
         val entering =
             scope.transition.targetState == EnterExitState.Visible &&
                 scope.transition.currentState != EnterExitState.Visible
-        if (transitions != null) {
-            // This scene's motion for the transition tracker: shown and about to leave while its
+        // perf(nav): a pushed page is built (composed, measured, laid out, drawn) off the end edge in
+        // the frame it is pushed, and its slide starts on the frame after that work, so the motion never
+        // waits on the page's first build mid slide. The slide is the motion's own, not the scene
+        // transition's: the page below stays drawn until it ends.
+        val slide = if (pushed && !top.raftStackOpensWithoutMotion()) motion.pushSlide(top.contentKey) else null
+        if (slide != null) {
+            LaunchedEffect(slide) {
+                if (slide.value > 0f) {
+                    withFrameNanos {}
+                    slide.animateTo(0f, tween(RaftMobileStackMotionMillis, easing = FastOutSlowInEasing))
+                }
+            }
+        }
+        val sliding by remember(slide) { derivedStateOf { slide != null && slide.value > 0f } }
+        run {
+            // This scene's motion for the transition tracker and the stack's settled top page: shown and about to leave while its
             // page is still on top is a predictive back preview; headed to shown with nothing left
             // running is settled (a push / pop landing here, or a gesture let go back onto it: a
             // cancelled seek can end with the target shown and no animation, whatever the current).
             val topKey = top.contentKey.toString()
             val transition = scope.transition
             LaunchedEffect(transition, topKey) {
-                snapshotFlow { Triple(transition.currentState, transition.targetState, transition.isRunning) }
+                snapshotFlow { Triple(transition.currentState, transition.targetState, transition.isRunning || sliding) }
                     .collect { (current, target, running) ->
                         if (target == EnterExitState.PostExit) {
-                            if (current == EnterExitState.Visible) transitions.onBackPreview(topKey)
+                            if (current == EnterExitState.Visible) transitions?.onBackPreview(topKey)
                         } else if (target == EnterExitState.Visible && !running) {
-                            transitions.onSettled(topKey)
+                            motion.settledTop = topKey
+                            transitions?.onSettled(topKey)
                         }
                     }
             }
@@ -90,12 +113,14 @@ class RaftMobileStackScene<T : Any>(
                     when {
                         entry === top ->
                             with(scope) {
-                                Modifier.fillMaxSize().animateEnterExit(
-                                    enter = if (pushed && !entry.raftStackOpensWithoutMotion()) RaftMobileStackPushEnter else EnterTransition.None,
+                                val slideModifier =
+                                    if (slide == null) Modifier else Modifier.graphicsLayer { translationX = slide.value * size.width }
+                                Modifier.fillMaxSize().then(slideModifier).animateEnterExit(
+                                    enter = EnterTransition.None,
                                     exit = RaftMobileStackPopExit,
                                 )
                             }
-                        entry === below && pushed && entering -> Modifier.fillMaxSize()
+                        entry === below && pushed && (entering || sliding) -> Modifier.fillMaxSize()
                         entry.raftStackCoveredKeepsSize() -> RaftMobileStackCoveredKeepsSize
                         else -> Modifier.size(0.dp)
                     }
@@ -131,10 +156,23 @@ class RaftMobileStackMotion {
     private var current: List<Any> = emptyList()
     private var beforeLastChange: Set<Any> = emptySet()
 
+    /**
+     * The content key of the top page whose scene last settled (shown, no motion running). A page
+     * becomes the active page (back handlers, `viewDidAppear`: its read state, realtime interest and
+     * loads) only once its push / pop has settled, so that work never lands mid slide.
+     */
+    var settledTop: Any? by mutableStateOf(null)
+
+    private val slides = HashMap<Any, Animatable<Float, AnimationVector1D>>()
+
+    /** The push slide of [contentKey] (1 = off the end edge, 0 = in place), shared by its scenes. */
+    fun pushSlide(contentKey: Any): Animatable<Float, AnimationVector1D> = slides.getOrPut(contentKey) { Animatable(1f) }
+
     fun update(contentKeys: List<Any>) {
         if (contentKeys == current) return
         beforeLastChange = current.toSet()
         current = contentKeys
+        slides.keys.retainAll(contentKeys.toSet())
     }
 
     fun isPushed(contentKey: Any): Boolean = contentKey !in beforeLastChange
@@ -168,9 +206,6 @@ private val RaftMobileStackCoveredKeepsSize: Modifier =
     }
 
 private const val RaftMobileStackMotionMillis = 300
-
-private val RaftMobileStackPushEnter: EnterTransition =
-    slideInHorizontally(tween(RaftMobileStackMotionMillis, easing = FastOutSlowInEasing)) { width -> width }
 
 private val RaftMobileStackPopExit: ExitTransition =
     slideOutHorizontally(tween(RaftMobileStackMotionMillis, easing = FastOutSlowInEasing)) { width -> width }

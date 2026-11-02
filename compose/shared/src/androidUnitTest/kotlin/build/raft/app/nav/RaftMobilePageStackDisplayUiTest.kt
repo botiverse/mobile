@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.compat.ui.BackHandler
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.runRobolectricComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -313,6 +314,28 @@ class RaftMobilePageStackDisplayUiTest {
             waitForIdle()
             assertEquals(1, stack.pages.size, "a released gesture pops the page")
             assertEquals(listOf("predictive_back about>$RAFT_SHELL", "completed"), transitions.events)
+        }
+
+    @Test
+    fun aPushedPageBecomesTheActivePageOnlyOnceItsSlideSettled() =
+        runRobolectricComposeUiTest {
+            val stack = RaftPageStack()
+            val activity = mutableMapOf<String, MutableList<Boolean>>()
+            setContent {
+                RaftMobilePageStackDisplay(stack) { page ->
+                    val active = LocalRaftPageActive.current
+                    val seen = activity.getOrPut(page.contentKey) { mutableListOf() }
+                    if (seen.lastOrNull() != active) seen += active
+                    Box(Modifier.fillMaxSize().testTag(page.contentKey))
+                }
+            }
+            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
+            waitForIdle()
+            val chat = stack.pages.last().contentKey
+            onNodeWithTag(chat).assertExists()
+            // Built and drawn inactive while it slides (no viewDidAppear work mid slide), then active.
+            assertEquals<List<Boolean>?>(listOf(false, true), activity[chat])
+            assertEquals<List<Boolean>?>(listOf(true, false), activity[stack.pages.first().contentKey], "the covered shell is inactive")
         }
 
     @Test
