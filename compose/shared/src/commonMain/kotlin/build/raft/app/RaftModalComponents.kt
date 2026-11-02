@@ -721,7 +721,9 @@ private fun RaftUnifiedDialogSurface(
             Modifier
                 .fillMaxSize()
     ) {
-        if (raftUnifiedDialogDrawsSheet(presentation, maxWidth)) {
+        // The window's width, not the card's `maxWidth` parameter, which shadows the scope's.
+        val windowWidth = this.maxWidth
+        if (raftUnifiedDialogDrawsSheet(presentation, windowWidth)) {
             RaftUnifiedDialogPhoneSheet(
                 title = title,
                 onDismiss = onDismiss,
@@ -741,7 +743,7 @@ private fun RaftUnifiedDialogSurface(
         } else {
             // web ConfirmDialog narrow="top": while the keyboard is up the card leaves the centre for
             // a fixed place under the status bar, so it doesn't jump as the keyboard animates.
-            val topAnchored = raftUnifiedDialogTopAnchored(presentation, maxWidth, keyboardHeightDp)
+            val topAnchored = raftUnifiedDialogTopAnchored(presentation, windowWidth, keyboardHeightDp)
             RaftModalDismissBarrier(
                 overlayAlpha = overlayAlpha,
                 onDismiss = onDismiss,
