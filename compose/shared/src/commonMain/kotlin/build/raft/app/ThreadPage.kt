@@ -27375,6 +27375,9 @@ private fun ThreadMessageCardContent(
     // The author's profile card under a mouse or trackpad pointer on the avatar (web MessageItem's
     // avatar hover card); View Profile is the avatar's own click.
     val memberPreviewCardSource = LocalRaftMemberPreviewCardSource.current
+    val externalAuthor = message.externalAuthor
+    val externalAuthorFallbackName = rememberExternalAuthorFallbackName()
+    val externalAuthorName = externalAuthor?.let { externalAuthorShownName(it, it.displayName, externalAuthorFallbackName) }.orEmpty()
     val authorPreviewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? =
         if (memberPreviewCardSource != null && authorProfileIdentity != null && !shareSelectionActive) {
             { state ->
@@ -27386,11 +27389,9 @@ private fun ThreadMessageCardContent(
                     onViewProfile = { openAuthorProfile("preview_card") },
                 )
             }
-        } else if (message.externalAuthor != null && !shareSelectionActive) {
+        } else if (externalAuthor != null && !shareSelectionActive) {
             // A Slack-bridged author: who they are outside Raft (web ExternalIdentityPreviewCard).
-            val externalAuthor = message.externalAuthor
-            val shownName = externalAuthorShownName(externalAuthor, externalAuthor.displayName, rememberExternalAuthorFallbackName())
-            { _ -> RaftExternalIdentityPreviewCardContent(externalAuthor, shownName) }
+            { _ -> RaftExternalIdentityPreviewCardContent(externalAuthor, externalAuthorName) }
         } else {
             null
         }
