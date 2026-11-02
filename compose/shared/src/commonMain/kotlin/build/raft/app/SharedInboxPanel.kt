@@ -594,6 +594,16 @@ internal fun SharedHomeActivityScreen(
             activityStore.dispatch(SharedActivityIntent.Refresh)
         }
     }
+    // web: Saved lists the threads followed through a save, so a save or unsave the server accepted
+    // while Saved is shown reloads it (web savedStore `writeRevision`).
+    val savedScopeReloadEdge = remember(activitySummaryServerId) { ActivitySavedScopeReloadEdge() }
+    val savedWriteRevision by sharedStores.homeSavedStateCache.writeRevision.collectAsState()
+    LaunchedEffect(savedScopeReloadEdge, savedWriteRevision) {
+        if (savedScopeReloadEdge.onSavedWrite(savedWriteRevision, latestSelectedFilter)) {
+            bridge.log("shared_activity_saved_scope_reload reason=saved_changed")
+            activityStore.dispatch(SharedActivityIntent.Refresh)
+        }
+    }
     // botiverse/slock #11273: a DM row with an App Bot shows the Bot badge after the name.
     val activityAppBotResolver =
         remember(sharedStores.serverMembersStore, activitySummaryServerId) {
@@ -983,9 +993,10 @@ private fun SharedActivityPanelContent(
     // [activityScrollToTopTarget] (mapping unit-tested).
     // One retained scroll state per filter. Explicit calls (not a
     // loop over the experimental LazyListState constructor): the filter
-    // set is a closed enum of four, and this list is index-aligned with
-    // InboxFilter.entries (All/Unread/Mentions/Pinned entry order).
+    // set is a closed enum of five, and this list is index-aligned with
+    // InboxFilter.entries (All/Unread/Mentions/Pinned/Saved entry order).
     val pageListStates = listOf(
+        rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
@@ -1163,6 +1174,7 @@ private fun SharedActivityBodyContent(
                             InboxFilter.Unread -> stringResource(Res.string.inbox_state_no_unread_chats)
                             InboxFilter.All -> stringResource(Res.string.inbox_state_activity_empty)
                             InboxFilter.Pinned -> stringResource(Res.string.inbox_state_no_pinned)
+                            InboxFilter.Saved -> stringResource(Res.string.inbox_state_no_saved)
                         },
                     detail = state.selectedFilter.localizedEmptyCopy(),
                     refreshing = state.refreshing,
@@ -1351,7 +1363,7 @@ internal fun SharedActivityFilterBar(
     }
 }
 
-/** The Filter menu's rows: the read filters, then Pinned (a scope over All) after a separator. */
+/** The Filter menu's rows: the read filters, then the scopes over All (Pinned, Saved) after a separator. */
 @Composable
 internal fun ActivityFilterMenuRows(selectedFilter: InboxFilter, onPick: (InboxFilter) -> Unit) {
     InboxFilter.entries.forEach { filter ->
@@ -2768,16 +2780,18 @@ private fun InboxFilter.localizedLabel(): String =
             InboxFilter.Unread -> Res.string.activity_filter_unread
             InboxFilter.Mentions -> Res.string.activity_filter_mentions
             InboxFilter.Pinned -> Res.string.activity_filter_pinned
+            InboxFilter.Saved -> Res.string.activity_filter_saved
         }
     )
 
-/** web inbox filters' icons, shown alone when the four labels don't fit (`in-data-icons-only:block`). */
+/** web inbox filters' icons, shown alone when the labels don't fit (`in-data-icons-only:block`). */
 internal fun InboxFilter.iconName(): RaftLucideIconName =
     when (this) {
         InboxFilter.All -> RaftLucideIconName.Inbox
         InboxFilter.Unread -> RaftLucideIconName.CircleDot
         InboxFilter.Mentions -> RaftLucideIconName.AtSign
         InboxFilter.Pinned -> RaftLucideIconName.Pin
+        InboxFilter.Saved -> RaftLucideIconName.Bookmark
     }
 
 private fun InboxFilter.emptyCopy(): String =
@@ -2786,6 +2800,7 @@ private fun InboxFilter.emptyCopy(): String =
         InboxFilter.Unread -> "No unread conversations."
         InboxFilter.Mentions -> "No mentions yet."
         InboxFilter.Pinned -> "No pinned conversations."
+        InboxFilter.Saved -> "No saved threads."
     }
 
 @Composable
@@ -2796,6 +2811,7 @@ private fun InboxFilter.localizedEmptyCopy(): String =
             InboxFilter.Unread -> Res.string.inbox_empty_unread_detail
             InboxFilter.Mentions -> Res.string.inbox_empty_mentions_detail
             InboxFilter.Pinned -> Res.string.inbox_empty_pinned_detail
+            InboxFilter.Saved -> Res.string.inbox_empty_saved_detail
         }
     )
 

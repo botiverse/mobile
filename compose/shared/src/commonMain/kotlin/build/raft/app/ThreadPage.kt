@@ -12957,6 +12957,8 @@ private fun SharedThreadRouteContentContent(
                             }
                         when (result) {
                             is DataResult.Content -> {
+                                // Activity's Saved filter reloads on an accepted save or unsave.
+                                sharedStores.homeSavedStateCache.recordSavedWrite()
                                 // A confirmed unsave leaves the Saved list's stored copy (a save shows up
                                 // with the list's next refresh: the row needs the server's saved entry).
                                 val savedServerId = savedOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }

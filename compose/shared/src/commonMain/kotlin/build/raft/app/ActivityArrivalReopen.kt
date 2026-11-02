@@ -76,3 +76,18 @@ internal class ActivityPinnedScopeReloadEdge {
         return previous != null && previous != pins && selectedFilter == InboxFilter.Pinned
     }
 }
+
+/**
+ * web: "Saved lists the threads followed through a save: a save or unsave the server accepted while it
+ * is shown reloads it" (savedStore `writeRevision`). The first revision seen is the baseline; a later
+ * one reloads when the Saved filter is selected.
+ */
+internal class ActivitySavedScopeReloadEdge {
+    private var seen: Long? = null
+
+    fun onSavedWrite(revision: Long, selectedFilter: InboxFilter): Boolean {
+        val previous = seen
+        seen = revision
+        return previous != null && previous != revision && selectedFilter == InboxFilter.Saved
+    }
+}

@@ -94,6 +94,6 @@ class ActivityFilterPreferenceRepositoryTest {
             preferences.write("server-1", filter)
             assertEquals(filter, preferences.read("server-1"))
         }
-        assertTrue(InboxFilter.entries.map { it.preferenceValue() }.toSet() == setOf("all", "unread", "mentions", "pinned"))
+        assertTrue(InboxFilter.entries.map { it.preferenceValue() }.toSet() == setOf("all", "unread", "mentions", "pinned", "saved"))
     }
 }

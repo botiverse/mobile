@@ -243,6 +243,51 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun savedFilterAsksForTheAllFilterScopedToSavedOnEveryPage() = runBlocking {
+        // web Saved: a scope over All listing the threads followed through a save,
+        // `filter=all&scope=saved`, on the first page and on every page after it.
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "thread",
+                          "threadChannelId": "thread-saved",
+                          "parentMessageId": "parent-1",
+                          "parentChannelId": "channel-general",
+                          "parentChannelName": "general",
+                          "parentChannelType": "channel",
+                          "replyCount": 1,
+                          "unreadCount": 0,
+                          "isFollowing": true
+                        }
+                      ],
+                      "hasMore": true,
+                      "totalCount": 2,
+                      "totalUnreadCount": 0
+                    }
+                    """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Saved)
+        repository.loadMore(ServerId("server-1"), InboxFilter.Saved, offset = 30)
+
+        assertEquals(
+            listOf(
+                InboxCall(filter = "all", limit = 30, offset = 0, scope = "saved"),
+                InboxCall(filter = "all", limit = 30, offset = 30, scope = "saved"),
+            ),
+            network.inboxCalls
+        )
+        assertTrue(first is DataResult.Content)
+        assertEquals("thread-saved", first.data.items.single().threadChannelId?.value)
+        assertEquals(2, first.data.totalCount)
+    }
+
+    @Test
     fun attentionFiltersNeverExposeAnUnfollowedThreadRow() = runBlocking {
         val repository =
             RealInboxRepository(

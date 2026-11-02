@@ -737,11 +737,20 @@ enum class InboxFilter(val wireValue: String, val scopeWireValue: String? = null
      * included as in All (`filter=all&scope=pinned`, routes/channels.ts `parseInboxScopeParam`).
      */
     Pinned("all", scopeWireValue = "pinned"),
+
+    /**
+     * web Saved: a scope over All, after Pinned. The server lists the threads followed through a
+     * saved message (saving a message follows its thread): `filter=all&scope=saved`.
+     */
+    Saved("all", scopeWireValue = "saved"),
 }
 
-/** All and Pinned (a scope over All) list unfollowed, not-Done threads too; the read filters don't. */
+/**
+ * All and its scopes (Pinned, Saved) list unfollowed, not-Done threads too; the read filters don't
+ * (web: the unfollowed rows are fetched per scope, under the All read filter).
+ */
 internal val InboxFilter.listsUnfollowedActivityThreads: Boolean
-    get() = this == InboxFilter.All || this == InboxFilter.Pinned
+    get() = this == InboxFilter.All || this == InboxFilter.Pinned || this == InboxFilter.Saved
 
 const val DEFAULT_PAGE_LIMIT = 30
 

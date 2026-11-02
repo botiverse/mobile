@@ -120,6 +120,7 @@ class ActivityObjectRowsTest {
         assertEquals(2, counts.unreadFor(InboxFilter.Mentions))
         assertEquals(6, counts.unreadFor(InboxFilter.Unread))
         assertEquals(0, counts.unreadFor(InboxFilter.Pinned))
+        assertEquals(0, counts.unreadFor(InboxFilter.Saved))
     }
 
     @Test
