@@ -5,7 +5,18 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftSkeleton
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftGlyph
@@ -16,7 +27,6 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftSlugInput
 import build.raft.app.components.RaftSwitchButton
-import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ServerPublicExposedChannel
@@ -43,7 +53,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -474,28 +483,12 @@ private fun SettingsServerDeleteWarningBanner(
             suffix = suffix
         )
     }
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-                .raftCardSurface(fill = RaftColor.AccentRed.copy(alpha = 0.14f))
-                .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        RaftLucideIcon(
-            RaftLucideIconName.TriangleAlert,
-            modifier = Modifier.padding(top = 1.dp).size(16.dp),
-            color = RaftColor.TextBlackArgb
-        )
-        Text(
-            message,
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.weight(1f)
-        )
-    }
+    // raft-ui Banner `destructive`: deleting the server cannot be undone.
+    RaftBanner(
+        description = message,
+        status = RaftBannerStatus.Destructive,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 internal fun settingsServerDeleteWarningBannerText(
@@ -616,20 +609,14 @@ private fun SettingsServerPublicAccessCard(
             nested = true,
             onToggle = { onIntent(ServerPublicVisibilityIntent.SearchToggled(!state.searchChecked)) }
         )
-        Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderBlack.copy(alpha = 0.15f)))
+        RaftSeparator()
         Text(
             stringResource(Res.string.settings_public_visibility_channel_list_label),
             style = RaftType.Button.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         if (state.loading) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .background(RaftColor.EmptyStateGray)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.15f))
-            )
+            RaftSkeleton(Modifier.fillMaxWidth().height(64.dp))
         } else {
             SettingsPublicAccessChannelList(channels)
         }
@@ -709,9 +696,9 @@ private fun SettingsPublicAccessSwitchRow(
             Box(
                 Modifier
                     .padding(start = 4.dp, end = 14.dp)
-                    .width(2.dp)
+                    .width(RaftStroke.Strong)
                     .heightIn(min = 40.dp)
-                    .background(RaftColor.BorderBlack.copy(alpha = 0.25f))
+                    .background(RaftTheme.colors.lineHairline)
             )
         }
         Row(
@@ -735,48 +722,33 @@ private fun SettingsPublicAccessSwitchRow(
 @Composable
 private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedChannel>) {
     if (channels.isEmpty()) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.25f))
-                    .padding(horizontal = 12.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
+        RaftCard(modifier = Modifier.fillMaxWidth()) {
+            RaftText(
                 stringResource(Res.string.settings_public_visibility_empty_channels),
-                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray,
+                modifier = Modifier.fillMaxWidth(),
+                style = RaftTheme.typography.footnote,
+                color = RaftTheme.colors.foregroundMuted,
                 textAlign = TextAlign.Center
             )
         }
         return
     }
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .raftCardSurface()
-    ) {
+    RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
         channels.forEachIndexed { index, channel ->
             if (index > 0) {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderBlack.copy(alpha = 0.15f)))
+                RaftSeparator()
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(28.dp)
-                            .background(RaftColor.SurfaceCream)
-                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    RaftLucideIcon(RaftLucideIconName.Hash, Modifier.size(14.dp))
+                RaftIconTile(size = RaftIconTileSize.Sm) {
+                    RaftLucideIcon(
+                        RaftLucideIconName.Hash,
+                        modifier = Modifier.size(RaftIconTileSize.Sm.icon),
+                        color = raftArgbHex(RaftColor.TextMuted)
+                    )
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(

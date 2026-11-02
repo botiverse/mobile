@@ -8,6 +8,9 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftComposerUploadDisplay
 import build.raft.app.transfer.RaftComposerUploadPhase
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -153,7 +156,6 @@ private val ThreadComposerTextFieldMaxHeight = 80.dp
 private val ThreadComposerToolbarMinHeight = 32.dp
 private val ThreadComposerIconButtonSize = 32.dp
 private val ThreadComposerIconSize = 18.dp
-private val ThreadComposerActionShadowOffset = 2.dp
 // raft-ui `Composer`: the card's padding round the text, and `--control-embedded-inset`, how far
 // the toolbar's buttons sit inside the card's outer edge (raft-design Shape > Inside a frame).
 private val ThreadComposerCardPadding = 8.dp
@@ -3914,38 +3916,13 @@ private fun MentionActionNotice(
     title: String?,
     detail: String
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.AccentOrange.copy(alpha = 0.12f))
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        RaftLucideIcon(
-            name = RaftLucideIconName.TriangleAlert,
-            modifier = Modifier.size(14.dp)
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            title?.takeIf { it.isNotBlank() }?.let { text ->
-                Text(
-                    text = text,
-                    style = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Text(
-                text = detail,
-                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = RaftColor.TextBlack.copy(alpha = 0.72f),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    RaftBanner(
+        description = detail,
+        status = RaftBannerStatus.Warning,
+        modifier = Modifier.fillMaxWidth(),
+        title = title?.takeIf { it.isNotBlank() },
+        size = RaftBannerSize.Sm,
+    )
 }
 
 @Composable

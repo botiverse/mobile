@@ -3,10 +3,12 @@ package build.raft.app
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.raftControlSurface
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsAboutSnapshot
@@ -25,8 +27,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -42,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -236,44 +235,24 @@ private fun SettingsApiEnvironmentPresetRow(
     enabled: Boolean,
     onSelect: () -> Unit
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .raftControlSurface(
-                    fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
-                    border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
-                    radius = RaftAppRadius.Container,
-                    borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
-                )
-                .clickable(enabled = enabled, role = Role.Button, onClick = onSelect)
-                .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftLucideIcon(
-            name = if (selected) RaftLucideIconName.CircleCheckBig else RaftLucideIconName.Server,
-            modifier = Modifier.size(18.dp),
-            color = RaftColor.TextBlackArgb
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    // The design-system option card: the radio shows the pick, the whole card is the target.
+    RaftCard(
+        modifier = Modifier.fillMaxWidth(),
+        variant = RaftCardVariant.Option,
+        title = option.label,
+        description = listOf(option.apiBaseUrl, option.socketBaseUrl).filter { it.isNotBlank() }.joinToString(" | "),
+        leading = { RaftRadio(selected = selected, onClick = null) },
+        trailing = {
             Text(
-                text = option.label,
-                style = RaftType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = RaftColor.TextBlack
-            )
-            Text(
-                text = listOf(option.apiBaseUrl, option.socketBaseUrl).filter { it.isNotBlank() }.joinToString(" | "),
+                text = if (selected) stringResource(Res.string.settings_developer_state_current) else stringResource(Res.string.settings_developer_state_preset),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray
             )
-        }
-        Text(
-            text = if (selected) stringResource(Res.string.settings_developer_state_current) else stringResource(Res.string.settings_developer_state_preset),
-            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray
-        )
-    }
+        },
+        onClick = onSelect,
+        selected = selected,
+        enabled = enabled
+    )
 }
 
 @Composable

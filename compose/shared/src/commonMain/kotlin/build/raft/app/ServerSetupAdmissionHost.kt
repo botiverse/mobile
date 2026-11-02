@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -261,7 +262,7 @@ internal fun rememberServerSetupAdmissionHost(
                         Box(
                             Modifier
                                 .fillMaxSize()
-                                .background(RaftColor.SurfaceCream)
+                                .background(RaftTheme.colors.layerCanvas)
                                 .padding(top = topInset, bottom = with(density) { bottomInsetPx.toDp() }),
                         ) {
                             SettingsWebViewContent(

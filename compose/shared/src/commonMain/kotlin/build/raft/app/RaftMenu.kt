@@ -32,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,7 +103,6 @@ internal fun RaftBaseMenuOverlay(
     onSelect: (String) -> Unit,
     surfaceBorderColor: Color = RaftBaseMenuForegroundColor,
     surfaceShadowColor: Color = RaftBaseMenuForegroundColor,
-    selectedRowColor: Color = RaftColor.BrandYellow,
     uppercaseLabels: Boolean = true,
     minWidth: Dp = RaftBaseMenuMinWidth,
     // Exact menu width (border-box, like react's fixed-width menus). When null the
@@ -165,7 +166,7 @@ private fun RaftBaseMenuGroupLabel(label: String, horizontalPadding: Dp) {
  * The task-status dropdown, aligned to react (#370/#112). This is the single
  * source of truth for that menu's styling — the Tasks page and the thread
  * conversation flow (#394) both go through here so the two can never drift back
- * to the RaftBaseMenuOverlay defaults (uppercase labels, yellow selected row,
+ * to the RaftBaseMenuOverlay defaults (uppercase labels, a selected row,
  * leading check, estimated width) that read as the "old" menu. Callers pass only
  * their own status items + selection/dispatch; the visual style lives here.
  */
@@ -181,7 +182,6 @@ internal fun RaftTaskStatusMenuOverlay(
         anchor = anchor,
         items = items,
         selectedId = selectedId,
-        selectedRowColor = RaftColor.SurfaceWhite,
         // react's status menu renders at exactly its 140px min-width (the longest
         // label "In Progress" is narrower); the char estimate overshoots to 172dp.
         // Raft sets the selected label bold, so there 140dp is only the minimum
@@ -364,8 +364,7 @@ private fun raftBaseMenuWidth(items: List<RaftBaseMenuItem>, minWidth: Dp): Dp {
  * leading icon, RaftModalListShell + RaftModalSectionHeader (AGENTS then
  * HUMANS), and the exact RaftModalCompactMemberRow visuals extracted into
  * RowScope.RaftModalCompactMemberRowContent. One adaptation: rows are wrapped
- * in a native Button shell (same disabled/selected/idle background mapping incl.
- * BrandYellow selection) because plain-`clickable` rows inside a dialog stacked
+ * in a native Button shell (the design-system `info-soft` selected fill) because plain-`clickable` rows inside a dialog stacked
  * on the task detail dialog lose to the outer dismiss barrier. Single-select
  * semantics: tapping a row applies it immediately and closes (matching the
  * add-member row contract), with the unassigned sentinel kept first.
@@ -448,14 +447,14 @@ internal fun RaftTaskAssigneeMenuOverlay(
                                     RaftLucideIcon(
                                         RaftLucideIconName.UserMinus,
                                         modifier = Modifier.size(15.dp),
-                                        color = raftLegacyIconInk(onSticker = selectedId == TasksUnassignedAssigneeFilterId)
+                                        color = raftLegacyIconInk()
                                     )
                                 }
                                 Text(
                                     text = unassignedLabel,
                                     style = RaftType.Body.withRaftFontWeight(FontWeight.Medium)
                                         .copy(fontSize = 14.sp, lineHeight = 18.sp),
-                                    color = if (selectedId == TasksUnassignedAssigneeFilterId) RaftColor.StickerInk else RaftColor.TextBlack,
+                                    color = RaftColor.TextBlack,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false)
@@ -464,7 +463,7 @@ internal fun RaftTaskAssigneeMenuOverlay(
                                     RaftLucideIcon(
                                         RaftLucideIconName.Check,
                                         modifier = Modifier.size(15.dp),
-                                        color = raftLegacyIconInk(onSticker = true)
+                                        color = raftLegacyIconInk()
                                     )
                                 } else {
                                     Spacer(modifier = Modifier.size(15.dp))
@@ -545,11 +544,12 @@ private fun RaftTaskAssigneeMemberButton(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite
+                // The design-system selected row (RaftListRow's `info-soft`).
+                if (selected) RaftTheme.colors.infoSoft.compositeOver(RaftTheme.surfaceColor) else RaftTheme.surfaceColor
             )
     ) {
-        // Task #258 (artin msg=be381a13): same 12dp horizontal inset as the
-        // channel RaftModalCompactMemberRow shell so member rows indent alike.
+        // Task #258 (artin msg=be381a13): the 12dp horizontal inset of the
+        // channel member rows, so member rows indent alike.
         // Task #269 (artin msg=d04b1d19): and the same 8dp vertical padding -- the
         // port kept only the horizontal value, so rows sat avatar-to-avatar with no
         // gap. The native Button shell contributes no padding of its own here.

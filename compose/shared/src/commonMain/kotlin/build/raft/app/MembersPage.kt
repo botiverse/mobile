@@ -25,6 +25,8 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
@@ -35,7 +37,6 @@ import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftCheckMarker
 import build.raft.app.components.RaftCheckMarkerShape
 import build.raft.app.components.RaftCheckMarkerTone
@@ -8984,39 +8985,15 @@ private fun MembersAgentRoleHelpRow(
     summary: String,
     details: String
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.20f))
-            .background(RaftColor.SurfaceWhite)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+    RaftCard(
+        modifier = Modifier.fillMaxWidth(),
+        title = role,
+        description = summary
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = role,
-                style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = summary,
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack.copy(alpha = 0.60f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Text(
+        RaftText(
             text = details,
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 22.sp),
-            color = RaftColor.TextBlack.copy(alpha = 0.75f)
+            style = RaftTheme.typography.callout,
+            color = RaftTheme.colors.foregroundMuted
         )
     }
 }
@@ -13142,12 +13119,9 @@ private fun PermissionsGroupBox(
     canManage: Boolean,
     onToggle: (String) -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .raftCardSurface(fill = RaftColor.Card)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().border(width = 0.dp, color = Color.Transparent).padding(horizontal = 12.dp, vertical = 8.dp)) {
+    // raft-ui ListRowGroup: the group's card, a hairline between the header and each scope.
+    RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 text = group.localizedLabel(),
                 style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 16.sp),
@@ -13159,28 +13133,20 @@ private fun PermissionsGroupBox(
                 color = RaftColor.TextMutedGray.copy(alpha = 0.5f)
             )
         }
-        // Hairline divider between header and rows.
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderBlack.copy(alpha = 0.1f)))
-        group.scopes.forEachIndexed { index, row ->
+        group.scopes.forEach { row ->
+            RaftSeparator()
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(width = 0.dp, color = Color.Transparent)
-                    .let {
-                        if (index < group.scopes.lastIndex) {
-                            it.border(width = 0.dp, color = Color.Transparent)
-                        } else it
-                    }
                     .clickable(enabled = canManage) { onToggle(row.scope) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                RaftAppCheckbox(
+                RaftCheckbox(
                     checked = row.scope in draft,
                     onCheckedChange = { onToggle(row.scope) },
-                    enabled = canManage,
-                    size = 14.dp
+                    enabled = canManage
                 )
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -13201,9 +13167,6 @@ private fun PermissionsGroupBox(
                         color = RaftColor.TextMutedGray.copy(alpha = 0.6f)
                     )
                 }
-            }
-            if (index < group.scopes.lastIndex) {
-                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderBlack.copy(alpha = 0.1f)))
             }
         }
     }

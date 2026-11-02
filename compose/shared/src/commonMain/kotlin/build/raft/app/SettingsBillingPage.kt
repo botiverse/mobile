@@ -317,7 +317,7 @@ internal fun SettingsBillingExternalPage(pager: Pager) {
     val storeScope = pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     fun close() = settingsPageClose(wideDetailClose) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     RaftBackHandler(enabled = !wideDetail, label = "settings_billing_external", blocksBackSwipe = false, onBack = ::close)
-    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         RaftTopPageHeader(
             title = stringResource(Res.string.settings_billing_title),
             iconName = RaftLucideIconName.CreditCard,
@@ -332,7 +332,7 @@ internal fun SettingsBillingExternalPage(pager: Pager) {
 @Composable
 internal fun SettingsBillingExternalPane(onOpenInBrowser: () -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxSize().background(RaftColor.SurfaceCream).padding(16.dp),
+        modifier = modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         RaftText(

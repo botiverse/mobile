@@ -220,7 +220,6 @@ import build.raft.app.components.raftButtonVariantFor
 const val RAFT_HOME_PAGE = "compose_home"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
-private val HomeSmallShadowOffset = 2.dp
 /** raft-ui `SidebarItem` `gap-2` between the icon box and the name. */
 private val SidebarActionLabelGap = 8.dp
 private val ChannelSymbolWidth = 18.dp
@@ -234,7 +233,6 @@ private val HomeSidebarSkeletonRowStartPadding = 9.5.dp
 /** `SidebarItemMetaIcon`: 14dp after the name and in the aside. */
 private val HomeSidebarMetaIconSize = 14.dp
 private const val EdgeAutoScrollStepPx = 18f
-private val ChannelRowShadowOffset = 2.dp
 /** Web `SIDEBAR_ROW_TRAILING_CLASS` `max-w-[58%]`. */
 private const val DirectMessageTrailingMaxWidthFraction = 0.58f
 private val HomeListHorizontalPadding = RaftAppSpacing.Md
@@ -254,7 +252,6 @@ private const val HomeLoadingChannelSkeletonRows = 4
 private const val HomeLoadingDirectMessageSkeletonRows = 3
 private const val HomeLoadingSkeletonLineWeight = 0.6f
 private val HomeLoadingSkeletonLineHeight = 12.dp
-private val HomePanelShadowOffset = 4.dp
 private val HomeServerSwitcherTopGap = 4.dp
 private val HomeServerSwitcherRowMinHeight = 52.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
@@ -2496,7 +2493,7 @@ private fun RaftStructuralHomeShellContent(
         onTabSelected(tabKey)
     }
     Box(
-        modifier = modifier.fillMaxSize().background(RaftColor.AppBgLightBlue).padding(outerPadding)
+        modifier = modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(outerPadding)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
@@ -5150,10 +5147,8 @@ private fun HomeNotificationCenter(
     // attention (unread notifications) are independent states: only attention
     // gets the pink dot; only disclosure gets the selected button treatment.
     // The trigger never carries warning/error severity colors.
-    Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
-        Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-            HomeNotificationBellButton(notifications, open, onToggle, HomeNotificationTriggerSize)
-        }
+    Box(modifier = modifier.size(HomeNotificationTriggerSize)) {
+        HomeNotificationBellButton(notifications, open, onToggle, HomeNotificationTriggerSize)
     }
 }
 
@@ -5272,10 +5267,8 @@ internal fun List<RaftHomeNotificationItem>.hasHomeSecurityAlert(): Boolean = an
 private val HomeNotificationTriggerSize = 44.dp
 private val RaftAppTopBarNotificationTriggerSize = 36.dp
 private val HomeNotificationBellIconSize = 20.dp
-private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
-// From the trigger slot's end to the bell icon's: the shadow offset, then the icon centred in 44dp.
-internal val HomeNotificationBellEdgeInset =
-    HomeSmallShadowOffset + (HomeNotificationTriggerSize - HomeNotificationBellIconSize) / 2
+// From the trigger's end to the bell icon's: the icon centred in 44dp.
+internal val HomeNotificationBellEdgeInset = (HomeNotificationTriggerSize - HomeNotificationBellIconSize) / 2
 private val HomeNotificationPopoverTopGap = 4.dp
 
 // raft-ui 0.24 (#737) NotificationCenterPopup `viewport="mobile"`: on a phone the popup is the

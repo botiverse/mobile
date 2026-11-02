@@ -7,6 +7,9 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
 import androidx.compose.runtime.Composable
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftIconTileVariant
 import build.raft.app.data.RaftDatabaseVersionMismatch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -42,17 +45,11 @@ internal fun RaftDatabaseLaunchRecoveryContent(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                 ) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(44.dp)
-                                .background(RaftColor.BrandYellow),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    RaftIconTile(variant = RaftIconTileVariant.Warning, size = RaftIconTileSize.Lg) {
                         RaftLucideIcon(
                             name = RaftLucideIconName.TriangleAlert,
-                            modifier = Modifier.size(22.dp),
-                            color = raftArgbHex(RaftColor.StickerInk),
+                            modifier = Modifier.size(RaftIconTileSize.Lg.icon),
+                            color = raftArgbHex(RaftColor.TextBlack),
                         )
                     }
                     Text(

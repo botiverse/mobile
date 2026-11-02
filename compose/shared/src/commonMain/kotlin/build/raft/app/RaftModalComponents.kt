@@ -6,6 +6,9 @@ import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.runtime.Composable
@@ -18,8 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -34,7 +35,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -753,92 +753,11 @@ internal fun RaftModalSectionHeader(label: String) {
     RaftSectionEyebrow(text = label, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
 }
 
-@Composable
-internal fun RaftModalCompactMemberRow(
-    title: String,
-    subtitle: String,
-    avatarWireValue: String?,
-    avatarLabel: String,
-    statusColor: Color?,
-    modifier: Modifier = Modifier,
-    selected: Boolean = false,
-    selectionChecked: Boolean? = null,
-    enabled: Boolean = true,
-    clickEnabled: Boolean = enabled,
-    avatarSize: Dp = 30.dp,
-    statusPulsing: Boolean = false,
-    sourceBadgeLabel: String? = null,
-    trailingText: String = "",
-    trailingIcon: RaftLucideIconName? = null,
-    onTrailingClick: (() -> Unit)? = null,
-    // Names the trailing action button (its tooltip); defaults to "Remove".
-    trailingContentDescription: String? = null,
-    // Greys out the trailing affordance (e.g. a cross-server follower's
-    // remove-X) while keeping it tappable — the click still fires so the
-    // caller can surface a hint. Distinct from `enabled`, which gates clicks.
-    trailingMuted: Boolean = false,
-    roleBadgeLabel: String? = null,
-    channelPageStyle: Boolean = false,
-    cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
-    cacheServerId: String? = null,
-    // raft-ui Avatar `type`: [raftAvatarFallbackFill] of the member's kind.
-    avatarFill: Color = RaftColor.AccentLavender,
-    // Right after the name (6dp): the App Bot badge.
-    titleBadge: (@Composable () -> Unit)? = null,
-    onClick: () -> Unit = {}
-) {
-    val rowBackground =
-        when {
-            !enabled -> RaftColor.SurfaceCream
-            selected -> RaftColor.BrandYellow
-            else -> RaftColor.SurfaceWhite
-        }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(rowBackground)
-            .clickable(enabled = enabled && clickEnabled, onClick = onClick)
-            .padding(horizontal = if (channelPageStyle) 0.dp else 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        selectionChecked?.let { checked ->
-            build.raft.app.components.RaftAppCheckbox(checked = checked,
-                onCheckedChange = { onClick() }, enabled = enabled && clickEnabled)
-        }
-        // Task #258 (artin msg=ed597ee6): the same member-row visuals are reused by
-        // the task detail assignee popover (inside a native Button for dispatch).
-        RaftModalCompactMemberRowContent(
-            title = title,
-            subtitle = subtitle,
-            avatarWireValue = avatarWireValue,
-            avatarLabel = avatarLabel,
-            statusColor = statusColor,
-            statusPulsing = statusPulsing,
-            avatarSize = avatarSize,
-            sourceBadgeLabel = sourceBadgeLabel,
-            enabled = enabled,
-            selected = selected,
-            trailingText = trailingText,
-            trailingIcon = trailingIcon,
-            onTrailingClick = onTrailingClick,
-            trailingContentDescription = trailingContentDescription,
-            trailingMuted = trailingMuted,
-            roleBadgeLabel = roleBadgeLabel,
-            channelPageStyle = channelPageStyle,
-            cacheSubject = cacheSubject,
-            cacheServerId = cacheServerId,
-            avatarFill = avatarFill,
-            titleBadge = titleBadge
-        )
-    }
-}
-
 /**
- * Row children of RaftModalCompactMemberRow (avatar + texts + trailing) so the
- * exact channel add-member visuals can be embedded in other row shells (e.g. a
- * native Button for the task detail assignee popover, where plain-`clickable`
- * rows lose to the outer dismiss barrier).
+ * A member row's children (avatar + texts + trailing), embedded in the caller's row
+ * shell (e.g. a native Button for the task detail assignee popover, where plain-`clickable`
+ * rows lose to the outer dismiss barrier). A selected row sits on the design-system
+ * selected fill (`info-soft`), so its ink stays the theme's foreground.
  */
 @Composable
 internal fun RowScope.RaftModalCompactMemberRowContent(
@@ -858,15 +777,12 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     trailingContentDescription: String? = null,
     trailingMuted: Boolean = false,
     roleBadgeLabel: String? = null,
-    channelPageStyle: Boolean = false,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject?,
     cacheServerId: String?,
     avatarFill: Color = RaftColor.AccentLavender,
     titleBadge: (@Composable () -> Unit)? = null
 ) {
-    // Selected rows sit on the yellow sticker fill: ink type in both modes.
-    val onSticker = selected && enabled
-    val mutedInk = if (onSticker && RaftAppThemeState.isDark) RaftColor.StickerInk.copy(alpha = 0.68f) else RaftColor.TextMutedGray
+    val mutedInk = RaftColor.TextMutedGray
     RaftAvatarWithStatus(
         statusColor = statusColor,
             avatarSize = avatarSize,
@@ -886,7 +802,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                 Text(
                     text = title,
                     style = RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = if (onSticker) RaftColor.StickerInk else if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
+                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -894,25 +810,12 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                 titleBadge?.invoke()
                 val badge = sourceBadgeLabel?.takeIf { it.isNotBlank() }
                 if (badge != null) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .heightIn(min = 16.dp)
-                                .widthIn(max = 88.dp)
-                                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1065
-                                .background(RaftColor.AccentCyan.copy(alpha = 0.24f))
-                                .border(RaftAppStroke.Thin, if (onSticker) RaftColor.StickerInk else RaftColor.BorderBlack)
-                                .padding(horizontal = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (channelPageStyle) badge else badge.raftDisplayUppercase(),
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 16.sp),
-                            color = if (onSticker) RaftColor.StickerInk else RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    RaftBadge(
+                        text = badge,
+                        modifier = Modifier.widthIn(max = 88.dp),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Information
+                    )
                 }
             }
             if (subtitle.isNotBlank()) {
@@ -926,66 +829,28 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
             }
         }
         roleBadgeLabel?.takeIf { it.isNotBlank() }?.let { label ->
-            Box(Modifier.background(if (channelPageStyle) (if (RaftAppThemeState.isDark) RaftColor.FillStrong else Color(0xFFE7E5E4)) else RaftColor.SurfaceCream) // raft-color: light legacy stone chip
-                .then(if (channelPageStyle) Modifier.border(1.dp, RaftColor.BorderBlack) else Modifier)
-                .padding(horizontal = 5.dp, vertical = 2.dp)) {
-                Text(text = label, style = RaftType.Caption.copy(fontSize = if (channelPageStyle) 10.sp else 12.sp), color = RaftColor.TextMutedGray,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+            RaftBadge(text = label, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Muted)
         }
         when {
             trailingIcon != null && onTrailingClick != null -> {
-                if (trailingIcon == RaftLucideIconName.X || channelPageStyle) {
-                    RaftModalMemberRemoveButton(
-                        icon = trailingIcon,
-                        onClick = onTrailingClick,
-                        enabled = enabled,
-                        muted = trailingMuted
-                    )
-                } else {
-                    RaftModalSquareActionButton(
-                        icon = trailingIcon,
-                        contentDescription = trailingContentDescription ?: stringResource(Res.string.common_remove),
-                        onClick = onTrailingClick,
-                        color = if (selected) RaftColor.SurfaceWhite else Color(0xFFFFF2F2), // raft-color: chrome classifier input, painted as the Card outline button
-                        enabled = enabled,
-                        iconColor = if (trailingMuted) "#FF777777" else "#FF000000"
-                    )
-                }
+                // A ghost icon button; a muted remove keeps its grey ink but still fires.
+                RaftModalSquareActionButton(
+                    icon = trailingIcon,
+                    contentDescription = trailingContentDescription ?: stringResource(Res.string.common_remove),
+                    onClick = onTrailingClick,
+                    enabled = enabled,
+                    iconColor = if (trailingMuted) "#FF777777" else RaftLegacyIconInkArgb
+                )
             }
             trailingIcon != null -> RaftLucideIcon(
                 trailingIcon,
                 modifier = Modifier.size(15.dp),
-                color = if (trailingMuted) "#FF777777" else raftLegacyIconInk(onSticker)
+                color = if (trailingMuted) "#FF777777" else raftLegacyIconInk()
             )
             trailingText.isNotBlank() -> Text(text = trailingText, style = RaftType.Caption, color = mutedInk)
             else -> Spacer(modifier = Modifier.size(0.dp))
         }
     }
-
-@Composable
-private fun RaftModalMemberRemoveButton(
-    icon: RaftLucideIconName,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    muted: Boolean = false
-) {
-    Box(
-        modifier =
-            Modifier
-                .size(24.dp)
-                .background(if (enabled && !muted) (if (RaftAppThemeState.isDark) RaftColor.DangerSoft else Color(0xFFFFE5E5)) else RaftColor.SurfaceCream) // raft-color: light legacy remove wash
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftLucideIcon(
-            icon,
-            modifier = Modifier.size(12.dp),
-            color = if (enabled && !muted) raftLegacyIconInk() else "#FF777777"
-        )
-    }
-}
 
 // Black icon ink in light (unchanged); in dark the themed ink, or sticker ink on a sticker fill.
 internal fun raftLegacyIconInk(onSticker: Boolean = false): String =

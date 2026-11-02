@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -45,6 +44,7 @@ import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.ServerAppearanceRepository
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftThemeId
@@ -212,8 +212,8 @@ private fun SettingsServerThemeGroup(
 }
 
 /**
- * One theme to choose, web `ThemeOptionCard`: a radio card (checked draws a 1.5dp strong edge
- * and a check) over a miniature of the app in that theme, its name, "Default" by Raft Yellow and
+ * One theme to choose, web `ThemeOptionCard`: a design-system option card (the check shows the pick)
+ * over a miniature of the app in that theme, its name, "Default" by Raft Yellow and
  * the Pro tag by a Pro theme.
  */
 @Composable
@@ -224,7 +224,6 @@ private fun SettingsServerThemeSwatch(
     modifier: Modifier = Modifier,
 ) {
     val colors = RaftTheme.colors
-    val shape = RoundedCornerShape(10.dp)
     val name = stringResource(theme.settingsDisplayName())
     val description =
         when {
@@ -232,18 +231,16 @@ private fun SettingsServerThemeSwatch(
             theme == RaftThemeId.Raft -> stringResource(Res.string.settings_server_theme_option_default, name)
             else -> name
         }
-    Column(
-        modifier =
-            modifier
-                .clip(shape)
-                .background(colors.layerCard)
-                .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.lineStrong else colors.lineSeam, shape)
-                .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-                .semantics { contentDescription = description }
-                .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    // The design-system option card: the whole card is the radio target; the check shows the pick.
+    RaftCard(
+        modifier = modifier.semantics { contentDescription = description },
+        variant = RaftCardVariant.Option,
+        onClick = onClick,
+        selected = selected,
+        role = Role.RadioButton,
     ) {
         SettingsServerThemeMiniature(theme)
+        Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth().clearAndSetSemantics {},
             horizontalArrangement = Arrangement.spacedBy(6.dp),

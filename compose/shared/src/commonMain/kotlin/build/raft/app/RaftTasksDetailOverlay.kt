@@ -4,9 +4,9 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
+import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
@@ -87,8 +87,8 @@ internal fun RaftTasksDetailOverlay(
                     Modifier
                         .fillMaxWidth()
                         .weight(RaftTasksDetailOverlayPanelFraction)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        // The dialog surface: popover layer, dialog radius, seam ring.
+                        .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),

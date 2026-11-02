@@ -49,7 +49,14 @@ import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftSideAction
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftSegmentedControl
+import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTooltip
@@ -14681,8 +14688,9 @@ private fun ThreadMarkdownTaskCandidateRow(
     currentChannel: Boolean,
     onClick: () -> Unit
 ) {
-    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-    val background = if (currentChannel) RaftColor.BrandSoft else RaftColor.Card
+    // The current channel's task is the selected row: raft-ui's selected `info-soft` fill under
+    // the same hairline as the others, no ink edge.
+    val background = if (currentChannel) RaftTheme.colors.infoSoft else RaftColor.Card
     Box(
         modifier =
             Modifier
@@ -14696,9 +14704,9 @@ private fun ThreadMarkdownTaskCandidateRow(
                     .heightIn(min = 82.dp)
                     .raftControlSurface(
                         fill = background,
-                        border = if (currentChannel) RaftColor.BorderBlack else RaftColor.BorderHairline,
+                        border = RaftColor.BorderHairline,
                         radius = RaftAppRadius.Container,
-                        borderWidth = if (currentChannel) RaftAppStroke.Control else RaftAppStroke.Thin
+                        borderWidth = RaftAppStroke.Thin
                     )
                     .clickable(onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -14757,15 +14765,18 @@ private fun ThreadMarkdownTaskCandidateRow(
                     onClick = null
                 )
                 if (currentChannel) {
-                    RaftAnchoredMetaChip(
-                        label = stringResource(Res.string.thread_task_candidate_current),
-                        iconName = RaftLucideIconName.Hash,
-                        iconSize = 10.dp,
-                        color = RaftColor.BrandYellow,
-                        contentColor = RaftColor.StickerInk,
-                        iconColorArgb = raftArgbHex(RaftColor.StickerInk),
+                    RaftBadge(
+                        text = stringResource(Res.string.thread_task_candidate_current),
                         modifier = Modifier.widthIn(max = 112.dp),
-                        onClick = null
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Information,
+                        icon = {
+                            RaftLucideIcon(
+                                RaftLucideIconName.Hash,
+                                modifier = Modifier.size(10.dp),
+                                color = raftArgbHex(LocalRaftContentColor.current)
+                            )
+                        }
                     )
                 }
             }
@@ -31937,7 +31948,6 @@ private val ThreadMessageMenuReactionPaddingHorizontal = 8.dp
 // Web places a touch context menu's top-left corner at the press point
 // (`placeTouchMessageContextMenu`), clamped 8px inside the viewport.
 private val ThreadMessageMenuViewportGap = 8.dp
-private val ThreadMessageMenuShadowOffset = 4.dp
 
 /**
  * [showAddReactionAction]: the reaction row ends with Add Reaction (web `reaction-add-any`), one
@@ -34419,18 +34429,15 @@ internal fun ThreadAttachmentCommentsContent(
         }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ThreadAttachmentCommentsHeader(state.attachment)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ThreadAttachmentCommentsFilterChip(
-                label = stringResource(Res.string.thread_comments_filter_all),
+        // All / Unresolved: two views of the same comments, one always picked (raft-ui SegmentedControl).
+        RaftSegmentedControl {
+            RaftSegment(
+                text = stringResource(Res.string.thread_comments_filter_all),
                 selected = state.filter != "unresolved",
                 onClick = { onFilterChange("all") }
             )
-            ThreadAttachmentCommentsFilterChip(
-                label = stringResource(Res.string.thread_comments_filter_unresolved),
+            RaftSegment(
+                text = stringResource(Res.string.thread_comments_filter_unresolved),
                 selected = state.filter == "unresolved",
                 onClick = { onFilterChange("unresolved") }
             )
@@ -34534,23 +34541,6 @@ private fun ThreadAttachmentCommentsHeader(attachment: RaftThreadAttachmentItem)
             }
         }
     }
-}
-
-@Composable
-private fun ThreadAttachmentCommentsFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    RaftToolbarChip(
-        label = label,
-        onClick = onClick,
-        active = selected,
-        uppercase = false,
-        activeBackgroundColor = RaftColor.BrandYellow,
-        inactiveBackgroundColor = RaftColor.SurfaceWhite,
-        borderColor = RaftColor.BorderBlack
-    )
 }
 
 @Composable
@@ -35899,22 +35889,12 @@ internal fun <T> RaftForwardTargetPicker(
             )
             topContent?.invoke()
             threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, top = 12.dp, end = 16.dp)
-                            // raft-ui warning Banner chrome: warning-soft fill, hairline, container radius.
-                            .background(RaftColor.WarningSoft, RoundedCornerShape(RaftAppRadius.Container))
-                            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
-                            .padding(10.dp)
-                ) {
-                    Text(
-                        text = warning,
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = RaftColor.TextBlack
-                    )
-                }
+                RaftBanner(
+                    description = warning,
+                    status = RaftBannerStatus.Warning,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp),
+                    size = RaftBannerSize.Sm,
+                )
             }
             // web `InputGroup` with the inline-start Search addon, inside `main p-3`, `mb-3`.
             RaftForwardPickerSearchField(

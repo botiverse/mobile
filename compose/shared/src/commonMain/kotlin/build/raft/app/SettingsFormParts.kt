@@ -13,6 +13,8 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftField
@@ -25,7 +27,6 @@ import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
-import build.raft.app.components.raftControlSurface
 import build.raft.app.data.SharedSettingsActionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -233,36 +234,17 @@ internal fun SettingsServerSelectRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    // raft selection card: primary-soft with an ink edge when chosen, no offset shadow.
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftControlSurface(
-                        fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
-                        border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
-                        radius = RaftAppRadius.Container,
-                        borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
-                    )
-                    .clickable(enabled = enabled, onClick = onClick)
-                    .padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftLucideIcon(
-                if (selected) RaftLucideIconName.CircleCheck else RaftLucideIconName.Circle,
-                modifier = Modifier.size(16.dp),
-                color = RaftColor.TextBlackArgb,
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
-                detail.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
-                }
-            }
-        }
-    }
+    // The design-system option card: the radio shows the pick, the whole card is the target.
+    RaftCard(
+        modifier = Modifier.fillMaxWidth(),
+        variant = RaftCardVariant.Option,
+        title = title,
+        description = detail.takeIf { it.isNotBlank() },
+        leading = { RaftRadio(selected = selected, onClick = null) },
+        onClick = onClick,
+        selected = selected,
+        enabled = enabled
+    )
 }
 
 /** A settings text field: raft-ui Field (`sm` label) around an Input. */

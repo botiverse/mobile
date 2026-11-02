@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -333,13 +334,13 @@ internal fun ReleaseNotesWebViewBody(
 
 @Composable
 internal fun ReleaseNotesLoadingCover() {
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
 }
 
 @Composable
 private fun ReleaseNotesErrorState(onRetry: () -> Unit) {
     Box(
-        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream),
+        modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas),
         contentAlignment = Alignment.Center,
     ) {
         RaftUiEmptyState(
