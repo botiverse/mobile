@@ -282,6 +282,7 @@ internal fun RaftBottomTabBar(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
+                .padding(horizontal = RaftMobileNavDefaults.SidePadding)
         ) {
             items.forEach { item ->
                 if (serverTab != null && item.key == AppShellServerTabKey) {

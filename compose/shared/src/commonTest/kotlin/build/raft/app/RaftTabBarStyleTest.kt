@@ -21,15 +21,15 @@ class RaftTabBarStyleTest {
 
     @Test
     fun bottomTabBarMatchesApprovedMockupGeometry() {
-        // /tmp/activity-tab-mockups/gen.js `.tabbar` / `.tab .pill` / `.tab .tb` / `.badge`.
+        // raft-ui 0.57 MobileNavItem (artin 2026-11-02: the phone bar follows the web's).
         val spec = RaftBottomTabBarSpec
         assertEquals(56.dp, spec.PillWidth)
-        assertEquals(32.dp, spec.PillHeight)
-        assertEquals(9.dp, spec.PillRadius)
-        assertEquals(2.dp, spec.PillBorder)
-        assertEquals(23.dp, spec.IconSize)
-        assertEquals(4.dp, spec.LabelGap)
-        assertEquals(11.5.sp, spec.LabelFontSize)
+        assertEquals(30.dp, spec.PillHeight)
+        assertEquals(8.dp, spec.PillRadius)
+        assertEquals(1.5.dp, spec.PillBorder)
+        assertEquals(22.dp, spec.IconSize)
+        assertEquals(3.dp, spec.LabelGap)
+        assertEquals(10.sp, spec.LabelFontSize)
         assertEquals(FontWeight.Bold, raftBottomTabLabelWeight(selected = true))
         assertEquals(FontWeight.SemiBold, raftBottomTabLabelWeight(selected = false))
         assertEquals(18.dp, spec.BadgeHeight)
@@ -58,10 +58,10 @@ class RaftTabBarStyleTest {
 
     @Test
     fun phoneBarIsTheFullWidthEdgeBar() {
-        // stdrc 2026-10-21: back to the 58dp edge bar (mockup A, pre-#3340) with five slots.
+        // The edge bar with five slots (stdrc 2026-10-21), at raft-ui MobileNav's 60dp.
         val spec = RaftBottomTabBarSpec
-        assertEquals(58.dp, spec.BarHeight)
-        assertEquals(7.dp, spec.TopPadding)
+        assertEquals(60.dp, spec.BarHeight)
+        assertEquals(6.dp, spec.TopPadding)
         assertEquals(5, AppShellPhoneBottomBarKeys.size)
         // Five equal slots on a 320dp phone still fit the 56dp pill and a >= 44dp target.
         val slotWidth = 320.dp / AppShellPhoneBottomBarKeys.size

@@ -13,6 +13,7 @@ import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
 import androidx.compose.foundation.text.KeyboardActions
+import build.raft.designsystem.components.RaftMobileNavServerPopoverItem
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabel
@@ -1009,8 +1010,8 @@ private val settingsPageVisualPayload: RaftSharedSettingsPayload
 
 private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
-    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, attentionDot = true),
-    RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
+    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity),
+    RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.ListTodo),
     RaftBottomTabItemPayload(AppShellSearchTabKey, "Search", RaftLucideIconName.Search),
     RaftBottomTabItemPayload("more", "More", RaftLucideIconName.Ellipsis)
 )
@@ -16905,10 +16906,21 @@ internal fun BottomTabBarVisualContent() {
     // rather than fillMaxWidth because the capture window can be wider than 390dp
     // (task #370).
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+        // The fifth tab is the current server, as on the web: fixtureData homeChannelList.serverName.
+        val serverState = rememberRaftMobileNavServerPopoverState()
         RaftBottomTabBar(
             items = bottomTabBarSmokeItems,
             onSelect = {},
-            modifier = Modifier.width(390.dp)
+            modifier = Modifier.width(390.dp),
+            serverTab = { tabModifier ->
+                val server = RaftServerSwitcherItem(id = "visual-server", name = "Raft Design", slug = "raft-design")
+                RaftMobileNavServerPopoverItem(
+                    label = server.name,
+                    state = serverState,
+                    avatar = { size -> ServerSwitcherAvatarTile(server, size = size) },
+                    modifier = tabModifier,
+                )
+            },
         )
     }
 }

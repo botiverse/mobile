@@ -92,28 +92,32 @@ import build.raft.designsystem.tokens.RaftUiPalette
 
 /** raft-ui MobileNav metrics: the phone's edge-to-edge bottom bar (stdrc 2026-10-21). */
 object RaftMobileNavDefaults {
-    /** The bar, without the bottom safe area. */
-    val BarHeight: Dp = 58.dp
+    // raft-ui 0.57 MobileNav (artin 2026-11-02: the phone bar follows the web's metrics).
+    /** The bar, without the bottom safe area: 1 seam + 6 + a 45dp item + the 8dp bottom pad. */
+    val BarHeight: Dp = 60.dp
 
-    /** From the bar's top seam to the tab pills. */
-    val TopPadding: Dp = 7.dp
+    /** From the bar's top seam to the tab pills (`pt-1.5`). */
+    val TopPadding: Dp = 6.dp
+
+    /** The bar's own side padding (`px-2`). */
+    val SidePadding: Dp = 8.dp
 
     /** The slot every tab holds: the selected tab fills it with the `selected` sticker. */
     val PillWidth: Dp = 56.dp
-    val PillHeight: Dp = 32.dp
-    val PillRadius: Dp = 9.dp
-    val PillBorder: Dp = 2.dp
+    val PillHeight: Dp = 30.dp
+    val PillRadius: Dp = 8.dp
+    val PillBorder: Dp = 1.5.dp
 
     /** A tab's icon. */
-    val IconSize: Dp = 23.dp
+    val IconSize: Dp = 22.dp
 
     /** The server tab's avatar: raft-ui draws it at 22px, level with the other tabs' icons. */
     val ServerAvatarSize: Dp = 22.dp
 
     /** Pill to label. */
-    val LabelGap: Dp = 4.dp
-    val LabelFontSize = 11.5.sp
-    val LabelLineHeight = 14.sp
+    val LabelGap: Dp = 3.dp
+    val LabelFontSize = 10.sp
+    val LabelLineHeight = 12.sp
 
     /**
      * The smallest a label shrinks to before it truncates: a long one (ja 「アクティビティ」)
