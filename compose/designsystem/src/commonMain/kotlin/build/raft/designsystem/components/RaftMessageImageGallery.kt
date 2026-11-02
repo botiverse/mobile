@@ -220,7 +220,7 @@ fun RaftMessageImageFrame(
  * raft-ui MessageImageGallery: the inline images of a message, laid out by
  * [buildRaftMessageImageGalleryRows] within `min(360dp, available width)`. A lone image
  * reserves its own proportions ([raftMessageImageSingleSize]); rows of one or two are
- * 128dp tall, rows of three 112dp in two columns (the phone grid), all 4dp apart. A gallery
+ * 128dp tall, rows of three 112dp three across, all 4dp apart. A gallery
  * at its full 360dp (its own width, not the window's) takes 144dp and 128dp rows.
  * [image] draws one image into its frame, honouring the layout's [RaftMessageImageFit].
  */
@@ -252,9 +252,10 @@ fun RaftMessageImageGallery(
                     ) { image(lone) }
                     return@forEach
                 }
-                // One or two columns; a row of three wraps its third into a second grid row of
-                // the same height (`grid-cols-2` at every width).
-                val columns = if (row.items.size == 3) 2 else row.items.size
+                // Every row sits side by side, a row of three three across (raft-design #947):
+                // two over one laid six images out 2, 1, 2, 1, an F rather than a set (xxchan,
+                // artin 2026-11-02).
+                val columns = row.items.size
                 val height =
                     when {
                         !wide && row.items.size == 3 -> RaftMessageImageGalleryDefaults.TripleRowHeight
