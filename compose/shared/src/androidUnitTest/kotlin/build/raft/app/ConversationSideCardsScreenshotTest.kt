@@ -114,6 +114,7 @@ private fun ColumnScope.Page(cards: ConversationSideCardsState) {
             cards = cards,
             onPick = {},
             onBack = null,
+            onSwipeClose = {},
             tasksContent = {
                 SharedTasksPanel(
                     state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = tasks.summaryCounts(), tasks = tasks))),
