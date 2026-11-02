@@ -47,8 +47,8 @@ import androidx.compose.ui.window.PopupProperties
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.markdown.LocalRaftMarkdownMouseLinkBody
-import build.raft.app.markdown.RaftMarkdownMouseLinkBody
+import build.raft.app.markdown.LocalRaftMarkdownLinkDragSelection
+import build.raft.app.markdown.RaftMarkdownLinkDragSelection
 import build.raft.designsystem.components.RaftTextSelectionToolbar
 import build.raft.designsystem.components.RaftTextSelectionToolbarButton
 import build.raft.designsystem.components.RaftTextSelectionToolbarDefaults
@@ -613,8 +613,12 @@ internal fun ThreadInPlaceSelectableBody(
     val host = LocalThreadInPlaceTextSelectionHost.current ?: return content()
     val textToolbar = remember(controller) { ThreadInPlaceTextToolbar(controller) }
     val contextMenuProvider = remember(controller) { ThreadInPlaceTextContextMenuProvider(controller) }
-    // A mouse drag that starts on a link selects; a click still opens it (RaftMarkdownMouseLinks.kt).
-    val mouseLinkBody = remember(controller) { RaftMarkdownMouseLinkBody() }
+    // A mouse drag that starts on a link selects from the press point (RaftMarkdownLinkDragSelect.kt);
+    // it is the mouse's own range, never widened to the whole message.
+    val linkDragSelection =
+        remember(controller) {
+            RaftMarkdownLinkDragSelection(controller.selectionState) { controller.lastPointerDownFromTouch = false }
+        }
     // raft-ui MessageItem text `selection:bg-selection` (0.23 #730): brand-soft in light, brand at
     // 22% in dark; the handles take the caret's ink, as in the designsystem RaftTheme.
     val themeColors = RaftAppThemeState.colors
@@ -626,7 +630,7 @@ internal fun ThreadInPlaceSelectableBody(
         LocalTextToolbar provides textToolbar,
         LocalTextContextMenuToolbarProvider provides contextMenuProvider,
         LocalTextSelectionColors provides selectionColors,
-        LocalRaftMarkdownMouseLinkBody provides mouseLinkBody,
+        LocalRaftMarkdownLinkDragSelection provides linkDragSelection,
     ) {
         SelectionContainer(
             controller.selectionState,

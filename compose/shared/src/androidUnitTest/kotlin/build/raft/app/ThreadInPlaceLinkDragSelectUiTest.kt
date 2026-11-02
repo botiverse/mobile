@@ -12,8 +12,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
@@ -35,8 +39,10 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * artin 2026-11-02 (Mac app): in a message body, a mouse press that starts on a link and drags
- * selects text (it selected nothing: the link's framework box took the press); a click on the
- * link still opens it. Drives [RaftMarkdownBody] inside the production [ThreadInPlaceSelectableBody].
+ * selects text from the press point (it selected nothing: the link's framework box took the
+ * press); a click on the link still opens it, a finger tap too, and the link stays a real link
+ * (annotation and click action) throughout. Drives [RaftMarkdownBody] inside the production
+ * [ThreadInPlaceSelectableBody].
  */
 @OptIn(ExperimentalTestApi::class)
 // Real text measurement, so a character's box holds the pointer.
@@ -95,45 +101,60 @@ class ThreadInPlaceLinkDragSelectUiTest {
 
     private fun ComposeUiTest.renderedIndexOf(words: String): Int = textLayout().layoutInput.text.text.indexOf(words)
 
-    /** A mouse comes over the link first, as a real one always does before it presses. */
-    private fun ComposeUiTest.hoverLink(): Offset {
-        val at = charCenter(renderedIndexOf("the docs") + 1)
-        textNode().performMouseInput { moveTo(at) }
-        waitForIdle()
-        return at
+    private fun ComposeUiTest.linkCenter(): Offset = charCenter(renderedIndexOf("the docs") + 1)
+
+    /** The link is a real link whatever the input: a link annotation on the text, and a clickable node. */
+    private fun ComposeUiTest.assertLinkSemantics() {
+        val text = textLayout().layoutInput.text
+        val urls = text.getLinkAnnotations(0, text.length).mapNotNull { (it.item as? LinkAnnotation.Url)?.url }
+        assertEquals(listOf(LINK), urls, "the link stays a LinkAnnotation")
+        assertTrue(
+            onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
+            "the link keeps its click action for accessibility"
+        )
     }
 
     @Test
     fun aMouseDragThatStartsOnALinkSelectsTextAndOpensNothing() =
         runRobolectricComposeUiTest {
             showBody()
-            hoverLink()
+            assertLinkSemantics()
+            val start = linkCenter()
             val end = charCenter(renderedIndexOf("tomorrow") + 3)
             textNode().performMouseInput {
+                moveTo(start)
                 press()
-                moveTo(Offset((currentPosition.x + end.x) / 2f, end.y))
+                moveTo(Offset((start.x + end.x) / 2f, end.y))
                 moveTo(end)
                 release()
             }
             waitForIdle()
             val selected = controller!!.selectedTexts().joinToString("")
             assertTrue(selected.isNotEmpty(), "a drag from the link selects")
-            assertTrue(selected.contains("docs"), "from the link onward: '$selected'")
+            assertTrue(selected.startsWith("he docs") || selected.startsWith("e docs"), "from the press point: '$selected'")
+            assertTrue(selected.contains("tomo"), "to the pointer: '$selected'")
             assertTrue(opened.isEmpty(), "a drag opens no link: $opened")
+            assertLinkSemantics()
         }
 
     @Test
     fun aMouseClickOnALinkOpensIt() =
         runRobolectricComposeUiTest {
             showBody()
-            hoverLink()
-            textNode().performMouseInput {
-                press()
-                release()
-            }
+            textNode().performMouseInput { click(linkCenter()) }
             waitForIdle()
             assertEquals(listOf(LINK), opened)
             assertTrue(!controller!!.hasSelection, "a click selects nothing")
+            assertLinkSemantics()
+        }
+
+    @Test
+    fun aFingerTapOnALinkStillOpensIt() =
+        runRobolectricComposeUiTest {
+            showBody()
+            textNode().performTouchInput { click(linkCenter()) }
+            waitForIdle()
+            assertEquals(listOf(LINK), opened)
         }
 
     private companion object {
