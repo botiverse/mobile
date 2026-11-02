@@ -1508,6 +1508,8 @@ private object RaftMarkdownTextProvider : TextProvider {
         // An @mention's profile card under a mouse or trackpad pointer (web MentionLink), where the
         // page provides who mentions are (the Thread message list); otherwise the text as it was.
         val mentionCards = rememberRaftMarkdownMentionPreviewCards(resolvedText)
+        // An App link card chip's item card under a mouse or trackpad pointer (web AppLinkHoverCard).
+        val appLinkCards = rememberRaftMarkdownAppLinkHoverCards(resolvedText)
         // In a selectable message body, a mouse drag from a link selects (RaftMarkdownLinkDragSelect.kt).
         val linkDrag = rememberRaftMarkdownLinkDragText()
         val linkDragModifier =
@@ -1539,16 +1541,25 @@ private object RaftMarkdownTextProvider : TextProvider {
                 onTextLayout = { result ->
                     if (!inlineDecorations.isEmpty) decorationLayout = result
                     mentionCards?.layout = result
+                    appLinkCards?.layout = result
                     linkDrag?.second?.layout = result
                     resolvedOnTextLayout(result)
                 },
                 style = resolvedStyle
             )
         }
-        if (mentionCards == null) {
-            text(modifier)
-        } else {
-            RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, modifier, text)
+        val appLinkHost = LocalRaftAppLinkChips.current
+        when {
+            appLinkCards != null && appLinkHost != null ->
+                // The cards' popups sit in a box round the text, so their anchors (the chip's words,
+                // from the text's layout) are in the popup's own coordinates.
+                Box(modifier, propagateMinConstraints = true) {
+                    val withAppLinks: @Composable (Modifier) -> Unit = { textModifier -> text(textModifier.raftMarkdownAppLinkHover(appLinkCards)) }
+                    if (mentionCards == null) withAppLinks(Modifier) else RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, Modifier, withAppLinks)
+                    appLinkCards.Popups(appLinkHost)
+                }
+            mentionCards == null -> text(modifier)
+            else -> RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, modifier, text)
         }
     }
 }

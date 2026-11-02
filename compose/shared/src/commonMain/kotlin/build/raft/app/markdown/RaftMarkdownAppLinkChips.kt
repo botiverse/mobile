@@ -88,6 +88,9 @@ internal fun RaftAppLinkChipHost.opensCard(result: AppLinkResult.Card): Boolean 
 
 internal val LocalRaftAppLinkChips = staticCompositionLocalOf<RaftAppLinkChipHost?> { null }
 
+/** String annotation over an App link card chip's words; the item is the link's URL. */
+internal const val RaftAppLinkHoverTag = "raft.build.markdown.appLinkHover"
+
 internal data class RaftAppLinkChipContent(
     val text: AnnotatedString,
     val inlineContent: Map<String, InlineTextContent>,
@@ -228,7 +231,12 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                         }
                     }
                 }
+                // A card chip's words carry its URL: a mouse resting on them shows the card
+                // (RaftMarkdownAppLinkHoverCards, web AppLinkHoverCard).
+                val hoverUrl = (result as? AppLinkResult.Card)?.takeIf { host.opensCard(it) }?.url
+                if (hoverUrl != null) pushStringAnnotation(RaftAppLinkHoverTag, hoverUrl)
                 if (annotation != null) withLink(annotation) { chip() } else chip()
+                if (hoverUrl != null) pop()
             }
         }
         val anchor = (result as? AppLinkResult.Card)?.takeIf { host.opensCard(it) }?.let { host.cardAnchor?.invoke(it.url) }

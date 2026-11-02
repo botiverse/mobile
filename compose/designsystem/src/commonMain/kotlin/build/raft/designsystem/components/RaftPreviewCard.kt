@@ -365,6 +365,11 @@ fun RaftPreviewCardPopup(
     state: RaftPreviewCardState,
     anchor: Rect? = null,
     width: Dp = RaftPreviewCardDefaults.Width,
+    /**
+     * False: [card] draws its own popover surface (an App link's item card, which is a popover
+     * card of its own); the popup keeps the placement, delays, hover and dismissal.
+     */
+    surface: Boolean = true,
     card: @Composable ColumnScope.() -> Unit,
 ) {
     val preview = LocalRaftPreviewCardPreview.current
@@ -440,24 +445,25 @@ fun RaftPreviewCardPopup(
                 Modifier.padding(start = room.Horizontal, end = room.Horizontal, top = room.Top, bottom = room.Bottom)
             },
         ) {
-            RaftPreviewCardSurface(
-                width = width,
-                modifier = Modifier.pointerInput(state) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            if (event.changes.firstOrNull()?.type != PointerType.Mouse) continue
-                            when (event.type) {
-                                PointerEventType.Enter -> state.setCardHovered(true)
-                                PointerEventType.Exit -> state.setCardHovered(false)
-                                // A pinned card's own content scrolls (web `overflow-y-auto`).
-                                PointerEventType.Scroll -> if (!state.isPinned) state.dismiss()
-                            }
+            val cardHover = Modifier.pointerInput(state) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.firstOrNull()?.type != PointerType.Mouse) continue
+                        when (event.type) {
+                            PointerEventType.Enter -> state.setCardHovered(true)
+                            PointerEventType.Exit -> state.setCardHovered(false)
+                            // A pinned card's own content scrolls (web `overflow-y-auto`).
+                            PointerEventType.Scroll -> if (!state.isPinned) state.dismiss()
                         }
                     }
-                },
-                content = card,
-            )
+                }
+            }
+            if (surface) {
+                RaftPreviewCardSurface(width = width, modifier = cardHover, content = card)
+            } else {
+                Column(cardHover.width(width), content = card)
+            }
         }
     }
 }
