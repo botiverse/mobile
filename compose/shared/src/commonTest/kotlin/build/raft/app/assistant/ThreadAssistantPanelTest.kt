@@ -35,18 +35,13 @@ class ThreadAssistantPanelTest {
         assertEquals(RaftOtterTuck.PanelOpen, threadAssistantOtterTuck(composing = true, panelOpen = true))
     }
 
-    /** artin 11-02: a card above the composer (a mention's Add / Notify / Ignore) hides the otter whole. */
+    /** artin 11-02: anything stacked above the composer frame (a mention's Add / Notify / Ignore card) hides the otter whole. */
     @Test
     fun aCardAboveTheComposerHidesTheOtter() {
         assertEquals(RaftOtterTuck.Covered, threadAssistantOtterTuck(composing = false, panelOpen = false, covered = true))
         assertEquals(RaftOtterTuck.Covered, threadAssistantOtterTuck(composing = true, panelOpen = false, covered = true))
         assertEquals(RaftOtterTuck.PanelOpen, threadAssistantOtterTuck(composing = false, panelOpen = true, covered = true))
         assertEquals(RaftOtterTuck.PanelOpen.fraction, RaftOtterTuck.Covered.fraction)
-
-        assertTrue(threadComposerCardAboveFrame(pendingMentionActions = 1, mentionActionNotice = false))
-        assertTrue(threadComposerCardAboveFrame(pendingMentionActions = 0, mentionActionNotice = true))
-        // Attachments alone are not a card over the otter (it stays with attachments, otter spec §1).
-        assertFalse(threadComposerCardAboveFrame(pendingMentionActions = 0, mentionActionNotice = false))
     }
 
     @Test
