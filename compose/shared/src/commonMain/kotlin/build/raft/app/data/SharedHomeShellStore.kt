@@ -66,7 +66,9 @@ class SharedHomeShellStore(
     },
     private val resetActivity: () -> Unit = {},
     private val diagnosticsLogger: (String) -> Unit = {},
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    /** As [SharedHomeStore]'s: the selected conversation skips Activity unread only while it is seen. */
+    private val selectedConversationSeen: () -> Boolean = { RaftHostInUse.isInUse }
 ) {
     private var observedHomeServerId: String? = homeState.value.activeHomeServerId()
     private var pendingSavedSummaryRefreshServerId: String? = null
@@ -201,7 +203,7 @@ class SharedHomeShellStore(
             acceptActivityRealtime(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
-                    activeConversationId = current.selectedConversationId
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
                 )
             )
         }
@@ -279,7 +281,7 @@ class SharedHomeShellStore(
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
-                    activeConversationId = current.selectedConversationId
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
                 )
             )
         }

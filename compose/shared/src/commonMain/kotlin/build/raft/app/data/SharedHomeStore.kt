@@ -186,6 +186,12 @@ internal class SharedHomeStore(
     private val beforeNotificationPublicationCommit: suspend () -> Unit = {},
     private val conversationIdentityPublicationSink:
         (SharedConversationIdentityCandidatePublication) -> Unit = {},
+    /**
+     * Whether the selected conversation is in front of the person now (the shell visible and in use,
+     * [raftHostShowsContent]). Only then does a live message into it skip unread: the page is reading
+     * it. Left open in a hidden or idle window, it counts like any other row, as the server counts it.
+     */
+    private val selectedConversationSeen: () -> Boolean = { RaftHostInUse.isInUse },
 ) : SharedConversationIdentityProvider {
     private val _state = raftStoreState(SharedHomeState(), "SharedHomeStore")
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -1417,7 +1423,7 @@ internal class SharedHomeStore(
                 is SyncResumeResponse -> HomeRealtimeMessagePatch(messages = event.messages, incrementUnread = true)
                 else -> null
             } ?: return false
-        val activeConversationId = current.selectedConversationId
+        val activeConversationId = current.seenSelectedConversationId()
         val nextSnapshot =
             content.snapshot.withRealtimeMessages(
                 patch = messagePatch,
@@ -1471,7 +1477,7 @@ internal class SharedHomeStore(
     private fun applyThreadUpdatedLocally(event: ThreadUpdated): Boolean {
         val current = _state.value
         val content = current.content as? SharedHomeContentState.Content ?: return false
-        return when (content.baseSnapshot.decideThreadReply(event, current.selectedConversationId)) {
+        return when (content.baseSnapshot.decideThreadReply(event, current.seenSelectedConversationId())) {
             HomeThreadReplyDecision.Ignore -> false
             HomeThreadReplyDecision.Refresh -> {
                 diagnosticsLogger("home_followed_thread_refresh_request threadId=${event.threadChannelId.value}")
@@ -1481,6 +1487,10 @@ internal class SharedHomeStore(
             HomeThreadReplyDecision.Bump -> applyHomeSnapshotLocally { it.withFollowedThreadReply(event) }
         }
     }
+
+    /** The selected conversation while it is seen ([selectedConversationSeen]); null otherwise. */
+    private fun SharedHomeState.seenSelectedConversationId(): String? =
+        selectedConversationId?.takeIf { selectedConversationSeen() }
 
     /** One `channels/unread?summary=1` read that replaces only the followed-thread mark. */
     private suspend fun refreshFollowedThreadUnread() {

@@ -208,6 +208,7 @@ import build.raft.app.data.SecondFactorStepUpRepository
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
+import build.raft.app.data.RaftHostInUse
 import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
@@ -9975,14 +9976,18 @@ private fun SharedThreadRouteContentContent(
                 visibleTailIndex = visibleReadTailIndex
             )
     }
-    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground, renderSlice.writeActionsEnabled) {
+    // Seen = read only while the window is in use (desktop: focused, input in the last 3 minutes).
+    // Keyed on it so coming back reads what is in front of the person then (web seenReadCatchUp).
+    val hostInUse by RaftHostInUse.inUse.collectAsState()
+    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground, hostInUse, renderSlice.writeActionsEnabled) {
         if (
             renderSlice.writeActionsEnabled &&
             shouldMarkThreadVisibleRead(
                 routeActive = active,
                 observedHostForeground = threadHostForeground,
                 currentHostVisibility = isRaftHostVisible(storeScope.shellInstanceId),
-                markerKey = visibleReadMarkerKey
+                markerKey = visibleReadMarkerKey,
+                hostInUse = hostInUse
             )
         ) {
             threadViewModel.dispatch(SharedThreadIntent.MarkVisibleRead(visibleReadTailIndex))
@@ -26219,9 +26224,10 @@ internal fun shouldMarkThreadVisibleRead(
     routeActive: Boolean,
     observedHostForeground: Boolean,
     currentHostVisibility: Boolean,
-    markerKey: String?
+    markerKey: String?,
+    hostInUse: Boolean = true
 ): Boolean =
-    routeActive && observedHostForeground && currentHostVisibility && markerKey != null
+    routeActive && observedHostForeground && currentHostVisibility && hostInUse && markerKey != null
 
 internal fun threadLifecycleEventTargetsThread(pageName: String): Boolean =
     pageName == THREAD_PAGE || pageName == RAFT_APP_SHELL_PAGE

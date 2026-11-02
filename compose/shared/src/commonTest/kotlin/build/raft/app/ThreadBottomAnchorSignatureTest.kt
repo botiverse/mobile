@@ -2664,6 +2664,16 @@ class ThreadBottomAnchorSignatureTest {
                 markerKey = marker
             )
         )
+        // A visible window that is not in use (desktop: unfocused or no input for 3 minutes).
+        assertFalse(
+            shouldMarkThreadVisibleRead(
+                routeActive = true,
+                observedHostForeground = true,
+                currentHostVisibility = true,
+                markerKey = marker,
+                hostInUse = false
+            )
+        )
     }
 
     @Test

@@ -2271,6 +2271,7 @@ internal class RaftSharedStoreProvider private constructor(
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
                 onConversationReadAllAcknowledged = ::publishConversationReadAllAck,
                 onChannelLeft = { channelId -> publishChannelAccessLost(scope, channelId) },
+                selectedConversationSeen = { raftHostShowsContent(scope.shellInstanceId) },
                 // Identity first: the hint slice attaches to the durable content it restores.
                 persistSlices = listOf(homeIdentityPersistSlice, homeRowHintPersistSlice),
                 conversationIdentityPublicationSink = publication@{ publication ->
