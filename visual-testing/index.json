@@ -1,40 +1,40 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-02T06:28:59.032Z",
-  "latestRunId": "8a04b1cc-20261102055356",
+  "generatedAt": "2026-11-02T12:57:26.447Z",
+  "latestRunId": "2d44f513-20261102125634",
   "latest": {
-    "runId": "8a04b1cc-20261102055356",
-    "commit": "8a04b1cc-20261102055356",
-    "commitSubject": "fix(visual): Visual Testing green again (followers capture tap, ottie avatar data) (#4108)",
-    "generatedAt": "2026-11-02T06:28:59.032Z",
+    "runId": "2d44f513-20261102125634",
+    "commit": "2d44f513-20261102125634",
+    "commitSubject": "feat(ui): runtime chips show the usage card on hover, pinned by a click (#4135)",
+    "generatedAt": "2026-11-02T12:57:26.447Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 101,
+      "total": 102,
       "same": 0,
       "pass": 2,
       "basic-pass": 9,
       "different": 86,
-      "missing": 4
+      "missing": 5
     },
     "analysisSummary": {
-      "total": 101,
+      "total": 102,
       "ready": 30,
-      "pending": 71
+      "pending": 72
     },
     "comparisons": [
       "react__android"
     ],
     "componentMatrixSummary": {
-      "total": 130,
-      "active": 110,
+      "total": 131,
+      "active": 111,
       "pending": 17,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 95,
-          "active": 90,
+          "total": 96,
+          "active": 91,
           "pending": 3,
           "skipped": 2
         },
@@ -47,16 +47,16 @@
       },
       "providers": {
         "react": {
-          "active": 99,
+          "active": 100,
           "pending": 13,
           "unsupported": 0,
-          "total": 112
+          "total": 113
         },
         "android": {
-          "active": 90,
+          "active": 91,
           "pending": 18,
           "unsupported": 0,
-          "total": 108
+          "total": 109
         },
         "harmony": {
           "active": 0,
@@ -72,19 +72,19 @@
         }
       }
     },
-    "href": "runs/8a04b1cc-20261102055356/",
-    "componentMatrix": "runs/8a04b1cc-20261102055356/component-matrix.json",
-    "llms": "runs/8a04b1cc-20261102055356/metadata.json"
+    "href": "runs/2d44f513-20261102125634/",
+    "componentMatrix": "runs/2d44f513-20261102125634/component-matrix.json",
+    "llms": "runs/2d44f513-20261102125634/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 130,
-    "active": 110,
+    "total": 131,
+    "active": 111,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 95,
-        "active": 90,
+        "total": 96,
+        "active": 91,
         "pending": 3,
         "skipped": 2
       },
@@ -97,16 +97,16 @@
     },
     "providers": {
       "react": {
-        "active": 99,
+        "active": 100,
         "pending": 13,
         "unsupported": 0,
-        "total": 112
+        "total": 113
       },
       "android": {
-        "active": 90,
+        "active": 91,
         "pending": 18,
         "unsupported": 0,
-        "total": 108
+        "total": 109
       },
       "harmony": {
         "active": 0,
@@ -123,6 +123,79 @@
     }
   },
   "runs": [
+    {
+      "runId": "2d44f513-20261102125634",
+      "commit": "2d44f513-20261102125634",
+      "commitSubject": "feat(ui): runtime chips show the usage card on hover, pinned by a click (#4135)",
+      "generatedAt": "2026-11-02T12:57:26.447Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 102,
+        "same": 0,
+        "pass": 2,
+        "basic-pass": 9,
+        "different": 86,
+        "missing": 5
+      },
+      "analysisSummary": {
+        "total": 102,
+        "ready": 30,
+        "pending": 72
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 131,
+        "active": 111,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 96,
+            "active": 91,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 35,
+            "active": 20,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 100,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 113
+          },
+          "android": {
+            "active": 91,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 109
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 81,
+            "unsupported": 0,
+            "total": 81
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/2d44f513-20261102125634/",
+      "componentMatrix": "runs/2d44f513-20261102125634/component-matrix.json",
+      "llms": "runs/2d44f513-20261102125634/metadata.json"
+    },
     {
       "runId": "8a04b1cc-20261102055356",
       "commit": "8a04b1cc-20261102055356",

@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-11-02T06:28:59.032Z",
-  "runId": "8a04b1cc-20261102055356",
+  "generatedAt": "2026-11-02T12:57:26.447Z",
+  "runId": "2d44f513-20261102125634",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 130,
-    "active": 110,
+    "total": 131,
+    "active": 111,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 95,
-        "active": 90,
+        "total": 96,
+        "active": 91,
         "pending": 3,
         "skipped": 2
       },
@@ -24,16 +24,16 @@
     },
     "providers": {
       "react": {
-        "active": 99,
+        "active": 100,
         "pending": 13,
         "unsupported": 0,
-        "total": 112
+        "total": 113
       },
       "android": {
-        "active": 90,
+        "active": 91,
         "pending": 18,
         "unsupported": 0,
-        "total": 108
+        "total": 109
       },
       "harmony": {
         "active": 0,
@@ -146,7 +146,7 @@
         "react": {
           "id": "react",
           "status": "ready",
-          "path": "packages/web/src/components/agent/AgentDetailPanel.tsx",
+          "path": "packages/web/src/features/agent/AgentDetailPanel.tsx",
           "fixture": "fixtures/components.members.agent-lifecycle-actions.json",
           "components": [
             "AgentDetailPanel",
@@ -203,7 +203,7 @@
         "react": {
           "id": "react",
           "status": "ready",
-          "path": "packages/web/src/components/agent/AgentDetailPanel.tsx",
+          "path": "packages/web/src/features/agent/AgentDetailPanel.tsx",
           "fixture": "fixtures/components.members.avatar-management.json",
           "components": [
             "AgentDetailPanel",
@@ -2107,6 +2107,47 @@
       }
     },
     {
+      "id": "components.ui.typography.specimen",
+      "title": "Raft UI Typography Specimen",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "library",
+      "surface": "library",
+      "group": "library",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "raft-ui typography (text-* classes)"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "fixtures/components.ui.typography.specimen.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.designsystem.theme.RaftTypography"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/UiDesignSystemVisualFixtures.kt",
+          "fixture": "compose_ui_typography_specimen_visual",
+          "reason": ""
+        }
+      },
+      "notes": "",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "components.members.create-agent.builtin-provider-dialog",
       "title": "Members Create Agent Dialog - built-in provider",
       "captureType": "component-fixture",
@@ -2516,7 +2557,7 @@
           "components": [
             "MessageInput"
           ],
-          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "path": "packages/web/src/features/composer/MessageInput.tsx",
           "fixture": "components.thread.composer.states route plus As Task click interaction",
           "reason": ""
         },
@@ -2571,7 +2612,7 @@
           "components": [
             "MessageInput"
           ],
-          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "path": "packages/web/src/features/composer/MessageInput.tsx",
           "fixture": "fixtures/components.thread.composer.channel-suggestions.json plus # trigger interaction",
           "reason": ""
         },
@@ -2627,7 +2668,7 @@
           "components": [
             "MessageInput"
           ],
-          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "path": "packages/web/src/features/composer/MessageInput.tsx",
           "fixture": "fixtures/components.thread.composer.empty.json",
           "reason": ""
         },
@@ -2683,7 +2724,7 @@
             "MessageInput",
             "SortableAttachment"
           ],
-          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "path": "packages/web/src/features/composer/MessageInput.tsx",
           "fixture": "packages/web/visual-testing/VisualTestingCases.tsx#components.thread.composer.file-previews",
           "reason": ""
         },
@@ -2732,7 +2773,7 @@
             "MessageInput",
             "SortableAttachment"
           ],
-          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "path": "packages/web/src/features/composer/MessageInput.tsx",
           "fixture": "packages/web/visual-testing/VisualTestingCases.tsx#components.thread.composer.image-preview",
           "reason": ""
         },
@@ -2791,7 +2832,7 @@
             "MentionCandidateBody",
             "MentionCandidateAvatar"
           ],
-          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "path": "packages/web/src/features/composer/MessageInput.tsx",
           "fixture": "fixtures/components.thread.composer.member-suggestions.json plus @ trigger interaction",
           "reason": ""
         },
@@ -2904,7 +2945,7 @@
           "components": [
             "MessageInput"
           ],
-          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "path": "packages/web/src/features/composer/MessageInput.tsx",
           "fixture": "fixtures/components.thread.composer.states.json",
           "reason": ""
         },
@@ -3149,7 +3190,7 @@
             "ChannelMembers",
             "MemberChoiceList"
           ],
-          "path": "packages/web/src/components/agent/ChannelMembers.tsx",
+          "path": "packages/web/src/features/channel/ChannelMembers.tsx",
           "fixture": "fixtures/components.channel.members.add-panel.json",
           "reason": ""
         },
@@ -3666,7 +3707,7 @@
             "AgentProfileInfo",
             "AgentSkills"
           ],
-          "path": "packages/web/src/components/agent/AgentDetailPanel.tsx",
+          "path": "packages/web/src/features/agent/AgentDetailPanel.tsx",
           "fixture": "packages/web/visual-testing/VisualTestingCases.tsx",
           "reason": ""
         },
@@ -3727,7 +3768,7 @@
             "Select",
             "RuntimeConfigFields"
           ],
-          "path": "packages/web/src/components/agent/CreateAgentDialog.tsx",
+          "path": "packages/web/src/features/agent/CreateAgentDialog.tsx",
           "fixture": "packages/web/visual-testing/VisualTestingCases.tsx",
           "reason": ""
         },

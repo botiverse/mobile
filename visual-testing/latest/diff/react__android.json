@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T06:18:31.290Z",
+  "generatedAt": "2026-11-02T12:57:24.470Z",
   "baseline": "react",
   "current": "android",
   "key": "react__android",
@@ -1697,6 +1697,25 @@
         "metricMode": "rgb-resize-pixel-pad-no-crop"
       },
       "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.ui.typography.specimen",
+      "surface": "library",
+      "category": "library",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": null,
+      "currentImage": null,
+      "baselineMetadata": null,
+      "currentMetadata": null,
+      "status": "missing"
     },
     {
       "id": "components.ui.attention-dot.states",
@@ -12827,11 +12846,11 @@
     }
   ],
   "summary": {
-    "total": 101,
+    "total": 102,
     "same": 0,
     "pass": 2,
     "basic-pass": 9,
     "different": 86,
-    "missing": 4
+    "missing": 5
   }
 }

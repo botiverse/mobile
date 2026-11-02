@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-02T06:28:59.032Z",
-  "runId": "8a04b1cc-20261102055356",
+  "generatedAt": "2026-11-02T12:57:26.447Z",
+  "runId": "2d44f513-20261102125634",
   "cases": [
     {
       "id": "components.ui.segmented-control.states",
@@ -818,7 +818,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.756Z",
+        "generatedAt": "2026-11-02T12:57:25.654Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -904,7 +904,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.756Z",
+            "generatedAt": "2026-11-02T12:57:25.654Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1604,7 +1604,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.785Z",
+        "generatedAt": "2026-11-02T12:57:25.681Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1690,7 +1690,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.785Z",
+            "generatedAt": "2026-11-02T12:57:25.681Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1738,7 +1738,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.792Z",
+        "generatedAt": "2026-11-02T12:57:25.689Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1824,7 +1824,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.792Z",
+            "generatedAt": "2026-11-02T12:57:25.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2013,6 +2013,75 @@
       ]
     },
     {
+      "id": "components.ui.typography.specimen",
+      "title": "Raft UI Typography Specimen",
+      "surface": "library",
+      "category": "library",
+      "captureType": "component-fixture",
+      "status": "missing",
+      "similarity": null,
+      "rgbSimilarity": null,
+      "baselineImage": null,
+      "currentImage": null,
+      "sideBySideImage": null,
+      "analysis": {
+        "status": "pending",
+        "generatedAt": "2026-11-02T12:57:25.630Z",
+        "severity": "unknown",
+        "summary": [],
+        "likelyCauses": [],
+        "suggestedOwner": "",
+        "suggestedFixes": [],
+        "intentional": [],
+        "analysisProvider": "",
+        "analysisModel": "",
+        "error": "missing side-by-side image"
+      },
+      "providers": {
+        "react": {
+          "status": "missing",
+          "image": null
+        },
+        "android": {
+          "status": "missing",
+          "image": null
+        }
+      },
+      "pairs": {
+        "react__android": {
+          "leftProvider": "react",
+          "rightProvider": "android",
+          "class": "baseline",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "sideBySideImage": null,
+          "analysis": {
+            "status": "pending",
+            "generatedAt": "2026-11-02T12:57:25.630Z",
+            "severity": "unknown",
+            "summary": [],
+            "likelyCauses": [],
+            "suggestedOwner": "",
+            "suggestedFixes": [],
+            "intentional": [],
+            "analysisProvider": "",
+            "analysisModel": "",
+            "error": "missing side-by-side image"
+          }
+        }
+      },
+      "declaredProviders": [
+        "react",
+        "android"
+      ],
+      "variants": [
+        {
+          "name": "All Styles"
+        }
+      ]
+    },
+    {
       "id": "components.ui.attention-dot.states",
       "title": "Raft UI Attention Dot",
       "surface": "library",
@@ -2037,7 +2106,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.801Z",
+        "generatedAt": "2026-11-02T12:57:25.683Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2123,7 +2192,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.801Z",
+            "generatedAt": "2026-11-02T12:57:25.683Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2637,7 +2706,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.814Z",
+        "generatedAt": "2026-11-02T12:57:25.704Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2723,7 +2792,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.814Z",
+            "generatedAt": "2026-11-02T12:57:25.704Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2933,7 +3002,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.827Z",
+        "generatedAt": "2026-11-02T12:57:25.715Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3019,7 +3088,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.827Z",
+            "generatedAt": "2026-11-02T12:57:25.715Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3233,7 +3302,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.845Z",
+        "generatedAt": "2026-11-02T12:57:25.724Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3319,7 +3388,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.845Z",
+            "generatedAt": "2026-11-02T12:57:25.724Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3683,7 +3752,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.850Z",
+        "generatedAt": "2026-11-02T12:57:25.731Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3769,7 +3838,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.850Z",
+            "generatedAt": "2026-11-02T12:57:25.731Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3817,7 +3886,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.866Z",
+        "generatedAt": "2026-11-02T12:57:25.730Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3903,7 +3972,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.866Z",
+            "generatedAt": "2026-11-02T12:57:25.730Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3940,7 +4009,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.723Z",
+        "generatedAt": "2026-11-02T12:57:25.630Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3997,7 +4066,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.723Z",
+            "generatedAt": "2026-11-02T12:57:25.630Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4049,7 +4118,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.864Z",
+        "generatedAt": "2026-11-02T12:57:25.731Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4135,7 +4204,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.864Z",
+            "generatedAt": "2026-11-02T12:57:25.731Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4188,7 +4257,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.866Z",
+        "generatedAt": "2026-11-02T12:57:25.734Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4274,7 +4343,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.866Z",
+            "generatedAt": "2026-11-02T12:57:25.734Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4329,7 +4398,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.867Z",
+        "generatedAt": "2026-11-02T12:57:25.742Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4415,7 +4484,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.867Z",
+            "generatedAt": "2026-11-02T12:57:25.742Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4470,7 +4539,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.893Z",
+        "generatedAt": "2026-11-02T12:57:25.760Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4556,7 +4625,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.893Z",
+            "generatedAt": "2026-11-02T12:57:25.760Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4611,7 +4680,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.886Z",
+        "generatedAt": "2026-11-02T12:57:25.745Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4697,7 +4766,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.886Z",
+            "generatedAt": "2026-11-02T12:57:25.745Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4753,7 +4822,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.911Z",
+        "generatedAt": "2026-11-02T12:57:25.767Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4839,7 +4908,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.911Z",
+            "generatedAt": "2026-11-02T12:57:25.767Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4894,7 +4963,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.901Z",
+        "generatedAt": "2026-11-02T12:57:25.771Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4980,7 +5049,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.901Z",
+            "generatedAt": "2026-11-02T12:57:25.771Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5035,7 +5104,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.920Z",
+        "generatedAt": "2026-11-02T12:57:25.764Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5121,7 +5190,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.920Z",
+            "generatedAt": "2026-11-02T12:57:25.764Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5176,7 +5245,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.932Z",
+        "generatedAt": "2026-11-02T12:57:25.776Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5262,7 +5331,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.932Z",
+            "generatedAt": "2026-11-02T12:57:25.776Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5488,7 +5557,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.930Z",
+        "generatedAt": "2026-11-02T12:57:25.770Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5574,7 +5643,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.930Z",
+            "generatedAt": "2026-11-02T12:57:25.770Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5629,7 +5698,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.940Z",
+        "generatedAt": "2026-11-02T12:57:25.764Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5715,7 +5784,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.940Z",
+            "generatedAt": "2026-11-02T12:57:25.764Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5765,7 +5834,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.994Z",
+        "generatedAt": "2026-11-02T12:57:25.840Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5851,7 +5920,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.994Z",
+            "generatedAt": "2026-11-02T12:57:25.840Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5901,7 +5970,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.012Z",
+        "generatedAt": "2026-11-02T12:57:25.844Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5987,7 +6056,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.012Z",
+            "generatedAt": "2026-11-02T12:57:25.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6037,7 +6106,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.006Z",
+        "generatedAt": "2026-11-02T12:57:25.848Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6123,7 +6192,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.006Z",
+            "generatedAt": "2026-11-02T12:57:25.848Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6173,7 +6242,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.014Z",
+        "generatedAt": "2026-11-02T12:57:25.850Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6259,7 +6328,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.014Z",
+            "generatedAt": "2026-11-02T12:57:25.850Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6459,7 +6528,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.100Z",
+        "generatedAt": "2026-11-02T12:57:25.862Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6545,7 +6614,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.100Z",
+            "generatedAt": "2026-11-02T12:57:25.862Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6621,7 +6690,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.092Z",
+        "generatedAt": "2026-11-02T12:57:25.858Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6707,7 +6776,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.092Z",
+            "generatedAt": "2026-11-02T12:57:25.858Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6760,7 +6829,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.092Z",
+        "generatedAt": "2026-11-02T12:57:25.867Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6846,7 +6915,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.092Z",
+            "generatedAt": "2026-11-02T12:57:25.867Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6903,7 +6972,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.145Z",
+        "generatedAt": "2026-11-02T12:57:25.928Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6989,7 +7058,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.145Z",
+            "generatedAt": "2026-11-02T12:57:25.928Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7042,7 +7111,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.143Z",
+        "generatedAt": "2026-11-02T12:57:25.901Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7128,7 +7197,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.143Z",
+            "generatedAt": "2026-11-02T12:57:25.901Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7182,7 +7251,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.152Z",
+        "generatedAt": "2026-11-02T12:57:25.910Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7268,7 +7337,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.152Z",
+            "generatedAt": "2026-11-02T12:57:25.910Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7323,7 +7392,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.171Z",
+        "generatedAt": "2026-11-02T12:57:25.949Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7409,7 +7478,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.171Z",
+            "generatedAt": "2026-11-02T12:57:25.949Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7626,7 +7695,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.221Z",
+        "generatedAt": "2026-11-02T12:57:25.944Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7712,7 +7781,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.221Z",
+            "generatedAt": "2026-11-02T12:57:25.944Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7945,7 +8014,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.265Z",
+        "generatedAt": "2026-11-02T12:57:25.951Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8031,7 +8100,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.265Z",
+            "generatedAt": "2026-11-02T12:57:25.951Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8253,7 +8322,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.315Z",
+        "generatedAt": "2026-11-02T12:57:26.000Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8339,7 +8408,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.315Z",
+            "generatedAt": "2026-11-02T12:57:26.000Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8561,7 +8630,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.325Z",
+        "generatedAt": "2026-11-02T12:57:26.011Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8647,7 +8716,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.325Z",
+            "generatedAt": "2026-11-02T12:57:26.011Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8876,7 +8945,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.376Z",
+        "generatedAt": "2026-11-02T12:57:26.029Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8962,7 +9031,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.376Z",
+            "generatedAt": "2026-11-02T12:57:26.029Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9188,7 +9257,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.425Z",
+        "generatedAt": "2026-11-02T12:57:26.052Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9274,7 +9343,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.425Z",
+            "generatedAt": "2026-11-02T12:57:26.052Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9327,7 +9396,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.444Z",
+        "generatedAt": "2026-11-02T12:57:26.064Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9413,7 +9482,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.444Z",
+            "generatedAt": "2026-11-02T12:57:26.064Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9639,7 +9708,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.470Z",
+        "generatedAt": "2026-11-02T12:57:26.090Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9725,7 +9794,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.470Z",
+            "generatedAt": "2026-11-02T12:57:26.090Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9940,7 +10009,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.723Z",
+        "generatedAt": "2026-11-02T12:57:25.630Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9997,7 +10066,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.723Z",
+            "generatedAt": "2026-11-02T12:57:25.630Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10040,7 +10109,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.514Z",
+        "generatedAt": "2026-11-02T12:57:26.119Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10126,7 +10195,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.514Z",
+            "generatedAt": "2026-11-02T12:57:26.119Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10180,7 +10249,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.533Z",
+        "generatedAt": "2026-11-02T12:57:26.128Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10266,7 +10335,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.533Z",
+            "generatedAt": "2026-11-02T12:57:26.128Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10319,7 +10388,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.545Z",
+        "generatedAt": "2026-11-02T12:57:26.123Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10405,7 +10474,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.545Z",
+            "generatedAt": "2026-11-02T12:57:26.123Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10453,7 +10522,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.590Z",
+        "generatedAt": "2026-11-02T12:57:26.150Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10539,7 +10608,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.590Z",
+            "generatedAt": "2026-11-02T12:57:26.150Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10587,7 +10656,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.589Z",
+        "generatedAt": "2026-11-02T12:57:26.158Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10673,7 +10742,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.589Z",
+            "generatedAt": "2026-11-02T12:57:26.158Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10721,7 +10790,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.625Z",
+        "generatedAt": "2026-11-02T12:57:26.179Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10807,7 +10876,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.625Z",
+            "generatedAt": "2026-11-02T12:57:26.179Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10855,7 +10924,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.639Z",
+        "generatedAt": "2026-11-02T12:57:26.203Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10941,7 +11010,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.639Z",
+            "generatedAt": "2026-11-02T12:57:26.203Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10989,7 +11058,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.665Z",
+        "generatedAt": "2026-11-02T12:57:26.185Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11075,7 +11144,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.665Z",
+            "generatedAt": "2026-11-02T12:57:26.185Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11123,7 +11192,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.669Z",
+        "generatedAt": "2026-11-02T12:57:26.209Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11209,7 +11278,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.669Z",
+            "generatedAt": "2026-11-02T12:57:26.209Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11257,7 +11326,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.700Z",
+        "generatedAt": "2026-11-02T12:57:26.212Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11343,7 +11412,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.700Z",
+            "generatedAt": "2026-11-02T12:57:26.212Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11571,7 +11640,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.740Z",
+        "generatedAt": "2026-11-02T12:57:26.280Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11657,7 +11726,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.740Z",
+            "generatedAt": "2026-11-02T12:57:26.280Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11710,7 +11779,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.744Z",
+        "generatedAt": "2026-11-02T12:57:26.240Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11796,7 +11865,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.744Z",
+            "generatedAt": "2026-11-02T12:57:26.240Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12024,7 +12093,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.799Z",
+        "generatedAt": "2026-11-02T12:57:26.271Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12110,7 +12179,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.799Z",
+            "generatedAt": "2026-11-02T12:57:26.271Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12155,7 +12224,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.818Z",
+        "generatedAt": "2026-11-02T12:57:26.292Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12241,7 +12310,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.818Z",
+            "generatedAt": "2026-11-02T12:57:26.292Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12286,7 +12355,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.816Z",
+        "generatedAt": "2026-11-02T12:57:26.297Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12372,7 +12441,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.816Z",
+            "generatedAt": "2026-11-02T12:57:26.297Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12417,7 +12486,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.875Z",
+        "generatedAt": "2026-11-02T12:57:26.316Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12503,7 +12572,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.875Z",
+            "generatedAt": "2026-11-02T12:57:26.316Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12548,7 +12617,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.887Z",
+        "generatedAt": "2026-11-02T12:57:26.308Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12634,7 +12703,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.887Z",
+            "generatedAt": "2026-11-02T12:57:26.308Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12684,7 +12753,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.891Z",
+        "generatedAt": "2026-11-02T12:57:26.332Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12770,7 +12839,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.891Z",
+            "generatedAt": "2026-11-02T12:57:26.332Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12823,7 +12892,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.857Z",
+        "generatedAt": "2026-11-02T12:57:26.324Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12909,7 +12978,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.857Z",
+            "generatedAt": "2026-11-02T12:57:26.324Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12954,7 +13023,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.942Z",
+        "generatedAt": "2026-11-02T12:57:26.381Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13040,7 +13109,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.942Z",
+            "generatedAt": "2026-11-02T12:57:26.381Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13085,7 +13154,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.905Z",
+        "generatedAt": "2026-11-02T12:57:26.319Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13171,7 +13240,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.905Z",
+            "generatedAt": "2026-11-02T12:57:26.319Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13216,7 +13285,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.928Z",
+        "generatedAt": "2026-11-02T12:57:26.327Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13302,7 +13371,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.928Z",
+            "generatedAt": "2026-11-02T12:57:26.327Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13347,7 +13416,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.943Z",
+        "generatedAt": "2026-11-02T12:57:26.353Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13433,7 +13502,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.943Z",
+            "generatedAt": "2026-11-02T12:57:26.353Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13478,7 +13547,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.946Z",
+        "generatedAt": "2026-11-02T12:57:26.346Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13564,7 +13633,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.946Z",
+            "generatedAt": "2026-11-02T12:57:26.346Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13609,7 +13678,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.946Z",
+        "generatedAt": "2026-11-02T12:57:26.337Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13695,7 +13764,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.946Z",
+            "generatedAt": "2026-11-02T12:57:26.337Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13740,7 +13809,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.980Z",
+        "generatedAt": "2026-11-02T12:57:26.363Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13826,7 +13895,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.980Z",
+            "generatedAt": "2026-11-02T12:57:26.363Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13871,7 +13940,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:58.973Z",
+        "generatedAt": "2026-11-02T12:57:26.353Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13957,7 +14026,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:58.973Z",
+            "generatedAt": "2026-11-02T12:57:26.353Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -14171,7 +14240,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:59.020Z",
+        "generatedAt": "2026-11-02T12:57:26.424Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -14257,7 +14326,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:59.020Z",
+            "generatedAt": "2026-11-02T12:57:26.424Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -14297,7 +14366,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.723Z",
+        "generatedAt": "2026-11-02T12:57:25.630Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -14354,7 +14423,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.723Z",
+            "generatedAt": "2026-11-02T12:57:25.630Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -14397,7 +14466,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T06:28:57.723Z",
+        "generatedAt": "2026-11-02T12:57:25.630Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -14454,7 +14523,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T06:28:57.723Z",
+            "generatedAt": "2026-11-02T12:57:25.630Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
