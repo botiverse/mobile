@@ -743,14 +743,24 @@ enum class InboxFilter(val wireValue: String, val scopeWireValue: String? = null
      * saved message (saving a message follows its thread): `filter=all&scope=saved`.
      */
     Saved("all", scopeWireValue = "saved"),
+
+    /**
+     * web Artifacts: a scope over All, after Saved. Only Artifact rows (object rows, no
+     * conversations): `filter=all&scope=artifacts`, the server's app scope (routes/channels.ts
+     * `parseInboxScopeParam`, `getObjectKindInboxItems`), none for a search or a channel.
+     */
+    Artifacts("all", scopeWireValue = "artifacts"),
 }
 
 /**
- * All and its scopes (Pinned, Saved) list unfollowed, not-Done threads too; the read filters don't
- * (web: the unfollowed rows are fetched per scope, under the All read filter).
+ * All and its scopes (Pinned, Saved, Artifacts) list unfollowed, not-Done threads too; the read
+ * filters don't (web: the unfollowed rows are fetched per scope, under the All read filter; Artifacts
+ * lists no threads at all).
  */
 internal val InboxFilter.listsUnfollowedActivityThreads: Boolean
-    get() = this == InboxFilter.All || this == InboxFilter.Pinned || this == InboxFilter.Saved
+    get() =
+        this == InboxFilter.All || this == InboxFilter.Pinned || this == InboxFilter.Saved ||
+            this == InboxFilter.Artifacts
 
 const val DEFAULT_PAGE_LIMIT = 30
 

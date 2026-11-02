@@ -36,6 +36,7 @@ internal fun InboxFilter.preferenceValue(): String =
         InboxFilter.Mentions -> "mentions"
         InboxFilter.Pinned -> "pinned"
         InboxFilter.Saved -> "saved"
+        InboxFilter.Artifacts -> "artifacts"
     }
 
 /** web `parseActivityFilterChoice`: one of the choices, else All. */

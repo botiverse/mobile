@@ -244,6 +244,7 @@ LUCIDE_ICONS = [
     "presentation",
     "refresh-cw",
     "reopen-task",
+    "artifact",
     "redo-2",
     "rotate-ccw",
     "rotate-cw",
@@ -296,7 +297,8 @@ LUCIDE_ICONS = [
 RAFT_UI_ICON_SOURCE_DIR = os.path.join(SCRIPT_DIR, "assets", "raft-ui")
 
 # Icons drawn by raft-ui where Lucide has none (raft-design packages/ui/src/components/icons:
-# conversation-icons.tsx ThreadIcon, action-icons.tsx Follow/UnfollowThreadIcon, ReopenTaskIcon),
+# conversation-icons.tsx ThreadIcon, action-icons.tsx Follow/UnfollowThreadIcon, ReopenTaskIcon,
+# object-icons.tsx ArtifactIcon),
 # copied path for path so the app's menus draw what the web's do.
 CUSTOM_ICONS = {
     "mosaic": os.path.join(BRAND_ASSET_SOURCE_DIR, "mosaic.svg"),
@@ -304,6 +306,7 @@ CUSTOM_ICONS = {
     "follow-thread": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "follow-thread.svg"),
     "unfollow-thread": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "unfollow-thread.svg"),
     "reopen-task": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "reopen-task.svg"),
+    "artifact": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "artifact.svg"),
 }
 
 BRAND_SVGS = {

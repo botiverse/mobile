@@ -288,6 +288,62 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun artifactsFilterAsksForTheAllFilterScopedToArtifactsOnEveryPage() = runBlocking {
+        // web Artifacts: a scope over All listing only Artifact rows (object rows, no conversations),
+        // `filter=all&scope=artifacts`, on the first page and on every page after it. The server's
+        // conversation totals are 0; the rows count under `objectCount`.
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "object",
+                          "objectKind": "artifact",
+                          "objectId": "pt_artifact-1",
+                          "home": { "kind": "channel", "label": "general", "channelId": "channel-general" },
+                          "latestEvent": {
+                            "eventKind": "comment",
+                            "reason": "following",
+                            "actor": { "type": "user", "id": "user-2", "name": "kirby" },
+                            "at": "2026-10-26T10:00:00.000Z"
+                          },
+                          "unreadCount": 1,
+                          "hasMention": false,
+                          "isFollowing": true,
+                          "lastActivityAt": "2026-10-26T10:00:00.000Z",
+                          "doneFrontierSeq": "12"
+                        }
+                      ],
+                      "hasMore": true,
+                      "totalCount": 0,
+                      "totalUnreadCount": 0,
+                      "objectUnreadCount": 1,
+                      "objectMentionUnreadCount": 0,
+                      "objectCount": 2
+                    }
+                    """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Artifacts)
+        repository.loadMore(ServerId("server-1"), InboxFilter.Artifacts, offset = 30)
+
+        assertEquals(
+            listOf(
+                InboxCall(filter = "all", limit = 30, offset = 0, scope = "artifacts"),
+                InboxCall(filter = "all", limit = 30, offset = 30, scope = "artifacts"),
+            ),
+            network.inboxCalls
+        )
+        assertTrue(first is DataResult.Content)
+        assertEquals("object:artifact:pt_artifact-1", first.data.items.single().key)
+        assertEquals(ActivityObjectCounts(objectUnreadCount = 1, objectMentionUnreadCount = 0, objectCount = 2), first.data.objectCounts)
+        assertEquals(1, first.data.objectCounts?.unreadFor(InboxFilter.Artifacts))
+    }
+
+    @Test
     fun attentionFiltersNeverExposeAnUnfollowedThreadRow() = runBlocking {
         val repository =
             RealInboxRepository(

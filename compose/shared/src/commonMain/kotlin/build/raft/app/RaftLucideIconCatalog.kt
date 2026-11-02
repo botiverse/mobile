@@ -198,6 +198,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Presentation("presentation"),
     RefreshCw("refresh-cw"),
     ReopenTask("reopen-task"),
+    Artifact("artifact"),
     Redo2("redo-2"),
     RotateCcw("rotate-ccw"),
     RotateCw("rotate-cw"),
