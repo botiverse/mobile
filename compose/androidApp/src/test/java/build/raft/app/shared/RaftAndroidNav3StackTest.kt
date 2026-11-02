@@ -107,10 +107,6 @@ class RaftAndroidNav3StackTest {
             assertTrue(name, stack.openLikeTheShell(name, data, from = null))
             assertTrue(name, stack.openLikeTheShell(name, data, from = stack.pages.last()))
         }
-        // Kept as Activities: Account (avatar picker), the Settings web pages, Feedback.
-        listOf(RaftPages.SETTINGS_ACCOUNT, "compose_settings_webview", "compose_settings_hands_feedback").forEach { name ->
-            assertFalse(name, stack.openLikeTheShell(name, settings("about"), from = stack.pages.last()))
-        }
     }
 
     @Test
@@ -171,13 +167,180 @@ class RaftAndroidNav3StackTest {
         stack.openLikeTheShell(MEMBER_DETAIL, JsonObject(mapOf("memberId" to JsonPrimitive("m1"))), from = null)
         val profile = stack.pages.last()
         val before = stack.savedKeys()
-        // The profile's DM, Settings > Server > Administration (web page): Activities over the window.
+        // The profile's DM, a web surface not moved (onboarding): Activities over the window.
         assertFalse(stack.openLikeTheShell(RaftPages.THREAD, thread, from = profile))
-        assertFalse(stack.openLikeTheShell("compose_settings_webview", settings("about"), from = profile))
+        assertFalse(stack.openLikeTheShell(SETTINGS_WEB, web("onboarding"), from = profile))
         assertEquals("the Activity covers the window; finishing it shows the profile again", before, stack.savedKeys())
         assertEquals(profile, stack.pages.last())
         assertTrue(stack.back())
         assertEquals(1, stack.pages.size)
+    }
+
+    // Step 2 batch 2 -------------------------------------------------------------------------------
+
+    private fun web(surface: String) =
+        JsonObject(mapOf("settingsWebViewSurface" to JsonPrimitive(surface), "slockShellInstanceId" to JsonPrimitive("shell-1")))
+
+    private val scope = JsonObject(mapOf("slockShellInstanceId" to JsonPrimitive("shell-1")))
+
+    /** The shell Activity's bridge: keeps each call's callback, [answer] plays the Activity result. */
+    private class FakeActivityBridge : HostBridgeTransport {
+        val calls = mutableListOf<Pair<String, (String?) -> Unit>>()
+
+        override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
+            if (callback != null) calls += method to callback
+        }
+
+        fun answer(index: Int, result: String) = calls[index].second(result)
+    }
+
+    private fun results(stack: RaftPageStack) = RaftStackActivityResults(isOpen = { key -> stack.pages.any { it.contentKey == key } })
+
+    private fun pageTransport(bridge: HostBridgeTransport, stack: RaftPageStack, page: RaftStackPage, results: RaftStackActivityResults) =
+        RaftStackPageBridgeTransport(bridge, onClosePage = { stack.close(page) }, pageKey = page.contentKey, results = results)
+
+    @Test
+    fun batch2PagesOpenOnTheStack() {
+        val stack = RaftPageStack()
+        listOf(
+            RaftPages.SETTINGS_ACCOUNT to scope,
+            "compose_settings_hands_feedback" to scope,
+            RaftPages.SETTINGS_STORAGE to scope,
+            "compose_release_notes" to scope,
+            "compose_settings_computers" to scope,
+            SETTINGS_WEB to web("billing"),
+            SETTINGS_WEB to web("administration"),
+            SETTINGS_WEB to web("im-bridges"),
+            SETTINGS_WEB to web("marketplace"),
+            SETTINGS_WEB to web("feedback"),
+        ).forEach { (name, data) ->
+            assertTrue(name, stack.openLikeTheShell(name, data, from = null))
+            assertTrue(name, stack.openLikeTheShell(name, data, from = stack.pages.last()))
+        }
+    }
+
+    @Test
+    fun eachPagesPickerResultReachesThePageThatAsked() {
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(RaftPages.SETTINGS_ACCOUNT, scope, from = null)
+        val account = stack.pages.last()
+        stack.openLikeTheShell("compose_settings_hands_feedback", scope, from = account)
+        val feedback = stack.pages.last()
+        val bridge = FakeActivityBridge()
+        val results = results(stack)
+        val answers = mutableMapOf<String, String?>()
+        pageTransport(bridge, stack, account, results).call("threadAttachmentUpload", "{}") { answers["account"] = it }
+        pageTransport(bridge, stack, feedback, results).call("threadAttachmentUpload", "{}") { answers["feedback"] = it }
+        // Other calls are not result routed.
+        pageTransport(bridge, stack, feedback, results).call("toast", "{}") { answers["toast"] = it }
+        assertEquals(2, results.pendingCount)
+
+        bridge.answer(1, """{"code":200,"files":["feedback.png"]}""")
+        bridge.answer(0, """{"code":200,"files":["avatar.png"]}""")
+        assertEquals("""{"code":200,"files":["avatar.png"]}""", answers["account"])
+        assertEquals("""{"code":200,"files":["feedback.png"]}""", answers["feedback"])
+        assertEquals(0, results.pendingCount)
+    }
+
+    @Test
+    fun aResultForAClosedPageIsDroppedAsCancelled() {
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(RaftPages.SETTINGS_ACCOUNT, scope, from = null)
+        val account = stack.pages.last()
+        val bridge = FakeActivityBridge()
+        val results = results(stack)
+        var answer: String? = null
+        pageTransport(bridge, stack, account, results).call("threadAttachmentUpload", "{}") { answer = it }
+        stack.close(account)
+        bridge.answer(0, """{"code":200,"files":["avatar.png"]}""")
+        assertEquals("the closed page's call ends as cancelled, never with the file", """{"code":204,"bodyText":""}""", answer)
+        assertEquals(0, results.pendingCount)
+    }
+
+    @Test
+    fun webViewFileChooserResultFollowsItsPage() {
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(SETTINGS_WEB, web("feedback"), from = null)
+        val web = stack.pages.last()
+        val results = results(stack)
+        val first = results.begin(web.contentKey, RAFT_STACK_RESULT_WEB_FILE_CHOOSER)
+        assertTrue("page open: its files", results.complete(first))
+        val second = results.begin(web.contentKey, RAFT_STACK_RESULT_WEB_FILE_CHOOSER)
+        stack.close(web)
+        assertFalse("page closed: no files (the chooser gets null)", results.complete(second))
+        assertFalse("an unknown or finished request delivers nothing", results.complete(second))
+    }
+
+    @Test
+    fun processDeathWithAPendingPickDropsTheResultSafely() {
+        // Settings > Account > avatar picker open, then the process dies.
+        val before = RaftPageStack()
+        before.openLikeTheShell(RaftPages.SETTINGS_ACCOUNT, scope, from = null)
+        val account = before.pages.last()
+        val beforeResults = results(before)
+        pageTransport(FakeActivityBridge(), before, account, beforeResults).call("threadAttachmentUpload", "{}") { }
+        val savedKeys = RaftPageStackSavedState.encode(before.savedKeys())
+        val savedResults = beforeResults.encode()
+
+        val after = RaftPageStack()
+        assertTrue(after.restore(raftAndroidNav3RestoredKeys(savedKeys)!!))
+        val afterResults = results(after).apply { restore(savedResults) }
+        assertEquals(1, afterResults.pendingCount)
+        // The pick comes back to the new instance: nothing waits for it, it is dropped for Account.
+        assertEquals(account.contentKey, afterResults.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER))
+        assertEquals(0, afterResults.pendingCount)
+        assertNull("a second result finds nothing", afterResults.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER))
+        // The restored Account page asks again: a fresh request, delivered to it.
+        val bridge = FakeActivityBridge()
+        var answer: String? = null
+        pageTransport(bridge, after, after.pages.last(), afterResults).call("threadAttachmentUpload", "{}") { answer = it }
+        bridge.answer(0, """{"code":200}""")
+        assertEquals("""{"code":200}""", answer)
+
+        // Saved pages unusable (shell alone): the saved request still ends, no page gets the result.
+        val shellOnly = RaftPageStack()
+        val shellResults = results(shellOnly).apply { restore(savedResults) }
+        assertEquals(account.contentKey, shellResults.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER))
+        // Garbage saved text restores nothing.
+        assertEquals(0, results(shellOnly).apply { restore("not json") }.pendingCount)
+        assertNull(results(shellOnly).encode())
+    }
+
+    @Test
+    fun signOutFromAccountClearsTheStack() {
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(SETTINGS_DETAIL, settings("developer"), from = null)
+        stack.openLikeTheShell(RaftPages.SETTINGS_ACCOUNT, scope, from = stack.pages.last())
+        val account = stack.pages.last()
+        val results = results(stack)
+        results.begin(account.contentKey, RAFT_STACK_RESULT_ATTACHMENT_PICKER)
+        // Logout opens the login page in place of the window: the host's way (login replacement).
+        val logout = JsonObject(mapOf("slockReplaceCurrentPage" to JsonPrimitive(true)))
+        assertEquals(RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack, RaftPages.LOGIN, logout, from = account))
+
+        raftAndroidNav3ClearForWindowReplace(stack, results)
+        assertEquals(listOf(RaftPages.APP_SHELL), stack.pages.map { it.args.pageName })
+        assertTrue(stack.savedKeys().isEmpty())
+        assertEquals(0, results.pendingCount)
+    }
+
+    @Test
+    fun mixingBatch2PagesWithActivities() {
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(RaftPages.SETTINGS_ACCOUNT, scope, from = null)
+        val account = stack.pages.last()
+        // Account > a web page on the stack; from it a chat (Activity over the window).
+        assertTrue(stack.openLikeTheShell(SETTINGS_WEB, web("marketplace"), from = account))
+        val web = stack.pages.last()
+        assertFalse(stack.openLikeTheShell(RaftPages.THREAD, thread, from = web))
+        assertFalse(stack.openLikeTheShell(SETTINGS_WEB, web("onboarding"), from = web))
+        assertEquals(listOf(RaftPages.APP_SHELL, RaftPages.SETTINGS_ACCOUNT, SETTINGS_WEB), stack.pages.map { it.args.pageName })
+        // The stack page's result routing is unaffected by the Activity over it.
+        val results = results(stack)
+        val id = results.begin(web.contentKey, RAFT_STACK_RESULT_WEB_FILE_CHOOSER)
+        assertTrue(results.complete(id))
+        assertTrue(stack.back())
+        assertEquals(account, stack.pages.last())
     }
 
     private companion object {
@@ -185,5 +348,6 @@ class RaftAndroidNav3StackTest {
         const val HOME_SAVED = "compose_home_saved"
         const val HOME_DRAFTS = "compose_home_drafts"
         const val MEMBER_DETAIL = "compose_member_detail"
+        const val SETTINGS_WEB = "compose_settings_webview"
     }
 }

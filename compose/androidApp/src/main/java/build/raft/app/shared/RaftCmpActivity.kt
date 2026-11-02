@@ -778,6 +778,9 @@ internal open class RaftCmpActivity :
     private var nav3SavedRootTab: String? = null
     // onNewIntent resets the window to the shell: the recreation must not bring the stack back.
     private var nav3DropStackOnSave = false
+    // Activity results asked for by stack pages (picker, camera, WebView file chooser), by page key.
+    // Made in onCreate, as results can come back before the (deferred) stack is attached.
+    private var nav3Results: RaftStackActivityResults? = null
     // Instance-owned: onNewIntent may replace the Intent before this instance is destroyed.
     private var loginTransitionToken: String? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
@@ -839,10 +842,19 @@ internal open class RaftCmpActivity :
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                 val callback = pendingWebViewFileChooserCallback
                 pendingWebViewFileChooserCallback = null
-                callback?.onReceiveValue(
-                        WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+                val requestId = pendingWebViewFileChooserStackRequest
+                pendingWebViewFileChooserStackRequest = null
+                if (callback == null) {
+                    nav3Results?.dropRecreated(RAFT_STACK_RESULT_WEB_FILE_CHOOSER)
+                    return@registerForActivityResult
+                }
+                // A stack page's chooser: its files only while that page is still open.
+                val deliver = requestId == null || nav3Results?.complete(requestId) != false
+                callback.onReceiveValue(
+                        if (deliver) WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data) else null
                 )
             }
+    private var pendingWebViewFileChooserStackRequest: String? = null
 
     override fun launchSandboxWebViewFileChooser(
         params: WebChromeClient.FileChooserParams,
@@ -854,11 +866,22 @@ internal open class RaftCmpActivity :
         }
         return runCatching {
             pendingWebViewFileChooserCallback = callback
+            // A file input is a tap on the page on screen: the top stack page asked (not the shell).
+            pendingWebViewFileChooserStackRequest =
+                nav3TopPageKey()?.let { key -> nav3Results?.begin(key, RAFT_STACK_RESULT_WEB_FILE_CHOOSER) }
             webViewFileChooserLauncher.launch(params.createIntent())
         }.onFailure {
             pendingWebViewFileChooserCallback = null
+            pendingWebViewFileChooserStackRequest?.let { nav3Results?.complete(it) }
+            pendingWebViewFileChooserStackRequest = null
             callback.onReceiveValue(null)
         }.isSuccess
+    }
+
+    /** The content key of the stack page on screen, or null (stack off, or the shell on top). */
+    private fun nav3TopPageKey(): String? {
+        val pages = nav3Stack?.pages ?: return null
+        return pages.lastOrNull()?.takeIf { pages.size > 1 }?.contentKey
     }
     private val screenshotFeedbackEventGate =
             ScreenshotFeedbackEventGate(SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS)
@@ -900,6 +923,11 @@ internal open class RaftCmpActivity :
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
         nav3SavedKeysText = savedInstanceState?.getString(RAFT_NAV3_STACK_STATE_KEY)
         nav3SavedRootTab = savedInstanceState?.getString(RAFT_NAV3_STACK_ROOT_TAB_KEY)
+        nav3Results =
+            RaftStackActivityResults(
+                isOpen = { key -> nav3Stack?.pages?.any { it.contentKey == key } == true },
+                log = { line -> RaftAppLog.record(TAG, line) },
+            ).apply { restore(savedInstanceState?.getString(RAFT_NAV3_STACK_RESULTS_KEY)) }
         pendingAttachmentSaveAs =
                 savedInstanceState
                     ?.getBundle(ATTACHMENT_SAVE_AS_STATE_KEY)
@@ -1134,7 +1162,13 @@ internal open class RaftCmpActivity :
 
     /** The host of one stack page: the Activity's bridge, its own navigator and events. */
     private fun nav3PageHost(stack: RaftPageStack, page: RaftStackPage, activityTransport: HostBridgeTransport): RaftCmpHost {
-        val transport = RaftStackPageBridgeTransport(activityTransport, onClosePage = { stack.close(page) })
+        val transport =
+            RaftStackPageBridgeTransport(
+                activityTransport,
+                onClosePage = { stack.close(page) },
+                pageKey = page.contentKey,
+                results = nav3Results,
+            )
         return RaftCmpHost(
             capabilities = BridgeWireHostCapabilities(transport),
             navigator =
@@ -1430,6 +1464,7 @@ internal open class RaftCmpActivity :
         pendingThreadCameraCapture?.let { pending ->
             outState.putString(THREAD_CAMERA_CAPTURE_STATE_KEY, pending.file.canonicalPath)
         }
+        if (!nav3DropStackOnSave) nav3Results?.encode()?.let { outState.putString(RAFT_NAV3_STACK_RESULTS_KEY, it) }
         nav3Stack?.takeUnless { nav3DropStackOnSave }?.savedKeys()?.takeIf { it.isNotEmpty() }?.let { keys ->
             val text = RaftPageStackSavedState.encode(keys)
             if (text != null) {
@@ -1757,6 +1792,13 @@ internal open class RaftCmpActivity :
         val replaceCurrent = shouldReplaceCurrentPage(data)
         if (pageName == RaftPages.LOGIN && replaceCurrent) {
             AndroidLoginTransitionRouting.openReplacement(this, data)
+            // Sign-out from a stack page (Account): the window is replaced as today; nothing on the
+            // stack survives it, nor comes back with a recreation.
+            if (stack != null && isFinishing) {
+                RaftAppLog.record(TAG, "nav3_stack_window_replaced pages=${stack.pages.size}")
+                raftAndroidNav3ClearForWindowReplace(stack, nav3Results)
+                nav3DropStackOnSave = true
+            }
             return
         }
         val startDestination = {
@@ -2097,9 +2139,13 @@ internal open class RaftCmpActivity :
     }
 
     private fun handleThreadCameraCaptureResult(captured: Boolean) {
-        val cameraCapture = pendingThreadCameraCapture ?: return
+        val cameraCapture = pendingThreadCameraCapture ?: run {
+            nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
+            return
+        }
         pendingThreadCameraCapture = null
         if (cameraCapture.restoredAfterActivityRecreation) {
+            nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
             val cleaned = runCatching {
                 discardRestoredThreadCameraCaptureResult(cameraCapture.file)
             }.getOrDefault(false)
@@ -2129,7 +2175,11 @@ internal open class RaftCmpActivity :
             source: String = "platform_picker",
             sourceFilesToDelete: List<File> = emptyList()
     ) {
-        val pending = pendingThreadAttachmentUpload ?: return
+        val pending = pendingThreadAttachmentUpload ?: run {
+            // A picker result for a request made before this window was recreated: dropped.
+            nav3Results?.dropRecreated(RAFT_STACK_RESULT_ATTACHMENT_PICKER)
+            return
+        }
         pendingThreadAttachmentUpload = null
         RaftAppLog.record(
                 "SlockKuiklyAttachment",

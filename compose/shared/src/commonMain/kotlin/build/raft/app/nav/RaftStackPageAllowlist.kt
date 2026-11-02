@@ -56,18 +56,31 @@ fun raftStackOpenRoute(
 
 internal const val RAFT_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 
+/** The Settings web page surfaces on the stack (the others keep the host's way). */
+internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSurface> =
+    listOf(
+        build.raft.app.SettingsWebViewSurface.Billing,
+        build.raft.app.SettingsWebViewSurface.Administration,
+        build.raft.app.SettingsWebViewSurface.ImBridges,
+        build.raft.app.SettingsWebViewSurface.Marketplace,
+        build.raft.app.SettingsWebViewSurface.Feedback,
+    )
+
 /**
  * The pages a mobile host opens on its stack (Android with [RaftNav3StackFlag] on). Step 1 had one
  * trivial test page, Settings > About; step 2 adds the simple pages in batches.
  *
  * Batch 1: every Settings detail page (each `settingsPage` value), Saved, Drafts and member detail.
- * None needs an Activity of its own: their host calls (share, permission prompt, system settings,
- * the agent avatar picker on member detail) answer through the shell Activity's bridge callback, and
- * a page they open that is not listed here (a chat, Administration, the Settings web pages) still
- * opens an Activity over the shell window. Kept as Activities for now: Account (avatar picker,
- * sign-out / delete replaces the window), Feedback (attachment picker, camera, image edit), the
- * Settings web pages (Billing, Administration, IM Bridges, Connected apps, web Feedback: the WebView
- * file chooser is an Activity result), Storage, Release notes and Computers (later batches).
+ * Their host calls (share, permission prompt, system settings) answer through the shell Activity's
+ * bridge callback, and a page they open that is not listed here (a chat) still opens an Activity
+ * over the shell window.
+ *
+ * Batch 2: the pages that need an Activity result or replace the window. Account (avatar picker;
+ * sign-out replaces the window: the host clears the stack, then today's login replacement),
+ * Feedback (attachment picker, camera), the Settings web pages (one rule per surface: Billing,
+ * Administration, IM Bridges, Connected apps, web Feedback; WebView file chooser), Storage,
+ * Release notes and Computers (list and one machine). The picker, camera and file chooser results
+ * reach the page that asked through the host's result routing, keyed by the page's content key.
  */
 val RaftMobileStackPages: RaftStackPageAllowlist =
     RaftStackPageAllowlist(
@@ -82,5 +95,18 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 RaftStackPageRule(pageName = build.raft.app.HOME_SAVED_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.HOME_DRAFTS_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.MEMBER_DETAIL_PAGE),
-            )
+                // Batch 2.
+                RaftStackPageRule(pageName = build.raft.app.SETTINGS_ACCOUNT_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.SETTINGS_HANDS_FEEDBACK_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.SETTINGS_STORAGE_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.RELEASE_NOTES_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),
+            ) +
+            RaftStackSettingsWebSurfaces.map { surface ->
+                RaftStackPageRule(
+                    pageName = build.raft.app.SETTINGS_WEB_VIEW_PAGE,
+                    field = build.raft.app.SETTINGS_WEB_VIEW_SURFACE,
+                    value = surface.diagnosticsName,
+                )
+            }
     )
