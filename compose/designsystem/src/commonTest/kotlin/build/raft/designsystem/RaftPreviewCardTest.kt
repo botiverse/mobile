@@ -2,6 +2,7 @@ package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardState
+import build.raft.designsystem.components.raftPreviewCardIsPinClick
 import build.raft.designsystem.components.raftPreviewCardSwitchDelay
 import build.raft.designsystem.components.raftPreviewCardWantsOpen
 import kotlin.test.Test
@@ -90,5 +91,39 @@ class RaftPreviewCardTest {
         state.dismiss()
         state.setTriggerHovered(true)
         assertTrue(state.wantsOpen)
+    }
+
+    @Test
+    fun aPinnedCardOpensAtOnceAndStaysWhenThePointerLeaves() {
+        // Web RuntimeUsageHoverCard: a click on the trigger pins the card.
+        val state = RaftPreviewCardState()
+        state.setTriggerHovered(true)
+        state.pin()
+        assertTrue(state.isOpen)
+        assertTrue(state.isPinned)
+        state.setTriggerHovered(false)
+        state.setCardHovered(false)
+        assertTrue(state.wantsOpen)
+        assertTrue(raftPreviewCardWantsOpen(overTrigger = false, overCard = false, suppressed = true, pinned = true))
+    }
+
+    @Test
+    fun dismissUnpins() {
+        // A click outside, Escape or the card's close button.
+        val state = RaftPreviewCardState()
+        state.pin()
+        state.dismiss()
+        assertFalse(state.isOpen)
+        assertFalse(state.isPinned)
+        assertFalse(state.wantsOpen)
+    }
+
+    @Test
+    fun aPinClickIsAReleaseWhereThePressWasBeforeALongPress() {
+        assertTrue(raftPreviewCardIsPinClick(distance = 0f, heldMillis = 80L, touchSlop = 8f, longPressMillis = 400L))
+        assertTrue(raftPreviewCardIsPinClick(distance = 8f, heldMillis = 399L, touchSlop = 8f, longPressMillis = 400L))
+        // A drag, or a long press (the trigger's own, such as copying), is not a click.
+        assertFalse(raftPreviewCardIsPinClick(distance = 9f, heldMillis = 80L, touchSlop = 8f, longPressMillis = 400L))
+        assertFalse(raftPreviewCardIsPinClick(distance = 0f, heldMillis = 400L, touchSlop = 8f, longPressMillis = 400L))
     }
 }
