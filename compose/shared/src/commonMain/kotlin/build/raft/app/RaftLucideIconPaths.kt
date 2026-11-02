@@ -1793,6 +1793,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m9 12.5 2 2 4-4"),
                     ),
                 )
+            RaftLucideIconName.Artifact ->
+                RaftLucideIconSpec(
+                    "artifact",
+                    listOf(
+                        RaftLucidePathSpec("M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"),
+                        RaftLucidePathSpec("M9 6h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z"),
+                        RaftLucidePathSpec("M8 14h8"),
+                        RaftLucidePathSpec("M8 18h4"),
+                    ),
+                )
             RaftLucideIconName.Redo2 ->
                 RaftLucideIconSpec(
                     "redo-2",

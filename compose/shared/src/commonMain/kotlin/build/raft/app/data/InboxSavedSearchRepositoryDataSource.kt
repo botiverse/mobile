@@ -41,7 +41,8 @@ private suspend fun RaftNetworkClient.inbox(
 
 /**
  * `GET /channels/inbox` query (botiverse/slock routes/channels.ts `channelRouter.get("/inbox")`):
- * `filter`, `limit`, `offset`, and `scope` for a scoped filter (Pinned: `scope=pinned`, Saved: `scope=saved`).
+ * `filter`, `limit`, `offset`, and `scope` for a scoped filter (Pinned: `scope=pinned`, Saved: `scope=saved`,
+ * Artifacts: `scope=artifacts`).
  */
 internal fun inboxRequestQuery(filter: InboxFilter, limit: Int, offset: Int): List<Pair<String, String>> =
     listOfNotNull(

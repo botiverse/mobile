@@ -1149,6 +1149,8 @@
     <string name="inbox_empty_pinned_detail">Channels and DMs you pin in the sidebar show up here, with their threads.</string>
     <string name="inbox_state_no_saved">No saved threads</string>
     <string name="inbox_empty_saved_detail">Save a message and its thread shows up here.</string>
+    <string name="inbox_state_no_artifacts">No Artifacts here</string>
+    <string name="inbox_empty_artifacts_detail">Comment on an Artifact or follow it, and its new comments and versions show up here.</string>
     <string name="inbox_error_load_more">Could not load more.</string>
     <string name="inbox_state_loading_more">Loading more…</string>
     <string name="inbox_error_conversation_not_ready">Conversation isn't ready yet. Try again.</string>
@@ -1160,6 +1162,7 @@
     <string name="activity_filter_mentions">Mentions</string>
     <string name="activity_filter_pinned">Pinned</string>
     <string name="activity_filter_saved">Saved</string>
+    <string name="activity_filter_artifacts">Artifacts</string>
     <string name="activity_filter_button">Filter</string>
     <string name="activity_filter_clear">Clear filter</string>
     <string name="activity_updates_one">↑ %1$d new update</string>
