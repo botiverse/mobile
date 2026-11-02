@@ -115,7 +115,12 @@ class SettingsWideSplitScreenshotTest {
                             title = "Plan & Billing",
                             iconName = RaftLucideIconName.CreditCard,
                         ) { _, _ ->
-                            SettingsBillingViewOnlyContent(billing = wideBillingFixture, sessionPlanName = "Free")
+                            SettingsBillingViewOnlyContent(
+                                billing = settingsBillingViewOnlyProFixture,
+                                sessionPlan = null,
+                                onRetry = {},
+                                nowEpochMillis = SettingsBillingViewOnlyFixtureNow,
+                            )
                         }
                     } else if (key == SettingsDestinationBilling) {
                         val pager = LocalActivity.current.getPager() as Pager
@@ -206,25 +211,6 @@ class SettingsWideSplitScreenshotTest {
             }
         }
 }
-
-private val wideBillingFixture =
-    build.raft.app.data.ScreenLoadState.Content(
-        build.raft.app.data.SettingsBillingSnapshot(
-            currentPlan =
-                build.raft.app.data.SettingsBillingCurrentPlanSnapshot(
-                    planName = "Hobby",
-                    usageRows = emptyList(),
-                    usage =
-                        build.raft.app.data.SettingsBillingUsageSnapshot(
-                            computers = build.raft.app.data.SettingsBillingUsageCount(used = 1, limit = 2),
-                            agents = build.raft.app.data.SettingsBillingUsageCount(used = 4, limit = 5),
-                            channels = build.raft.app.data.SettingsBillingUsageCount(used = 7, limit = -1),
-                            messageHistoryDays = 30,
-                        ),
-                ),
-            plans = emptyList(),
-        )
-    )
 
 private val wideAccountFixture =
     RaftSettingsAccountPayload(
