@@ -18937,18 +18937,15 @@ private fun ThreadHeaderFocusModeMenu(
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
                 return@onClick
             }
-            // Already window space: the shell must not convert this again.
-            val pageRootAnchor = anchor.rootOffsetOrNull()
-            if (pageRootAnchor == null) {
+            // Already window space: the shell must not convert this again. On CMP the child page
+            // is composed inline, so its root offset includes the pane's position; adding the
+            // measured page origin (the Kuikly-era step) counted it twice.
+            val windowAnchor = raftChildPageWindowAnchor(anchor)
+            if (windowAnchor == null) {
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
                 return@onClick
             }
-            // `rootOffset` is PAGE-root relative inside a Kuikly @Page. The shell draws in WINDOW
-            // space, so add this page's measured window origin (1520 for the thread column, plus the
-            // rail when nested). Without it the menu landed at the page-local 384 -- the centre
-            // pane's top-left -- instead of 1904 under the button.
             val pageOrigin = RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin
-            val windowAnchor = pageRootAnchor + pageOrigin
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
             // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
@@ -32411,15 +32408,14 @@ private fun ThreadShellAwareAnchoredPopover(
         remember(localPager.pagerId, eventBusOverride) {
             eventBusOverride ?: RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
-    val pageOriginKey = raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
     val pageKey =
         LocalActivity.current.pageData.params
             .optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY)
             .trim()
             .ifEmpty { "thread-panel" }
     val pageRootAnchor = anchor.rootOffsetOrNull()
-    val pageWindowAnchor =
-        pageRootAnchor?.plus(RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin)
+    // Already window space: the child page is composed inline (no page origin to add).
+    val pageWindowAnchor = raftChildPageWindowAnchor(anchor)
     val requestId = shellRequestId(pageRootAnchor)
     DisposableEffect(pageEventBus, requestId) {
         val subscription =
