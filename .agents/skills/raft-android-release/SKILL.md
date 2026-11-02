@@ -22,6 +22,8 @@ Authoritative detail (read the section before acting on it):
 - Create the version entry in the Notion "Mobile Release History" ledger and
   `change-logs/X.Y.Z/release-plan.md` (paired SOP §1, "Release closeout").
 - Confirm every accepted item has a changeset (`raft-release-changeset`).
+- Confirm the bump (minor / patch / build) and its allowed scope
+  (`raft-release-versioning`).
 
 ## 1. Allocate coordinates
 

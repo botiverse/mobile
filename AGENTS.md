@@ -33,6 +33,8 @@ summarizes.
 - `raft-stamp-git` — push, PR, review/approve and merge through Stamp.
 - `raft-release-changeset` — a version-targeted change needs its changeset;
   aggregating release notes.
+- `raft-release-versioning` — minor vs patch vs build: which bump, what may
+  go on the release branch, who approves.
 - `raft-android-release` — Android release train on Hands (draft-first).
 - `raft-ios-release` — iOS release build, TestFlight, iOS audit tag.
 - `blacksmith-testbox` / `blacksmith-visual-testbox` — warm CI VM for focused
