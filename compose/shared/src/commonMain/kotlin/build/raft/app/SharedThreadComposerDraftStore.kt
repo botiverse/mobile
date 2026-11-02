@@ -44,6 +44,11 @@ internal data class SharedThreadComposerDraftState(
     val editorCommand: ThreadComposerEditorCommand? = null,
     val persistBoundaryNonce: Int = 0,
     val focusRequestNonce: Int = 0,
+    /**
+     * Whether the request behind [focusRequestNonce] also opens the IME. A send only keeps the
+     * editor as it was (artin 11-02: tapping Send with the keyboard down must not raise it).
+     */
+    val focusRequestShowsKeyboard: Boolean = true,
     val sending: Boolean = false,
     val failureLabel: String? = null,
     val removedAttachmentIds: Set<String> = emptySet(),
@@ -2591,6 +2596,7 @@ internal class SharedThreadComposerDraftStore(
                             expectedAsTask = current.seedAsTask,
                         ),
                     focusRequestNonce = current.focusRequestNonce + 1,
+                    focusRequestShowsKeyboard = true,
                     sending = false,
                     failureLabel = null
                 )
@@ -2614,6 +2620,7 @@ internal class SharedThreadComposerDraftStore(
                             ),
                         // Select Text > Quote: the reader goes on typing under the quote.
                         focusRequestNonce = current.focusRequestNonce + 1,
+                        focusRequestShowsKeyboard = true,
                         sending = false,
                         failureLabel = null
                     )
@@ -2640,6 +2647,7 @@ internal class SharedThreadComposerDraftStore(
                     // defer this to CompleteSend: that callback may arrive after the user has
                     // deliberately tapped outside the composer.
                     focusRequestNonce = current.focusRequestNonce + 1,
+                    focusRequestShowsKeyboard = false,
                     sending = true,
                     failureLabel = null,
                     // Keep the choice until the send attempt reaches a terminal completion.

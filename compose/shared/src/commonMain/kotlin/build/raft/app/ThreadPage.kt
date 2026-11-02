@@ -15529,6 +15529,7 @@ private fun RaftThreadComposerPayload.withThreadComposerDraftState(
         syncNonce = draftState.syncNonce,
         editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
+        focusRequestShowsKeyboard = draftState.focusRequestShowsKeyboard,
         pendingAttachments = pendingAttachmentItems,
         composerMode =
             when {

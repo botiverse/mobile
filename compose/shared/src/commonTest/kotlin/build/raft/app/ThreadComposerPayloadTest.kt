@@ -599,6 +599,32 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun sendKeepsAnOpenKeyboardButNeverRaisesADismissedOne() {
+        // Send (keep-only request) with the keyboard put away: no focus grab, no IME.
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = false, showKeyboard = false),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = true,
+                editorSessionReplaced = true,
+                editorFocused = true,
+                keyboardInsetDp = 0f,
+                explicitRequestShowsKeyboard = false,
+            ),
+        )
+        // Send with the keyboard open: it stays open across the clear.
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = true, showKeyboard = true),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = true,
+                editorSessionReplaced = false,
+                editorFocused = true,
+                keyboardInsetDp = 280f,
+                explicitRequestShowsKeyboard = false,
+            ),
+        )
+    }
+
+    @Test
     fun staleClearDoesNotRetireSessionOrOverwriteFullEditingState() {
         val owner = ThreadComposerControlledEditorOwner(seedText = "sent", seedAsTask = false)
         val session = owner.editorSessionId
