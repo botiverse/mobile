@@ -57,16 +57,30 @@ fun raftStackOpenRoute(
 internal const val RAFT_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 
 /**
- * The pages a mobile host opens on its stack (Android with [RaftNav3StackFlag] on). Step 1 has one
+ * The pages a mobile host opens on its stack (Android with [RaftNav3StackFlag] on). Step 1 had one
  * trivial test page, Settings > About; step 2 adds the simple pages in batches.
+ *
+ * Batch 1: every Settings detail page (each `settingsPage` value), Saved, Drafts and member detail.
+ * None needs an Activity of its own: their host calls (share, permission prompt, system settings,
+ * the agent avatar picker on member detail) answer through the shell Activity's bridge callback, and
+ * a page they open that is not listed here (a chat, Administration, the Settings web pages) still
+ * opens an Activity over the shell window. Kept as Activities for now: Account (avatar picker,
+ * sign-out / delete replaces the window), Feedback (attachment picker, camera, image edit), the
+ * Settings web pages (Billing, Administration, IM Bridges, Connected apps, web Feedback: the WebView
+ * file chooser is an Activity result), Storage, Release notes and Computers (later batches).
  */
 val RaftMobileStackPages: RaftStackPageAllowlist =
     RaftStackPageAllowlist(
-        listOf(
+        build.raft.app.SettingsNativeDetailPage.entries.map { page ->
             RaftStackPageRule(
                 pageName = build.raft.app.SETTINGS_NATIVE_DETAIL_PAGE,
                 field = build.raft.app.SETTINGS_NATIVE_DETAIL_PAGE_KEY,
-                value = build.raft.app.SettingsNativeDetailPage.About.key,
-            ),
-        )
+                value = page.key,
+            )
+        } +
+            listOf(
+                RaftStackPageRule(pageName = build.raft.app.HOME_SAVED_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.HOME_DRAFTS_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.MEMBER_DETAIL_PAGE),
+            )
     )

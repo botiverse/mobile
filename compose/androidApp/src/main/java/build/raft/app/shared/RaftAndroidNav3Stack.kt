@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.nav.RaftMobilePageStackDisplay
 import build.raft.app.nav.RaftMobileStackPages
@@ -16,6 +17,7 @@ import build.raft.app.nav.RaftPageStackSavedState
 import build.raft.app.nav.RaftStackOpenRoute
 import build.raft.app.nav.RaftStackPage
 import build.raft.app.nav.RaftStackPageAllowlist
+import build.raft.app.nav.raftAppShellPageDataWithTab
 import build.raft.app.nav.raftStackOpenRoute
 import build.raft.designsystem.components.RaftSystemBarsAppearance
 import kotlinx.serialization.json.JsonObject
@@ -35,8 +37,9 @@ import kotlinx.serialization.json.JsonObject
  *   (pages over the shell are dropped, as singleTask cleared the Activities above it), and the
  *   window navigation coordinator routes the intent.
  * - Process death and recreation: the page keys (identity only) are saved in onSaveInstanceState and
- *   put back over the shell; anything unusable (over the size guard, a page no longer on the
- *   allowlist, a key with content) brings the window back on the shell alone.
+ *   put back over the shell, with the shell tab under them (raftAndroidNav3ShellArgs); anything
+ *   unusable (over the size guard, a page no longer on the allowlist, a key with content) brings the
+ *   window back on the shell alone.
  */
 
 /** The stack is drawn by the app shell window only, and only with the switch on for this process. */
@@ -73,6 +76,20 @@ internal fun raftAndroidNav3RestoredKeys(
 
 /** onSaveInstanceState key of the stack's page keys. */
 internal const val RAFT_NAV3_STACK_STATE_KEY = "raftNav3StackKeys"
+
+/** onSaveInstanceState key of the shell tab under the stack's pages ([RaftStackRootTab]). */
+internal const val RAFT_NAV3_STACK_ROOT_TAB_KEY = "raftNav3StackRootTab"
+
+/**
+ * The shell's args after a recreation: on the tab it showed under the restored pages (the phone
+ * Settings is a shell tab, so Settings > About comes back over Settings, not Home). With nothing
+ * restored over the shell its args are unchanged (as today, it opens on its launch tab).
+ */
+internal fun raftAndroidNav3ShellArgs(args: RaftCmpPageArgs, stack: RaftPageStack?, savedRootTab: String?): RaftCmpPageArgs {
+    if (stack == null || stack.pages.size <= 1 || savedRootTab == null) return args
+    val pageData = raftAppShellPageDataWithTab(args.pageData, savedRootTab)
+    return if (pageData === args.pageData) args else args.copy(pageData = pageData)
+}
 
 /**
  * A stack page's bridge wire: the Activity's, except `closePage`, which closes this page on the
