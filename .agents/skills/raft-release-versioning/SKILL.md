@@ -26,12 +26,14 @@ bump that is honest about the change. Recorded at artin's request
 - Changelog: full one for a minor (`raft-release-changeset`); short, fixes
   only, for a patch; none for a build.
 
-## Platforms move together
+## One version line, live versions may differ
 
-Android (Hands, Google Play) and iOS (TestFlight, App Store) share the version
-number. A fix needed on only one platform still bumps the shared patch; the
-other platform ships it when it next releases. Compose desktop builds follow
-the same version.
+Android (Hands, Google Play), iOS (TestFlight, App Store) and Compose desktop
+share one version line: a given number means the same code on every platform,
+and no platform reuses a number for different content. What is live can
+differ: a fix needed on only one platform bumps the shared patch and ships on
+that platform alone, so e.g. iOS may be live on 1.18.1 while Android stays on
+1.18.0. The next minor brings every platform back to the same number.
 
 ## Who decides
 
