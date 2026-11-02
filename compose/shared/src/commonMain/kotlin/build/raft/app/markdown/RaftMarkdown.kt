@@ -1474,8 +1474,11 @@ private object RaftMarkdownTextProvider : TextProvider {
         // links, so they never change here.
         var hoveredLink by remember(resolvedText) { mutableStateOf<IntRange?>(null) }
         val hoverInk = raftMarkdownLinkHoverInk()
+        // In a selectable message body, a mouse drag from a link selects (RaftMarkdownMouseLinks.kt).
+        val mouseLinks = rememberRaftMarkdownMouseLinks(resolvedText)
+        val mouseLinkText = raftMarkdownMouseLinkText(resolvedText, mouseLinks)
         val displayText =
-            remember(resolvedText, hoveredLink, hoverInk) { resolvedText.withRaftMarkdownLinkHover(hoveredLink, hoverInk) }
+            remember(mouseLinkText, hoveredLink, hoverInk) { mouseLinkText.withRaftMarkdownLinkHover(hoveredLink, hoverInk) }
         val hoverModifier =
             if (inlineDecorations.underlines.isEmpty()) {
                 Modifier
@@ -1494,6 +1497,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                 modifier =
                     textModifier
                         .then(hoverModifier)
+                        .then(if (mouseLinks != null) Modifier.raftMarkdownMouseLinks(mouseLinks) else Modifier)
                         .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
                 color = color,
                 fontSize = fontSize,
@@ -1512,6 +1516,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                 onTextLayout = { result ->
                     if (!inlineDecorations.isEmpty) decorationLayout = result
                     mentionCards?.layout = result
+                    mouseLinks?.layout = result
                     resolvedOnTextLayout(result)
                 },
                 style = resolvedStyle
