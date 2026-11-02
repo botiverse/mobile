@@ -15547,6 +15547,11 @@ private class ThreadRouteScaffoldSlots(
      * conversation and its composer), under the header. Null keeps the body as it always was.
      */
     val bodyCover: (@Composable BoxScope.() -> Unit)? = null,
+    /**
+     * Task v2's cards on a wide page ([conversationSideCardsColumn]): the pane grid's columns right
+     * of the header and the body, the page's full height. Empty: nothing beside the conversation.
+     */
+    val sideColumns: List<RaftPaneGridColumn> = emptyList(),
 )
 
 @Composable
@@ -15561,6 +15566,11 @@ private fun ThreadRouteScaffold(
                     .fillMaxSize()
                     .background(surfaceColor)
         ) {
+            RaftPaneGrid(
+                columns = slots.sideColumns,
+                modifier = Modifier.fillMaxSize(),
+                topInset = if (LocalThreadAssistantPanelEmbed.current == null && slots.sideColumns.isNotEmpty()) raftTopSafeAreaPadding() else 0.dp,
+            ) {
             Column(
                 modifier = Modifier.fillMaxSize().background(surfaceColor)
             ) {
@@ -15575,6 +15585,7 @@ private fun ThreadRouteScaffold(
                         bodyCover()
                     }
                 }
+            }
             }
             slots.overlays(this)
         }
@@ -16032,6 +16043,13 @@ private fun ThreadPageContentContent(
     val sideCardsStoreState by sideCardsStore.state.collectAsState()
     val sideCards =
         if (sideCardsEnabled) sideCardsStoreState.availableIn(RaftThreadTab.Tasks in availableTabs) else ConversationSideCardsState()
+    // Task v2 on a wide page: the cards stand in a column beside the conversation instead of
+    // covering it ([conversationSideCardsBeside]). The page's width is measured on its root; until
+    // then the window's stands in for it.
+    val sideCardsDensity = LocalDensity.current.density
+    val sideCardsWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    var sideCardsPageWidthDp by remember { mutableStateOf(sideCardsWindowWidthDp) }
+    val sideCardsBeside = sideCardsEnabled && conversationSideCardsBeside(sideCardsWindowWidthDp, sideCardsPageWidthDp)
     val onSelectedTabChanged = callbacks.onSelectedTabChanged
     val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
     val activityMuteState = data.activityMuteState
@@ -16444,7 +16462,8 @@ private fun ThreadPageContentContent(
             activeModal = activeModal,
             shareSelectionActive = shareSelectionActive,
             inlineSearchVisible = inlineSearchVisible,
-            sideCardsOpen = sideCards.anyOpen
+            // Beside the conversation the cards cover nothing: Back is the page's (web: only a phone's Back closes them).
+            sideCardsOpen = sideCards.anyOpen && !sideCardsBeside
         )
     RaftBackHandler(
         enabled = transientBackTarget != null,
@@ -16940,7 +16959,7 @@ private fun ThreadPageContentContent(
                         tasksViewModel = tasksViewModel,
                         channelId = taskPanelChannelId,
                         serverId = forwardServerId?.value,
-                        active = tab == selectedTab || tab.conversationSideCard()?.let { it == sideCards.shown } == true,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
                         identityOptions = taskIdentityOptions,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
@@ -16954,7 +16973,7 @@ private fun ThreadPageContentContent(
                         basePayload = payload,
                         filesStartKey = resolvedAuxiliaryThreadId,
                         filesViewModel = filesViewModel,
-                        active = tab == selectedTab || tab.conversationSideCard()?.let { it == sideCards.shown } == true,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
                         onOpenAttachment = onOpenFilesAttachment,
@@ -16972,6 +16991,8 @@ private fun ThreadPageContentContent(
             rootModifier =
                 Modifier.onGloballyPositioned { coordinates ->
                     onLayoutGeneration(coordinates.size.width, coordinates.size.height)
+                    val pageWidthDp = coordinates.size.width / sideCardsDensity
+                    if (pageWidthDp != sideCardsPageWidthDp) sideCardsPageWidthDp = pageWidthDp
                 }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
             header = {
                 // task #180: computed once per header composition, outside the header's own scope.
@@ -17002,7 +17023,7 @@ private fun ThreadPageContentContent(
                     showBack = !threadInSplitDetailPane(),
                     // Task v2 on a phone: the header's Back closes the cards covering the conversation
                     // first (web `headerMobileBack`), then leaves the page.
-                    onBack = if (sideCards.anyOpen) sideCardsStore::closeAll else onBack,
+                    onBack = if (sideCards.anyOpen && !sideCardsBeside) sideCardsStore::closeAll else onBack,
                     onOpenInChannel = {
                         onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                     },
@@ -17095,7 +17116,9 @@ private fun ThreadPageContentContent(
             },
             bodyCover =
                 if (sideCardsEnabled) {
-                    {
+                    // Kept (empty) while the cards stand beside: the body never remounts across the breakpoint.
+                    cover@{
+                        if (sideCardsBeside) return@cover
                         // No header Back (a split's detail pane): the card keeps its own (web).
                         val cardBack = sideCards.shown?.takeIf { threadInSplitDetailPane() }?.let { card -> { sideCardsStore.close(card) } }
                         ConversationSideCardsCover(
@@ -17114,6 +17137,24 @@ private fun ThreadPageContentContent(
                     }
                 } else {
                     null
+                },
+            sideColumns =
+                if (sideCardsBeside) {
+                    listOfNotNull(
+                        conversationSideCardsColumn(
+                            cards = sideCards,
+                            onPick = sideCardsStore::focus,
+                            onClose = sideCardsStore::close,
+                            tasksContent = {
+                                renderThreadTabContent(RaftThreadTab.Tasks, Modifier.fillMaxSize(), true)
+                            },
+                            filesContent = {
+                                renderThreadTabContent(RaftThreadTab.Files, Modifier.fillMaxSize(), true)
+                            }
+                        )
+                    )
+                } else {
+                    emptyList()
                 },
             body = {
             if (jointBillingNotice != JointBillingNotice.None) {

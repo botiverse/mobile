@@ -95,6 +95,101 @@ class ConversationSideCardsScreenshotTest {
         }
 }
 
+/**
+ * Task v2 on a wide page (web ChannelSideArea `beside`), light and dark: the open cards stand in
+ * the pane grid's column right of the conversation, which stays in view; Tasks over Files with a
+ * 60/40 split, a folded card is its 56dp head, Files alone fills the column. The production
+ * [RaftPaneGrid] and [conversationSideCardsColumn] beside the fixture conversation.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w1280dp-h800dp-mdpi")
+class ConversationSideCardsWideScreenshotTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
+    @Before
+    fun installPreferenceStore() {
+        val store = InMemoryRaftKeyValueStore()
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) { store }
+    }
+
+    @After
+    fun clearPreferenceStore() = RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+
+    private val both = ConversationSideCardsState().withOpen(ConversationSideCard.Tasks, true).withOpen(ConversationSideCard.Files, true)
+    private val filesOnly = ConversationSideCardsState().withOpen(ConversationSideCard.Files, true)
+
+    @Test fun both() = capture("conversation.side-cards.wide.both", RaftAppAppearance.Light, both)
+
+    @Test fun bothDark() = capture("conversation.side-cards.wide.both.dark", RaftAppAppearance.Dark, both)
+
+    @Test fun collapsed() = capture("conversation.side-cards.wide.collapsed", RaftAppAppearance.Light, both, collapsed = "tasks")
+
+    @Test fun collapsedDark() = capture("conversation.side-cards.wide.collapsed.dark", RaftAppAppearance.Dark, both, collapsed = "tasks")
+
+    @Test fun files() = capture("conversation.side-cards.wide.files", RaftAppAppearance.Light, filesOnly)
+
+    @Test fun filesDark() = capture("conversation.side-cards.wide.files.dark", RaftAppAppearance.Dark, filesOnly)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, cards: ConversationSideCardsState, collapsed: String? = null) =
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/side-cards", activities = activities) {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+            val grid = remember { RaftPaneGridStore().apply { collapsed?.let { setCollapsed(it, true) } } }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftPaneGridStore provides grid) {
+                RaftDesignSystemTheme {
+                    RaftPaneGrid(
+                        columns =
+                            listOfNotNull(
+                                conversationSideCardsColumn(
+                                    cards = cards,
+                                    onPick = {},
+                                    onClose = {},
+                                    tasksContent = { TasksFixture() },
+                                    filesContent = { ThreadFilesContent(payload = filesPayload, onEvent = { _, _ -> }) },
+                                )
+                            ),
+                        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas),
+                    ) {
+                        Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+                            Header(cards)
+                            Column(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) { Conversation() }
+                        }
+                    }
+                }
+            }
+        }
+}
+
+@Composable
+private fun Header(cards: ConversationSideCardsState) =
+    ThreadPageHeader(
+        payload = channelPayload,
+        applyTopSafeArea = false,
+        onBack = {},
+        onOpenInChannel = {},
+        onOpenMemberProfile = {},
+        onOpenSearch = {},
+        onShowMembers = {},
+        onShowSettings = {},
+        sideCardToggles = ThreadHeaderSideCardToggles(tasksAvailable = true, cards = cards, onToggle = {}),
+    )
+
+@Composable
+private fun TasksFixture() =
+    SharedTasksPanel(
+        state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = tasks.summaryCounts(), tasks = tasks))),
+        showHeader = false,
+        showChannelFilter = false,
+        createTasksChannelId = ChannelId("ch-wg-context"),
+        timeContext = build.raft.app.model.RaftTimeContext(
+            localOffsetMinutes = 8 * 60,
+            todayEpochDay = build.raft.app.model.raftEpochDayForDate(2026, 10, 30),
+            nowEpochMillis = 1_793_331_000_000L,
+        ),
+        onIntent = {},
+    )
+
 @Composable
 private fun ColumnScope.Page(cards: ConversationSideCardsState) {
     ThreadPageHeader(
