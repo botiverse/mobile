@@ -508,56 +508,68 @@ final class SignedInHomeShotTests: XCTestCase {
             return
         }
 
-        // 3. Home: the system tab bar. A server picker may come first.
+        // 3. Home: the system tab bar. Until the web sign-in sheet is closed, the shell under it is
+        // hidden from accessibility (the sheet is modal), so: confirm "Open in “Raft”?" for the
+        // callback, give the app a moment to exchange the code, then close the sheet, then look
+        // for the tab bar. A server picker may come first; first-run alerts may follow.
         let tabBar = app.tabBars.firstMatch
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
         let deadline = Date().addingTimeInterval(150)
         var pickedServer = false
+        var openedAt: Date?
+        var sheetClosed = false
+        var closeAttempts = 0
+        var events: [String] = []
         while Date() < deadline {
-            if tabBar.exists && tabBar.frame.height > 0 { break }
-            // `simctl openurl` of the callback asks first: "Open in “Raft”?" (SpringBoard).
             let open = springboard.buttons["Open"].firstMatch
             if open.exists {
                 open.tap()
+                openedAt = Date()
+                events.append("tapped Open")
                 Thread.sleep(forTimeInterval: 1)
                 continue
             }
+            if !sheetClosed, closeAttempts < 2, !(tabBar.exists && tabBar.frame.height > 0),
+               let at = openedAt, Date().timeIntervalSince(at) > Double(6 + 6 * closeAttempts) {
+                closeAttempts += 1
+                sheetClosed = closeWebSheet(app: app, safari: safari)
+                events.append("closed sheet: \(sheetClosed)")
+                Thread.sleep(forTimeInterval: 2)
+                continue
+            }
+            for host in [springboard, app] {
+                let alert = host.alerts.firstMatch
+                guard alert.exists else { continue }
+                let order = ["Allow", "OK", "Don’t Allow", "Don't Allow", "Cancel"]
+                if let button = order.map({ alert.buttons[$0] }).first(where: { $0.exists }) {
+                    events.append("alert \(alert.label): \(button.label)")
+                    button.tap()
+                }
+            }
+            if tabBar.exists && tabBar.frame.height > 0 { break }
             let server = element(app, label: "OranixSlockTest")
             if !pickedServer && server.exists && server.frame.height > 0 {
                 tap(app, x: server.frame.midX, y: server.frame.midY)
                 pickedServer = true
+                events.append("picked OranixSlockTest")
             }
             Thread.sleep(forTimeInterval: 1)
         }
         guard tabBar.exists else {
-            fail("home-ready", "no native tab bar after the callback", app)
+            fail("home-ready", "no native tab bar after the callback (\(events.joined(separator: "; ")))", app)
             return
         }
-        // The web sign-in sheet (or its "wants to use ... to Sign In" prompt) is still up,
-        // and first-run permission alerts can follow. Clear them before the screenshot.
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-        let clearUntil = Date().addingTimeInterval(30)
-        var quiet = 0
-        while Date() < clearUntil && quiet < 4 {
-            var acted = false
+        // Late first-run alerts.
+        for _ in 0..<5 {
             for host in [springboard, app] {
                 let alert = host.alerts.firstMatch
-                if alert.exists {
-                    let signInPrompt = alert.label.localizedCaseInsensitiveContains("Sign In")
-                    let order = signInPrompt ? ["Cancel"] : ["Allow", "OK", "Don’t Allow", "Don't Allow", "Cancel"]
-                    if let button = order.map({ alert.buttons[$0] }).first(where: { $0.exists }) {
-                        button.tap()
-                        acted = true
-                    }
+                guard alert.exists else { continue }
+                let order = ["Allow", "OK", "Don’t Allow", "Don't Allow", "Cancel"]
+                if let button = order.map({ alert.buttons[$0] }).first(where: { $0.exists }) {
+                    events.append("alert \(alert.label): \(button.label)")
+                    button.tap()
                 }
             }
-            for host in [safari, app] {
-                let cancel = host.navigationBars.buttons["Cancel"].firstMatch
-                if cancel.exists && cancel.isHittable {
-                    cancel.tap()
-                    acted = true
-                }
-            }
-            quiet = acted ? 0 : quiet + 1
             Thread.sleep(forTimeInterval: 1)
         }
         // Let avatars, badges and the channel list settle.
@@ -576,12 +588,30 @@ final class SignedInHomeShotTests: XCTestCase {
             "ios": UIDevice.current.systemVersion,
             "device": UIDevice.current.name,
             "pickedServer": pickedServer,
+            "events": events,
             "tabBarFrame": [f.origin.x, f.origin.y, f.size.width, f.size.height],
             "tabBarButtons": buttons,
         ])
         attach(app, name: "home")
         // 4. Keep the app up until the host has its screenshot.
         _ = waitFor("shot-done", timeout: 120)
+    }
+
+    // The web sign-in sheet's close (X) button: by label when the sheet exposes one, else its
+    // spot in the sheet's top-left corner.
+    private func closeWebSheet(app: XCUIApplication, safari: XCUIApplication) -> Bool {
+        for host in [safari, app] {
+            for label in ["Cancel", "Close", "Done"] {
+                let button = host.buttons[label].firstMatch
+                if button.exists && button.frame.minY < 200 {
+                    button.tap()
+                    return true
+                }
+            }
+        }
+        let host = safari.exists ? safari : app
+        host.coordinate(withNormalizedOffset: CGVector(dx: 0.095, dy: 0.115)).tap()
+        return false
     }
 
     private func element(_ app: XCUIApplication, label: String) -> XCUIElement {

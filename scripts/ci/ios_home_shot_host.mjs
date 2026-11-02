@@ -58,8 +58,40 @@ function writeJson(name, value) {
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(value));
   fs.renameSync(`${file}.tmp`, file);
 }
+// The app's own sign-in diagnostics (result/reason lines, e.g. "app_login_complete result=…"),
+// read from the diagnostics files in its container. Values that could carry a code are masked.
+function appLoginDiagnostics() {
+  let container;
+  try {
+    container = execFileSync("xcrun", ["simctl", "get_app_container", udid, bundle, "data"], { encoding: "utf8" }).trim();
+  } catch {
+    return;
+  }
+  const lines = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (!entry.name.startsWith("slockAppLogin") && fs.statSync(full).size < 8_000_000) {
+        const text = fs.readFileSync(full).toString("latin1");
+        for (const line of text.split(/\r?\n/)) {
+          if (/app_login|SlockIosAppLogin|SlockAppLogin/.test(line)) lines.push(line.slice(0, 300));
+        }
+      }
+    }
+  };
+  try {
+    walk(container);
+  } catch {}
+  const masked = lines.map((l) => l.replace(/(code|requestId|token|verifier)([=:"\s]+)[A-Za-z0-9._~-]{6,}/gi, "$1$2<masked>"));
+  console.log(`home-shot: app sign-in diagnostics (${masked.length} lines)`);
+  for (const line of masked.slice(-40)) console.log(`  ${line}`);
+}
+
+let callbackOpened = false;
 function die(message) {
   console.error(`home-shot: ${message}`);
+  if (callbackOpened) appLoginDiagnostics();
   progressShot("failed");
   process.exit(1);
 }
@@ -161,6 +193,7 @@ async function main() {
   const callback = approved.json?.redirectUrl ?? "";
   if (!/^raft(-debug|-alpha|-beta)?:\/\/login\/callback\?/.test(callback)) die("approve returned an unexpected redirect");
   execFileSync("xcrun", ["simctl", "openurl", udid, callback], { stdio: "ignore" });
+  callbackOpened = true;
   writeJson("callback-opened", { ok: true });
   console.log("home-shot: request approved, callback opened in the app");
 
@@ -170,6 +203,7 @@ async function main() {
   const file = screenshot("home");
   writeJson("shot-done", { ok: Boolean(file) });
   if (!file) die("simctl screenshot failed");
+  appLoginDiagnostics();
   console.log(`home-shot: saved ${file}`);
   console.log(`home-shot: iOS ${ready.ios}; tab bar buttons: ${ready.tabBarButtons.map((b) => b.label).join(" | ")}`);
 }
