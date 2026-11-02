@@ -1492,6 +1492,9 @@ private object RaftMarkdownTextProvider : TextProvider {
         // The tint restyles the text, and Compose drops a selection in a text that changes: while
         // the body holds a selection (a mouse drag across a link included) the tint stays as it is.
         val bodySelection = LocalRaftMarkdownLinkDragSelection.current
+        // ...and once the selection is gone, the tint it held drops (the pointer may have left).
+        val holdsSelection = bodySelection?.holdsSelection == true
+        LaunchedEffect(holdsSelection) { if (!holdsSelection) hoveredLink = null }
         val hoverModifier =
             if (inlineDecorations.underlines.isEmpty()) {
                 Modifier

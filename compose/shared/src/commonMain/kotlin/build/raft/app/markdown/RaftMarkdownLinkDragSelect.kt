@@ -178,6 +178,8 @@ internal fun Modifier.raftMarkdownLinkDragSelect(
                 val change = event.changes.firstOrNull() ?: continue
                 when (event.type) {
                     PointerEventType.Press -> {
+                        // Another button pressed mid-drag: the drag goes on from where it started.
+                        if (anchor != null) continue
                         anchor = null
                         downPosition = change.position
                         pressedOnLink =
