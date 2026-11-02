@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T05:54:39.850Z",
+  "generatedAt": "2026-11-02T06:28:59.032Z",
   "runId": "8a04b1cc-20261102055356",
   "commit": "8a04b1cc-20261102055356",
   "commitSubject": "fix(visual): Visual Testing green again (followers capture tap, ottie avatar data) (#4108)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 101,
-        "ready": 16,
-        "pending": 85
+        "ready": 30,
+        "pending": 71
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 101,
-    "ready": 16,
-    "pending": 85
+    "ready": 30,
+    "pending": 71
   },
   "componentMatrixSummary": {
     "total": 130,

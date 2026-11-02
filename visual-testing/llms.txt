@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-02 05:54:39 UTC
+Generated: 2026-11-02 06:28:59 UTC
 Latest run: 8a04b1cc-20261102055356
 Latest commit: 8a04b1cc-20261102055356
 Commit subject: fix(visual): Visual Testing green again (followers capture tap, ottie avatar data) (#4108)
 Providers: react vs android
 Summary: total 101, same 0, pass 2, basic-pass 9, different 86, missing 4
-AI analysis: ready 16 / total 101, pending 85
+AI analysis: ready 30 / total 101, pending 71
 Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
