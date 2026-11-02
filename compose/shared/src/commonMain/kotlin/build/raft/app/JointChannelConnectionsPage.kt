@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.components.raftUpsellCopy
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -581,7 +582,7 @@ internal fun jointChannelFailureMessage(failure: JointChannelFailure, fallback: 
     val rateLimited = jointInviteRateLimitedMessage((failure as? JointChannelFailure.Error)?.error?.retryAfterSeconds)
     val copy =
         JointFailureCopy(
-            freeServerLimit = stringResource(Res.string.joint_limit_free_servers),
+            freeServerLimit = stringResource(raftUpsellCopy(Res.string.joint_limit_free_servers)),
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             hostFreeLimit = stringResource(Res.string.joint_limit_host_free),
             fallback = fallback,

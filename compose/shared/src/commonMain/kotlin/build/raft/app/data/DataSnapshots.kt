@@ -1452,7 +1452,13 @@ data class SettingsBillingSnapshot(
     val plans: List<SettingsBillingPlanSnapshot>,
     val notices: List<SettingsBillingNoticeSnapshot> = emptyList(),
     val actions: List<SettingsBillingActionSnapshot> = emptyList(),
-    val comparePlansUrl: String = "https://raft.build/#pricing"
+    val comparePlansUrl: String = "https://raft.build/#pricing",
+    /** `GET /billing/subscription` as loaded; null when it failed or was empty. */
+    val summary: SettingsBillingSubscriptionSnapshot? = null,
+    /** The server's own plan (the session's), for when [summary] is missing. */
+    val serverPlan: String? = null,
+    /** When the server was moved down to Free; its grace period runs from here. */
+    val planDowngradedAt: String? = null
 )
 
 data class SettingsBillingSubscriptionSnapshot(
@@ -1463,7 +1469,43 @@ data class SettingsBillingSubscriptionSnapshot(
     val billingInterval: String? = null,
     val canManageBilling: Boolean = false,
     val displayName: String? = null,
-    val effectivePlan: String? = null
+    val effectivePlan: String? = null,
+    /** `server`, `subscription` or `appsumo`: what the plan comes from. */
+    val source: String? = null,
+    val appsumoBillingReserved: Boolean = false,
+    val appsumo: SettingsBillingAppSumoSnapshot? = null,
+    /** Seats the plan holds; -1 unlimited, null when billing does not say. */
+    val maxUniversalSeats: Double? = null,
+    val usage: SettingsBillingSeatUsageSnapshot? = null,
+    val provisionedHumans: Int = 0,
+    val provisionedAgents: Int = 0,
+    val proPackQuantity: Int = 0,
+    val fileUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
+    val priceBillingInterval: String? = null
+)
+
+/** An AppSumo lifetime license: its allowances and what is used of them. */
+data class SettingsBillingAppSumoSnapshot(
+    val tier: Int,
+    val maxHumans: Int,
+    val maxAgents: Int,
+    val maxHostedJointChannels: Int,
+    val hostedJointChannels: Int
+)
+
+/** Who is on the server for billing: people, agents and the seats they take (a person 1, an agent 0.1). */
+data class SettingsBillingSeatUsageSnapshot(
+    val humans: Int,
+    val agents: Int,
+    val universalSeats: Double
+)
+
+/** The monthly file upload allowance: [limitBytes] and [remainingBytes] are -1 when unlimited. */
+data class SettingsBillingFileUploadQuotaSnapshot(
+    val month: String?,
+    val limited: Boolean,
+    val limitBytes: Long,
+    val remainingBytes: Long
 )
 
 data class SettingsServerUsageSnapshot(

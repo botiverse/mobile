@@ -14,6 +14,7 @@ import build.raft.app.data.ActionCardSpecEmphasis
 import build.raft.app.data.ActionCardSpecForm
 import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.ActionCardSpecNavigateTarget
+import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.CardStack
 import build.raft.app.data.DataResult
@@ -71,11 +72,18 @@ internal fun ThreadActionCard.actionCardSpecToRender(
     specEnabled: Boolean,
     capabilities: Collection<String>,
     feedbackTicketVisible: Boolean = false,
+    offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ): ActionCardSpecCard? {
     if (!specEnabled && type !in ThreadActionCardSpecOnlyTypes) return null
     if (type in ThreadActionCardTypedOnlyTypes) return null
     val read = presentationCard ?: return null
-    val stripped = stripActionCardSpec(read, actionCardSpecCapabilitiesFor(capabilities)) ?: return null
+    // iOS view-only Billing: a seat request's Add Seats or a Pro request's Upgrade would strip to
+    // "Open in web", a way to buy in the browser. They are kept as "View your plan" instead
+    // (labelled by the view, routed by threadActionCardSpecPress to the view-only Plan & Billing).
+    val cardCapabilities =
+        actionCardSpecCapabilitiesFor(capabilities) +
+            if (offersUpgrade) emptyList() else ActionCardSpecUpgradeIntents.map { it.capability }
+    val stripped = stripActionCardSpec(read, cardCapabilities) ?: return null
     return if (feedbackTicketVisible) stripped else stripped.withoutResultIntentButtons()
 }
 
@@ -114,6 +122,24 @@ internal fun ActionCardSpecCard.withoutResultIntentButtons(): ActionCardSpecCard
         }
     return copy(result = ActionCardSpecTree(tree.root, elements))
 }
+
+/** The `open` intents that lead to buying: the upgrade dialog and a seat request's Add Seats. */
+internal val ActionCardSpecUpgradeIntents: Set<ActionCardSpecIntent> = setOf(ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats)
+
+/** The buttons that `open` an upgrade intent ([ActionCardSpecUpgradeIntents]) labelled [label], in the card and its result. */
+internal fun ActionCardSpecCard.withUpgradeButtonsLabelled(label: ActionCardSpecMsg): ActionCardSpecCard {
+    fun relabel(tree: ActionCardSpecTree) =
+        tree.copy(
+            elements = tree.elements.mapValues { (_, node) ->
+                if (node is ActionCardSpecButton && node.action.opensUpgrade) node.copy(label = label) else node
+            },
+        )
+    return copy(spec = relabel(spec), result = result?.let(::relabel))
+}
+
+/** An `open` of an upgrade intent ([ActionCardSpecUpgradeIntents]). */
+internal val ActionCardSpecAction.opensUpgrade: Boolean
+    get() = (this as? ActionCardSpecAction.Open)?.intent in ActionCardSpecUpgradeIntents
 
 /**
  * [capabilities] for this card: an `intent.*` only for the intent whose native path is this card's
@@ -171,6 +197,9 @@ internal sealed interface ThreadActionCardSpecPress {
     /** This message's web link, in the browser. */
     data object OpenInWeb : ThreadActionCardSpecPress
 
+    /** iOS view-only Billing: an Add Seats / Upgrade button, "View your plan", opens Plan & Billing. */
+    data object ViewPlan : ThreadActionCardSpecPress
+
     /**
      * `open feedback_ticket` (S0.3): Settings › Feedback on [ticketId], the done card's
      * `result.ticketId`; null (none, or not a UUID) opens the feedback list.
@@ -194,10 +223,13 @@ internal fun threadActionCardSpecPress(
     spec: ActionCardSpecCard,
     elementId: String,
     viewerServerId: String? = null,
+    offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ): ThreadActionCardSpecPress {
     val button = spec.button(elementId) ?: return ThreadActionCardSpecPress.Ignore
     if (button.disabledReason != null) return ThreadActionCardSpecPress.Ignore
     val buttonAction = button.action
+    // Viewing the plan changes nothing, so it works on a done or frozen card too.
+    if (!offersUpgrade && buttonAction.opensUpgrade) return ThreadActionCardSpecPress.ViewPlan
     // A result intent views the done card's result: it works on a done card, where every button
     // that changes the card is gone. Only on the card type it belongs to.
     if (buttonAction is ActionCardSpecAction.Open && buttonAction.intent.resultOnly) {

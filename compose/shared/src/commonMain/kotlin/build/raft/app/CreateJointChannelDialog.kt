@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.components.raftUpsellCopy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.raftBillingLeavesRaftTrailingIcon
+import build.raft.app.components.RaftViewPlanButton
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JointChannelAccepted
 import build.raft.app.data.JointSameAdminContext
@@ -156,11 +159,17 @@ internal fun CreateJointChannelDialog(
                     action =
                         if (state.showsBillingLink) {
                             {
-                                RaftButton(
-                                    text = stringResource(Res.string.joint_create_view_billing),
-                                    onClick = onOpenBilling,
-                                    variant = RaftButtonVariant.Default,
-                                )
+                                if (settingsBillingOffersUpgrade()) {
+                                    RaftButton(
+                                        text = stringResource(Res.string.joint_create_view_billing),
+                                        onClick = onOpenBilling,
+                                        variant = RaftButtonVariant.Default,
+                                        trailingIcon = raftBillingLeavesRaftTrailingIcon(),
+                                    )
+                                } else {
+                                    // iOS view-only Billing (App Store 3.1.1): the plan, not a purchase.
+                                    RaftViewPlanButton(onClick = onOpenBilling)
+                                }
                             }
                         } else {
                             null
@@ -329,7 +338,7 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
     val invitee = details?.invitee.orEmpty()
     val server = details?.targetServerSlug.orEmpty()
     val blocking = details?.blockingChannelName.orEmpty()
-    val freeHost = stringResource(Res.string.joint_create_free_host_limit, blocking)
+    val freeHost = stringResource(raftUpsellCopy(Res.string.joint_create_free_host_limit), blocking)
     val notFound = stringResource(Res.string.joint_invite_error_invitee_not_found, invitee, server)
     val notAdmin = stringResource(Res.string.joint_invite_error_invitee_not_admin, invitee, server)
     val serverNotFound = stringResource(Res.string.joint_invite_error_server_not_found, server)
@@ -340,10 +349,10 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
             slugRequired = stringResource(Res.string.joint_connections_slug_required),
             peopleRequired = stringResource(Res.string.joint_connections_people_required),
             sameAdminConfirmRequired = stringResource(Res.string.joint_same_admin_confirm_required),
-            freeServerLimit = stringResource(Res.string.joint_limit_free_servers),
+            freeServerLimit = stringResource(raftUpsellCopy(Res.string.joint_limit_free_servers)),
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             freeHostLimit = { freeHost },
-            freeHostLimitUnnamed = stringResource(Res.string.joint_create_free_host_limit_unnamed),
+            freeHostLimitUnnamed = stringResource(raftUpsellCopy(Res.string.joint_create_free_host_limit_unnamed)),
             inviteeNotFound = { _, _ -> notFound },
             inviteeNotAdmin = { _, _ -> notAdmin },
             serverNotFound = { serverNotFound },

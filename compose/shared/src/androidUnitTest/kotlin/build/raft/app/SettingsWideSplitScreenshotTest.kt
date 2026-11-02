@@ -54,6 +54,32 @@ class SettingsWideSplitScreenshotTest {
     @Test
     fun billingInThePaneLight() = capture("settings.wide.billing", RaftAppAppearance.Light) { WideSettings(picked = SettingsDestinationBilling) }
 
+    /**
+     * iOS (artin 11-02, App Store guideline 3.1.1): Billing is view-only, the current plan and its
+     * usage with no upgrade, payment or browser entry, in the pane instead of the WebView.
+     */
+    @Test
+    fun billingIosViewOnlyInThePaneLight() =
+        capture("settings.wide.billing.ios", RaftAppAppearance.Light) {
+            WideSettings(picked = SettingsDestinationBilling, iosBilling = IosBillingPresentation.ViewOnly)
+        }
+
+    @Test
+    fun billingIosViewOnlyInThePaneDark() =
+        capture("settings.wide.billing.ios.dark", RaftAppAppearance.Dark) {
+            WideSettings(picked = SettingsDestinationBilling, iosBilling = IosBillingPresentation.ViewOnly)
+        }
+
+    /**
+     * The iOS External presentation (not shipped; kept for a possible US-storefront link): the
+     * row ends in ↗ (raft-ui 0.26 #758) and the pane shows one line and "Open in browser".
+     */
+    @Test
+    fun billingIosExternalInThePaneLight() =
+        capture("settings.wide.billing.ios-external", RaftAppAppearance.Light) {
+            WideSettings(picked = SettingsDestinationBilling, iosBilling = IosBillingPresentation.External)
+        }
+
     /** slack_bridge_v0 on: the IM Bridges row after Administration, its web section in the pane. */
     @Test
     fun imBridgesInThePaneLight() =
@@ -62,9 +88,14 @@ class SettingsWideSplitScreenshotTest {
         }
 
     @Composable
-    private fun WideSettings(picked: String?, imBridgesEnabled: Boolean = false) {
+    private fun WideSettings(picked: String?, imBridgesEnabled: Boolean = false, iosBilling: IosBillingPresentation? = null) {
         SettingsWideListDetail(
-            payload = appShellSettingsHomePayload(session = null, imBridgesEnabled = imBridgesEnabled),
+            payload =
+                appShellSettingsHomePayload(
+                    session = null,
+                    imBridgesEnabled = imBridgesEnabled,
+                    billingOpensExternally = iosBilling == IosBillingPresentation.External,
+                ),
             widths = remember { RaftListPaneWidths(store = null) },
             active = true,
             picked = picked,
@@ -74,7 +105,24 @@ class SettingsWideSplitScreenshotTest {
             bottomContentPadding = 0.dp,
             detailPane = { key, modifier ->
                 Box(modifier) {
-                    if (key == SettingsDestinationBilling) {
+                    if (key == SettingsDestinationBilling && iosBilling == IosBillingPresentation.External) {
+                        SettingsBillingExternalPage(LocalActivity.current.getPager() as Pager)
+                    } else if (key == SettingsDestinationBilling && iosBilling == IosBillingPresentation.ViewOnly) {
+                        // The view-only page's scaffold and content; the page itself loads through the stores.
+                        SettingsWebViewPageScaffold(
+                            pager = LocalActivity.current.getPager() as Pager,
+                            surface = SettingsWebViewSurface.Billing,
+                            title = "Plan & Billing",
+                            iconName = RaftLucideIconName.CreditCard,
+                        ) { _, _ ->
+                            SettingsBillingViewOnlyContent(
+                                billing = settingsBillingViewOnlyProFixture,
+                                sessionPlan = null,
+                                onRetry = {},
+                                nowEpochMillis = SettingsBillingViewOnlyFixtureNow,
+                            )
+                        }
+                    } else if (key == SettingsDestinationBilling) {
                         val pager = LocalActivity.current.getPager() as Pager
                         SettingsWebViewPageScaffold(
                             pager = pager,

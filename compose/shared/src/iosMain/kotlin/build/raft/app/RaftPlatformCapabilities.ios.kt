@@ -147,3 +147,5 @@ internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
 
 /** The system tab bar switches at once; see expect. */
 internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
+
+internal actual fun raftPlatformFollowsAppStoreBillingRules(): Boolean = true

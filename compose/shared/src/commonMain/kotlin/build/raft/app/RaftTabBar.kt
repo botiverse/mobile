@@ -77,7 +77,9 @@ internal data class RaftTabItemPayload(
     val enabled: Boolean = true,
     val section: String? = null,
     /** Attention dot after the title (something new behind this row). */
-    val attentionDot: Boolean = false
+    val attentionDot: Boolean = false,
+    /** The row leaves Raft for another app: a trailing ↗ (raft-ui 0.26 #758). */
+    val opensExternally: Boolean = false
 )
 
 @Serializable
@@ -722,6 +724,13 @@ private fun RaftVerticalTabItem(
             if (item.attentionDot) {
                 val description = stringResource(Res.string.more_row_attention_dot)
                 RaftAttentionDot(modifier = Modifier.semantics { contentDescription = description })
+            }
+            if (item.opensExternally) {
+                RaftLucideIcon(
+                    name = RaftLucideIconName.ArrowUpRight,
+                    color = if (item.enabled) raftLegacyIconInk(onSticker = selected) else RaftColor.TextMutedGrayArgb,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
     }

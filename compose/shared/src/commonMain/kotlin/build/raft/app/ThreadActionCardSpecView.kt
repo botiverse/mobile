@@ -66,6 +66,8 @@ internal data class ThreadActionCardSpecHost(
     val clientOs: String = "",
     val feedbackPageAvailable: Boolean = false,
     val openFeedbackTicket: (ticketId: String?) -> Unit = {},
+    /** iOS view-only Billing: "View your plan" opens the view-only Plan & Billing page. */
+    val openPlan: () -> Unit = {},
 )
 
 internal val LocalThreadActionCardSpecHost = compositionLocalOf { ThreadActionCardSpecHost() }
@@ -162,13 +164,18 @@ internal fun ThreadActionCardSpecView(
     val committedBy = card.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
     val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
     val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
+    val viewPlanLabel = stringResource(Res.string.settings_billing_view_your_plan)
+    val offersUpgrade = settingsBillingOffersUpgrade()
     val rendered =
-        remember(spec, card.needsReconfirmation, reconfirmLabel, displayLocale) {
-            if (card.needsReconfirmation) {
-                spec.withChangingButtonsLabelled(actionCardAppMsg("actionCard.reconfirm", reconfirmLabel, displayLocale))
-            } else {
-                spec
-            }
+        remember(spec, card.needsReconfirmation, reconfirmLabel, viewPlanLabel, offersUpgrade, displayLocale) {
+            val labelled =
+                if (card.needsReconfirmation) {
+                    spec.withChangingButtonsLabelled(actionCardAppMsg("actionCard.reconfirm", reconfirmLabel, displayLocale))
+                } else {
+                    spec
+                }
+            // iOS view-only Billing: Add Seats / Upgrade read "View your plan" (threadActionCardSpecPress).
+            if (offersUpgrade) labelled else labelled.withUpgradeButtonsLabelled(actionCardAppMsg("planBilling.viewYourPlan", viewPlanLabel, displayLocale))
         }
     val frame =
         RaftActionCardFrameState(

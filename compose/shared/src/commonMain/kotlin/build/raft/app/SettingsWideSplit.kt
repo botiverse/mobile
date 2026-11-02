@@ -243,6 +243,19 @@ internal fun SettingsWideSidebarList(
                             color = raftArgbHex(LocalRaftContentColor.current),
                         )
                     },
+                    // raft-ui 0.26 (#758): a row that leaves Raft (iOS Billing) ends in ↗.
+                    trailing =
+                        if (row.opensExternally) {
+                            {
+                                RaftLucideIcon(
+                                    RaftLucideIconName.ArrowUpRight,
+                                    Modifier.size(raftSidebarItemIconSize()),
+                                    color = raftArgbHex(LocalRaftContentColor.current),
+                                )
+                            }
+                        } else {
+                            null
+                        },
                 )
             }
             item(key = "gap-bottom:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }

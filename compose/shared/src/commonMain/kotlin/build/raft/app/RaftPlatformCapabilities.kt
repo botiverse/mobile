@@ -255,3 +255,10 @@ internal expect fun raftPlatformTabPagerOverscrollEnabled(): Boolean
  * iOS switches at once like its system tab bar, and desktop keeps its instant switch.
  */
 internal expect fun raftPlatformAppShellTabFadeThrough(): Boolean
+
+/**
+ * The App Store's payment rules (guideline 3.1.1) apply to Billing: the in-app web billing page
+ * offers Stripe payment, so it must not show inside the app (artin 11-02). iOS only; what iOS
+ * shows instead is [iosBillingPresentation]. Android and the Compose desktop app keep the WebView.
+ */
+internal expect fun raftPlatformFollowsAppStoreBillingRules(): Boolean

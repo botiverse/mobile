@@ -117,3 +117,5 @@ internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
 
 /** Desktop keeps its instant tab switch; see expect. */
 internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
+
+internal actual fun raftPlatformFollowsAppStoreBillingRules(): Boolean = false
