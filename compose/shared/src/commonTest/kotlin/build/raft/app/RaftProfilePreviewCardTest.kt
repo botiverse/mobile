@@ -59,6 +59,28 @@ class RaftProfilePreviewCardTest {
     }
 
     @Test
+    fun anAgentSaysWhichComputerItRunsOn() {
+        // artin 11-02: the card did not say which Computer (web Computer row, above Runtime).
+        fun agent(badges: List<String> = emptyList(), external: Boolean = false) =
+            raftProfilePreviewCardModel(
+                MemberProfile(
+                    id = MemberId("a3"),
+                    displayName = "IT-George",
+                    handle = "IT-George",
+                    kind = MemberKind.Agent,
+                    roleDescription = if (external) "external" else "pi",
+                    isExternal = external,
+                    permissionBadges = badges,
+                ),
+            ).computer
+        assertEquals(RaftProfilePreviewComputer.Named("hetzner-ex63"), agent(listOf("pi", "computer:hetzner-ex63", "computer-id:m1")))
+        assertEquals(RaftProfilePreviewComputer.Unassigned, agent())
+        assertEquals(RaftProfilePreviewComputer.External, agent(external = true))
+        // People have no Computer row.
+        assertNull(raftProfilePreviewCardModel(MemberProfile(id = MemberId("u2"), displayName = "Ada", handle = "ada", kind = MemberKind.Human)).computer)
+    }
+
+    @Test
     fun anAppBotIsNamedAfterItsAppWithNoPresenceRuntimeOrDescription() {
         val model =
             raftProfilePreviewCardModel(
