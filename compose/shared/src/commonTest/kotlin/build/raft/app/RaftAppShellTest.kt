@@ -932,9 +932,9 @@ class RaftAppShellTest {
 
     @Test
     fun sharedBottomTabHostKeepsSafeAreaOutsideTabContent() {
-        // stdrc 2026-10-21: the 58dp edge bar, then the bottom safe area below it.
-        assertEquals(58.dp, raftSharedBottomTabBarHostHeight(0.dp))
-        assertEquals(76.dp, raftSharedBottomTabBarHostHeight(18.dp))
+        // The 60dp edge bar (raft-ui MobileNav), then the bottom safe area below it.
+        assertEquals(60.dp, raftSharedBottomTabBarHostHeight(0.dp))
+        assertEquals(78.dp, raftSharedBottomTabBarHostHeight(18.dp))
         assertEquals(
             raftSharedBottomTabBarHostHeight(18.dp) + RaftAppSpacing.Lg,
             raftSharedBottomTabBarContentInset(18.dp)

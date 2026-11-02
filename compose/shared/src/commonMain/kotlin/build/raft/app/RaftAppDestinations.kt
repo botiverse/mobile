@@ -66,8 +66,8 @@ internal enum class RaftNavRoute {
  * The app's top-level destinations. [id] is stable (it is the persisted shell tab key and the
  * future Nav3 back-stack key): never rename one. [label] and [icon] are the web LeftRail's
  * (`layout.leftRail.*`, lucide-react / raft-ui icons); [compactLabel] / [compactIcon] are what
- * the phone bar has always drawn where it differs (Home's house, Tasks' square-check), kept so the
- * phone bar does not change.
+ * the phone bar draws where it differs: Home's house, as the web's MobileNav (whose Tasks is
+ * ListTodo too, artin 2026-11-02).
  */
 internal enum class RaftAppDestination(
     val id: String,
@@ -105,7 +105,6 @@ internal enum class RaftAppDestination(
         badge = RaftNavBadgeSource.None,
         route = RaftNavRoute.ShellTab,
         navEvent = RaftNavDestination.Tasks,
-        compactIcon = RaftNavIcon.Lucide(RaftLucideIconName.SquareCheckBig),
     ),
     Search(
         id = "search",

@@ -6568,7 +6568,7 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
-                heightDp = 58
+                heightDp = 60
             )
         private val NAVIGATION_TABBAR_MOCKUP_CROP =
             VisualCrop(

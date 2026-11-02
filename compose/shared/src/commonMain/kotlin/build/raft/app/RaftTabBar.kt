@@ -282,6 +282,7 @@ internal fun RaftBottomTabBar(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
+                .padding(horizontal = RaftMobileNavDefaults.SidePadding)
         ) {
             items.forEach { item ->
                 if (serverTab != null && item.key == AppShellServerTabKey) {
@@ -327,9 +328,10 @@ internal object RaftBottomTabBarSpec {
     val LabelLineHeight = RaftMobileNavDefaults.LabelLineHeight
     val LabelWeight = FontWeight.SemiBold
     val SelectedLabelWeight = FontWeight.Bold
-    // Count badge, positioned from the pill slot's outer top-left corner.
+    // Count badge, positioned from the pill slot's outer top-left corner; on the 30dp pill it
+    // straddles the top edge 4dp up, its lower half clear of the 22dp icon.
     val BadgeOffsetX = 35.dp
-    val BadgeOffsetY = (-3).dp
+    val BadgeOffsetY = (-4).dp
     val BadgeHeight = 18.dp
     val BadgeMinWidth = 20.dp
     val BadgeHorizontalPadding = 5.dp
@@ -342,21 +344,6 @@ internal object RaftBottomTabBarSpec {
     val DotOffsetY = RaftMobileNavDefaults.DotOffsetY
 }
 
-/**
- * Optical size of a tab glyph relative to [RaftBottomTabBarSpec.IconSize] (stdrc 2026-10-21:
- * the Activity icon "floats"). Lucide `activity` is the only tab glyph whose ink spans the
- * whole 2..22 live area of the 24-unit viewBox (its pulse peaks touch y=2.2 and y=21.8, the
- * line runs x=2..22), while house, square-check-big, search and ellipsis keep to the 3..21
- * box, with their bottom edges on y=21. Drawn at the same size it reads ~11% larger and its
- * thin lower peak hangs below the others' baseline, so the mass of the glyph (the mid line)
- * looks lifted. Scaling it by 18/20 maps its ink onto the same 3..21 box: same size, same
- * top and bottom edges as the other tabs.
- */
-internal fun raftBottomTabIconScale(icon: RaftLucideIconName): Float =
-    if (icon == RaftLucideIconName.Activity) RaftBottomTabActivityIconScale else 1f
-
-internal const val RaftBottomTabActivityIconScale = 18f / 20f
-
 internal fun raftBottomTabLabelWeight(selected: Boolean): FontWeight =
     if (selected) RaftBottomTabBarSpec.SelectedLabelWeight else RaftBottomTabBarSpec.LabelWeight
 
@@ -366,10 +353,10 @@ private fun RaftBottomTabItem(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // The design system's raft-ui MobileNavItem, as the server tab next to it: the 56x32 pill
+    // The design system's raft-ui MobileNavItem, as the server tab next to it: the 56x30 pill
     // slot (brand sticker when selected, the press wash on the pill, never over the whole
-    // cell), the label 4dp under it, the attention pixel on the slot's top-right corner. The
-    // app adds its glyph (the Activity one optically scaled) and its unread count.
+    // cell), the label 3dp under it, the attention pixel on the slot's top-right corner. The
+    // app adds its glyph, every one at 22dp as the web draws them, and its unread count.
     val attentionDescription =
         if (item.key == "more" || item.key == "settings") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
     RaftDesignSystemTheme {
@@ -382,7 +369,7 @@ private fun RaftBottomTabItem(
                     name = item.iconName,
                     color = raftArgbHex(ink),
                     strokeWidth = RaftBottomTabBarSpec.IconStroke,
-                    modifier = Modifier.size(RaftBottomTabBarSpec.IconSize * raftBottomTabIconScale(item.iconName))
+                    modifier = Modifier.size(RaftBottomTabBarSpec.IconSize)
                 )
             },
             modifier = modifier,

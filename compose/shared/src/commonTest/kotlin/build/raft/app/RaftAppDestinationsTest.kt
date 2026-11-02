@@ -30,13 +30,13 @@ class RaftAppDestinationsTest {
 
     @Test
     fun thePhoneBarKeepsTodaysTabsAndIcons() {
-        // The phone bar must not change: keys, order and icons as before the shared list.
+        // Keys and order as before the shared list; icons as the web's MobileNav (House, ListTodo).
         assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), AppShellPhoneBottomBarKeys)
         assertEquals(
             listOf(
                 RaftLucideIconName.House,
                 RaftLucideIconName.Activity,
-                RaftLucideIconName.SquareCheckBig,
+                RaftLucideIconName.ListTodo,
                 RaftLucideIconName.Search,
                 RaftLucideIconName.Ellipsis,
             ),
