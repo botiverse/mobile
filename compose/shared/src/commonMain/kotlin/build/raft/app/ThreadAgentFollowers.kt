@@ -86,6 +86,7 @@ import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftJointServerBadge
 
 @Composable
 internal fun ThreadAgentFollowersRoute(
@@ -340,17 +341,18 @@ internal fun ThreadAgentFollowersPanel(
         if (state.loading && agents.isEmpty()) {
             RaftText(
                 stringResource(Res.string.thread_followers_loading),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
                 style = typography.callout,
                 color = colors.foregroundHint,
                 textAlign = TextAlign.Center,
             )
         } else if (state.error == ThreadFollowersError.Load) {
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                RaftLucideIcon(RaftLucideIconName.TriangleAlert, Modifier.size(18.dp), color = raftArgbHex(colors.foregroundMuted))
                 RaftText(
                     stringResource(Res.string.thread_followers_load_failed),
                     style = typography.callout,
@@ -367,7 +369,7 @@ internal fun ThreadAgentFollowersPanel(
         } else if (agents.isEmpty()) {
             RaftText(
                 stringResource(Res.string.thread_followers_empty),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
                 style = typography.callout,
                 color = colors.foregroundHint,
                 textAlign = TextAlign.Center,
@@ -419,22 +421,17 @@ internal fun ThreadAgentFollowersPanel(
                         // Web JointPeerBadge: a peer server's agent names its server right after the name.
                         titleTrailing = if (agent.isCurrentServer) null else {
                             {
-                                RaftBadge(
-                                    server,
-                                    modifier = Modifier.widthIn(max = 120.dp),
-                                    appearance = RaftBadgeAppearance.Soft,
-                                    variant = RaftBadgeVariant.Information,
-                                )
+                                RaftJointServerBadge(server, modifier = Modifier.widthIn(max = 120.dp))
                             }
                         },
                         trailing = if (canManage) {
                             {
-                                // Web `size="icon-md"` with a 14px X.
+                                // The web's 14px X; the box stays 44dp, a finger's target next to the row.
                                 RaftIconButton(
                                     onClick = { dispatch(ThreadAgentFollowersIntent.Remove(agent.id)) },
                                     tooltip = removeLabel,
                                     variant = RaftButtonVariant.Ghost,
-                                    size = RaftIconButtonSize.Md,
+                                    size = RaftIconButtonSize.Lg,
                                     enabled = threadFollowerRemoveEnabled(agent, state),
                                 ) {
                                     RaftGlyphIcon(RaftGlyph.X, size = 14.dp)
