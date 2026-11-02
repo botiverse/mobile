@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.components.RaftBrutalActionButtonDefaultTextStyle
 import build.raft.app.components.RaftSpinnerActiveSweepAngle
 import build.raft.app.components.RaftSpinnerPixelRestAlpha
 import build.raft.app.components.RaftAppSpinnerSize
@@ -125,12 +124,6 @@ class RaftDesignTokensTest {
         // raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0);
         // only stickers keep the hard 4px offset.
         assertEquals(4.dp, RaftShadow.Sticker)
-    }
-
-    @Test
-    fun brutalActionButtonDefaultStyleIsBold() {
-        assertEquals(RaftType.ButtonBold.fontFamily, RaftBrutalActionButtonDefaultTextStyle.fontFamily)
-        assertEquals(expectedRenderedWeight(FontWeight.Bold), RaftBrutalActionButtonDefaultTextStyle.fontWeight)
     }
 
     @Test

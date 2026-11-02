@@ -49,7 +49,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.RowScope
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.RaftHashGlobeIcon
@@ -216,6 +215,7 @@ import kotlin.time.TimeSource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import build.raft.app.components.raftButtonVariantFor
 
 const val RAFT_HOME_PAGE = "compose_home"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
@@ -5492,14 +5492,13 @@ private fun HomeNotificationActionButton(
     shadowOffset: Dp = HomeNotificationActionShadowOffset,
     enabled: Boolean = true,
 ) {
-    RaftBrutalActionButton(
-        label = text,
+    RaftButton(
+        text = text,
         onClick = onClick,
-        enabled = enabled,
-        backgroundColor = color,
-        minWidth = 72.dp,
-        minHeight = 32.dp,
-        textStyle = HomeNotificationActionButtonTextStyle
+        modifier = Modifier.widthIn(min = 72.dp),
+        variant = raftButtonVariantFor(color),
+        size = RaftButtonSize.Md,
+        enabled = enabled
     )
 }
 
@@ -5560,11 +5559,12 @@ internal fun HomeInlineErrorCard(
                 }
             }
             if (showAction) {
-                RaftBrutalActionButton(
-                    label = visibleCopy.actionLabel,
+                RaftButton(
+                    text = visibleCopy.actionLabel,
                     onClick = onAction,
-                    leadingIcon = RaftLucideIconName.RefreshCw,
-                    backgroundColor = RaftColor.SurfaceWhite
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                 )
             }
         }

@@ -13,8 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 
 internal const val RAFT_IN_APP_BROWSER_PAGE = "compose_in_app_browser"
 internal const val RAFT_IN_APP_BROWSER_URL_KEY = "url"
@@ -112,34 +112,40 @@ private fun RaftInAppBrowserScreen() {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.ChevronRight,
+                    RaftIconButton(
                         onClick = controller::goForward,
-                        contentDescription = stringResource(Res.string.in_app_browser_forward),
+                        tooltip = stringResource(Res.string.in_app_browser_forward),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Md,
                         enabled = navigationState.canGoForward,
-                        size = 26.dp,
-                    )
-                    RaftBrutalIconButton(
-                        iconName = if (navigationState.isLoading) RaftLucideIconName.X else RaftLucideIconName.RefreshCw,
+                    ) {
+                        RaftSlotIcon(RaftLucideIconName.ChevronRight)
+                    }
+                    RaftIconButton(
                         onClick = {
                             if (navigationState.isLoading) controller.stop() else controller.reload()
                         },
-                        contentDescription =
+                        tooltip =
                             if (navigationState.isLoading) {
                                 stringResource(Res.string.common_stop)
                             } else {
                                 stringResource(Res.string.in_app_browser_reload)
                             },
-                        size = 26.dp,
-                    )
-                    RaftBrutalIconButton(
-                        // raft-ui 0.26 (#758): a control that leaves Raft is marked ↗.
-                        iconName = RaftLucideIconName.ArrowUpRight,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Md,
+                    ) {
+                        RaftSlotIcon(if (navigationState.isLoading) RaftLucideIconName.X else RaftLucideIconName.RefreshCw)
+                    }
+                    RaftIconButton(
                         onClick = ::openInSystemBrowser,
-                        contentDescription = stringResource(Res.string.in_app_browser_open_system),
+                        tooltip = stringResource(Res.string.in_app_browser_open_system),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Md,
                         enabled = launchUrl != null,
-                        size = 26.dp,
-                    )
+                    ) {
+                        // raft-ui 0.26 (#758): a control that leaves Raft is marked ↗.
+                        RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
+                    }
                 }
             },
         )

@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalListRow
 import build.raft.app.data.KeyValueRouterPreferenceRepository
@@ -42,6 +41,10 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.urlParams
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import androidx.compose.foundation.layout.widthIn
 
 private const val ROUTER_PAGE = "router"
 private const val ROUTE_PAYLOAD_PREVIEW = "with smoke payload"
@@ -276,12 +279,12 @@ private fun DeveloperRouterJumpCard(
                     showClearWhenNotEmpty = true,
                     modifier = Modifier.weight(1f)
                 )
-                RaftBrutalActionButton(
-                    label = ComposeRoutePager.JUMP_TEXT,
+                RaftButton(
+                    text = ComposeRoutePager.JUMP_TEXT,
                     onClick = onOpen,
-                    backgroundColor = RaftColor.BrandYellow,
-                    minWidth = 72.dp,
-                    minHeight = 42.dp
+                    modifier = Modifier.widthIn(min = 72.dp),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg
                 )
             }
             if (suggestions.isNotEmpty()) {

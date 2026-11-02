@@ -6,7 +6,6 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
 import androidx.compose.runtime.Composable
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.data.RaftDatabaseVersionMismatch
 import androidx.compose.foundation.background

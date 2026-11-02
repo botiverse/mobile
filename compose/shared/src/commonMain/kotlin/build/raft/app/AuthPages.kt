@@ -11,7 +11,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.DataResult

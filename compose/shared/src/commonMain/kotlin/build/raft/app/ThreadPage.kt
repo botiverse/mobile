@@ -92,7 +92,6 @@ import build.raft.app.data.routeThreadOpen
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.components.RaftAttachmentPreviewCard
 import build.raft.app.components.RaftAttachmentPreviewCardAction
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftChipLoadingIndicator
@@ -19068,13 +19067,11 @@ internal fun threadHeaderChannelTitleGapDp(): Float =
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 30.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md
     )
 }
 
@@ -26601,15 +26598,13 @@ private fun ThreadInlineActionRow(
     leadingIcon: RaftLucideIconName? = null,
     onClick: () -> Unit
 ) {
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 36.dp,
-        leadingIcon = leadingIcon,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md,
+        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
@@ -34364,15 +34359,13 @@ private fun ThreadAttachmentCommentTinyButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    RaftBrutalActionButton(
-        label = label,
-        leadingIcon = icon,
+    RaftButton(
+        text = label,
         onClick = onClick,
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md,
         enabled = enabled,
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 28.dp,
-        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
+        leadingIcon = { RaftSlotIcon(icon) }
     )
 }
 
@@ -35453,12 +35446,11 @@ private fun ThreadForwardBundleLoadFailure(
             color = RaftColor.TextBlack
         )
         Spacer(Modifier.height(RaftAppSpacing.Md))
-        RaftBrutalActionButton(
-            label = stringResource(Res.string.common_retry),
+        RaftButton(
+            text = stringResource(Res.string.common_retry),
             onClick = onRetry,
-            backgroundColor = RaftColor.SurfaceWhite,
-            minWidth = 0.dp,
-            minHeight = 36.dp
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md
         )
     }
 }

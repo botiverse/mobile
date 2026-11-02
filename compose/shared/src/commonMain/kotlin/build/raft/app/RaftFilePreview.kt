@@ -27,8 +27,6 @@ import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.Utils
 import build.raft.app.base.raftAttachmentHostDownloadId
 import build.raft.app.base.reduceAttachmentDownloadProgress
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
@@ -182,6 +180,8 @@ import kotlin.random.Random
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlin.time.Duration.Companion.milliseconds
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 
 internal const val RAFT_FILE_PREVIEW_PAGE = "compose_file_preview"
 internal const val RAFT_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
@@ -4260,16 +4260,13 @@ internal fun RaftFilePreviewComposerImageActionBar(
         ).forEach { slot ->
             when (slot) {
                 RaftFilePreviewComposerImageActionSlot.Edit ->
-                    RaftBrutalActionButton(
-                        label = stringResource(Res.string.common_edit),
+                    RaftButton(
+                        text = stringResource(Res.string.common_edit),
                         onClick = onEdit,
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Md,
                         enabled = enabled && payload.imageUrl != null,
-                        leadingIcon = RaftLucideIconName.Pencil,
-                        leadingIconSize = 14.dp,
-                        contentSpacing = 8.dp,
-                        minWidth = 0.dp,
-                        minHeight = 32.dp,
-                        textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Pencil) }
                     )
                 RaftFilePreviewComposerImageActionSlot.OriginalImage -> {
                     val labelColor =
@@ -4309,17 +4306,13 @@ internal fun RaftFilePreviewComposerImageActionBar(
                 RaftFilePreviewComposerImageActionSlot.FlexibleSpacer ->
                     Box(modifier = Modifier.weight(1f))
                 RaftFilePreviewComposerImageActionSlot.Done ->
-                    RaftBrutalActionButton(
-                        label = stringResource(Res.string.common_done),
+                    RaftButton(
+                        text = stringResource(Res.string.common_done),
                         onClick = onComplete,
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Md,
                         enabled = enabled && payload.canCompleteComposerImageSelection(),
-                        leadingIcon = RaftLucideIconName.Check,
-                        leadingIconSize = 14.dp,
-                        contentSpacing = 8.dp,
-                        backgroundColor = RaftColor.BrandYellow,
-                        minWidth = 0.dp,
-                        minHeight = 32.dp,
-                        textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Check) }
                     )
             }
         }
@@ -4396,23 +4389,19 @@ private fun RaftFilePreviewImageEditorDoneButton(
     imageAvailable: Boolean,
     onDone: () -> Unit,
 ) {
-    RaftBrutalActionButton(
-        label =
+    RaftButton(
+        text =
             if (saving) {
                 stringResource(Res.string.file_preview_editor_saving)
             } else {
                 stringResource(Res.string.common_done)
             },
         onClick = onDone,
+        variant = RaftButtonVariant.Primary,
+        size = RaftButtonSize.Md,
         enabled = imageAvailable,
         loading = saving,
-        leadingIcon = RaftLucideIconName.Check,
-        leadingIconSize = 14.dp,
-        contentSpacing = 8.dp,
-        backgroundColor = RaftColor.BrandYellow,
-        minWidth = 0.dp,
-        minHeight = 32.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp),
+        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Check) },
     )
 }
 
@@ -5286,13 +5275,15 @@ internal fun RaftFilePreviewComposerImageEditor(
                                 .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                     )
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.Check,
-                        contentDescription = stringResource(Res.string.common_add),
+                    RaftIconButton(
                         onClick = { addTextAnnotation() },
-                        enabled = !saving && !editorFinishing && textDraft.text.isNotBlank(),
-                        backgroundColor = RaftColor.BrandYellow
-                    )
+                        tooltip = stringResource(Res.string.common_add),
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftIconButtonSize.Md,
+                        enabled = !saving && !editorFinishing && textDraft.text.isNotBlank()
+                    ) {
+                        RaftSlotIcon(RaftLucideIconName.Check)
+                    }
                     Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
                 }
                 RaftFilePreviewImageEditorPrimaryControls(
@@ -8782,15 +8773,15 @@ private fun RaftFilePreviewVideoControls(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RaftBrutalIconButton(
-                iconName = if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play,
+            RaftIconButton(
                 onClick = { if (canPlay) onTogglePlay() },
-                contentDescription = stringResource(if (isPlaying) Res.string.common_pause else Res.string.common_play),
-                enabled = canPlay,
-                size = 30.dp,
-                iconSize = 16.dp,
-                backgroundColor = RaftColor.SurfaceWhite
-            )
+                tooltip = stringResource(if (isPlaying) Res.string.common_pause else Res.string.common_play),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Md,
+                enabled = canPlay
+            ) {
+                RaftSlotIcon(if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play)
+            }
             Text(
                 text = raftFilePreviewLocalizedVideoTimeLabel(currentTimeMs, totalTimeMs, playState),
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
@@ -9784,15 +9775,17 @@ internal fun RaftFilePreviewOverflowMenuButton(
     modifier: Modifier = Modifier
 ) {
     val menuAnchor = remember { RaftLiveRootAnchorRef(identity = "file_preview_overflow") }
-    RaftBrutalIconButton(
-        iconName = RaftLucideIconName.Ellipsis,
+    RaftIconButton(
         onClick = {
             menuAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
         },
-        contentDescription = stringResource(Res.string.tab_more),
-        size = 30.dp,
-        modifier = modifier.raftCaptureLiveRootAnchor(menuAnchor)
-    )
+        tooltip = stringResource(Res.string.tab_more),
+        modifier = modifier.raftCaptureLiveRootAnchor(menuAnchor),
+        variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Md
+    ) {
+        RaftSlotIcon(RaftLucideIconName.Ellipsis)
+    }
 }
 
 private fun RaftWorkspaceFilePreview.Text.membersWorkspaceMetaLine(fallbackPath: String): String =

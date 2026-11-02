@@ -11,7 +11,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.data.DataResult
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
@@ -40,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.components.RaftSlotIcon
+import androidx.compose.foundation.layout.widthIn
 
 /**
  * Edit an agent's runtime settings through runtime form v2: the same form create
@@ -147,16 +148,17 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                             description = Res.string.runtime_form_v2_load_failed.format(listOf(failureCode)).localized(),
                             size = RaftUiBannerSize.Medium,
                             action = {
-                                RaftBrutalActionButton(
-                                    label = stringResource(Res.string.common_retry),
+                                RaftButton(
+                                    text = stringResource(Res.string.common_retry),
                                     onClick = {
                                         staleReloads = 0
                                         loadAttempt += 1
                                     },
+                                    modifier = Modifier.widthIn(min = 72.dp),
+                                    variant = RaftButtonVariant.Default,
+                                    size = RaftButtonSize.Md,
                                     enabled = !saving,
-                                    leadingIcon = RaftLucideIconName.RefreshCw,
-                                    minWidth = 72.dp,
-                                    minHeight = 32.dp
+                                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                                 )
                             }
                         )

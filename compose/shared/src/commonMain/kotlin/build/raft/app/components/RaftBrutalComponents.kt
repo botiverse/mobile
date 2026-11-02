@@ -95,7 +95,7 @@ import kotlinx.coroutines.delay
  *
  * | Legacy API (calls)                          | Design-system component                                   |
  * | ------------------------------------------- | --------------------------------------------------------- |
- * | RaftBrutalActionButton (143)                 | RaftButton (variant from the fill, size from minHeight)    |
+ * | RaftBrutalActionButton (143)                 | removed: RaftButton at the call sites                     |
  * | RaftBrutalIconButton (22)                    | RaftIconButton (Md / Lg)                                   |
  * | RaftBrutalTextField (45)                     | RaftField + RaftTextField                                  |
  * | RaftBrutalInputField (20)                    | RaftTextField (single line, default chrome)                |
@@ -1291,72 +1291,6 @@ private fun rememberRaftSearchEditor(onFocus: () -> Unit, onBlur: () -> Unit): R
 /** The brutal search type (13/16); raft swaps a field still on it for `text-field` 16/24. */
 internal val RaftBrutalSearchDefaultTextStyle: TextStyle
     get() = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = RaftColor.TextBlack)
-
-/**
- * Legacy-named button; renders the design-system [RaftButton]. The variant comes from
- * [backgroundColor] ([raftButtonVariantFor]), the size from [minHeight]
- * ([raftButtonSizeFor]). [textStyle], the disabled* colours, [leadingIconSize] and
- * [contentSpacing] only shaped the retired brutal register and are
- * ignored. Prefer `build.raft.designsystem.components.RaftButton` in new code.
- */
-@Suppress("UNUSED_PARAMETER")
-@Composable
-@Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftButton. Add no new uses; see docs/raftbrutal-migration.md.",
-    level = DeprecationLevel.WARNING,
-)
-internal fun RaftBrutalActionButton(
-    label: String,
-    onClick: () -> Unit,
-    onClick2: ((RaftPopoverAnchor) -> Unit)? = null,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    backgroundColor: Color = RaftColor.SurfaceWhite,
-    disabledBackgroundColor: Color = RaftColor.FillMuted,
-    disabledBorderColor: Color = RaftColor.BorderHairline,
-    disabledShadowColor: Color = RaftColor.BorderHairline,
-    disabledContentColor: Color = RaftColor.ForegroundDisabled,
-    disabledIconColor: String = "#FF999999",
-    minWidth: Dp = RaftBrutalActionButtonLegacyMinWidth,
-    minHeight: Dp = 40.dp,
-    leadingIcon: RaftLucideIconName? = null,
-    // Busy: the design-system button's spinner over the hidden label (keeps its width, ignores taps).
-    loading: Boolean = false,
-    leadingIconSize: Dp = 12.dp,
-    contentSpacing: Dp = 6.dp,
-    textStyle: TextStyle = RaftBrutalActionButtonDefaultTextStyle,
-    trailingContent: (@Composable () -> Unit)? = null
-) {
-    // An anchored click hands the caller the button's bottom-start corner (menus open under it).
-    val anchor = if (onClick2 != null) remember { RaftLiveRootAnchorRef(identity = "action_button:$label") } else null
-    val currentOnClick2 by rememberUpdatedState(onClick2)
-    RaftButton(
-        text = label,
-        onClick = {
-            onClick()
-            val anchored = currentOnClick2
-            if (anchored != null) anchor?.resolve(RaftPopoverLocalPoint.BottomStart)?.let(anchored)
-        },
-        modifier =
-            modifier
-                .then(if (anchor != null) Modifier.raftCaptureLiveRootAnchor(anchor) else Modifier)
-                .then(if (minWidth != RaftBrutalActionButtonLegacyMinWidth && minWidth > 0.dp) Modifier.widthIn(min = minWidth) else Modifier),
-        variant = raftButtonVariantFor(backgroundColor, inDialogFooter = LocalRaftDialogFooter.current),
-        size = raftButtonSizeFor(minHeight),
-        enabled = enabled,
-        loading = loading,
-        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } },
-        trailingIcon = trailingContent
-    )
-}
-
-internal val RaftBrutalActionButtonDefaultTextStyle: TextStyle
-    // Getter: the UI-text locale and rendering defaults can change at runtime.
-    get() =
-        RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
-
-// The brutal button's default min width; raft buttons have none (they hug the label).
-private val RaftBrutalActionButtonLegacyMinWidth = 82.dp
 
 @Composable
 internal fun SegmentedControl(

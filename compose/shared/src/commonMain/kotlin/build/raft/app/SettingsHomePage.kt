@@ -60,7 +60,6 @@ import build.raft.app.data.hasVisibleDetailBackHistory
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalListRow
 import build.raft.app.components.RaftAnchoredPickerTrigger
 import build.raft.app.components.RaftBrutalSearchField
@@ -482,6 +481,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.time.Clock
 import kotlin.time.TimeSource
 import build.raft.app.model.isExternalAgent
+import build.raft.app.components.RaftSlotIcon
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
@@ -11743,16 +11743,17 @@ private fun SharedCreateChannelDialog(
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label =
+            RaftButton(
+                text =
                     if (submitting) {
                         stringResource(Res.string.channel_create_action_creating)
                     } else {
                         stringResource(Res.string.channel_create_action_create)
                     },
                 enabled = canSubmit,
-                minWidth = 126.dp,
-                backgroundColor = RaftColor.AccentPink,
+                modifier = Modifier.widthIn(min = 126.dp),
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
                 onClick = {
                     val selectedMembers =
                         selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
@@ -13837,11 +13838,12 @@ private fun SharedHomeSearchErrorState(
         actions =
             if (showAction) {
                 {
-                    RaftBrutalActionButton(
-                        label = copy.actionLabel,
+                    RaftButton(
+                        text = copy.actionLabel,
                         onClick = onAction,
-                        leadingIcon = RaftLucideIconName.RefreshCw,
-                        backgroundColor = RaftColor.SurfaceWhite
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg,
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                     )
                 }
             } else {
@@ -14458,14 +14460,13 @@ private fun SharedHomeLoadMoreRow(
                 .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        RaftBrutalActionButton(
-            label = if (loading) stringResource(Res.string.common_loading) else label,
-            enabled = !loading,
-            minWidth = 0.dp,
-            minHeight = RaftMetrics.ControlHeightMd,
-            // raft-ui Button `md` (32dp): `text-footnote` bold.
-            textStyle = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold),
-            onClick = onClick
+        // raft-ui Button `md` (32dp).
+        RaftButton(
+            text = if (loading) stringResource(Res.string.common_loading) else label,
+            onClick = onClick,
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md,
+            enabled = !loading
         )
     }
 }
@@ -16634,11 +16635,12 @@ private fun PageErrorBody(
                 color = RaftColor.AccentRed
             )
             if (retryLabel != null && onRetry != null) {
-                RaftBrutalActionButton(
-                    label = retryLabel,
+                RaftButton(
+                    text = retryLabel,
                     onClick = onRetry,
-                    leadingIcon = RaftLucideIconName.RefreshCw,
-                    backgroundColor = RaftColor.SurfaceWhite
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                 )
             }
         }
