@@ -52,19 +52,11 @@ object RaftMessageImageGalleryDefaults {
     /** `gap-1` between rows and cells. */
     val Gap = 4.dp
 
-    /**
-     * Below [WideFrom] of the gallery's own width: `auto-rows-[8rem]` for rows of one or two,
-     * `auto-rows-[7rem]` for rows of three.
-     */
+    /** Below [WideFrom] of the gallery's own width: `auto-rows-[8rem]`. */
     val RowHeight = 128.dp
-    val TripleRowHeight = 112.dp
 
-    /**
-     * From [WideFrom] (`@min-[360px]/gallery`, raft-design #721): `auto-rows-[9rem]` for rows
-     * of one or two, `auto-rows-[8rem]` for rows of three.
-     */
+    /** From [WideFrom] (`@min-[360px]/gallery`, raft-design #721): `auto-rows-[9rem]`. */
     val WideRowHeight = 144.dp
-    val WideTripleRowHeight = 128.dp
 
     /** The gallery's own width from which rows take the taller heights (its full [MaxWidth]). */
     val WideFrom = 360.dp
@@ -105,8 +97,9 @@ private fun RaftMessageImageDimensions.aspect(): RaftMessageImageAspect {
 }
 
 /**
- * `buildMessageImageGalleryRows`: a wide image (ratio >= 2.2) takes a row of its own; the
- * others fill rows of three, except a buffer of exactly four, which splits two and two.
+ * A wide image (ratio >= 2.2) takes a row of its own; the others fill rows of two, so six
+ * images read 2, 2, 2 and an odd one out sits alone in the last row's first column (artin
+ * 2026-11-02: rows of three folded two over one, and six images read 2, 1, 2, 1, an F).
  * Normal images crop, wide and tall ones (<= 0.55) stay whole. A lone image keeps its
  * proportions and never crops.
  */
@@ -124,8 +117,7 @@ fun buildRaftMessageImageGalleryRows(images: List<RaftMessageImageDimensions>): 
     val buffer = mutableListOf<Int>()
     fun flush() {
         if (buffer.isEmpty()) return
-        val chunk = if (buffer.size == 4) 2 else 3
-        buffer.chunked(chunk).forEach { indices -> rows += RaftMessageImageRow(indices.map(::item)) }
+        buffer.chunked(2).forEach { indices -> rows += RaftMessageImageRow(indices.map(::item)) }
         buffer.clear()
     }
     images.forEachIndexed { index, image ->
@@ -220,7 +212,7 @@ fun RaftMessageImageFrame(
  * raft-ui MessageImageGallery: the inline images of a message, laid out by
  * [buildRaftMessageImageGalleryRows] within `min(360dp, available width)`. A lone image
  * reserves its own proportions ([raftMessageImageSingleSize]); rows of one or two are
- * 128dp tall, rows of three 112dp three across, all 4dp apart. A gallery
+ * two across, 128dp tall, all 4dp apart; a wide image fills its row. A gallery
  * at its full 360dp (its own width, not the window's) takes 144dp and 128dp rows.
  * [image] draws one image into its frame, honouring the layout's [RaftMessageImageFit].
  */
@@ -252,17 +244,11 @@ fun RaftMessageImageGallery(
                     ) { image(lone) }
                     return@forEach
                 }
-                // Every row sits side by side, a row of three three across (raft-design #947):
-                // two over one laid six images out 2, 1, 2, 1, an F rather than a set (xxchan,
-                // artin 2026-11-02).
-                val columns = row.items.size
-                val height =
-                    when {
-                        !wide && row.items.size == 3 -> RaftMessageImageGalleryDefaults.TripleRowHeight
-                        !wide -> RaftMessageImageGalleryDefaults.RowHeight
-                        row.items.size == 3 -> RaftMessageImageGalleryDefaults.WideTripleRowHeight
-                        else -> RaftMessageImageGalleryDefaults.WideRowHeight
-                    }
+                // Two columns; a wide image's own row is one. An odd image out keeps a cell's
+                // width, so the grid stays a grid.
+                val wideRow = row.items.size == 1 && images[row.items.single().index].aspect() == RaftMessageImageAspect.Wide
+                val columns = if (wideRow) 1 else 2
+                val height = if (wide) RaftMessageImageGalleryDefaults.WideRowHeight else RaftMessageImageGalleryDefaults.RowHeight
                 val cellWidth = (available - gap * (columns - 1)) / columns
                 row.items.chunked(columns).forEach { line ->
                     Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
