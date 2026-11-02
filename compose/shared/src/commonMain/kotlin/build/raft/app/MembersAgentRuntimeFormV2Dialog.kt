@@ -121,12 +121,30 @@ internal fun MembersAgentRuntimeFormV2Dialog(
 
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
     val quotaMachine = machineId?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
+    // The one commit: the footer's Save on a wide window, the phone sheet's head button.
+    val commitLabel =
+        if (saving) stringResource(Res.string.member_action_saving)
+        else stringResource(Res.string.member_action_save_runtime_config)
+    val commit: () -> Unit = commit@{
+        val submitting = current ?: form ?: return@commit
+        val submit =
+            RuntimeFormV2SubmitBody(
+                runtimeId = submitting.form.runtimeId,
+                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
+            )
+        // A runtime switch resets the session: confirm it first, as web does.
+        if (runtimeSwitched) pendingSwitchSubmit = submit else onSave(submit, false)
+    }
     RaftUnifiedDialog(
         title = stringResource(Res.string.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
         dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = commit,
+        commitEnabled = saveEnabled
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
@@ -236,22 +254,11 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 )
                 // Web AgentDetailPanel runtime editor: accent (primary) lg commit.
                 RaftButton(
-                    text =
-                        if (saving) stringResource(Res.string.member_action_saving)
-                        else stringResource(Res.string.member_action_save_runtime_config),
+                    text = commitLabel,
                     enabled = saveEnabled,
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,
-                    onClick = {
-                        val submitting = current ?: form ?: return@RaftButton
-                        val submit =
-                            RuntimeFormV2SubmitBody(
-                                runtimeId = submitting.form.runtimeId,
-                                formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
-                            )
-                        // A runtime switch resets the session: confirm it first, as web does.
-                        if (runtimeSwitched) pendingSwitchSubmit = submit else onSave(submit, false)
-                    }
+                    onClick = commit
                 )
             }
         }

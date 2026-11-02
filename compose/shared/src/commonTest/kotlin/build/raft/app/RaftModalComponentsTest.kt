@@ -82,6 +82,65 @@ class RaftModalComponentsTest {
     }
 
     @Test
+    fun onlyASheetDialogInACompactWindowDrawsThePhoneSheet() {
+        // Phones and split-screen halves: below the app's wide layout (744dp).
+        listOf(320.dp, 390.dp, 430.dp, 600.dp, 743.dp).forEach { width ->
+            assertTrue(raftUnifiedDialogDrawsSheet(RaftDialogPresentation.Sheet, width), "width=$width")
+            assertFalse(raftUnifiedDialogDrawsSheet(RaftDialogPresentation.Centered, width), "width=$width")
+            assertFalse(raftUnifiedDialogDrawsSheet(RaftDialogPresentation.Top, width), "width=$width")
+        }
+        // The wide layout keeps today's centred card for every presentation.
+        listOf(744.dp, 768.dp, 1024.dp, 1280.dp).forEach { width ->
+            RaftDialogPresentation.entries.forEach { presentation ->
+                assertFalse(raftUnifiedDialogDrawsSheet(presentation, width), "$presentation width=$width")
+            }
+        }
+    }
+
+    @Test
+    fun aTopDialogMovesUpOnlyOnAPhoneWithTheKeyboardUp() {
+        assertTrue(raftUnifiedDialogTopAnchored(RaftDialogPresentation.Top, 390.dp, keyboardHeightDp = 300f))
+        assertFalse(raftUnifiedDialogTopAnchored(RaftDialogPresentation.Top, 390.dp, keyboardHeightDp = 0f))
+        assertFalse(raftUnifiedDialogTopAnchored(RaftDialogPresentation.Top, 1024.dp, keyboardHeightDp = 300f))
+        assertFalse(raftUnifiedDialogTopAnchored(RaftDialogPresentation.Centered, 390.dp, keyboardHeightDp = 300f))
+        assertFalse(raftUnifiedDialogTopAnchored(RaftDialogPresentation.Sheet, 390.dp, keyboardHeightDp = 300f))
+    }
+
+    @Test
+    fun theSheetSitsOnTheKeyboard() {
+        // Keyboard down: on the window's bottom edge.
+        assertEquals(0.dp, raftUnifiedDialogSheetKeyboardOffset(0f, bottomSafeArea = 48.dp, keyboardExcludesNavigationBars = true))
+        assertEquals(0.dp, raftUnifiedDialogSheetKeyboardOffset(-1f, bottomSafeArea = 34.dp, keyboardExcludesNavigationBars = false))
+        // Android reports the keyboard without the navigation bar: add it back.
+        assertEquals(348.dp, raftUnifiedDialogSheetKeyboardOffset(300f, bottomSafeArea = 48.dp, keyboardExcludesNavigationBars = true))
+        // iOS reports the whole keyboard frame, home indicator included.
+        assertEquals(336.dp, raftUnifiedDialogSheetKeyboardOffset(336f, bottomSafeArea = 34.dp, keyboardExcludesNavigationBars = false))
+    }
+
+    @Test
+    fun theSheetIsNinetyPercentTallAndShrinksForTheKeyboard() {
+        // Keyboard down: 90% of the window.
+        assertEquals(759.6.dp.value, raftUnifiedDialogSheetHeight(844.dp, topInset = 47.dp, keyboardOffset = 0.dp).value, 0.01f)
+        // Keyboard up: from under the status bar down to the keyboard, so the head stays in view.
+        assertEquals(461.dp, raftUnifiedDialogSheetHeight(844.dp, topInset = 47.dp, keyboardOffset = 336.dp))
+        // Never negative.
+        assertEquals(0.dp, raftUnifiedDialogSheetHeight(300.dp, topInset = 47.dp, keyboardOffset = 336.dp))
+    }
+
+    @Test
+    fun closeRelayFallsBackToTheDismissWithoutASheet() {
+        val relay = RaftUnifiedDialogCloseRelay()
+        var dismissed = 0
+        relay.close { dismissed++ }
+        assertEquals(1, dismissed)
+        var animated = 0
+        relay.animatedClose = { animated++ }
+        relay.close { dismissed++ }
+        assertEquals(1, dismissed, "the sheet slides out and dismisses itself")
+        assertEquals(1, animated)
+    }
+
+    @Test
     fun focusedEditorScrollDeltaMovesOccludedEditorAboveViewport() {
         assertEquals(
             48f,

@@ -568,6 +568,24 @@ internal fun SharedCreateAgentDialog(
         (external || runtime in supportedRuntimeIds) &&
         (external || createAgentRuntimeFormV2SubmitReady(v2Loaded != null, v2Errors.isNotEmpty()))
     val showMachinePicker = !external
+    // The one commit: the footer's Create on a wide window, the phone sheet's head button.
+    val commitLabel =
+        if (submitting) {
+            stringResource(Res.string.agent_create_action_creating)
+        } else {
+            stringResource(Res.string.agent_create_submit)
+        }
+    val commit: () -> Unit = {
+        createAgentDialogSubmit(
+            name = trimmedName,
+            description = description.text,
+            machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
+            external = external,
+            runtime = runtime,
+            loaded = v2Form ?: v2Loaded,
+            values = v2Values
+        )?.let(onSubmit)
+    }
 
     RaftUnifiedDialog(
         title =
@@ -580,7 +598,11 @@ internal fun SharedCreateAgentDialog(
         dismissOnOutsideTap = false,
         onDismiss = onDismiss,
         keyboardAvoidanceEnabled = true,
-        hostRoute = SharedCreateAgentDialogHostRoute
+        hostRoute = SharedCreateAgentDialogHostRoute,
+        presentation = RaftDialogPresentation.Sheet,
+        commitLabel = commitLabel,
+        onCommit = commit,
+        commitEnabled = canSubmit
     ) {
         // #55 visual parity: no body height cap. The Column fills the viewport, the
         // LazyColumn takes the leftover space and Cancel/Create stay pinned at the bottom
@@ -793,29 +815,12 @@ internal fun SharedCreateAgentDialog(
                     size = RaftButtonSize.Lg
                 )
                 RaftButton(
-                    text =
-                        if (submitting) {
-                            stringResource(Res.string.agent_create_action_creating)
-                        } else {
-                            stringResource(Res.string.agent_create_submit)
-                        },
+                    text = commitLabel,
                     enabled = canSubmit,
                     modifier = Modifier.widthIn(min = 126.dp),
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,
-                    onClick = {
-                        val submit =
-                            createAgentDialogSubmit(
-                                name = trimmedName,
-                                description = description.text,
-                                machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
-                                external = external,
-                                runtime = runtime,
-                                loaded = v2Form ?: v2Loaded,
-                                values = v2Values
-                            ) ?: return@RaftButton
-                        onSubmit(submit)
-                    }
+                    onClick = commit
                 )
             }
         }
