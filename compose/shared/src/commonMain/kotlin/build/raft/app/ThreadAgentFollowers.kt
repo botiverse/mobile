@@ -421,7 +421,8 @@ internal fun ThreadAgentFollowersPanel(
                         // Web JointPeerBadge: a peer server's agent names its server right after the name.
                         titleTrailing = if (agent.isCurrentServer) null else {
                             {
-                                RaftJointServerBadge(server, modifier = Modifier.widthIn(max = 120.dp))
+                                // Web `max-w-1/2`: the name keeps at least half the line; the server truncates first.
+                                RaftJointServerBadge(server, modifier = Modifier.widthIn(max = 72.dp))
                             }
                         },
                         trailing = if (canManage) {
