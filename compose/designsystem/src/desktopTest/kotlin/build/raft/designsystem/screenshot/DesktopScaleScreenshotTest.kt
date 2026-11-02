@@ -24,23 +24,33 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 
 /**
- * raft-ui 0.54 desktop scale (styles.css "Desktop type", foundation.css "Desktop": a mouse or
- * trackpad, from 768 wide), pinned with [RaftScale.Desktop], light and dark: the type roles
- * that change (headline 16/24; body, subhead, callout 14/22; footnote, caption, mono-meta
- * 12/18) and the controls that follow `--control-*`: buttons at `md` (`text-control` 14/22),
- * `lg` (32dp) and `xl` (40dp), an `icon-lg` button (32dp, 18dp icon), a field (32dp, 14/22,
- * a 20dp embedded clear), a select trigger and a list row.
+ * The wide type scale (raft-ui 0.54 styles.css "Desktop type", from the app's wide breakpoint),
+ * pinned with [RaftScale.Wide], light and dark: the type roles that change (headline 16/24;
+ * body, subhead, callout 14/22; footnote, caption, mono-meta 12/18) and the controls that
+ * follow `--control-*`, under each input:
+ * - `desktop-scale_*`: a mouse or trackpad ([RaftPointerInput.Fine], the Mac at that width):
+ *   buttons at `md` (`text-control` 14/22), `lg` (32dp) and `xl` (40dp), an `icon-lg` button
+ *   (32dp, 18dp icon), a field (32dp, 14/22, a 20dp embedded clear), a select trigger and a
+ *   list row.
+ * - `wide-touch-scale_*`: a finger ([RaftPointerInput.Touch], a tablet at that width): the same
+ *   type, the controls at 44 / 52 with a 22dp icon and a 32dp embedded clear.
  */
 class DesktopScaleScreenshotTest {
     @Test
-    fun desktopScale() =
+    fun wideScaleFinePointer() = capture("desktop-scale", RaftPointerInput.Fine)
+
+    @Test
+    fun wideScaleTouch() = capture("wide-touch-scale", RaftPointerInput.Touch)
+
+    private fun capture(name: String, pointerInput: RaftPointerInput) =
         listOf(RaftAppearance.Light, RaftAppearance.Dark).forEach { appearance ->
-            RaftScreenshot.capture("desktop-scale_${appearance.name.lowercase()}", appearance, scale = RaftScale.Desktop) {
+            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, scale = RaftScale.Wide, pointerInput = pointerInput) {
                 Column(Modifier.width(420.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     TypeSample()
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

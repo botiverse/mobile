@@ -72,10 +72,11 @@ internal val RaftToastSwipeThreshold: Dp = 40.dp
  * above dialogs"), and passes every touch elsewhere through. Fill the window with it.
  *
  * - Bottom centre, at most 384dp wide and 16dp from the sides, inside the horizontal safe area.
- * - Phone ([RaftScale.Mobile]): the bottom edge sits 16dp above whatever holds the bottom of the
+ * - Compact window ([RaftScale.Compact]): the bottom edge sits 16dp above whatever holds the bottom of the
  *   page ([raftToastAvoid], [RaftToastAvoidBottom]: the tab bar, the composer), and never lower
  *   than 16dp above the system bars and the keyboard (`WindowInsets.safeDrawing`).
- *   Desktop scale: the bottom of the window (stdrc 2026-10-23), above the safe area only.
+ *   Wide window ([RaftScale.Wide]): the bottom of the window (stdrc 2026-10-23), above the safe
+ *   area and the keyboard only.
  * - Several toasts ([RaftToastHostState.limit] > 1) stack newest at the bottom, [RaftToastGap]
  *   apart (raft-ui's expanded stack).
  * - A toast slides up as it opens (none with reduced motion), swipes away down or right, and
@@ -92,7 +93,7 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
     val presentAtStart = remember(state) { state.visible.map { it.id }.toSet() }
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val density = LocalDensity.current
-    val phone = RaftTheme.scale != RaftScale.Desktop
+    val phone = RaftTheme.scale != RaftScale.Wide
     val avoidedPx = if (phone && !hostBottomPx.isNaN()) state.avoidedHeightPx(hostBottomPx) else 0f
     val safeBottomPx = WindowInsets.safeDrawing.getBottom(density).toFloat()
     val bottom = with(density) { maxOf(avoidedPx, safeBottomPx).toDp() } + RaftToastViewportOffset

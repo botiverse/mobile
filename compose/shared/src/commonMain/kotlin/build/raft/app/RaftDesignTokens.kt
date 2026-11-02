@@ -382,24 +382,24 @@ private fun TextStyle.resolveRaftFontFamily(): TextStyle {
  * The family comes from the per-weight Space Grotesk faces above, so the families passed in are
  * placeholders.
  */
-private val RaftScaleMobile: RaftTypography =
+private val RaftScaleCompact: RaftTypography =
     RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace))
 
-private val RaftScaleDesktop: RaftTypography =
-    RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace), scale = DesignSystemScale.Desktop)
+private val RaftScaleWide: RaftTypography =
+    RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace), scale = DesignSystemScale.Wide)
 
 /**
  * The scale the app's [build.raft.app.components.RaftDesignSystemTheme] resolved
- * ([build.raft.designsystem.theme.RaftTheme.scale]: desktop with a mouse or trackpad from 768dp,
- * as raft-ui). Snapshot state, so text styled through [RaftType] recomposes when a window
- * crosses 768.
+ * ([build.raft.designsystem.theme.RaftTheme.scale]: wide from the wide breakpoint, by window
+ * width alone, any input). Snapshot state, so text styled through [RaftType] recomposes when a
+ * window crosses it.
  */
 internal object RaftAppTypeScale {
-    var scale by mutableStateOf(DesignSystemScale.Mobile)
+    var scale by mutableStateOf(DesignSystemScale.Compact)
 }
 
 private val RaftScale: RaftTypography
-    get() = if (RaftAppTypeScale.scale == DesignSystemScale.Desktop) RaftScaleDesktop else RaftScaleMobile
+    get() = if (RaftAppTypeScale.scale == DesignSystemScale.Wide) RaftScaleWide else RaftScaleCompact
 
 private fun raftTextStyle(token: TextStyle, fontWeight: FontWeight = token.fontWeight ?: FontWeight.Normal): TextStyle =
     raftTextStyle(fontWeight, token.fontSize, token.lineHeight, token.letterSpacing)

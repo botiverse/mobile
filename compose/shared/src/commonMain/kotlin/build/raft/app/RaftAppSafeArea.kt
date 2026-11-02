@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.raftTrackPointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -425,7 +426,9 @@ internal fun RaftHorizontalSafeAreaShell(
     val padding = if (windowRoot) required else RaftHorizontalSafeArea.Zero
     val paddingValues = PaddingValues.Absolute(left = padding.left, right = padding.right)
     // Always the same node, whatever the insets: a rotation must not reset the page's state.
-    Box(Modifier.fillMaxSize().padding(paddingValues).consumeWindowInsets(paddingValues)) {
+    // Every page's root also tells the design system which input is in use (a finger, or a mouse
+    // or trackpad), which picks the control metrics.
+    Box(Modifier.fillMaxSize().raftTrackPointerInput().padding(paddingValues).consumeWindowInsets(paddingValues)) {
         CompositionLocalProvider(
             LocalRaftWindowHorizontalSafeArea provides window,
             LocalRaftHorizontalSafeAreaBleed provides padding,

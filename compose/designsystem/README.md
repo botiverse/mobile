@@ -84,26 +84,40 @@ text is `body`, 16/24, as on the web; there are no mobile-only roles.
 Pick other weights by purpose with `.copy(fontWeight = ...)` (page "Weights by use").
 `RaftText` defaults to `body`.
 
-#### Desktop scale
+#### Wide scale and pointer input
 
-raft-ui 0.54 switches the type and control metrics under `@media (width >= 48rem) and
-(pointer: fine)` (styles.css "Desktop type", foundation.css "Desktop"). `RaftScale.Desktop`
-is that block: `headline` 16/24; `body`, `subhead`, `callout`, `control`, `field`,
+raft-ui 0.54 switches the type and control metrics together under `@media (width >= 48rem) and
+(pointer: fine)` (styles.css "Desktop type", foundation.css "Desktop"). The app splits them into
+two axes (artin 2026-11-02): the type follows the window width only, the controls the input in
+use, so a tablet and the Mac at the same width look the same and a finger always keeps 44.
+
+`RaftScale.Wide` is raft-ui's desktop type block: `headline` 16/24; `body`, `subhead`, `callout`, `control`, `field`,
 `cardTitle` 14/22; `footnote`, `caption`, `monoMeta` 12/18; `monoCode` 13/20; hero, display,
 title and label unchanged. `RaftControlMetrics` (`RaftTheme.controls`) carries
 `--control-height` 44 → 32, `--control-height-cta` 52 → 40, `--control-icon-size` 22 → 18,
 `--control-hit-inset` 0 → 6 and `--control-embedded-size` 32 → 20.
 
 `RaftTheme(scale = null)` inherits the enclosing theme's scale; the outermost one picks
-Desktop when `raftPlatformPointerIsFine()` (the desktop app; false on Android, iOS and a
-headless JVM) and the window (`LocalWindowInfo.containerSize`) is at least 768dp wide.
-Following it: Button `md` text (`text-control`), `lg` height (`h-control`), `xl` height
+`Wide` when the window (`LocalWindowInfo.containerSize`) is at least `RaftScale.WideMinWidth`
+(744dp, the app's wide breakpoint) wide, on any platform and with any input.
+`RaftTheme(pointerInput = null)` likewise inherits, and the outermost one reads
+`RaftPointerInputState`: `Fine` (the 32dp metrics) once a mouse or trackpad is used, `Touch`
+(44dp) once a finger lifts. The desktop app starts `Fine`; Android, iOS and a headless JVM start
+`Touch`. `Modifier.raftTrackPointerInput()` on a window's root content feeds it (the app's page
+host does).
+Following the type: Button `md` text (`text-control`) and `RaftPickerTriggerButton` text.
+Following the controls: Button `lg` height (`h-control`), `xl` height
 (`h-control-cta`); `RaftIconButtonSize.Lg` and `RaftIconToggleButton` (`size-control`,
 `size-control-icon`); `RaftTextField` height and `RaftTextFieldAction` (`size-control-embedded`);
-`RaftSelectTrigger`; the combobox trigger, chips, chip remove and clear;
-`RaftPickerTriggerButton` text. `RaftBackButton` and `RaftSideActionColumn` keep 44 / 22 (their
-placement constants assume it). Screenshot tests pin `RaftScale.Mobile` (`RaftScreenshot.capture`)
-except `desktop-scale_{light,dark}`.
+`RaftSelectTrigger`; the combobox trigger, chips, chip remove and clear. `RaftBackButton` and
+`RaftSideActionColumn` keep 44 / 22 (their placement constants assume it). Screenshot tests pin
+`RaftScale.Compact` and `RaftPointerInput.Touch` (`RaftScreenshot.capture`) except
+`desktop-scale_{light,dark}` (wide + fine) and `wide-touch-scale_{light,dark}` (wide + touch).
+
+Hover is driven by pointer events, never by platform: anything that shows on hover (states,
+tooltips, preview cards, the sidebar header's controls) appears for any pointer that hovers (the
+Mac, an iPad with a trackpad, an Android tablet with a mouse), and every hover action also has a
+touch path (long press, a menu).
 
 ## Theme
 
