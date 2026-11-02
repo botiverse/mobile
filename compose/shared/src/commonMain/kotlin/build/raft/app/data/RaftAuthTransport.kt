@@ -7,6 +7,8 @@ interface RaftAuthTransport {
     suspend fun completeAppLogin(bodyText: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
     suspend fun login(bodyText: String): AuthNetworkResponse
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse
+    /** Unauthenticated `POST /api/auth/second-factor/verify` (the second step of a sign-in). */
+    suspend fun verifySecondFactorSignIn(bodyText: String): AuthNetworkResponse = AuthNetworkResponse(501, null)
     suspend fun socialAuthProviders(platform: String): AuthNetworkResponse
     suspend fun startNativeAppleMobileOAuth(bodyText: String, authorization: String? = null): AuthNetworkResponse =
         AuthNetworkResponse(code = 501, bodyText = null)

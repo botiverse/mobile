@@ -19,6 +19,7 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.mobileOAuthConflictMessageOrNull
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
+import build.raft.app.data.RaftSecondFactorSignIn
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.StoredAuthSession
@@ -332,8 +333,21 @@ class MainActivity : ComponentActivity() {
             when (result) {
                 is SharedAuthResult.Success ->
                     openPostLoginDestination(result.data, loginTransition)
-                is SharedAuthResult.Failure ->
-                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                is SharedAuthResult.Failure -> {
+                    val secondFactor = result.secondFactorSignIn
+                    if (secondFactor != null) {
+                        // Two-step verification is on: the sign-in page shows the second step
+                        // (a live one in this task picks it up; otherwise the shell opens it).
+                        RaftSecondFactorSignIn.start(secondFactor)
+                        if (AndroidShellWindowRegistry.hasShellInTask(taskId)) {
+                            finish()
+                        } else {
+                            openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
+                        }
+                    } else {
+                        Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                    }
+                }
                 SharedAuthResult.Unauthenticated ->
                     Toast.makeText(this@MainActivity, getString(R.string.google_sign_in_failed_toast), Toast.LENGTH_SHORT).show()
             }

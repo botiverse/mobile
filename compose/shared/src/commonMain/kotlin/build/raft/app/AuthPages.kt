@@ -16,6 +16,7 @@ import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.DataResult
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.RaftSecondFactorSignIn
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthRuntimeCapabilities
@@ -223,6 +224,22 @@ private fun LoginScreen() {
         settingsDataSource = settingsDataSource,
         onDismiss = { privateDeploymentVisible = false },
     )
+    // A first step answered with a second-factor challenge: its page takes the sign-in page's
+    // place until it is answered or dropped (web PendingSecondFactorSignInStep).
+    val pendingSecondFactor by RaftSecondFactorSignIn.pending.collectAsState()
+    val secondFactor = pendingSecondFactor
+    if (secondFactor != null) {
+        SecondFactorSignInHost(
+            pending = secondFactor,
+            auth = authDataSource,
+            onSignedIn = { session ->
+                RaftSecondFactorSignIn.clear(secondFactor)
+                pager.openPostAuthRoute(session)
+            },
+            onBack = { RaftSecondFactorSignIn.clear(secondFactor) },
+        )
+        return
+    }
     WebLoginScreen(
         pager,
         bridge,

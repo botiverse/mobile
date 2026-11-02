@@ -1080,6 +1080,9 @@ class SharedRaftAuthTransport internal constructor(
     override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse =
         request(path = "auth/${provider.trim().lowercase()}/complete", method = "POST", bodyText = bodyText)
 
+    override suspend fun verifySecondFactorSignIn(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/second-factor/verify", method = "POST", bodyText = bodyText)
+
     override suspend fun socialAuthProviders(platform: String): AuthNetworkResponse {
         val normalizedPlatform = platform.trim().lowercase().let { if (it == "mobile") "mobile" else "web" }
         return request(path = "auth/providers?platform=$normalizedPlatform", method = "GET")

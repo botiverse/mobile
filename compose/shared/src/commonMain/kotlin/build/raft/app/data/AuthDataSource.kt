@@ -19,6 +19,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 internal const val AuthAuthorityChangedMessage = "auth_authority_changed"
 
+/** [SharedAuthResult.Failure.message] of a first step that asks for the second one (never shown as an error). */
+internal const val SECOND_FACTOR_SIGN_IN_REQUIRED_MESSAGE = "second_factor_required"
+
 private val authJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
@@ -129,12 +132,23 @@ class SharedAuthDataSource(
             ) {
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
+                    response.secondFactorSignIn?.let { challenge ->
+                        return secondFactorSignInRequired("password", challenge, SecondFactorSignInFlow.Password)
+                    }
                     val failure = response.toSharedAuthFailure()
                     diagnosticsLogger("auth_login_result provider=password result=failure code=${failure.code}")
                     return failure
                 }
             }
         diagnosticsLogger("auth_login_result provider=password result=success parsed=true")
+        return finishPasswordLogin(login)
+    }
+
+    /**
+     * The end of a password sign-in once its tokens are in hand (from `/login`, or from
+     * `/second-factor/verify` after it): server list, order, selection, then the session saved.
+     */
+    private suspend fun finishPasswordLogin(login: AuthLoginResponse): SharedAuthResult<StoredAuthSession> {
         val servers =
             when (
                 val response =
@@ -446,11 +460,25 @@ class SharedAuthDataSource(
                     response.data
                 }
                 is AuthApiResult.Failure -> {
+                    response.secondFactorSignIn?.let { challenge ->
+                        return secondFactorSignInRequired(provider, challenge, SecondFactorSignInFlow.Social(provider))
+                    }
                     val failure = response.toSharedAuthFailure()
                     diagnosticsLogger("auth_login_result provider=$provider result=failure code=${failure.code}")
                     return failure
                 }
             }
+        return finishSocialLogin(provider, tokens)
+    }
+
+    /**
+     * The end of a social sign-in once its tokens are in hand (from `/:provider/complete`, or
+     * from `/second-factor/verify` after it): the account, server list, order, then the session.
+     */
+    private suspend fun finishSocialLogin(
+        provider: String,
+        tokens: AuthSocialCompleteResponse,
+    ): SharedAuthResult<StoredAuthSession> {
         val user =
             when (val response = api.currentUser("Bearer ${tokens.accessToken}")) {
                 is AuthApiResult.Success -> response.data
@@ -497,6 +525,76 @@ class SharedAuthDataSource(
         diagnosticsLogger("auth_session_persist_result provider=$provider result=success stage=session_persist")
         diagnosticsLogger("auth_login_result provider=$provider result=success serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         return SharedAuthResult.Success(session)
+    }
+
+    private fun secondFactorSignInRequired(
+        provider: String,
+        challenge: SecondFactorSignInChallenge,
+        flow: SecondFactorSignInFlow,
+    ): SharedAuthResult.Failure {
+        diagnosticsLogger(
+            "auth_login_result provider=$provider result=second_factor_required " +
+                "methods=${challenge.methods.joinToString(",").authDiagnosticsToken()}"
+        )
+        return SharedAuthResult.Failure(
+            SharedAuthErrorCode.Unknown,
+            SECOND_FACTOR_SIGN_IN_REQUIRED_MESSAGE,
+            secondFactorSignIn = SecondFactorSignInPending(challenge = challenge, flow = flow),
+        )
+    }
+
+    /**
+     * Answers [pending]'s challenge (`POST /api/auth/second-factor/verify`). Passed, it finishes
+     * the sign-in exactly as the first step's token answer does (same server list, selection and
+     * saved session); refused, nothing is written.
+     */
+    suspend fun verifySecondFactorSignIn(
+        pending: SecondFactorSignInPending,
+        answer: SecondFactorStepUpAnswer,
+    ): SecondFactorSignInResult {
+        val provider =
+            when (val flow = pending.flow) {
+                SecondFactorSignInFlow.Password -> "password"
+                is SecondFactorSignInFlow.Social -> flow.provider
+            }
+        diagnosticsLogger("auth_second_factor_verify_start provider=$provider")
+        val body = buildSharedSecondFactorSignInVerifyBody(pending.challenge.challenge, answer, pending.codeVerifier)
+        val response =
+            runCatchingPreservingCancellation { api.verifySecondFactorSignIn(pending.flow, body) }
+                .getOrElse { throwable ->
+                    diagnosticsLogger(
+                        "auth_second_factor_verify_result provider=$provider result=failure errorType=${throwable.safeDiagnosticsType()} mapped=network"
+                    )
+                    return SecondFactorSignInResult.Failed(serverCode = "network")
+                }
+        val verified =
+            when (response) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> {
+                    val result =
+                        when {
+                            response.contractCode != null -> SecondFactorSignInResult.Failed(serverCode = response.contractCode)
+                            response.code == 0 -> SecondFactorSignInResult.Failed(serverCode = "network")
+                            else -> parseSharedSecondFactorSignInRefusal(response.code, response.errorBodyText)
+                        }
+                    diagnosticsLogger(
+                        "auth_second_factor_verify_result provider=$provider result=refused http=${response.code} " +
+                            "outcome=${result::class.simpleName.orEmpty().authDiagnosticsToken()}"
+                    )
+                    return result
+                }
+            }
+        diagnosticsLogger("auth_second_factor_verify_result provider=$provider result=success")
+        val finished =
+            when (verified) {
+                is AuthSecondFactorSignInVerified.Password -> finishPasswordLogin(verified.login)
+                is AuthSecondFactorSignInVerified.Social -> finishSocialLogin(provider, verified.tokens)
+            }
+        return when (finished) {
+            is SharedAuthResult.Success -> SecondFactorSignInResult.SignedIn(finished.data, verified.backupCodesRemaining)
+            is SharedAuthResult.Failure -> SecondFactorSignInResult.Failed(serverMessage = finished.message)
+            SharedAuthResult.Unauthenticated -> SecondFactorSignInResult.Failed(serverCode = "unauthenticated")
+        }
     }
 
     suspend fun completeProfile(name: String, displayName: String): SharedAuthResult<StoredAuthSession> {
@@ -1641,6 +1739,11 @@ interface RaftAuthApi {
     suspend fun completeAppLogin(code: String, codeVerifier: String): AuthApiResult<AuthLoginResponse> = AuthApiResult.Failure(code = 501)
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse>
+    /** `POST /api/auth/second-factor/verify`; the success body is [flow]'s first-step body. */
+    suspend fun verifySecondFactorSignIn(
+        flow: SecondFactorSignInFlow,
+        bodyText: String,
+    ): AuthApiResult<AuthSecondFactorSignInVerified> = AuthApiResult.Failure(code = 501)
     suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>>
     suspend fun startNativeAppleMobileOAuth(
         mode: String,
@@ -1698,22 +1801,57 @@ class RaftAuthApiClient(
     private val transport: RaftAuthTransport,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) : RaftAuthApi {
-    override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
-        transport.login(authJson.encodeToString(AuthLoginRequestBody(email = email, password = password)))
-            .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
+    override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> {
+        val response = transport.login(authJson.encodeToString(AuthLoginRequestBody(email = email, password = password)))
+        response.secondFactorSignInChallengeOrNull()?.let { return it }
+        return response.mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
+    }
 
     override suspend fun completeSocialLogin(
         provider: String,
         bodyText: String
-    ): AuthApiResult<AuthSocialCompleteResponse> =
-        transport.completeSocialLogin(provider, bodyText)
-            .mapAuthBody(
-                "auth_social_complete_contract_mismatch",
-                AuthSocialCompleteResponseDto.serializer(),
-                diagnosticsLogger
-            ) {
-                it.toDomain()
-            }
+    ): AuthApiResult<AuthSocialCompleteResponse> {
+        val response = transport.completeSocialLogin(provider, bodyText)
+        response.secondFactorSignInChallengeOrNull()?.let { return it }
+        return response.mapAuthBody(
+            "auth_social_complete_contract_mismatch",
+            AuthSocialCompleteResponseDto.serializer(),
+            diagnosticsLogger
+        ) {
+            it.toDomain()
+        }
+    }
+
+    override suspend fun verifySecondFactorSignIn(
+        flow: SecondFactorSignInFlow,
+        bodyText: String,
+    ): AuthApiResult<AuthSecondFactorSignInVerified> {
+        val response = transport.verifySecondFactorSignIn(bodyText)
+        return when (flow) {
+            SecondFactorSignInFlow.Password ->
+                response.mapAuthBody(
+                    "auth_second_factor_verify_contract_mismatch",
+                    AuthSecondFactorPasswordVerifiedDto.serializer(),
+                    diagnosticsLogger
+                ) {
+                    AuthSecondFactorSignInVerified.Password(
+                        AuthLoginResponse(user = it.user, accessToken = it.accessToken, refreshToken = it.refreshToken),
+                        backupCodesRemaining = it.backupCodesRemaining,
+                    )
+                }
+            is SecondFactorSignInFlow.Social ->
+                response.mapAuthBody(
+                    "auth_second_factor_verify_contract_mismatch",
+                    AuthSecondFactorSocialVerifiedDto.serializer(),
+                    diagnosticsLogger
+                ) {
+                    AuthSecondFactorSignInVerified.Social(
+                        AuthSocialCompleteResponse(accessToken = it.accessToken, refreshToken = it.refreshToken),
+                        backupCodesRemaining = it.backupCodesRemaining,
+                    )
+                }
+        }
+    }
 
     override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
         transport.socialAuthProviders(platform)
@@ -1945,7 +2083,13 @@ sealed interface AuthApiResult<out T> {
     data class Failure(
         val code: Int,
         val errorBodyText: String? = null,
-        val contractCode: String? = null
+        val contractCode: String? = null,
+        /**
+         * Not an error: the first step (`/login`, `/:provider/complete`) answered 2xx with
+         * `secondFactorRequired`, so there are no tokens yet and the sign-in goes on at
+         * `/second-factor/verify` (SecondFactorSignInApi.kt).
+         */
+        val secondFactorSignIn: SecondFactorSignInChallenge? = null
     ) : AuthApiResult<Nothing>
 }
 
@@ -2106,6 +2250,18 @@ data class AuthSocialCompleteResponse(
     val refreshToken: String
 )
 
+/** A passed `POST /api/auth/second-factor/verify`: its first step's success body. */
+sealed interface AuthSecondFactorSignInVerified {
+    /** After a backup code: how many unused ones are left. */
+    val backupCodesRemaining: Int?
+
+    data class Password(val login: AuthLoginResponse, override val backupCodesRemaining: Int? = null) :
+        AuthSecondFactorSignInVerified
+
+    data class Social(val tokens: AuthSocialCompleteResponse, override val backupCodesRemaining: Int? = null) :
+        AuthSecondFactorSignInVerified
+}
+
 data class AuthMobileOAuthStartResponse(
     val authorizationUrl: String,
     val requestId: String,
@@ -2169,7 +2325,12 @@ sealed interface SharedAuthResult<out T> {
         val code: SharedAuthErrorCode,
         val message: String,
         /** A 403 `second_factor_step_up_required` (linking a sign-in method): what to step up with. */
-        val secondFactorStepUp: SecondFactorStepUpChallenge? = null
+        val secondFactorStepUp: SecondFactorStepUpChallenge? = null,
+        /**
+         * The first step passed and the server asks for the second one (two-step verification on):
+         * put it in [RaftSecondFactorSignIn] and answer it with [SharedAuthDataSource.verifySecondFactorSignIn].
+         */
+        val secondFactorSignIn: SecondFactorSignInPending? = null
     ) : SharedAuthResult<Nothing>
 }
 
@@ -2376,6 +2537,30 @@ private data class AuthSocialCompleteResponseDto(
     val accessToken: String,
     val refreshToken: String,
 )
+
+/** `/second-factor/verify` after a password sign-in: the `/login` body (auth.ts `sendPasswordSignIn`). */
+@Serializable
+private data class AuthSecondFactorPasswordVerifiedDto(
+    val user: StoredAuthUser,
+    val accessToken: String,
+    val refreshToken: String,
+    val backupCodesRemaining: Int? = null,
+)
+
+/** `/second-factor/verify` after a web social sign-in: the `/:provider/complete` body (auth.ts `sendWebSocialSignIn`). */
+@Serializable
+private data class AuthSecondFactorSocialVerifiedDto(
+    val accessToken: String,
+    val refreshToken: String,
+    val backupCodesRemaining: Int? = null,
+)
+
+/** A first step's 2xx answer that is a second-factor challenge, as a [AuthApiResult.Failure] carrying it. */
+private fun AuthNetworkResponse.secondFactorSignInChallengeOrNull(): AuthApiResult.Failure? {
+    if (!isSuccessful) return null
+    val challenge = parseSharedSecondFactorSignInChallenge(bodyText) ?: return null
+    return AuthApiResult.Failure(code = code, secondFactorSignIn = challenge)
+}
 
 private fun AuthSocialCompleteResponseDto.toDomain(): AuthSocialCompleteResponse =
     AuthSocialCompleteResponse(accessToken = accessToken, refreshToken = refreshToken)
