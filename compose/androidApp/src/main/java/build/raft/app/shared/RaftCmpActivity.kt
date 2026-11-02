@@ -85,6 +85,8 @@ import build.raft.app.R
 import build.raft.app.MainActivity
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.RaftCmpRoot
+import build.raft.app.cmp.RaftCmpToastLayer
+import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.RaftWebViewFileChooserHost
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
@@ -1088,29 +1090,33 @@ internal open class RaftCmpActivity :
         val composeView =
             ComposeView(this).apply {
                 setContent {
-                    CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
-                        if (stack == null) {
-                            RaftCmpRoot(
-                                args,
-                                host,
-                                onSystemBarsResolved = ::applySystemBarAppearance,
-                                onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
-                            )
-                        } else {
-                            RaftAndroidNav3StackContent(
-                                stack = stack,
-                                onSystemBars = ::applySystemBarAppearance,
-                                onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
-                                shell = { onBars, onCanvas ->
-                                    CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
-                                        RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
-                                    }
-                                },
-                                page = { page, onBars, onCanvas ->
-                                    val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
-                                    RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
-                                },
-                            )
+                    // One toast host for the window, over the shell and every stack page (each
+                    // page's RaftCmpRoot uses it instead of adding its own).
+                    RaftCmpToastLayer {
+                        CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                            if (stack == null) {
+                                RaftCmpRoot(
+                                    args,
+                                    host,
+                                    onSystemBarsResolved = ::applySystemBarAppearance,
+                                    onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
+                                )
+                            } else {
+                                RaftAndroidNav3StackContent(
+                                    stack = stack,
+                                    onSystemBars = ::applySystemBarAppearance,
+                                    onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
+                                    shell = { onBars, onCanvas ->
+                                        CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
+                                            RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                        }
+                                    },
+                                    page = { page, onBars, onCanvas ->
+                                        val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
+                                        RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -2048,19 +2054,11 @@ internal open class RaftCmpActivity :
             } else {
                 when (result.status) {
                     AndroidAttachmentOpenStatus.Opened ->
-                            Toast.makeText(
-                                    this,
-                                    getString(R.string.attachment_save_as_saved_toast),
-                                    Toast.LENGTH_SHORT
-                            ).show()
+                            showRaftHostToast(this, getString(R.string.attachment_save_as_saved_toast))
                     AndroidAttachmentOpenStatus.SaveCancelled,
                     AndroidAttachmentOpenStatus.Cancelled -> Unit
                     else ->
-                            Toast.makeText(
-                                    this,
-                                    getString(R.string.attachment_save_as_failed_toast),
-                                    Toast.LENGTH_SHORT
-                            ).show()
+                            showRaftHostToast(this, getString(R.string.attachment_save_as_failed_toast))
                 }
             }
         }
@@ -3694,6 +3692,21 @@ internal fun raftAndroidBridgeUrlDecode(value: String): String =
  * (`RaftCmpActivity`) create one directly and pass [hostActivity], since they have no Kuikly
  * render context to derive [activity] from. Kuikly pages leave it null (unchanged behaviour).
  */
+/**
+ * A notice from the Android host itself (a save, a link that no app opens): the design-system
+ * toast of the foreground Compose window ([RaftCmpToasts]), the system toast when none is in the
+ * foreground. Any thread.
+ */
+internal fun showRaftHostToast(context: Context, message: String, long: Boolean = false) {
+    if (message.isBlank()) return
+    val show = {
+        if (!RaftCmpToasts.post(message)) {
+            Toast.makeText(context.applicationContext, message, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+        }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) show() else Handler(Looper.getMainLooper()).post { show() }
+}
+
 internal class RaftBridgeModule(
         private val appContext: Context,
         private val hostActivity: (() -> Activity?)? = null,
@@ -4225,6 +4238,11 @@ internal class RaftBridgeModule(
         RaftAndroidLocalDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
     }
 
+    /**
+     * The bridge `toast`: shared's `BridgeModule.toast` and the wire capabilities send it only
+     * when no Compose window is in the foreground (`RaftCmpToasts.post` failed: the app in the
+     * background, before the first frame), so it stays the system toast.
+     */
     private fun toast(params: String?): Any? {
         val content = JSONObject(params ?: "{}").optString("content")
         if (content.isNotBlank()) {
@@ -5231,7 +5249,7 @@ internal class RaftBridgeModule(
                                         } else {
                                             "Unable to open ${provider.socialProviderDisplayName()} account linking"
                                         }
-                                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+                                showRaftHostToast(appContext, message)
                                 callback?.invoke(
                                         mapOf(
                                                 "status" to "error",
@@ -6420,7 +6438,7 @@ internal class RaftBridgeModule(
             val shareText = buildHandsFeedbackShareText(ticketId, description, attachmentNames)
             withContext(Dispatchers.Main) {
                 copyText("Hands feedback", shareText)
-                Toast.makeText(appContext, RaftHostStrings.feedbackCopiedMessage(), Toast.LENGTH_LONG).show()
+                showRaftHostToast(appContext, RaftHostStrings.feedbackCopiedMessage(), long = true)
             }
             RaftAppLog.record("SlockDiagnostics", "hands_feedback_submitted ticket=${ticketId.take(8)}")
             mapOf<String, Any>(
@@ -6435,7 +6453,7 @@ internal class RaftBridgeModule(
                     "hands_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
             )
             withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, RaftHostStrings.feedbackFailedMessage(it.message), Toast.LENGTH_LONG).show()
+                showRaftHostToast(appContext, RaftHostStrings.feedbackFailedMessage(it.message), long = true)
             }
             mapOf<String, Any>(
                     "status" to "error",
@@ -7150,7 +7168,7 @@ internal class RaftBridgeModule(
                     }
             )
         }.onFailure {
-            Toast.makeText(appContext, appContext.getString(R.string.share_sheet_unavailable_toast), Toast.LENGTH_SHORT).show()
+            showRaftHostToast(appContext, appContext.getString(R.string.share_sheet_unavailable_toast))
         }
     }
 
@@ -7193,10 +7211,9 @@ internal class RaftBridgeModule(
                 if (openInAppBrowserFallback(url, mimeType)) {
                     return@onFailure
                 }
-                Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
-                        .show()
+                showRaftHostToast(appContext, appContext.getString(R.string.open_link_no_app_toast))
             } else {
-                Toast.makeText(appContext, appContext.getString(R.string.open_link_failed_toast), Toast.LENGTH_SHORT).show()
+                showRaftHostToast(appContext, appContext.getString(R.string.open_link_failed_toast))
             }
         }
         return null
@@ -8574,12 +8591,6 @@ internal class RaftBridgeModule(
     private fun isAndroidPackageArchive(fileName: String, mimeType: String): Boolean =
             mimeType.equals(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE, ignoreCase = true) ||
                     fileName.substringAfterLast('.', missingDelimiterValue = "").equals("apk", ignoreCase = true)
-
-    private fun showToast(message: String) {
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
-        }
-    }
 
     private fun safeUrlForDiagnostics(rawUrl: String): String =
             runCatching {

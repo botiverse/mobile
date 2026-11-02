@@ -5,6 +5,7 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.AttachmentOwnerLease
 import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
+import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.host.HostCapabilities
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.raftLogDebug
@@ -328,7 +329,13 @@ internal class BridgeModule : Module() {
         callNativeMethod("callPhone", methodArgs, null)
     }
 
+    /**
+     * A design-system toast on the window showing this page (`RaftCmpToasts`, the root's
+     * `RaftToastHost`); the native `toast` only while no window is in the foreground (the app in
+     * the background, before the first frame). Any thread.
+     */
     fun toast(content: String) {
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities)) return
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
         callNativeMethod("toast", methodArgs, null)

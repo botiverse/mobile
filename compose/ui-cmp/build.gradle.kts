@@ -54,6 +54,8 @@ kotlin {
             implementation(libs.cmp.runtime)
             implementation(libs.cmp.foundation)
             implementation(libs.cmp.ui)
+            // RaftCmpToastLayer: the window lifecycle decides which window shows a toast.
+            implementation(libs.cmp.lifecycle.runtime.compose)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.atomicfu)
