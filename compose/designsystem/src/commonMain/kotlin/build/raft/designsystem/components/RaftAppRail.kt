@@ -511,14 +511,15 @@ private fun RaftAppRailItemBox(
         ) {
             Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) {
                 CompositionLocalProvider(LocalRaftContentColor provides ink) { icon(ink) }
-            }
-            if (showsAttention) {
-                // raft-ui AppRailItemAttention: the `attention` pixel, `-top-1 -right-1`.
-                RaftStatusDot(
-                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp),
-                    size = RaftStatusSize.Sm,
-                    color = RaftUiPalette.attention,
-                )
+                if (showsAttention) {
+                    // raft-ui AppRailItemAttention: the `attention` pixel, `-top-1 -right-1` on the
+                    // icon (it sits inside web's AppRailItemIcon), not on the 40dp square.
+                    RaftStatusDot(
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp),
+                        size = RaftStatusSize.Sm,
+                        color = RaftUiPalette.attention,
+                    )
+                }
             }
         }
     }
