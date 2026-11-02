@@ -157,7 +157,8 @@ async function api(method, route, { token, body } = {}) {
 }
 
 async function main() {
-  const tapped = await waitForFile("signin-tapped", 300_000, "launch");
+  // Generous: installing the test runner on a just-downloaded runtime alone took 2.5 min (run 41505034629).
+  const tapped = await waitForFile("signin-tapped", 900_000, "launch");
   if (!tapped?.ok) die(`test did not reach the sign-in tap: ${tapped?.error ?? "timeout"}`);
   console.log("home-shot: sign-in tapped; waiting for the app's pending request");
 

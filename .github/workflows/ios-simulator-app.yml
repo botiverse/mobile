@@ -111,7 +111,8 @@ jobs:
     name: Build installable Simulator app
     # push has no inputs: xcode-27 + the pinned Xcode 27.1. workflow_call passes the same inputs.
     runs-on: ${{ inputs.macos_runner || 'xcode-27' }}
-    timeout-minutes: 60
+    # The home screenshot adds a simulator boot (plus a runtime download for iOS 26 on xcode-27) and a UI test.
+    timeout-minutes: ${{ inputs.home_screenshot && 110 || 60 }}
     steps:
       # Xcode 27 is only on the xcode-27 images, which carry no Xcode 26.x; the 26.6 fallback
       # needs macos-latest.
@@ -437,6 +438,19 @@ jobs:
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+          # Warm up: a freshly downloaded runtime keeps SpringBoard busy for minutes after boot
+          # ("Waiting on System App"). Install and launch the app once here, retrying, so the
+          # UI test starts on a settled simulator.
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          xcrun simctl install "$udid" "$app"
+          for i in $(seq 1 20); do
+            if xcrun simctl launch "$udid" "$bundle_id" >/dev/null 2>&1; then echo "warm-up launch ok (try $i)"; break; fi
+            sleep 15
+          done
+          sleep 20
+          xcrun simctl terminate "$udid" "$bundle_id" || true
+          xcrun simctl listapps "$udid" | grep -c "$bundle_id" || true
           echo "SHOT_UDID=$udid" >> "$GITHUB_ENV"
           echo "SHOT_RUNTIME=$runtime" >> "$GITHUB_ENV"
           echo "home screenshot: ${SIM_DEVICE} on ${runtime} (SDK ${SIM_SDK}) udid ${udid}"
@@ -466,9 +480,9 @@ jobs:
               test-without-building > "$out/xcodebuild-test.log" 2>&1 ) &
           test_pid=$!
           node .workflow-ci-tools/scripts/ci/ios_home_shot_host.mjs \
-            --udid "$SHOT_UDID" --bundle "$bundle_id" --io "$io" --out "$out"
-          host_rc=$?
-          wait "$test_pid"; test_rc=$?
+            --udid "$SHOT_UDID" --bundle "$bundle_id" --io "$io" --out "$out" && host_rc=0 || host_rc=$?
+          # The step shell runs with -e: keep going to collect the test log and provenance.
+          wait "$test_pid" && test_rc=0 || test_rc=$?
           tail -40 "$out/xcodebuild-test.log"
           (cd "$RUNNER_TEMP" && zip -qr "$out/home-shot.xcresult.zip" home-shot.xcresult) || true
           {
