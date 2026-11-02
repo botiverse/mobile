@@ -16,8 +16,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.CacheDrawScope
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.SuspendingPointerInputModifierNode
@@ -39,6 +40,7 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.PointerInputModifierNode
 import androidx.compose.ui.node.TouchBoundsExpansion
 import androidx.compose.ui.node.requireDensity
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -180,6 +182,19 @@ internal fun raftIsFocused(interactionSource: InteractionSource): Boolean {
     val focused = interactionSource.collectIsFocusedAsState().value
     val preview = LocalRaftFocusedPreview.current
     return focused || preview
+}
+
+/**
+ * CSS `focus-visible` for a control a click can focus: focused (or [LocalRaftFocusedPreview]) and
+ * the last input was the keyboard. A desktop window focuses a button on a mouse click as well
+ * (Compose `clickable` in mouse mode), and the web shows no ring after a click (artin
+ * 2026-11-02: the thread header's followers button kept a black frame after it was clicked).
+ */
+@Composable
+internal fun raftIsFocusVisible(interactionSource: InteractionSource): Boolean {
+    val focused = interactionSource.collectIsFocusedAsState().value
+    val keyboard = LocalInputModeManager.current.inputMode == InputMode.Keyboard
+    return (focused && keyboard) || LocalRaftFocusedPreview.current
 }
 
 /**

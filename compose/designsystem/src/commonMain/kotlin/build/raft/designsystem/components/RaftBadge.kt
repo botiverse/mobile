@@ -327,7 +327,7 @@ private fun raftBadgeButtonModifiers(
             surface = if (appearance == RaftBadgeAppearance.Solid) RaftPressSurface.Sticker else RaftPressSurface.Paper,
             enabled = enabled,
         )
-    val isFocused = raftIsFocused(source)
+    val isFocused = raftIsFocusVisible(source)
     val copy = rememberRaftCopyAction()
     val haptics = rememberRaftHaptics()
     val copyLabel = RaftTheme.strings.copy
