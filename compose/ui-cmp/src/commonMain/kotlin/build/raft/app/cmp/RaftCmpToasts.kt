@@ -48,10 +48,15 @@ object RaftCmpToasts {
      * False when no window can show it (the app in the background, before the first frame):
      * the caller then uses the platform toast. A blank [message] shows nothing and is handled.
      */
-    fun post(message: String, origin: HostCapabilities? = null, foregroundOnly: Boolean = true): Boolean {
+    fun post(
+        message: String,
+        origin: HostCapabilities? = null,
+        foregroundOnly: Boolean = true,
+        durationMillis: Long? = null,
+    ): Boolean {
         if (message.isBlank()) return true
         val window = target(origin, foregroundOnly) ?: return false
-        window.state.show(message)
+        window.state.show(message, durationMillis = durationMillis)
         return true
     }
 

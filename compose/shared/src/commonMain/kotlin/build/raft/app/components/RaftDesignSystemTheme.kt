@@ -135,8 +135,8 @@ internal fun RaftProvideDesignSystemStrings(content: @Composable () -> Unit) {
 
 /**
  * The design system's long-press copy ([build.raft.designsystem.components.raftCopyable]) through
- * the native host: [HostFeedbackCapability.copyToPasteboard], then the host toast "Copied"
- * (`common_copied`), the same pair every other Copy in the app uses. Provided round every page
+ * the native host: [HostFeedbackCapability.copyToPasteboard], then a brief "Copied"
+ * (`common_copied`, [HostFeedbackCapability.briefToast]: 1.5s, not a 5s notification). Provided round every page
  * (the pager host).
  */
 @Composable
@@ -146,7 +146,7 @@ internal fun RaftProvideDesignSystemCopy(feedback: HostFeedbackCapability, conte
         remember(feedback, copied) {
             RaftCopyHandler { text ->
                 feedback.copyToPasteboard(text)
-                feedback.toast(copied)
+                feedback.briefToast(copied)
             }
         }
     CompositionLocalProvider(LocalRaftCopyHandler provides handler, content = content)

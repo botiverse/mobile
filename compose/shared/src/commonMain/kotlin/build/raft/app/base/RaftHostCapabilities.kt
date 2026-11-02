@@ -18,6 +18,8 @@ internal class RaftHostCapabilities(
 ) : HostCapabilities {
     override fun toast(content: String) = bridge.toast(content)
 
+    override fun briefToast(content: String) = bridge.briefToast(content)
+
     override fun copyToPasteboard(content: String) = bridge.copyToPasteboard(content)
 
     override fun openUrl(url: String, mimeType: String?) = bridge.openUrl(url, mimeType)

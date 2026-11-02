@@ -11980,10 +11980,8 @@ private fun SharedThreadRouteContentContent(
             remember(newMessageMenuEnabled, bridge, copiedLabel) {
                 ThreadInPlaceTextSelectionHost(
                     enabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable(),
-                    copyText = { text ->
-                        bridge.copyToPasteboard(text)
-                        bridge.toast(copiedLabel)
-                    }
+                    // Web: copying a selection shows nothing (artin 2026-11-02).
+                    copyText = { text -> bridge.copyToPasteboard(text) }
                 )
             }
         // read_receipts_v0: other participants' read positions for this page's scope (null = no hydrate).
@@ -12683,10 +12681,8 @@ private fun SharedThreadRouteContentContent(
                     }
                     action == "copyMessage" && !itemId.isNullOrBlank() -> {
                     val body = renderedTimelineSlice.threadMessageById(itemId)?.body.orEmpty()
-                    if (body.isNotBlank()) {
-                        bridge.copyToPasteboard(body)
-                        bridge.toast(copiedLabel)
-                    }
+                    // Web MessageItem Copy Markdown: the menu closes, no toast (artin 2026-11-02).
+                    if (body.isNotBlank()) bridge.copyToPasteboard(body)
                 }
                     action == "copyLocalSendFailureDetails" && !itemId.isNullOrBlank() -> {
                         val failedMessage = renderedTimelineSlice.threadMessageById(itemId)
@@ -12700,7 +12696,7 @@ private fun SharedThreadRouteContentContent(
                     }
                 action == "copyShareSelectionMarkdown" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
-                    bridge.toast(copiedLabel)
+                    bridge.briefToast(copiedLabel)
                 }
                 action == "copyShareSelectionLinks" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
@@ -12746,8 +12742,8 @@ private fun SharedThreadRouteContentContent(
                             )
                         }
                     if (permalink != null) {
+                        // Web MessageItem Copy Link: no toast.
                         bridge.copyToPasteboard(permalink)
-                        bridge.toast(copiedLabel)
                     } else {
                         bridge.toast(unableToCopyLinkLabel)
                     }
@@ -14423,7 +14419,7 @@ private fun SharedThreadRouteContentContent(
                     onCopy = { text ->
                         bridge.log("thread_select_text_copy messageId=${message.id} chars=${text.length}")
                         bridge.copyToPasteboard(text)
-                        bridge.toast(copiedLabel)
+                        bridge.briefToast(copiedLabel)
                     },
                     onQuote =
                         if (quoteTarget == ThreadSelectTextQuoteTarget.None) {
