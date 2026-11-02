@@ -34,19 +34,27 @@ internal val CssCjkLineHeightStyle =
 private const val CjkFallbackLineHeightEm = 1.45f
 
 /**
- * [style] for [text], with [CssCjkLineHeightStyle] where the platform needs it. The text is scanned
- * once per value ([remember]), not on every recomposition: a long body goes through RaftText too.
+ * This style for [text], with [CssCjkLineHeightStyle] where the platform needs it. The text is
+ * scanned once per value ([remember]), not on every recomposition: a long body goes through
+ * RaftText too. Public for text drawn outside [RaftText] (the markdown renderer's text provider):
+ * call it on the style the text is laid out with, its final font size and line height included.
  */
 @Composable
-internal fun TextStyle.forCjkLineBox(text: CharSequence): TextStyle {
+fun TextStyle.forCjkLineBox(text: CharSequence): TextStyle {
     val cjk = remember(text) { raftTextGrowsForFallbackFonts && text.hasCjk() }
     return forCjkLineBox(cjk)
 }
 
-/** [forCjkLineBox] once it is known whether the text has CJK. */
-internal fun TextStyle.forCjkLineBox(hasCjk: Boolean): TextStyle =
+/**
+ * [forCjkLineBox] once it is known whether the text has CJK. [growsForFallbackFonts] is the
+ * platform's (a parameter so tests cover the Android rule on every target).
+ */
+internal fun TextStyle.forCjkLineBox(
+    hasCjk: Boolean,
+    growsForFallbackFonts: Boolean = raftTextGrowsForFallbackFonts,
+): TextStyle =
     if (
-        raftTextGrowsForFallbackFonts &&
+        growsForFallbackFonts &&
         lineHeightStyle == RaftTypography.CssLineHeightStyle &&
         fontSize.isSp && lineHeight.isSp && lineHeight.value < fontSize.value * CjkFallbackLineHeightEm &&
         hasCjk
