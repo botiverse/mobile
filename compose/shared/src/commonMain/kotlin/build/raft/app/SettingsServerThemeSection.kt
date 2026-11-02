@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftProBadge
 import build.raft.app.components.RaftProUpgradeDialog
+import build.raft.app.components.raftProThemeGateDescription
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.ServerAppearanceRepository
@@ -161,7 +162,7 @@ internal fun SettingsServerThemePickerCard(
         RaftDesignSystemTheme {
             RaftProUpgradeDialog(
                 title = stringResource(Res.string.settings_server_theme_pro_title),
-                description = stringResource(Res.string.settings_server_theme_pro_description, state.serverName),
+                description = stringResource(raftProThemeGateDescription(), state.serverName),
                 onUpgrade = binding.onOpenBilling,
                 onDismiss = binding.onDismissUpgrade,
             )

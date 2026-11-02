@@ -36,6 +36,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftProBadge
 import build.raft.app.components.RaftProUpgradeDialog
+import build.raft.app.components.raftProMigrationGateCopy
 import build.raft.app.data.AGENT_MIGRATION_STEP_COUNT
 import build.raft.app.data.AgentMigrationActionError
 import build.raft.app.data.AgentMigrationEffect
@@ -290,9 +291,10 @@ internal fun AgentMigrationSection(
         )
     }
     if (showUpgrade) {
+        val copy = raftProMigrationGateCopy()
         RaftProUpgradeDialog(
-            title = stringResource(Res.string.raft_pro_migration_title),
-            description = stringResource(Res.string.raft_pro_migration_description),
+            title = stringResource(copy.title),
+            description = stringResource(copy.description),
             onUpgrade = {
                 showUpgrade = false
                 inputs.onOpenBilling()

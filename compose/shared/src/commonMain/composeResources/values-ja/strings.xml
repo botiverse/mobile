@@ -297,6 +297,7 @@
     <string name="settings_server_theme_save_failed">テーマを保存できませんでした。もう一度お試しください。</string>
     <string name="settings_server_theme_pro_title">退屈グレーは Pro のテーマです</string>
     <string name="settings_server_theme_pro_description">%1$s を Pro にアップグレードすると、メンバー全員が退屈グレーを使えます。</string>
+    <string name="settings_server_theme_pro_description_neutral">退屈グレーを使うには %1$s に Pro プランが必要です。</string>
     <string name="settings_server_theme_name_raft">Raft イエロー</string>
     <string name="settings_server_theme_name_boring">退屈グレー</string>
     <string name="settings_server_theme_name_bots">ロボット</string>
@@ -3239,7 +3240,9 @@
     <string name="channel_sos_resume_error">エージェントを再開できませんでした。もう一度お試しください。</string>
     <string name="raft_pro_badge">Pro</string>
     <string name="raft_pro_migration_title">Pro にアップグレードしてエージェントを移行</string>
+    <string name="raft_pro_migration_title_neutral">エージェントの移行には Pro プランが必要です</string>
     <string name="raft_pro_migration_description">アップグレードすると、エージェントとそのワークスペースを別のコンピューターに移行できます。</string>
+    <string name="raft_pro_migration_description_neutral">エージェントとそのワークスペースを別のコンピューターに移行するには Pro プランが必要です。</string>
     <string name="agent_migration_section_title">エージェントの移行</string>
     <string name="agent_migration_section_description">このエージェントとそのワークスペースを別のコンピューターに移行します。</string>
     <string name="agent_migration_detail_start_migration">別のコンピューターに移行</string>

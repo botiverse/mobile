@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.jetbrains.compose.resources.StringResource
 import build.raft.app.RaftContentLucideIcon
 import build.raft.app.RaftDialogFooter
 import build.raft.app.RaftLucideIconName
@@ -95,4 +96,27 @@ internal fun raftBillingLeavesRaftTrailingIcon(
         { RaftContentLucideIcon(RaftLucideIconName.ArrowUpRight, size = 18.dp) }
     } else {
         null
+    }
+
+/** The title and description of a Pro gate prompt. */
+internal data class RaftProGateCopy(val title: StringResource, val description: StringResource)
+
+/**
+ * Agent migration's Pro gate. Where the app offers no upgrade (iOS view-only Billing) the copy is
+ * a plain statement ("Migrating agents needs a Pro plan"), not an "Upgrade to Pro" call to action
+ * that App Review could read as leading to an external purchase (guideline 3.1.1).
+ */
+internal fun raftProMigrationGateCopy(offersUpgrade: Boolean = settingsBillingOffersUpgrade()): RaftProGateCopy =
+    if (offersUpgrade) {
+        RaftProGateCopy(Res.string.raft_pro_migration_title, Res.string.raft_pro_migration_description)
+    } else {
+        RaftProGateCopy(Res.string.raft_pro_migration_title_neutral, Res.string.raft_pro_migration_description_neutral)
+    }
+
+/** The Pro server theme gate's description (`%1$s`: the server name); neutral like [raftProMigrationGateCopy]. */
+internal fun raftProThemeGateDescription(offersUpgrade: Boolean = settingsBillingOffersUpgrade()): StringResource =
+    if (offersUpgrade) {
+        Res.string.settings_server_theme_pro_description
+    } else {
+        Res.string.settings_server_theme_pro_description_neutral
     }

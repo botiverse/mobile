@@ -1,6 +1,10 @@
 package build.raft.app
 
+import build.raft.app.components.RaftProGateCopy
+import build.raft.app.components.raftProMigrationGateCopy
+import build.raft.app.components.raftProThemeGateDescription
 import build.raft.app.data.StoredAuthServer
+import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
@@ -99,6 +103,20 @@ class SettingsBillingWebViewTest {
             "https://app.raft.build/settings/billing?lang=en",
             settingsBillingExternalWebUrl("https://app.raft.build", session = null, localeTag = "en")
         )
+    }
+
+    @Test
+    fun proGateCopyIsNeutralWhereTheAppOffersNoUpgrade() {
+        assertEquals(
+            RaftProGateCopy(Res.string.raft_pro_migration_title_neutral, Res.string.raft_pro_migration_description_neutral),
+            raftProMigrationGateCopy(offersUpgrade = false)
+        )
+        assertEquals(Res.string.settings_server_theme_pro_description_neutral, raftProThemeGateDescription(offersUpgrade = false))
+        assertEquals(
+            RaftProGateCopy(Res.string.raft_pro_migration_title, Res.string.raft_pro_migration_description),
+            raftProMigrationGateCopy(offersUpgrade = true)
+        )
+        assertEquals(Res.string.settings_server_theme_pro_description, raftProThemeGateDescription(offersUpgrade = true))
     }
 
     private fun billingSession() =
