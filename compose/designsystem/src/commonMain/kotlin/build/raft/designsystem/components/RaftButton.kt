@@ -288,7 +288,7 @@ internal fun RaftButtonBox(
     // `focus-visible:shadow-focus`. raft-ui keeps a loading button focusable but
     // `aria-disabled`: the clickable stays enabled (so focus stays on it when it turns busy),
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
-    val isFocused = raftIsFocused(source)
+    val isFocused = raftIsFocusVisible(source)
     val focused = enabled && isFocused
     val radius = if (LocalRaftEmbeddedControl.current) RaftRadius.Chip else RaftRadius.Control
     val shape = join.shape(radius)
