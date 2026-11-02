@@ -42,7 +42,7 @@ fun RaftText(
     BasicText(
         text = text,
         modifier = modifier,
-        style = style.resolve(color, textAlign),
+        style = style.resolve(color, textAlign).forCjkLineBox(text),
         onTextLayout = onTextLayout,
         overflow = overflow,
         softWrap = softWrap,
@@ -72,13 +72,13 @@ fun RaftText(
 ) {
     val links = remember(text) { raftTextLinks(text) }
     if (links.isNotEmpty()) {
-        RaftLinkedText(text, links, modifier, style.resolve(color, textAlign), maxLines, overflow, softWrap, onTextLayout)
+        RaftLinkedText(text, links, modifier, style.resolve(color, textAlign).forCjkLineBox(text), maxLines, overflow, softWrap, onTextLayout)
         return
     }
     BasicText(
         text = text,
         modifier = modifier,
-        style = style.resolve(color, textAlign),
+        style = style.resolve(color, textAlign).forCjkLineBox(text),
         onTextLayout = onTextLayout,
         overflow = overflow,
         softWrap = softWrap,
