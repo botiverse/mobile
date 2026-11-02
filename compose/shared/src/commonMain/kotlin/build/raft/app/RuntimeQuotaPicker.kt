@@ -13,7 +13,7 @@ import build.raft.app.data.canViewMachineRuntimeAccountUsage
 import build.raft.app.data.RuntimeQuotaLinePart
 import build.raft.app.data.runtimeQuotaLineParts
 import build.raft.app.data.summarizeRuntimeQuota
-import build.raft.designsystem.components.RaftChoicePicker
+import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxListAction
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftSelectTrigger
@@ -171,8 +171,8 @@ internal fun SharedCreateAgentMachineOption.quotaMachine(): RuntimeQuotaMachine 
 internal fun SharedCreateAgentMachineOption.quotaRequest(runtimeId: String?): RuntimeQuotaRequest = quotaMachine().request(id, runtimeId)
 
 /**
- * A machine or runtime picker by Jasper's rule ([RaftChoicePicker]: radios up to 5 options, a
- * sheet list up to 10, a searchable sheet beyond), with the shared search and no-match words.
+ * A machine or runtime picker as the web's: a select at any count ([RaftCombobox]: the list
+ * under the trigger up to 10, a searchable sheet beyond), with the shared search and no-match words.
  * With no options at all it is a disabled Select showing [emptyLabel] (or [placeholder]).
  */
 @Composable
@@ -191,7 +191,9 @@ internal fun RuntimePickerChoice(
         return
     }
     val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
-    RaftChoicePicker(
+    // Web CreateAgentDialog / EditAgentDialog: a select at any count, never radios (artin
+    // 2026-11-02). raft-ui ComboboxSelect: the list under the trigger, a searchable sheet past ten.
+    RaftCombobox(
         value = value,
         options = options,
         onValueChange = onValueChange,

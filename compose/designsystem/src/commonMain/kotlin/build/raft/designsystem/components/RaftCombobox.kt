@@ -249,6 +249,8 @@ fun <T> RaftCombobox(
     invalid: Boolean = LocalRaftFieldState.current.invalid,
     label: String? = LocalRaftFieldState.current.label,
     optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)? = null,
+    /** A last row that acts on the list instead of picking (e.g. "Show all supported"). */
+    listAction: RaftComboboxListAction? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -292,6 +294,10 @@ fun <T> RaftCombobox(
                         emptyText = emptyText,
                         optionLeading = optionLeading,
                     )
+                    if (listAction != null) {
+                        if (options.isNotEmpty()) RaftMenuSeparator()
+                        RaftComboboxActionRow(listAction)
+                    }
                 }
             }
         } else if (open) {
@@ -332,6 +338,7 @@ fun <T> RaftCombobox(
                     takenLabels = listOfNotNull(shown),
                     optionLeading = optionLeading,
                     inWindow = true,
+                    listAction = listAction,
                 )
             }
         }

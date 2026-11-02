@@ -50,7 +50,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
-import build.raft.designsystem.components.RaftChoicePicker
+import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftDialogSheetSurface
@@ -86,8 +86,8 @@ internal data class ActionCardFormCandidates(
  * [ActionCardSpecForm.submitLabelFor]); the form's description, then its fields in order:
  *
  * - `TextInput` a [RaftTextField], `TextArea` a [RaftTextarea] with its counter, `Select` a
- *   [RaftChoicePicker] (radios up to 5 options, a sheet list up to 10, a searched sheet past
- *   that), `Toggle` a [RaftSwitch] row (never required);
+ *   [RaftCombobox] (the web's Select: a list up to 10 options, a searched sheet past that),
+ *   `Toggle` a [RaftSwitch] row (never required);
  * - `MemberPicker` / `AgentPicker` the shared [RaftMemberPicker], `ChannelPicker` a list of
  *   [RaftForwardPickerTargetRow]s (the forward picker's rows). A picker's value is always a list
  *   of ids; one that is not `multiple` keeps at most one.
@@ -279,7 +279,9 @@ private fun ActionCardFormField(
                 val options = field.options.map { RaftComboboxOption(it.value, it.label.render(locale)) }
                 // The empty line is built outside composition: fill the query into the resolved string.
                 val noMatches = stringResource(Res.string.action_card_form_options_no_matches, "\u0001")
-                RaftChoicePicker(
+                // Web ActionCardFormSheet: a Select at any count (ComboboxSelect past ten), never
+                // radios (artin 2026-11-02).
+                RaftCombobox(
                     value = (value as? ActionCardFormValue.Text)?.value?.takeIf { it.isNotEmpty() },
                     options = options,
                     onValueChange = { onValueChange(ActionCardFormValue.Text(it)) },
