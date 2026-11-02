@@ -166,12 +166,18 @@ private fun SettingsWebViewScreen() {
         // (list, or one machine via settingsComputerId) compatible by rendering it here.
         SettingsWebViewSurface.Computers -> RaftSettingsComputersRoute()
         SettingsWebViewSurface.Billing ->
-            StandaloneSettingsWebViewPage(
-                pager = pager,
-                title = stringResource(Res.string.settings_billing_title),
-                iconName = RaftLucideIconName.CreditCard,
-                spec = settingsBillingWebViewSpec,
-            )
+            // iOS: never the in-app WebView (its page offers Stripe payment; artin 11-02).
+            when (settingsBillingOpenTarget()) {
+                SettingsBillingOpenTarget.ExternalBrowser -> SettingsBillingExternalPage(pager)
+                SettingsBillingOpenTarget.InAppWebView ->
+                    StandaloneSettingsWebViewPage(
+                        pager = pager,
+                        title = stringResource(Res.string.settings_billing_title),
+                        iconName = RaftLucideIconName.CreditCard,
+                        spec = settingsBillingWebViewSpec,
+                    )
+                SettingsBillingOpenTarget.ViewOnly -> SettingsBillingViewOnlyPage(pager)
+            }
         SettingsWebViewSurface.Marketplace ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -942,17 +948,17 @@ private const val SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
 @Composable
 private fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =
     remember(enabled) {
-        if (!enabled) {
-            AppLocale.Default.languageTag
-        } else {
-            try {
-                KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync().languageTag
-            } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                AppLocale.Default.languageTag
-            }
-        }
+        if (!enabled) AppLocale.Default.languageTag else readStandaloneSettingsLocaleTag()
+    }
+
+/** The in-app language's tag for a Settings web page's `lang` query (the default when unreadable). */
+internal fun readStandaloneSettingsLocaleTag(): String =
+    try {
+        KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync().languageTag
+    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+        throw cancellation
+    } catch (_: Throwable) {
+        AppLocale.Default.languageTag
     }
 
 internal fun standaloneSettingsServerSlug(session: StoredAuthSession?): String? =

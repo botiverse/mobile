@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SettingsBillingWebViewTest {
     @Test
@@ -45,6 +46,59 @@ class SettingsBillingWebViewTest {
         assertFalse(script.contains("MutationObserver"))
         assertFalse(script.contains("createElement(\"style\")"))
         assertFalse(script.contains("hidden-header"))
+    }
+
+    @Test
+    fun iosShowsBillingViewOnlyWithoutUpgradeOrBrowserLink() {
+        assertEquals(IosBillingPresentation.ViewOnly, iosBillingPresentation())
+        val target = settingsBillingOpenTarget(appStoreBillingRules = true)
+        assertEquals(SettingsBillingOpenTarget.ViewOnly, target)
+        assertFalse(settingsBillingOffersUpgrade(target))
+        assertFalse(settingsBillingLeavesRaft(target))
+    }
+
+    @Test
+    fun iosExternalPresentationOpensTheBrowserAndKeepsUpgrade() {
+        val target = settingsBillingOpenTarget(appStoreBillingRules = true, iosPresentation = IosBillingPresentation.External)
+        assertEquals(SettingsBillingOpenTarget.ExternalBrowser, target)
+        assertTrue(settingsBillingOffersUpgrade(target))
+        assertTrue(settingsBillingLeavesRaft(target))
+    }
+
+    @Test
+    fun androidAndDesktopKeepTheBillingWebView() {
+        IosBillingPresentation.entries.forEach { presentation ->
+            assertEquals(
+                SettingsBillingOpenTarget.InAppWebView,
+                settingsBillingOpenTarget(appStoreBillingRules = false, iosPresentation = presentation)
+            )
+        }
+        assertFalse(settingsBillingLeavesRaft(SettingsBillingOpenTarget.InAppWebView))
+        assertTrue(settingsBillingOffersUpgrade(SettingsBillingOpenTarget.InAppWebView))
+    }
+
+    @Test
+    fun externalBillingUrlIsThePlainProductionWebPage() {
+        assertEquals(
+            "https://app.raft.build/s/workspace/settings/billing?lang=zh-Hans",
+            settingsBillingExternalWebUrl("https://app.raft.build", billingSession(), "zh-Hans")
+        )
+    }
+
+    @Test
+    fun externalBillingUrlFollowsTheStagingWebUrl() {
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev/s/workspace/settings/billing?lang=ja",
+            settingsBillingExternalWebUrl("https://raft-app-staging.botiverse.dev/", billingSession(), "ja")
+        )
+    }
+
+    @Test
+    fun externalBillingUrlWithoutServerOpensTheAccountBillingPath() {
+        assertEquals(
+            "https://app.raft.build/settings/billing?lang=en",
+            settingsBillingExternalWebUrl("https://app.raft.build", session = null, localeTag = "en")
+        )
     }
 
     private fun billingSession() =

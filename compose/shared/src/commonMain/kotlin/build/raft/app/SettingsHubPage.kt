@@ -41,6 +41,8 @@ internal data class SettingsHomePageLinkPayload(
     val section: String? = null,
     /** Attention dot on the row (the More tab's signals on the phone Settings root). */
     val attentionDot: Boolean = false,
+    /** The row leaves Raft for another app: a trailing ↗ (raft-ui 0.26 #758). */
+    val opensExternally: Boolean = false,
 )
 
 /** Row key of the Members entry at the top of the More (Settings) page. */
@@ -172,6 +174,8 @@ internal fun appShellSettingsHomePayload(
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     /** The server's `slack_bridge_v0` flag: the IM Bridges row ([settingsHomeRowKeys]). */
     imBridgesEnabled: Boolean = false,
+    /** iOS: Billing opens the system browser ([settingsBillingLeavesRaft]), its row a trailing ↗. */
+    billingOpensExternally: Boolean = settingsBillingLeavesRaft(),
 ): RaftSettingsHomePayload {
     val personalSection = stringResource(Res.string.settings_navigation_section_personal)
     val workspaceSection = stringResource(Res.string.settings_navigation_section_workspace)
@@ -244,7 +248,8 @@ internal fun appShellSettingsHomePayload(
                 subtitle = stringResource(Res.string.settings_billing_subtitle),
                 iconName = RaftLucideIconName.CreditCard,
                 value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
-                section = workspaceSection
+                section = workspaceSection,
+                opensExternally = billingOpensExternally,
             ),
             SettingsHomePageLinkPayload(
                 key = SettingsDestinationAdministration,
@@ -391,4 +396,5 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
         value = value,
         section = section,
         attentionDot = attentionDot,
+        opensExternally = opensExternally,
     )

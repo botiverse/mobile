@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.raftBillingLeavesRaftTrailingIcon
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JointChannelAccepted
 import build.raft.app.data.JointSameAdminContext
@@ -154,12 +155,14 @@ internal fun CreateJointChannelDialog(
                     status = RaftBannerStatus.Warning,
                     size = RaftBannerSize.Sm,
                     action =
-                        if (state.showsBillingLink) {
+                        // iOS view-only Billing: the plan-limit message only (App Store 3.1.1).
+                        if (state.showsBillingLink && settingsBillingOffersUpgrade()) {
                             {
                                 RaftButton(
                                     text = stringResource(Res.string.joint_create_view_billing),
                                     onClick = onOpenBilling,
                                     variant = RaftButtonVariant.Default,
+                                    trailingIcon = raftBillingLeavesRaftTrailingIcon(),
                                 )
                             }
                         } else {

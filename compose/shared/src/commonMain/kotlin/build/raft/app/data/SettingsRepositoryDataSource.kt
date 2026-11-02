@@ -860,6 +860,7 @@ class RealSettingsRepository(
                 currentPlan = SettingsBillingCurrentPlanSnapshot(
                     planName = subscription?.displayName ?: currentPlan.displayName,
                     usageRows = currentPlanUsageRows(currentPlan, usage, trialActive),
+                    usage = currentPlanUsage(currentPlan, usage, trialActive),
                     trialActive = trialActive,
                     description = currentPlanDescription(currentPlan, subscription),
                     includedFeatures = currentPlanIncludedFeatures(currentPlan),
@@ -2720,6 +2721,21 @@ private fun currentPlanUsageRows(
         SettingsPlanUsageSnapshot("Agents", formatCurrentPlanUsageValue(usage.agents, limits?.maxAgents, trialActive)),
         SettingsPlanUsageSnapshot("Channels", formatCurrentPlanUsageValue(usage.channels, limits?.maxChannels, trialActive)),
         SettingsPlanUsageSnapshot("History", formatHistoryUsageValue(limits?.messageHistoryDays, trialActive))
+    )
+}
+
+private fun currentPlanUsage(
+    plan: SettingsBillingPlanConfig,
+    usage: SettingsServerUsageSnapshot,
+    trialActive: Boolean
+): SettingsBillingUsageSnapshot {
+    val limits = plan.limits
+    return SettingsBillingUsageSnapshot(
+        computers = SettingsBillingUsageCount(usage.machines, limits?.maxMachines),
+        agents = SettingsBillingUsageCount(usage.agents, limits?.maxAgents),
+        channels = SettingsBillingUsageCount(usage.channels, limits?.maxChannels),
+        messageHistoryDays = limits?.messageHistoryDays,
+        trialActive = trialActive
     )
 }
 

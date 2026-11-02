@@ -1478,7 +1478,26 @@ data class SettingsBillingCurrentPlanSnapshot(
     val trialActive: Boolean = false,
     val description: String = "",
     val includedFeatures: List<String> = emptyList(),
-    val excludedFeatures: List<String> = emptyList()
+    val excludedFeatures: List<String> = emptyList(),
+    /** The same usage as [usageRows], typed so a page can word it in the app language. */
+    val usage: SettingsBillingUsageSnapshot? = null
+)
+
+/**
+ * Current plan usage against the plan's limits. A limit of -1 is unlimited, null unknown;
+ * [trialActive]: the free trial lifts the finite limits for a limited time.
+ */
+data class SettingsBillingUsageSnapshot(
+    val computers: SettingsBillingUsageCount,
+    val agents: SettingsBillingUsageCount,
+    val channels: SettingsBillingUsageCount,
+    val messageHistoryDays: Int?,
+    val trialActive: Boolean = false
+)
+
+data class SettingsBillingUsageCount(
+    val used: Int,
+    val limit: Int?
 )
 
 data class SettingsPlanUsageSnapshot(
