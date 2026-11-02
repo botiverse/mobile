@@ -200,6 +200,25 @@ fun RaftRuntimeChip(
     )
 }
 
+/**
+ * A joint channel's peer server after a member's name (web `JointPeerBadge`): the soft
+ * `information` Badge in machine type (`font-mono text-mono-meta font-normal`), truncated.
+ */
+@Composable
+fun RaftJointServerBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    RaftBadgeFrame(
+        text = text,
+        look =
+            raftBadgeLook(RaftBadgeAppearance.Soft, RaftBadgeVariant.Information, enabled = true, colors = RaftTheme.colors)
+                .copy(mono = true, weight = FontWeight.Normal),
+        appearance = RaftBadgeAppearance.Soft,
+        modifier = modifier,
+    )
+}
+
 /** The soft tint of each presence light (Status > Agent state chips). */
 internal fun raftPresenceChipVariant(presence: RaftPresence): RaftBadgeVariant =
     when (presence) {

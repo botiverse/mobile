@@ -63,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
 import build.raft.app.model.MemberId
@@ -77,6 +78,15 @@ import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftListRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.text.style.TextAlign
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftListRowText
+import build.raft.designsystem.components.RaftPopoverSurface
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftJointServerBadge
 
 @Composable
 internal fun ThreadAgentFollowersRoute(
@@ -258,7 +268,8 @@ internal fun ThreadAgentFollowersHeader(
                                 }
                             }
                         }
-                        Text(agents.size.toString(), style = RaftType.Caption.copy(fontWeight = FontWeight.Bold), color = RaftColor.TextBlack, maxLines = 1)
+                        // Web `font-mono text-mono-meta`.
+                        RaftText(agents.size.toString(), style = RaftTheme.typography.monoMeta, color = RaftTheme.colors.foreground, maxLines = 1)
                     }
                 }
             }
@@ -275,7 +286,6 @@ private fun FollowersPopover(
     agentStatusResolver: RaftAgentStatusResolver,
 ) {
     val agents = state.roster?.agents.orEmpty()
-    val theme = LocalRaftTheme.current
     val density = LocalDensity.current
     val width = 288.dp
     // Real measured height replaces this estimate after the first layout.
@@ -295,100 +305,146 @@ private fun FollowersPopover(
         dismissActivationDelayMillis = 0L,
     ) {
         Box(Modifier.onSizeChanged { measuredSize = Size(it.width.toFloat(), it.height.toFloat()) }) {
-        val shape = RoundedCornerShape(RaftAppRadius.Control)
-        Column(Modifier.width(width)
-            .shadow(4.dp, shape, clip = false,
-                ambientColor = Color.Transparent, spotColor = Color.Transparent)
-            .background(theme.surface, shape)
-            .border(theme.lineWidth, theme.line, RoundedCornerShape(RaftAppRadius.Control)).clickable { }) {
-            Box(Modifier.fillMaxWidth()
-                .background(theme.surface)
-                .padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Text(stringResource(Res.string.thread_followers_title),
-                    style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold), color = theme.ink)
+            ThreadAgentFollowersPanel(state, dispatch, onOpenAgentProfile, agentStatusResolver, width)
+        }
+    }
+}
+
+/** The followers popover's panel (web ThreadAgentFollowers `PopoverContent`), without its positioning. */
+@Composable
+internal fun ThreadAgentFollowersPanel(
+    state: ThreadAgentFollowersState,
+    dispatch: (ThreadAgentFollowersIntent) -> Unit,
+    onOpenAgentProfile: (ThreadAgentFollower) -> Unit,
+    agentStatusResolver: RaftAgentStatusResolver,
+    width: Dp = 288.dp,
+) {
+    val agents = state.roster?.agents.orEmpty()
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    // raft-ui Popover (`w-72 p-0`): the popover layer, a seam ring, the float shadow.
+    RaftPopoverSurface(
+        modifier = Modifier.clickable { },
+        width = width,
+        contentPadding = PaddingValues(0.dp),
+        header = {
+            // `flex min-h-11 items-center border-b border-line-seam px-4 text-headline`
+            Box(
+                Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                RaftText(stringResource(Res.string.thread_followers_title), style = typography.headline, color = colors.foreground)
             }
-            Box(Modifier.fillMaxWidth().height(theme.lineWidth).background(theme.line))
-            if (state.loading && agents.isEmpty()) {
-                Box(Modifier.padding(16.dp)) {
-                    Text(stringResource(Res.string.thread_followers_loading), style = RaftType.Caption, color = theme.inkMuted)
-                }
-            } else if (state.error == ThreadFollowersError.Load) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stringResource(Res.string.thread_followers_load_failed), style = RaftType.Caption, color = theme.inkMuted)
-                    Box(Modifier.clickable(enabled = !state.loading) { dispatch(ThreadAgentFollowersIntent.Refresh) }.padding(8.dp)) {
-                        Text(stringResource(Res.string.common_retry), style = RaftType.Caption, color = theme.ink)
-                    }
-                }
-            } else if (agents.isEmpty()) {
-                Box(Modifier.padding(16.dp)) {
-                    Text(stringResource(Res.string.thread_followers_empty), style = RaftType.Caption, color = theme.inkMuted)
-                }
-            } else {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(vertical = 4.dp)) {
-                    items(agents, key = { it.id }) { agent ->
-                        val server = agent.serverName?.takeIf { it.isNotBlank() }
-                            ?: agent.serverSlug?.takeIf { it.isNotBlank() }
-                            ?: stringResource(Res.string.thread_followers_peer_server)
-                        val canManage = state.roster?.canManage == true
-                        val canRemove = agent.canRemove && agent.isCurrentServer
-                        // Web: the X names the action, or why a peer server's agent cannot be removed here.
-                        val removeLabel =
-                            if (canRemove) stringResource(Res.string.thread_followers_remove, agent.label)
-                            else stringResource(Res.string.thread_followers_peer_remove_unavailable, server)
-                        // Task #20: the same live source (and external-agent tiering) as the
-                        // message avatar; collected as state so the row follows it while open.
-                        val indicator = threadFollowerStatusIndicator(
-                            agent,
-                            rememberRaftAgentStatusIndicatorState(
-                                threadFollowerStatusResolver(agent, agentStatusResolver), agent.id,
-                            ),
-                        )
-                        // raft-ui ListRow (web ChannelMemberRow with onRowClick): the whole row opens
-                        // the profile and shows the pressed overlay; the remove X is its own ghost button.
-                        RaftListRow(
-                            title = agent.label,
-                            onClick = { onOpenAgentProfile(agent) },
-                            subtitle = indicator?.localizedMemberStatusLabel(),
-                            leading = {
-                                RaftAvatarWithStatus(
-                                    statusColor = indicator?.color,
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.lineSeam))
+        },
+    ) {
+        if (state.loading && agents.isEmpty()) {
+            RaftText(
+                stringResource(Res.string.thread_followers_loading),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                style = typography.callout,
+                color = colors.foregroundHint,
+                textAlign = TextAlign.Center,
+            )
+        } else if (state.error == ThreadFollowersError.Load) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RaftLucideIcon(RaftLucideIconName.TriangleAlert, Modifier.size(18.dp), color = raftArgbHex(colors.foregroundMuted))
+                RaftText(
+                    stringResource(Res.string.thread_followers_load_failed),
+                    style = typography.callout,
+                    color = colors.foregroundMuted,
+                    textAlign = TextAlign.Center,
+                )
+                RaftButton(
+                    text = stringResource(Res.string.common_retry),
+                    onClick = { dispatch(ThreadAgentFollowersIntent.Refresh) },
+                    size = RaftButtonSize.Md,
+                    enabled = !state.loading,
+                )
+            }
+        } else if (agents.isEmpty()) {
+            RaftText(
+                stringResource(Res.string.thread_followers_empty),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
+                style = typography.callout,
+                color = colors.foregroundHint,
+                textAlign = TextAlign.Center,
+            )
+        } else {
+            // `max-h-72 overflow-y-auto p-2`
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 288.dp), contentPadding = PaddingValues(8.dp)) {
+                items(agents, key = { it.id }) { agent ->
+                    val server = agent.serverName?.takeIf { it.isNotBlank() }
+                        ?: agent.serverSlug?.takeIf { it.isNotBlank() }
+                        ?: stringResource(Res.string.thread_followers_peer_server)
+                    val canManage = state.roster?.canManage == true
+                    val canRemove = agent.canRemove && agent.isCurrentServer
+                    // Web: the X names the action, or why a peer server's agent cannot be removed here.
+                    val removeLabel =
+                        if (canRemove) stringResource(Res.string.thread_followers_remove, agent.label)
+                        else stringResource(Res.string.thread_followers_peer_remove_unavailable, server)
+                    // Task #20: the same live source (and external-agent tiering) as the
+                    // message avatar; collected as state so the row follows it while open.
+                    val indicator = threadFollowerStatusIndicator(
+                        agent,
+                        rememberRaftAgentStatusIndicatorState(
+                            threadFollowerStatusResolver(agent, agentStatusResolver), agent.id,
+                        ),
+                    )
+                    // raft-ui ListRow (web ChannelMemberRow with onRowClick): the whole row opens
+                    // the profile and shows the pressed overlay; the remove X is its own ghost button.
+                    RaftListRow(
+                        title = agent.label,
+                        onClick = { onOpenAgentProfile(agent) },
+                        subtitle = indicator?.localizedMemberStatusLabel(),
+                        // Web ChannelMemberRow: the members page's type (the activity in the sans face).
+                        text = RaftListRowText.Member,
+                        leading = {
+                            RaftAvatarWithStatus(
+                                statusColor = indicator?.color,
+                                avatarSize = RaftAvatarSize.Md.edge,
+                                statusPulsing = indicator?.pulsing == true,
+                                cutoutColor = colors.layerPopover,
+                            ) {
+                                RaftMemberAvatar(
+                                    identity = agent.avatarIdentity(),
+                                    label = agent.label,
                                     avatarSize = RaftAvatarSize.Md.edge,
-                                    statusPulsing = indicator?.pulsing == true,
-                                    cutoutColor = theme.surface,
+                                    carriedAvatarWireValue = agent.avatarUrl,
+                                )
+                            }
+                        },
+                        // Web JointPeerBadge: a peer server's agent names its server right after the name.
+                        titleTrailing = if (agent.isCurrentServer) null else {
+                            {
+                                // Web `max-w-1/2`: the name keeps at least half the line; the server truncates first.
+                                RaftJointServerBadge(server, modifier = Modifier.widthIn(max = 72.dp))
+                            }
+                        },
+                        trailing = if (canManage) {
+                            {
+                                // The web's 14px X; the box stays 44dp, a finger's target next to the row.
+                                RaftIconButton(
+                                    onClick = { dispatch(ThreadAgentFollowersIntent.Remove(agent.id)) },
+                                    tooltip = removeLabel,
+                                    variant = RaftButtonVariant.Ghost,
+                                    size = RaftIconButtonSize.Lg,
+                                    enabled = threadFollowerRemoveEnabled(agent, state),
                                 ) {
-                                    RaftMemberAvatar(
-                                        identity = agent.avatarIdentity(),
-                                        label = agent.label,
-                                        avatarSize = RaftAvatarSize.Md.edge,
-                                        carriedAvatarWireValue = agent.avatarUrl,
-                                    )
+                                    RaftGlyphIcon(RaftGlyph.X, size = 14.dp)
                                 }
-                            },
-                            badge = if (agent.isCurrentServer) null else {
-                                { RaftBadge(server, appearance = RaftBadgeAppearance.Outline, variant = RaftBadgeVariant.Muted) }
-                            },
-                            trailing = if (canManage) {
-                                {
-                                    // 44dp: the touch target of a control at the row's edge.
-                                    RaftIconButton(
-                                        onClick = { dispatch(ThreadAgentFollowersIntent.Remove(agent.id)) },
-                                        tooltip = removeLabel,
-                                        variant = RaftButtonVariant.Ghost,
-                                        size = RaftIconButtonSize.Lg,
-                                        enabled = threadFollowerRemoveEnabled(agent, state),
-                                    ) {
-                                        RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
-                                    }
-                                }
-                            } else {
-                                null
-                            },
-                        )
-                    }
+                            }
+                        } else {
+                            null
+                        },
+                    )
                 }
             }
         }
-    }
     }
 }
 
