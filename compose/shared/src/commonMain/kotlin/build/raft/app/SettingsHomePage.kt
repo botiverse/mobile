@@ -3268,6 +3268,9 @@ private fun RaftAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    val serverLastConversationRepository = ServerLastConversationRepository.App
+    val serverLastConversationOwnerKey =
+        messageBodyFontSizeOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, readySession?.user?.id.orEmpty())
     val tasksOwner = SharedTasksRouteOwner(
         environment = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
         accountId = readySession?.user?.id,
@@ -4915,27 +4918,51 @@ private fun RaftAppShellReadyContent(
         if (content.snapshot.server.id.value != serverId) return@LaunchedEffect
         val conversations: List<HomeConversationRow> =
             content.snapshot.channels + content.snapshot.directMessages
-        val landingId =
-            resolveRaftAdaptiveHomeLandingId(
+        // Switching servers clears the selection; the server's remembered conversation (web
+        // `slock:serverSurface:v1:<slug>`) comes back instead of #all while it is still listed.
+        val remembered = serverLastConversationRepository.read(serverLastConversationOwnerKey, serverId)
+        val resolution =
+            resolveRaftAdaptiveHomeLanding(
                 selectedThreadId = selectedHomeConversationId,
+                remembered = remembered,
                 candidates =
                     conversations.map { row ->
                         RaftAdaptiveHomeLandingCandidate(
                             threadId = row.threadId.value,
                             name = row.name,
+                            kind = row.kind,
                         )
                     },
             )
-        val target = conversations.firstOrNull { row -> row.threadId.value == landingId }
+        if (resolution.rememberedUnavailable) {
+            bridge.log("server_last_conversation_forget serverId=$serverId reason=not_listed")
+            serverLastConversationRepository.forget(serverLastConversationOwnerKey, serverId)
+        }
         adaptiveDefaultLandingServerId = serverId
-        target?.let { row ->
+        val landingConversation =
+            when (val landing = resolution.landing) {
+                is RaftAdaptiveHomeLanding.Row ->
+                    conversations
+                        .firstOrNull { row -> row.threadId.value == landing.threadId }
+                        ?.toThreadLaunchConversationIdentity()
+                is RaftAdaptiveHomeLanding.ReplyThread -> landing.toThreadLaunchConversationIdentity()
+                null -> null
+            }
+        landingConversation?.let { conversation ->
             openHomeConversation(
-                conversation = row.toThreadLaunchConversationIdentity(),
+                conversation = conversation,
                 source = "adaptive_default_landing",
                 recordForwardHistory = false,
                 adaptiveDefaultLanding = true,
             )
         }
+    }
+
+    // Every conversation the wide detail shows becomes its server's last conversation.
+    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity, serverLastConversationOwnerKey) {
+        val identity = adaptiveWorkspaceState?.selection?.identity ?: return@LaunchedEffect
+        val conversation = identity.toServerLastConversation() ?: return@LaunchedEffect
+        serverLastConversationRepository.write(serverLastConversationOwnerKey, identity.serverId, conversation)
     }
 
     LaunchedEffect(pageVisibleTick, authoritativeHomeStartAllowed) {
