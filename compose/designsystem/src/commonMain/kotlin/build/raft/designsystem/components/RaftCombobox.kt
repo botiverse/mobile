@@ -268,6 +268,7 @@ fun <T> RaftCombobox(
                 open = true
             },
             modifier = Modifier.focusRequester(trigger).onSizeChanged { triggerWidth = it.width },
+            badge = value?.let { raftComboboxBadgeOf(options, it) },
             placeholder = placeholder,
             enabled = enabled,
             invalid = invalid,
