@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -22,9 +21,10 @@ import build.raft.designsystem.tokens.RaftStroke
 /**
  * Web `ExternalIdentityPreviewBody` (`components/message/ExternalIdentityPreviewCard.tsx`): who a
  * Slack-bridged (external) author is, in a [build.raft.designsystem.components.RaftPreviewCard]
- * on their avatar or their @mention. Never a Raft member: no profile, no actions.
+ * on their avatar in a message (the web's external @mention card is not wired yet). Never a
+ * Raft member: no profile, no actions.
  *
- * - The avatar (the provider's picture, else the cyan link sticker the message row shows).
+ * - The avatar: the provider's picture, else the name's initials (web `AvatarSlot type="app"`).
  * - The name (`text-headline`), then "Slack · Human" (`text-footnote` `foreground-muted`; the kind
  *   alone without a provider), "From Acme" when the workspace is known, and "External identity"
  *   (`text-caption` `foreground-hint`).
@@ -84,20 +84,12 @@ internal fun ExternalMessageAuthor.actorKindLabel() =
 @Composable
 private fun ExternalIdentityAvatar(author: ExternalMessageAuthor, shownName: String) {
     val size = RaftAvatarSize.Lg
-    val inner = size.edge - RaftStroke.Control * 2
-    val url = author.avatarUrl
     RaftAvatar(
         type = RaftAvatarType.Human,
         size = size,
         image = {
-            if (url != null) {
-                RaftAppAvatar(avatarWireValue = url, label = shownName, avatarSize = inner, borderWidth = 0.dp)
-            } else {
-                // The message row's external sticker (cyan, a link) without its own edge.
-                RaftAppAvatarFrame(modifier = Modifier, avatarSize = inner, borderWidth = 0.dp, fill = RaftColor.AccentCyan) {
-                    RaftLucideIcon(RaftLucideIconName.Link, modifier = Modifier.size(24.dp), color = raftArgbHex(RaftColor.StickerInk))
-                }
-            }
+            // The face fills the inside of the sticker edge; no picture draws the initials.
+            RaftAppAvatar(avatarWireValue = author.avatarUrl, label = shownName, avatarSize = size.edge - RaftStroke.Control * 2, borderWidth = 0.dp)
         },
     )
 }
