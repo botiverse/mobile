@@ -164,6 +164,9 @@ class RaftPreviewCardState(
      */
     internal var closedByOutsidePress = false
 
+    /** A pointer is down on the trigger (any pointer): a press there is never "outside". */
+    internal var pressOnTrigger = false
+
     /** The trigger's focus, which a pinned card takes so Escape reaches it. */
     internal val triggerFocus = FocusRequester()
 
@@ -272,11 +275,18 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
     } else {
         this
             .onPreviewKeyEvent { event ->
-                if (state.isOpen && event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                    state.dismiss()
-                    true
-                } else {
-                    false
+                when {
+                    event.type != KeyEventType.KeyDown -> false
+                    state.isOpen && event.key == Key.Escape -> {
+                        state.dismiss()
+                        true
+                    }
+                    // A focused trigger opens its card from the keyboard, as its click does.
+                    pinOnClick && !state.isPinned && (event.key == Key.Enter || event.key == Key.Spacebar) -> {
+                        state.pin()
+                        true
+                    }
+                    else -> false
                 }
             }
             // After the key handler, so it sees keys while this node has focus (a pinned card).
@@ -291,17 +301,22 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                         if (pinOnClick) {
                             when (event.type) {
                                 PointerEventType.Press -> {
-                                    // One pointer, the primary button for a mouse (a right click is the
-                                    // trigger's menu), and not the press that just closed the pinned card.
+                                    state.pressOnTrigger = true
+                                    // The popup's "outside" press and this one come from two windows
+                                    // in either order (Android): if the card was closed by this press
+                                    // first, it stays pinned, as when this press came first.
+                                    if (state.closedByOutsidePress) state.pin()
+                                    // One pointer, and the primary button for a mouse (a right click
+                                    // is the trigger's menu).
                                     downAt =
                                         change.position.takeIf {
                                             event.changes.size == 1 &&
-                                                (change.type != PointerType.Mouse || event.buttons.isPrimaryPressed) &&
-                                                !state.closedByOutsidePress
+                                                (change.type != PointerType.Mouse || event.buttons.isPrimaryPressed)
                                         }
                                     downMillis = change.uptimeMillis
                                 }
                                 PointerEventType.Release -> {
+                                    state.pressOnTrigger = false
                                     val start = downAt
                                     downAt = null
                                     if (
@@ -315,8 +330,10 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                                     ) {
                                         state.pin()
                                         // Focus comes to the trigger, so Escape closes the pinned card
-                                        // wherever the pointer is (web: a document listener while pinned).
-                                        runCatching { state.triggerFocus.requestFocus() }
+                                        // wherever the pointer is (web: a document listener while
+                                        // pinned). Only for a mouse: a finger's tap must not take focus
+                                        // from a field being typed in (its keyboard would close).
+                                        if (change.type == PointerType.Mouse) runCatching { state.triggerFocus.requestFocus() }
                                         // The click pins the card and goes no further: the trigger's
                                         // own click (a sheet, a page) would show the same thing twice.
                                         change.consume()
@@ -397,9 +414,10 @@ fun RaftPreviewCardPopup(
     Popup(
         popupPositionProvider = provider,
         onDismissRequest = {
-            // A mouse press on the trigger of a pinned card is not "outside": the trigger's click
-            // keeps it pinned (web), so it does not close and open again.
-            if (!(pinned && state.isTriggerHovered)) {
+            // A press on the trigger of a pinned card is not "outside": the trigger's click keeps
+            // it pinned (web), so it does not close and open again. A mouse is known by its hover;
+            // a finger by its press, when that reached the trigger first.
+            if (!(pinned && (state.isTriggerHovered || state.pressOnTrigger))) {
                 state.dismiss()
                 if (pinned) {
                     state.closedByOutsidePress = true

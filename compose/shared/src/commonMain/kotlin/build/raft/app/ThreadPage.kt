@@ -28531,7 +28531,8 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         // only shows over a partial selection, where Select Text is hidden.
         ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareDashedText
         ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
-        ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Copy
+        // Not Copy: that is Copy Markdown beside it in the same menu (web's icon for it).
+        ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Type
     }
 
 @Composable
