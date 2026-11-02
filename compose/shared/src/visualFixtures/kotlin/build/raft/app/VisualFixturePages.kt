@@ -699,28 +699,8 @@ internal class ComposeUiButtonThemeVisualPage : BasePager() {
     }
 }
 
-// raft-ui 0.6.0 removed the elegant register: web renders the raft look for both the
-// base and the ".elegant" case ids (slock #10148), so both pages pin raftLightTheme and
-// render the same primitives. The ".elegant" page id is kept for the case manifest.
-@Page("compose_ui_button_elegant_visual", supportInLocal = true)
-internal class ComposeUiButtonElegantVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
-    }
-}
-
 @Page("compose_ui_card_visual", supportInLocal = true)
 internal class ComposeUiCardVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
-    }
-}
-
-// Same raft card as compose_ui_card_visual (the ".elegant" case id is kept; see button).
-@Page("compose_ui_card_elegant_visual", supportInLocal = true)
-internal class ComposeUiCardElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { RaftThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
@@ -735,15 +715,6 @@ internal class ComposeUiFormFieldVisualPage : BasePager() {
     }
 }
 
-// Same raft form fields as compose_ui_form_field_visual (".elegant" case id kept).
-@Page("compose_ui_form_field_elegant_visual", supportInLocal = true)
-internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
-    }
-}
-
 @Page("compose_ui_textarea_visual", supportInLocal = true)
 internal class ComposeUiTextareaVisualPage : BasePager() {
     override fun willInit() {
@@ -752,26 +723,8 @@ internal class ComposeUiTextareaVisualPage : BasePager() {
     }
 }
 
-// Same raft textarea as compose_ui_textarea_visual (".elegant" case id kept).
-@Page("compose_ui_textarea_elegant_visual", supportInLocal = true)
-internal class ComposeUiTextareaElegantVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
-    }
-}
-
 @Page("compose_ui_checkbox_visual", supportInLocal = true)
 internal class ComposeUiCheckboxVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
-    }
-}
-
-// Same raft checkbox as compose_ui_checkbox_visual (".elegant" case id kept).
-@Page("compose_ui_checkbox_elegant_visual", supportInLocal = true)
-internal class ComposeUiCheckboxElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
