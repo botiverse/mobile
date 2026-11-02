@@ -294,7 +294,7 @@ final class RaftIosTabBarController: UIViewController {
         let tabBar = systemTabBarController.tabBar
         guard !tabBar.isHidden, tabBar.superview != nil else { return }
         let frame = tabBar.convert(tabBar.bounds, to: container)
-        guard let band = RaftIosTabBarItemMapping.band(container: container.bounds, tabBar: frame),
+        guard let band = RaftIosTabBarItemMapping.band(container: container.bounds, tabBar: frame, safeArea: tabBar.safeAreaInsets),
               band.points > 0 else { return }
         if let reported = reportedBand, reported.edge == band.edge, abs(reported.points - band.points) < 0.5 {
             return

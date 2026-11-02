@@ -111,7 +111,9 @@ enum RaftIosTabBarItemMapping {
     /// A bottom bar need not touch the container's bottom edge (the iOS 26 floating bar sits above
     /// the home indicator), so the edge is chosen by the bar's centre, not by `maxY ==
     /// container.maxY`; its band still runs to that edge and includes the home-indicator area.
-    static func band(container: CGRect, tabBar: CGRect) -> RaftIosTabBarBand? {
+    /// A side bar's frame can be wider than the strip it is drawn in (132 pt in a Split View half
+    /// whose strip is 84 pt), so its band stops at the strip: the bar's own [safeArea] on that edge.
+    static func band(container: CGRect, tabBar: CGRect, safeArea: UIEdgeInsets = .zero) -> RaftIosTabBarBand? {
         let values = [
             container.minX, container.minY, container.width, container.height,
             tabBar.minX, tabBar.minY, tabBar.width, tabBar.height,
@@ -126,10 +128,13 @@ enum RaftIosTabBarItemMapping {
             }
             return RaftIosTabBarBand(edge: .top, points: clamp(tabBar.maxY - container.minY, container.height))
         }
+        func strip(_ points: CGFloat, _ inset: CGFloat) -> CGFloat { inset > 0 ? min(points, inset) : points }
         if tabBar.midX >= container.midX {
-            return RaftIosTabBarBand(edge: .right, points: clamp(container.maxX - tabBar.minX, container.width))
+            let points = clamp(container.maxX - tabBar.minX, container.width)
+            return RaftIosTabBarBand(edge: .right, points: strip(points, safeArea.right))
         }
-        return RaftIosTabBarBand(edge: .left, points: clamp(tabBar.maxX - container.minX, container.width))
+        let points = clamp(tabBar.maxX - container.minX, container.width)
+        return RaftIosTabBarBand(edge: .left, points: strip(points, safeArea.left))
     }
 }
 
