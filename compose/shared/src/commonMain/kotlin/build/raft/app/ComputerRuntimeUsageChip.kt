@@ -763,7 +763,8 @@ private fun RuntimeAccountUsageHealth.label(): String =
  * stays until a click outside, Escape or its close button), so the pointer can reach Refresh.
  * Opening reads through the shared 60 s cache, as the sheet does.
  *
- * [enabled] false shows [trigger] alone (a phone keeps its tap -> [ComputerRuntimeUsageSheetHost]).
+ * The same for every pointer: a finger has no hover, so its tap pins the card. The click goes no
+ * further, so give [trigger] no click of its own (no sheet). [enabled] false shows [trigger] alone.
  */
 @Composable
 internal fun ComputerRuntimeUsagePreviewCard(

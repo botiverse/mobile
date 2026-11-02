@@ -20,8 +20,10 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -34,6 +36,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -51,6 +54,7 @@ import androidx.compose.ui.window.PopupProperties
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** raft-ui PreviewCard metrics (preview-card.tsx, and the web's MentionLink.tsx). */
 object RaftPreviewCardDefaults {
@@ -150,6 +154,12 @@ class RaftPreviewCardState(
     val isPinned: Boolean get() = pinnedOpen
 
     private var pinnedOpen by mutableStateOf(false)
+
+    /**
+     * A pinned card was just closed by a press outside it, in this frame: when that press is on
+     * the trigger (a finger: the popup sees it before the trigger does), it must not pin again.
+     */
+    internal var closedByOutsidePress = false
 
     internal val wantsOpen: Boolean get() = raftPreviewCardWantsOpen(isTriggerHovered, isCardHovered, suppressed, pinnedOpen)
 
@@ -272,7 +282,14 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                         if (pinOnClick) {
                             when (event.type) {
                                 PointerEventType.Press -> {
-                                    downAt = change.position.takeIf { event.changes.size == 1 }
+                                    // One pointer, the primary button for a mouse (a right click is the
+                                    // trigger's menu), and not the press that just closed the pinned card.
+                                    downAt =
+                                        change.position.takeIf {
+                                            event.changes.size == 1 &&
+                                                (change.type != PointerType.Mouse || event.buttons.isPrimaryPressed) &&
+                                                !state.closedByOutsidePress
+                                        }
                                     downMillis = change.uptimeMillis
                                 }
                                 PointerEventType.Release -> {
@@ -288,6 +305,9 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                                         )
                                     ) {
                                         state.pin()
+                                        // The click pins the card and goes no further: the trigger's
+                                        // own click (a sheet, a page) would show the same thing twice.
+                                        change.consume()
                                     }
                                 }
                             }
@@ -360,10 +380,27 @@ fun RaftPreviewCardPopup(
             )
         }
     DisposableEffect(state) { onDispose { state.setCardHovered(false) } }
+    val scope = rememberCoroutineScope()
+    val pinned = state.isPinned
     Popup(
         popupPositionProvider = provider,
-        onDismissRequest = { state.dismiss() },
-        properties = PopupProperties(focusable = false, dismissOnBackPress = true, dismissOnClickOutside = true),
+        onDismissRequest = {
+            // A mouse press on the trigger of a pinned card is not "outside": the trigger's click
+            // keeps it pinned (web), so it does not close and open again.
+            if (!(pinned && state.isTriggerHovered)) {
+                state.dismiss()
+                if (pinned) {
+                    state.closedByOutsidePress = true
+                    scope.launch {
+                        withFrameNanos {}
+                        state.closedByOutsidePress = false
+                    }
+                }
+            }
+        },
+        // A pinned card takes focus, so Escape closes it wherever focus was (web: a document
+        // listener while pinned); a hover card never does.
+        properties = PopupProperties(focusable = pinned, dismissOnBackPress = true, dismissOnClickOutside = true),
     ) {
         Box(
             if (room == null) {
