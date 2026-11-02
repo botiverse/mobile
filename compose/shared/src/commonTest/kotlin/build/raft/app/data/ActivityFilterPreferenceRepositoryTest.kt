@@ -48,14 +48,14 @@ class ActivityFilterPreferenceRepositoryTest {
         val keyValues =
             InMemoryRaftKeyValueStore(
                 mapOf(
-                    "raft.activity.filter.server-1" to "saved",
+                    "raft.activity.filter.server-1" to "bookmarked",
                     "raft.activity.filter.server-2" to "Unread",
                     "raft.activity.filter.server-3" to "",
                 )
             )
         val preferences = ActivityFilterPreferenceRepository(keyValues)
 
-        assertEquals(InboxFilter.All, preferences.read("server-1"), "Saved is not one of the menu's choices")
+        assertEquals(InboxFilter.All, preferences.read("server-1"), "not one of the menu's choices")
         assertEquals(InboxFilter.All, preferences.read("server-2"), "values are the web's lower-case strings")
         assertEquals(InboxFilter.All, preferences.read("server-3"))
     }
@@ -94,6 +94,6 @@ class ActivityFilterPreferenceRepositoryTest {
             preferences.write("server-1", filter)
             assertEquals(filter, preferences.read("server-1"))
         }
-        assertTrue(InboxFilter.entries.map { it.preferenceValue() }.toSet() == setOf("all", "unread", "mentions", "pinned"))
+        assertTrue(InboxFilter.entries.map { it.preferenceValue() }.toSet() == setOf("all", "unread", "mentions", "pinned", "saved"))
     }
 }

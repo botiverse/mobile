@@ -3,7 +3,7 @@ package build.raft.app.data
 /**
  * The filter last chosen in Activity's Filter menu, kept per server on this device (web
  * `store/activityFilterPreference.ts`, slock #11383, stdrc option A): coming back to the
- * server, switching to it or restarting the app shows the same list. Only the menu's four
+ * server, switching to it or restarting the app shows the same list. Only the menu's
  * choices are kept; a blank server id keeps nothing, and anything else stored (an old or
  * hand-edited value) reads as All. Choosing All removes the key, as the web does.
  */
@@ -35,8 +35,9 @@ internal fun InboxFilter.preferenceValue(): String =
         InboxFilter.Unread -> "unread"
         InboxFilter.Mentions -> "mentions"
         InboxFilter.Pinned -> "pinned"
+        InboxFilter.Saved -> "saved"
     }
 
-/** web `parseActivityFilterChoice`: one of the four, else All. */
+/** web `parseActivityFilterChoice`: one of the choices, else All. */
 internal fun parseActivityFilterChoice(value: String?): InboxFilter =
     InboxFilter.entries.firstOrNull { it.preferenceValue() == value } ?: InboxFilter.All

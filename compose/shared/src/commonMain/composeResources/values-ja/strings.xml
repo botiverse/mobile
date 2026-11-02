@@ -1149,6 +1149,8 @@
     <string name="inbox_empty_mentions_detail">チャンネル、DM、スレッドで誰かに @メンションされると、ここに表示されます。</string>
     <string name="inbox_state_no_pinned">ピン留めした会話はありません</string>
     <string name="inbox_empty_pinned_detail">サイドバーでピン留めしたチャンネルと DM が、そのスレッドと一緒にここに表示されます。</string>
+    <string name="inbox_state_no_saved">保存したスレッドはありません</string>
+    <string name="inbox_empty_saved_detail">メッセージを保存すると、そのスレッドがここに表示されます。</string>
     <string name="inbox_error_load_more">これ以上読み込めませんでした。</string>
     <string name="inbox_state_loading_more">さらに読み込み中…</string>
     <string name="inbox_error_conversation_not_ready">会話の準備がまだできていません。もう一度お試しください。</string>
@@ -1159,6 +1161,7 @@
     <string name="activity_filter_unread">未読</string>
     <string name="activity_filter_mentions">メンション</string>
     <string name="activity_filter_pinned">ピン留め</string>
+    <string name="activity_filter_saved">保存済み</string>
     <string name="activity_filter_button">絞り込み</string>
     <string name="activity_filter_clear">絞り込みを解除</string>
     <string name="activity_updates_one">↑ 新着 %1$d 件</string>

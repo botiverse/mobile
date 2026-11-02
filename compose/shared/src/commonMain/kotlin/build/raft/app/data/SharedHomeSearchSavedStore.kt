@@ -1016,6 +1016,7 @@ internal class SharedHomeSearchSavedStore(
                 when (savedRepository.unsaveMessage(owner.serverId, messageId)) {
                     is DataResult.Content -> {
                         completeSavedUnsave(messageId)
+                        savedStateCache?.recordSavedWrite()
                         // Confirmed: the stored list loses the row too (a failed unsave leaves it).
                         savedStateCache?.savedList?.let { resource ->
                             resource.key(owner.userId, owner.serverId.value, Unit)?.let { key ->
@@ -1464,6 +1465,17 @@ class SharedHomeSavedStateCache internal constructor(
 
     private var ownerKey: String? = null
     private var state: SharedHomeSavedPanelState? = null
+    private val _writeRevision = MutableStateFlow(0L)
+
+    /**
+     * Bumped for every save or unsave the server accepted (web savedStore `writeRevision`): Activity's
+     * Saved filter, which lists the threads followed through a save, reloads on it.
+     */
+    val writeRevision: StateFlow<Long> = _writeRevision.asStateFlow()
+
+    fun recordSavedWrite() {
+        _writeRevision.value += 1
+    }
 
     fun read(serverId: String, userId: String): SharedHomeSavedPanelState? =
         state.takeIf { ownerKey == savedStateCacheKey(serverId, userId) }

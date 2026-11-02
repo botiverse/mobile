@@ -94,6 +94,7 @@ data class ActivityObjectCounts(
             InboxFilter.Unread -> objectCount
             // A scope lists no object rows.
             InboxFilter.Pinned -> 0
+            InboxFilter.Saved -> 0
         }
 }
 

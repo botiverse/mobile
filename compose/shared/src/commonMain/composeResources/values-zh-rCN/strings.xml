@@ -1145,6 +1145,8 @@
     <string name="inbox_empty_mentions_detail">有人在频道、私信或消息列中 @提到你时，会显示在这里。</string>
     <string name="inbox_state_no_pinned">没有置顶的会话</string>
     <string name="inbox_empty_pinned_detail">在侧栏置顶的频道和私信会显示在这里，连同它们的消息列。</string>
+    <string name="inbox_state_no_saved">没有已保存的消息列</string>
+    <string name="inbox_empty_saved_detail">保存一条消息后，它所在的消息列会显示在这里。</string>
     <string name="inbox_error_load_more">无法加载更多内容。</string>
     <string name="inbox_state_loading_more">正在加载更多…</string>
     <string name="inbox_error_conversation_not_ready">会话尚未准备好，请稍后重试。</string>
@@ -1155,6 +1157,7 @@
     <string name="activity_filter_unread">未读</string>
     <string name="activity_filter_mentions">提及</string>
     <string name="activity_filter_pinned">已置顶</string>
+    <string name="activity_filter_saved">已保存</string>
     <string name="activity_filter_button">筛选</string>
     <string name="activity_filter_clear">清除筛选</string>
     <string name="activity_updates_one">↑ %1$d 条新更新</string>
