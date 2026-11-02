@@ -45,7 +45,7 @@ class RaftNativeTabBarTest {
         )
         // The iOS bar draws the web's Lucide glyphs from the asset catalog (lucide-<wire name>).
         assertEquals(
-            listOf("lucide-house", "lucide-activity", "lucide-square-check-big", "lucide-users", "lucide-settings"),
+            listOf("lucide-house", "lucide-activity", "lucide-list-todo", "lucide-users", "lucide-settings"),
             state.items.map { it.imageAssetName },
         )
     }

@@ -416,8 +416,8 @@ internal fun raftNativeTabBarSymbol(icon: RaftLucideIconName): RaftNativeTabBarS
         RaftLucideIconName.Activity ->
             RaftNativeTabBarSymbol("waveform.path.ecg.rectangle", "waveform.path.ecg.rectangle.fill")
         RaftLucideIconName.Ellipsis -> RaftNativeTabBarSymbol("ellipsis", "ellipsis")
-        // Tasks: the iOS system bar keeps its own symbol (Jasper 10-21: each platform's own bar),
-        // whichever Lucide glyph the drawn bar uses (ListTodo since artin 2026-11-02).
+        // Tasks: the SF Symbol fallback stays the check square for either Lucide glyph (the bar
+        // draws lucide-list-todo from the asset catalog since artin 2026-11-02).
         RaftLucideIconName.SquareCheckBig,
         RaftLucideIconName.ListTodo -> RaftNativeTabBarSymbol("checkmark.square", "checkmark.square.fill")
         RaftLucideIconName.Users -> RaftNativeTabBarSymbol("person.2", "person.2.fill")
