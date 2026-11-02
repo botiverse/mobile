@@ -108,6 +108,12 @@ enum class RaftOtterTuck(
 
     /** The assistant's panel is open (web `data-open`: `translate-y-[105%]`), all of it gone. */
     PanelOpen(1.05f),
+
+    /**
+     * A card sits on the composer's top edge, where the otter lies (a mention's Add / Notify /
+     * Ignore): all of it gone like [PanelOpen], so it never covers the card's buttons (artin 11-02).
+     */
+    Covered(1.05f),
 }
 
 /**
@@ -270,7 +276,8 @@ private const val EdgeFadeMillis = 150
  *
  * - [mood]: its face ([raftOtterPose]); `new` / `confirm` also show their state beside its head.
  * - [tuck]: [RaftOtterTuck.Composing] while the composer holds text or an attachment,
- *   [RaftOtterTuck.PanelOpen] while the assistant's panel is open: it slides into the frame
+ *   [RaftOtterTuck.PanelOpen] while the assistant's panel is open, [RaftOtterTuck.Covered] while a
+ *   card sits above the composer: it slides into the frame
  *   (200ms `ease-slide`), and its paws and bubble fade out.
  * - [onClick]: opens the assistant. No press or hover state (the web has none).
  * - [animateEntrance]: on its first composition it runs in (running pose) and pops up over 620ms.

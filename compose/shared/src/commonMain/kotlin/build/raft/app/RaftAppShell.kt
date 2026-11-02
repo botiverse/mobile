@@ -98,7 +98,7 @@ internal fun rememberRaftAppShellScope(
     adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState()
 ): RaftAppShellScope {
     // A host tab bar laid out along the top edge covers the status bar area too.
-    val topSafeArea = maxOf(raftTopSafeAreaPadding(), raftNativeTabBarEdgeInsets().top)
+    val topSafeArea = maxOf(raftWindowTopSafeAreaPadding(), raftNativeTabBarEdgeInsets().top)
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val bottomTabBarContentInset = raftAppBottomTabBarContentInset(bottomSafeArea)
     val bottomTabBarOverlaysContent = raftAppBottomTabBarOverlaysContent()
@@ -213,7 +213,10 @@ internal fun RaftAppShellSurface(
                                         )
                             ) {
                                 CompositionLocalProvider(
-                                    LocalRaftAppShellBodyTopBanner provides bodyTopBanner
+                                    LocalRaftAppShellBodyTopBanner provides bodyTopBanner,
+                                    // The top bar above cleared the status bar: pages here (list
+                                    // and detail panes) must not pad it again (xxchan 11-02).
+                                    LocalRaftTopSafeAreaConsumed provides (topNavigation != null),
                                 ) {
                                     content()
                                 }

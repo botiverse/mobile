@@ -22,6 +22,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftPendingMentionActionItem
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.ThreadComposerContent
@@ -71,18 +72,29 @@ class ThreadAssistantOtterUiTest {
 
     /** One conversation: its list's end, then its composer, as ThreadPage lays them out. */
     @Composable
-    private fun Conversation(tag: String, otter: ThreadAssistantOtter?) {
+    private fun Conversation(
+        tag: String,
+        otter: ThreadAssistantOtter?,
+        pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+        onCovered: (Boolean) -> Unit = {},
+    ) {
         Column(Modifier.fillMaxWidth().testTag(tag)) {
             Spacer(Modifier.height(24.dp))
             ThreadAssistantOtterListEnd(otter)
             ThreadComposerContent(
-                payload = RaftThreadComposerPayload(instanceId = tag, placeholder = "Message #$tag"),
+                payload =
+                    RaftThreadComposerPayload(
+                        instanceId = tag,
+                        placeholder = "Message #$tag",
+                        pendingMentionActions = pendingMentionActions,
+                    ),
                 onEvent = { _, _, _, _ -> },
                 attachmentPreviewEnabled = false,
                 frameEdge =
                     otter?.let {
-                        val edge: @Composable (Boolean, Boolean) -> Unit = { composing, focused ->
-                            ThreadAssistantOtterFrameEdge(it, composing, focused, animateEntrance = false)
+                        val edge: @Composable (Boolean, Boolean, Boolean) -> Unit = { composing, focused, covered ->
+                            onCovered(covered)
+                            ThreadAssistantOtterFrameEdge(it, composing, focused, covered, animateEntrance = false)
                         }
                         edge
                     },
@@ -142,6 +154,27 @@ class ThreadAssistantOtterUiTest {
             otterIn(CHANNEL).assertExists()
             otterIn(THREAD).assertDoesNotExist()
             bandIn(THREAD).assertDoesNotExist()
+        }
+
+    /**
+     * artin 11-02: while the "not in #channel — Add / Notify / Ignore" card sits above the
+     * composer, the composer tells its frame edge it is covered, and the otter goes in (it stays
+     * registered on this composer); when the card goes, it comes back out.
+     */
+    @Test
+    fun aMentionCardAboveTheComposerHidesTheOtter() =
+        runRobolectricComposeUiTest {
+            val hosts = RaftAssistantOtterHosts()
+            var actions by mutableStateOf(listOf(RaftPendingMentionActionItem(resolutionId = "res-1", targetHandle = "Volta", availableActions = listOf("add", "notify_only"))))
+            var covered: Boolean? = null
+            show { Conversation(CHANNEL, otter(hosts, CHANNEL), pendingMentionActions = actions, onCovered = { covered = it }) }
+            runOnIdle { assertEquals(true, covered) }
+            otterIn(CHANNEL).assertExists()
+            bandIn(CHANNEL).assertExists()
+
+            runOnIdle { actions = emptyList() }
+            runOnIdle { assertEquals(false, covered) }
+            otterIn(CHANNEL).assertExists()
         }
 
     @Test

@@ -281,6 +281,8 @@ internal fun ThreadAssistantOtterFrameEdge(
     otter: ThreadAssistantOtter,
     composing: Boolean,
     focused: Boolean,
+    /** A card sits above the composer ([threadComposerCardAboveFrame]): the otter goes in. */
+    covered: Boolean = false,
     animateEntrance: Boolean = true,
 ) {
     DisposableEffect(otter.hosts, otter.hostId) {
@@ -296,7 +298,7 @@ internal fun ThreadAssistantOtterFrameEdge(
     RaftAssistantOtter(
         mood = otter.mood,
         // Into the composer while the person types, and further while its panel is open.
-        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen),
+        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen, covered = covered),
         onClick = otter.onOpen,
         modifier = Modifier.fillMaxWidth().testTag(ThreadAssistantOtterTestTag),
         scale = otter.scale,
@@ -305,10 +307,11 @@ internal fun ThreadAssistantOtterFrameEdge(
     )
 }
 
-/** Web `data-[open]` over `data-composing`: the panel's tuck wins. */
-internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean): RaftOtterTuck =
+/** Web `data-[open]` over `data-composing`: the panel's tuck wins; a card above the composer hides it too. */
+internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean, covered: Boolean = false): RaftOtterTuck =
     when {
         panelOpen -> RaftOtterTuck.PanelOpen
+        covered -> RaftOtterTuck.Covered
         composing -> RaftOtterTuck.Composing
         else -> RaftOtterTuck.None
     }
@@ -316,6 +319,16 @@ internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean): R
 /** A composer host's id for [RaftAssistantOtterHosts], unique for the page's lifetime (web `useId`). */
 @OptIn(ExperimentalUuidApi::class)
 internal fun newAssistantOtterHostId(): String = "thread-otter-${Uuid.random()}"
+
+/**
+ * Whether a card sits right above the composer frame, where the otter lies: a mention's
+ * "not in #channel — Add / Notify / Ignore" card ([pendingMentionActions] of them) or the notice
+ * of its result. The otter would cover the card's right-hand buttons (artin 11-02), so it goes in
+ * ([RaftOtterTuck.Covered]) until the card goes. The attachment tray does not count: the otter
+ * stays with attachments (otter spec §1).
+ */
+internal fun threadComposerCardAboveFrame(pendingMentionActions: Int, mentionActionNotice: Boolean): Boolean =
+    pendingMentionActions > 0 || mentionActionNotice
 
 /** Web `data-composing`: text (not only whitespace) or an attachment in the composer. */
 internal fun threadComposerComposing(text: String, attachmentCount: Int): Boolean =
