@@ -49,6 +49,15 @@ import kotlinx.serialization.json.JsonPrimitive
  *   are gone) the result is dropped as an Activity page's is today.
  * - Window replacement (sign-out opens the login page in place of the shell): today's login
  *   replacement finishes the window; the stack is cleared with it and not saved.
+ * - The chat on the stack (step 2 batch 3), what its Activity gave it and what gives it now:
+ *   soft input (adjustResize), the IME insets (LocalRaftHostImeInsets) and the window insets events
+ *   are the shell window's, which the stack page shares; system bars and canvas are the top page's
+ *   (RaftAndroidNav3StackContent); Back goes to the composer's / page's handlers first, then pops;
+ *   the picker and camera are threadAttachmentUpload (result routing above), Save as (openAttachment)
+ *   answers on its own callback as for an Activity page; a notification, share or deep link is a
+ *   new Intent to the shell, which recreates and opens the chat on the stack; viewDidAppear /
+ *   viewDidDisappear (read state, realtime interest) follow the page's capped lifecycle; covered,
+ *   the chat keeps the window size and loses text focus (RaftMobilePageStackDisplay).
  */
 
 /** The stack is drawn by the app shell window only, and only with the switch on for this process. */
