@@ -2276,6 +2276,15 @@ private fun RaftAppShellReadyContent(
     LaunchedEffect(sharedStores, storeScope, visibleAppearanceGeneration) {
         sharedStores.followServerTheme(storeScope)
     }
+    // The account is scheduled for deletion (a 403 `account_deletion_pending` on any request): open
+    // the web deletion page, which shows the pending state and its Cancel. Once per session; the
+    // signal hands each request to one shell only.
+    LaunchedEffect(bridge, storeScope) {
+        build.raft.app.data.RaftAccountDeletionPendingSignal.Process.openRequests.collect {
+            bridge.logWarn("account_deletion_pending_open_page shell=${storeScope.shellInstanceId}")
+            pager.openSettingsAccountDeletionPage(storeScope)
+        }
+    }
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val authSessionTerminalSource =

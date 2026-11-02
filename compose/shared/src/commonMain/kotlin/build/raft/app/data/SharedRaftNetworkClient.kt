@@ -55,6 +55,8 @@ internal class SharedRaftNetworkClient(
     // Sync horizon (slock #10982): a starting horizon is usable only if no baseline history read of its
     // server was sent before its ack arrived. Recorded here, right before the request leaves.
     private val onBaselineHistoryRequestSent: (serverId: String) -> Unit = RealtimeBaselineHistoryRequests::recordSent,
+    // A 403 `account_deletion_pending` on any request opens the web deletion page once (app shell).
+    private val accountDeletionPendingSignal: RaftAccountDeletionPendingSignal = RaftAccountDeletionPendingSignal.Process,
 ) : RaftNetworkClient, AuthorityBoundRaftNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): RaftNetworkAuthMiddleware =
         RaftNetworkAuthMiddleware(
@@ -239,6 +241,9 @@ internal class SharedRaftNetworkClient(
                     criticalWarningLogger(endpointDiagnostic)
                 } else {
                     warningLogger(endpointDiagnostic)
+                }
+                if (accountDeletionPendingSignal.observe(response.code, response.errorBodyText)) {
+                    criticalWarningLogger("account_deletion_pending path=$normalizedPath action=open_deletion_page")
                 }
                 gate.record(response, probe)
                 recorded = true
@@ -1248,6 +1253,10 @@ class SharedRaftAuthTransport internal constructor(
                 (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none") +
                 response.requestIdLogSuffix()
         )
+        // Authenticated auth routes (`auth/me`, `servers`) answer the same 403 while a deletion is pending.
+        if (authorization != null && RaftAccountDeletionPendingSignal.Process.observe(response.code, response.errorBodyText)) {
+            warningLogger("account_deletion_pending path=$path action=open_deletion_page")
+        }
         if (response.code == 0) {
             warningLogger(
                 "slock_auth_transport_failed path=$path method=$normalizedMethod " +

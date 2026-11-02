@@ -224,6 +224,17 @@ internal fun rememberStandaloneSettingsEnvironment(
     }
 }
 
+/**
+ * What [SharedSettingsEffect.Logout] does on a standalone Settings page (Settings > Account > Log
+ * out): end the session, then replace the page with the sign-in page. The web deletion page's
+ * `session:logout` host event logs out through this too, so the two cannot drift.
+ */
+internal suspend fun Pager.performStandaloneSettingsLogout(authDataSource: SharedAuthDataSource) {
+    runCatchingPreservingCancellation { authDataSource.logout() }
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
+}
+
 @Composable
 internal fun StandaloneSettingsEffectHandler(
     pager: Pager,
@@ -235,11 +246,7 @@ internal fun StandaloneSettingsEffectHandler(
     LaunchedEffect(state.effect) {
         val effect = state.effect ?: return@LaunchedEffect
         when (effect) {
-            SharedSettingsEffect.Logout -> {
-                runCatchingPreservingCancellation { environment.authDataSource.logout() }
-                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-                    .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
-            }
+            SharedSettingsEffect.Logout -> pager.performStandaloneSettingsLogout(environment.authDataSource)
             is SharedSettingsEffect.ApiEnvironmentChanged -> {
                 environment.settingsCapabilities.bridgeToast(effect.message)
                 runCatchingPreservingCancellation { environment.authDataSource.logout() }

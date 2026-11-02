@@ -48,6 +48,7 @@ import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
 import build.raft.app.data.AccountSettingsSnapshot
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SecondFactorStepUpDialogState
@@ -288,6 +289,17 @@ private fun SettingsAccountScreen() {
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     val accountDeletionStore = rememberAccountDeletionRequestStore(environment)
     val accountDeletionState by accountDeletionStore.state.collectAsState()
+    // account_deletion_v0 for the current server, live (off until it resolves on).
+    val serverFeatureFlags = remember(bridge) { RaftSharedStoreRegistry.get(bridge).serverFeatureFlags }
+    val featureFlagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
+    val accountDeletionServerId = session.value?.currentServerId
+    val accountDeletionEntry =
+        remember(accountDeletionServerId, featureFlagRevision) {
+            settingsAccountDeletionEntry(
+                deletionFlagOn = settingsAccountDeletionFlagOn(serverFeatureFlags, accountDeletionServerId),
+                ticketSupported = raftPlatformSupportsHandsFeedbackSubmit(),
+            )
+        }
     SettingsDetailShell(
         title = stringResource(Res.string.settings_account_title),
         subtitle = "",
@@ -310,17 +322,25 @@ private fun SettingsAccountScreen() {
             // logout confirmation row can end under three-button navigation.
             bottomContentPadding =
                 settingsAccountStandaloneBottomContentPadding(raftBottomSafeAreaPadding()),
-            // Hidden where the host can't send the ticket (the Compose desktop app).
+            // Flag on: the web deletion page (every platform). Off: the ticket, hidden where the
+            // host can't send it (the Compose desktop app).
             accountDeletion =
-                if (raftPlatformSupportsHandsFeedbackSubmit()) {
-                    SettingsAccountDeletionUi(
-                        state = accountDeletionState,
-                        onOpen = accountDeletionStore::open,
-                        onConfirm = { accountDeletionStore.request() },
-                        onDismiss = accountDeletionStore::dismiss
-                    )
-                } else {
-                    null
+                when (accountDeletionEntry) {
+                    SettingsAccountDeletionEntry.WebPage ->
+                        SettingsAccountDeletionUi(
+                            state = RaftAccountDeletionRequestState.Idle,
+                            onOpen = { pager.openSettingsAccountDeletionPage(environment.storeScope) },
+                            onConfirm = {},
+                            onDismiss = {}
+                        )
+                    SettingsAccountDeletionEntry.Ticket ->
+                        SettingsAccountDeletionUi(
+                            state = accountDeletionState,
+                            onOpen = accountDeletionStore::open,
+                            onConfirm = { accountDeletionStore.request() },
+                            onDismiss = accountDeletionStore::dismiss
+                        )
+                    SettingsAccountDeletionEntry.Hidden -> null
                 },
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
