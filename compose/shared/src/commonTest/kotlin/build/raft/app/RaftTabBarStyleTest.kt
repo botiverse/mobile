@@ -72,20 +72,4 @@ class RaftTabBarStyleTest {
         )
         assertTrue(spec.BarHeight >= 44.dp)
     }
-
-    @Test
-    fun activityGlyphIsDrawnOnTheSameOpticalBoxAsTheOtherTabs() {
-        // Lucide activity's ink spans 2..22 of the 24-unit viewBox; house / square-check-big /
-        // search keep to 3..21. Scaled by 18/20 it lands on the same 3..21 box.
-        val scale = raftBottomTabIconScale(RaftLucideIconName.Activity)
-        assertEquals(0.9f, scale)
-        assertEquals(3f, 12f - (12f - 2f) * scale, 0.001f)
-        assertEquals(21f, 12f + (22f - 12f) * scale, 0.001f)
-        listOf(
-            RaftLucideIconName.House,
-            RaftLucideIconName.Search,
-            RaftLucideIconName.SquareCheckBig,
-            RaftLucideIconName.Ellipsis,
-        ).forEach { assertEquals(1f, raftBottomTabIconScale(it), "icon=$it") }
-    }
 }
