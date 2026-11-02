@@ -1,5 +1,7 @@
 package build.raft.designsystem.text
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
 import build.raft.designsystem.theme.RaftTypography
@@ -31,13 +33,23 @@ internal val CssCjkLineHeightStyle =
  */
 private const val CjkFallbackLineHeightEm = 1.45f
 
-/** [style] for [text], with [CssCjkLineHeightStyle] where the platform needs it. */
-internal fun TextStyle.forCjkLineBox(text: CharSequence): TextStyle =
+/**
+ * [style] for [text], with [CssCjkLineHeightStyle] where the platform needs it. The text is scanned
+ * once per value ([remember]), not on every recomposition: a long body goes through RaftText too.
+ */
+@Composable
+internal fun TextStyle.forCjkLineBox(text: CharSequence): TextStyle {
+    val cjk = remember(text) { raftTextGrowsForFallbackFonts && text.hasCjk() }
+    return forCjkLineBox(cjk)
+}
+
+/** [forCjkLineBox] once it is known whether the text has CJK. */
+internal fun TextStyle.forCjkLineBox(hasCjk: Boolean): TextStyle =
     if (
         raftTextGrowsForFallbackFonts &&
         lineHeightStyle == RaftTypography.CssLineHeightStyle &&
         fontSize.isSp && lineHeight.isSp && lineHeight.value < fontSize.value * CjkFallbackLineHeightEm &&
-        text.hasCjk()
+        hasCjk
     ) {
         copy(lineHeightStyle = CssCjkLineHeightStyle)
     } else {
