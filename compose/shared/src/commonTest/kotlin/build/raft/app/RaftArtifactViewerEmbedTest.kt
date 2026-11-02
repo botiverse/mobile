@@ -7,13 +7,14 @@ import kotlin.test.assertTrue
 
 /**
  * The in-app Artifact viewer under the App's own title bar: the web page is opened with the embed
- * contract (`embed=raft-settings-v1&shell=host`, slock #11691), so it draws no second header, and a
+ * contract (`embed=raft-settings-v1&shell=host`, slock #11691) and `chrome=none` (slock #12362), so it
+ * draws only its content under the App's one bar, and a
  * top-level address that leaves the Artifact closes the viewer ([raftArtifactViewerNavigation]).
  */
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host"
+    private val embed = "embed=raft-settings-v1&shell=host&chrome=none"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
@@ -36,6 +37,7 @@ class RaftArtifactViewerEmbedTest {
                 "$web/artifacts/$id?a=1&b=2#c-9" to "$web/artifacts/$id?a=1&b=2&$embed#c-9",
                 // Another value of the contract is replaced, never doubled; the rest stays in order.
                 "$web/artifacts/$id?embed=1&a=1&shell=web" to "$web/artifacts/$id?a=1&$embed",
+                "$web/artifacts/$id?chrome=full&embed=raft-settings-v1&shell=host" to "$web/artifacts/$id?$embed",
                 "$web/artifacts/$id?$embed" to "$web/artifacts/$id?$embed",
             )
         for ((url, expected) in cases) assertEquals(expected, raftArtifactViewerEmbeddedUrl(url), url)

@@ -3532,6 +3532,17 @@
     <string name="artifacts_viewer_unavailable_title">打不开这个 Artifact</string>
     <string name="artifacts_viewer_unavailable_body">它不存在，或者你没有权限查看。</string>
     <string name="artifacts_viewer_open_in_browser">在浏览器中打开</string>
+    <string name="artifacts_viewer_copy_link">复制链接</string>
+    <string name="artifacts_viewer_link_copied">链接已复制。</string>
+    <string name="artifacts_viewer_follow">关注</string>
+    <string name="artifacts_viewer_unfollow">取消关注</string>
+    <string name="artifacts_viewer_version_history">版本历史</string>
+    <string name="artifacts_viewer_latest">最新</string>
+    <string name="artifacts_viewer_version_published">%1$s · %2$s</string>
+    <string name="artifacts_viewer_switch_version">v%1$d，切换版本</string>
+    <string name="artifacts_viewer_read_count">%1$d 人读过</string>
+    <string name="artifacts_viewer_comments">评论</string>
+    <string name="artifacts_viewer_comments_count">评论（%1$d）</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">取消关注</string>
     <string name="activity_unfollowed_artifact">已取消关注 %1$s</string>

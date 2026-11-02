@@ -3532,6 +3532,17 @@
     <string name="artifacts_viewer_unavailable_title">この Artifact を開けません</string>
     <string name="artifacts_viewer_unavailable_body">存在しないか、閲覧する権限がありません。</string>
     <string name="artifacts_viewer_open_in_browser">ブラウザで開く</string>
+    <string name="artifacts_viewer_copy_link">リンクをコピー</string>
+    <string name="artifacts_viewer_link_copied">リンクをコピーしました。</string>
+    <string name="artifacts_viewer_follow">フォロー</string>
+    <string name="artifacts_viewer_unfollow">フォロー解除</string>
+    <string name="artifacts_viewer_version_history">バージョン履歴</string>
+    <string name="artifacts_viewer_latest">最新</string>
+    <string name="artifacts_viewer_version_published">%1$s · %2$s</string>
+    <string name="artifacts_viewer_switch_version">v%1$d、バージョンを切り替え</string>
+    <string name="artifacts_viewer_read_count">%1$d 人が読みました</string>
+    <string name="artifacts_viewer_comments">コメント</string>
+    <string name="artifacts_viewer_comments_count">コメント（%1$d）</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">フォロー解除</string>
     <string name="activity_unfollowed_artifact">%1$s のフォローを解除しました</string>
