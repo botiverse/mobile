@@ -45,51 +45,22 @@ internal data class SettingsHomePageLinkPayload(
     val opensExternally: Boolean = false,
 )
 
-/** Row key of the Members entry at the top of the More (Settings) page. */
-internal const val SettingsMoreMembersRowKey = "members"
-
 /**
- * The Settings page as the phone More tab's root (stdrc / Jasper 2026-10-21): titled like the
- * tab ([title], 更多 / More / その他), Members and Computers lead as the first group, then the
- * Settings sections with their own headings; the rows named in [attentionRowKeys] wear the
- * attention dot the More tab shows ([RaftMoreAttention.settingsRowKey]).
+ * The Settings page as the phone's pushed server page (raft-design #712, opened from the server
+ * panel; app-shell tab key "more"): titled [title], the rows named in [attentionRowKeys] wear the
+ * attention dot ([RaftMoreAttention.settingsRowKey]). The wide rail's Settings page has none.
  */
 internal data class SettingsMoreRoot(
     val title: String,
-    val membersTitle: String,
     val attentionRowKeys: Set<String> = emptySet(),
-    /** False since D1a (raft-design #712): Members and Computers are on the server panel. */
-    val leadsWithMembersAndComputers: Boolean = true,
 )
 
-/**
- * The Settings home rows for [moreRoot]: Members and Computers move to a first group (no section
- * heading) ahead of the existing sections, and attention rows get their dot. Without a More root
- * (the wide rail) the rows are unchanged.
- */
+/** The Settings home rows for [moreRoot]: attention rows get their dot; without one (the wide rail) unchanged. */
 internal fun settingsHomeItemsForMoreRoot(
     items: List<SettingsHomePageLinkPayload>,
     moreRoot: SettingsMoreRoot?,
-    membersSubtitle: String = "",
-): List<SettingsHomePageLinkPayload> {
-    if (moreRoot == null) return items
-    if (!moreRoot.leadsWithMembersAndComputers) {
-        return items.map { it.copy(attentionDot = it.key in moreRoot.attentionRowKeys) }
-    }
-    val computers = items.firstOrNull { it.key == SettingsDestinationComputers }
-    val firstGroup =
-        listOfNotNull(
-            SettingsHomePageLinkPayload(
-                key = SettingsMoreMembersRowKey,
-                title = moreRoot.membersTitle,
-                subtitle = membersSubtitle,
-                iconName = RaftLucideIconName.Users,
-            ),
-            computers?.copy(section = null),
-        )
-    return (firstGroup + items.filter { it.key != SettingsDestinationComputers })
-        .map { it.copy(attentionDot = it.key in moreRoot.attentionRowKeys) }
-}
+): List<SettingsHomePageLinkPayload> =
+    moreRoot?.let { root -> items.map { it.copy(attentionDot = it.key in root.attentionRowKeys) } } ?: items
 
 @Composable
 internal fun SettingsAppShellHomeContent(
@@ -104,12 +75,11 @@ internal fun SettingsAppShellHomeContent(
     imBridgesEnabled: Boolean = false,
 ) {
     val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled)
-    val membersSubtitle = stringResource(Res.string.more_hub_members_subtitle)
     SettingsHomeContent(
         payload =
             payload.copy(
                 title = moreRoot?.title ?: payload.title,
-                items = settingsHomeItemsForMoreRoot(payload.items, moreRoot, membersSubtitle),
+                items = settingsHomeItemsForMoreRoot(payload.items, moreRoot),
             ),
         bottomContentPadding = bottomContentPadding,
         onHeaderClick = onSettingsHeaderClick,

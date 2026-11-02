@@ -184,6 +184,7 @@ internal fun SettingsNativeDetailScreen() {
         onOpenSourceLicensesPage = { openNativePage(SettingsNativeDetailPage.OpenSourceLicenses) },
         onOpenApiEnvironmentPage = { openNativePage(SettingsNativeDetailPage.ApiEnvironment) },
         onOpenDiagnosticsPage = { openNativePage(SettingsNativeDetailPage.Diagnostics) },
+        onOpenDeveloperPage = { openNativePage(SettingsNativeDetailPage.Developer) },
         onOpenLocalFeatureOverridesPage = { openNativePage(SettingsNativeDetailPage.LocalFeatureOverrides) },
         onOpenLocalFeatureOverridePage = { key ->
             openNativePage(SettingsNativeDetailPage.LocalFeatureOverride, key)
@@ -267,6 +268,7 @@ internal fun SettingsNativeDetailPageContent(
     onOpenSourceLicensesPage: () -> Unit,
     onOpenApiEnvironmentPage: () -> Unit,
     onOpenDiagnosticsPage: () -> Unit,
+    onOpenDeveloperPage: (() -> Unit)? = null,
     onOpenLocalFeatureOverridesPage: () -> Unit,
     onOpenLocalFeatureOverridePage: (String) -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
@@ -716,6 +718,7 @@ internal fun SettingsNativeDetailPageContent(
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onOpenApiEnvironment = onOpenApiEnvironmentPage,
                     onOpenDiagnostics = onOpenDiagnosticsPage,
+                    onOpenDeveloper = onOpenDeveloperPage,
                 )
             SettingsNativeDetailPage.OpenSourceLicenses ->
                 SharedSettingsOpenSourceLicensesContent(

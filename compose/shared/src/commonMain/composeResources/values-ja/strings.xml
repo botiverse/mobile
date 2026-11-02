@@ -52,7 +52,6 @@
     <string name="server_panel_move_up">上へ移動</string>
     <string name="server_panel_move_down">下へ移動</string>
     <string name="more_hub_tasks_subtitle">タスクを追跡・フォロー</string>
-    <string name="more_hub_members_subtitle">メンバーとエージェント</string>
     <string name="more_hub_settings_subtitle">設定とアカウント</string>
     <string name="release_notes_title">リリースノート</string>
     <string name="release_notes_loading">読み込み中...</string>
