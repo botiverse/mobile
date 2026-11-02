@@ -14,8 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.NavMetadataKey
+import androidx.navigation3.runtime.get
+import androidx.navigation3.runtime.metadata
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.scene.SceneStrategyScope
@@ -32,6 +36,12 @@ import androidx.navigation3.ui.LocalNavAnimatedContentScope
  * 3 renders a shared entry only in the newer scene). On a pop, and while a predictive back gesture
  * drags (Android 14+), the leaving page slides out over the previous scene, whose top page is the
  * only other one drawn. So at most two pages are drawn at any time.
+ *
+ * A covered page whose entry says so ([RaftStackCoveredKeepsSizeKey]: the chat, the file preview)
+ * keeps the window size instead of 0x0: measured at the scene's constraints and not placed, so it
+ * draws nothing and takes no input, but its list viewport never shrinks to nothing and grows back
+ * (an Activity under another keeps its size; the chat's viewport intents and scroll restore rely
+ * on that). A page opened without the push ([RaftStackOpensWithoutMotionKey]) appears in place.
  */
 class RaftMobileStackScene<T : Any>(
     override val entries: List<NavEntry<T>>,
@@ -60,11 +70,12 @@ class RaftMobileStackScene<T : Any>(
                         entry === top ->
                             with(scope) {
                                 Modifier.fillMaxSize().animateEnterExit(
-                                    enter = if (pushed) RaftMobileStackPushEnter else EnterTransition.None,
+                                    enter = if (pushed && !entry.raftStackOpensWithoutMotion()) RaftMobileStackPushEnter else EnterTransition.None,
                                     exit = RaftMobileStackPopExit,
                                 )
                             }
                         entry === below && pushed && entering -> Modifier.fillMaxSize()
+                        entry.raftStackCoveredKeepsSize() -> RaftMobileStackCoveredKeepsSize
                         else -> Modifier.size(0.dp)
                     }
                 Box(modifier) { entry.Content() }
@@ -104,6 +115,33 @@ class RaftMobileStackMotion {
 
     fun isPushed(contentKey: Any): Boolean = contentKey !in beforeLastChange
 }
+
+/**
+ * Entry metadata: when covered, the page keeps the window size (measured, not placed) instead of
+ * 0x0. Set by [RaftMobilePageStackDisplay] for [RaftStackCoveredKeepsSizePages].
+ */
+data object RaftStackCoveredKeepsSizeKey : NavMetadataKey<Boolean>
+
+/** Entry metadata: the page was opened without the push (`slockOpenWithoutAnimation`). */
+data object RaftStackOpensWithoutMotionKey : NavMetadataKey<Boolean>
+
+/** The mobile scene's metadata for one page (both keys only when true). */
+fun raftMobileStackMetadata(coveredKeepsSize: Boolean, opensWithoutMotion: Boolean): Map<String, Any> =
+    metadata {
+        if (coveredKeepsSize) put(RaftStackCoveredKeepsSizeKey, true)
+        if (opensWithoutMotion) put(RaftStackOpensWithoutMotionKey, true)
+    }
+
+internal fun NavEntry<*>.raftStackCoveredKeepsSize(): Boolean = metadata[RaftStackCoveredKeepsSizeKey] == true
+
+internal fun NavEntry<*>.raftStackOpensWithoutMotion(): Boolean = metadata[RaftStackOpensWithoutMotionKey] == true
+
+/** Measured at the scene's constraints (the window), placed nowhere: no drawing, no input. */
+private val RaftMobileStackCoveredKeepsSize: Modifier =
+    Modifier.layout { measurable, constraints ->
+        measurable.measure(constraints)
+        layout(0, 0) {}
+    }
 
 private const val RaftMobileStackMotionMillis = 300
 

@@ -23,11 +23,12 @@ import org.junit.Test
 class RaftAndroidNav3StackTest {
     private val about =
         JsonObject(mapOf("settingsPage" to JsonPrimitive("about"), "slockShellInstanceId" to JsonPrimitive("shell-1")))
-    private val thread = JsonObject(mapOf("channelId" to JsonPrimitive("c1")))
+    // A page that stays an Activity (batch 3 moved the chat onto the stack).
+    private val browser = JsonObject(mapOf("url" to JsonPrimitive("https://example.com")))
 
     @Test
     fun switchOffKeepsEveryPageOnTheActivityPath() {
-        listOf(SETTINGS_DETAIL to about, RaftPages.THREAD to thread, RaftPages.APP_SHELL to JsonObject(emptyMap()))
+        listOf(SETTINGS_DETAIL to about, RaftPages.THREAD to chat("c1"), RaftPages.APP_SHELL to JsonObject(emptyMap()))
             .forEach { (name, data) ->
                 assertEquals(name, RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack = null, name, data, from = null))
             }
@@ -48,7 +49,7 @@ class RaftAndroidNav3StackTest {
         val aboutPage = stack.pages.last()
         assertEquals(RaftStackOpenRoute.Stack, raftAndroidNav3OpenRoute(stack, SETTINGS_DETAIL, about, from = aboutPage))
         // Mixing: a page not on the allowlist opened from a stack page still gets an Activity.
-        assertEquals(RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack, RaftPages.THREAD, thread, from = aboutPage))
+        assertEquals(RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack, RaftPages.IN_APP_BROWSER, browser, from = aboutPage))
         assertEquals(RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack, RaftPages.APP_SHELL, about, from = aboutPage))
     }
 
@@ -58,7 +59,7 @@ class RaftAndroidNav3StackTest {
         val text = RaftPageStackSavedState.encode(stack.savedKeys())
         assertEquals(stack.savedKeys(), raftAndroidNav3RestoredKeys(text))
 
-        val dropped = RaftPageStack().apply { open(RaftPages.THREAD, thread, from = pages.first()) }
+        val dropped = RaftPageStack().apply { open(RaftPages.IN_APP_BROWSER, browser, from = pages.first()) }
         assertNull(raftAndroidNav3RestoredKeys(RaftPageStackSavedState.encode(dropped.savedKeys())))
         assertNull(raftAndroidNav3RestoredKeys(null))
     }
@@ -167,8 +168,8 @@ class RaftAndroidNav3StackTest {
         stack.openLikeTheShell(MEMBER_DETAIL, JsonObject(mapOf("memberId" to JsonPrimitive("m1"))), from = null)
         val profile = stack.pages.last()
         val before = stack.savedKeys()
-        // The profile's DM, a web surface not moved (onboarding): Activities over the window.
-        assertFalse(stack.openLikeTheShell(RaftPages.THREAD, thread, from = profile))
+        // The in-app browser, a web surface not moved (onboarding): Activities over the window.
+        assertFalse(stack.openLikeTheShell(RaftPages.IN_APP_BROWSER, browser, from = profile))
         assertFalse(stack.openLikeTheShell(SETTINGS_WEB, web("onboarding"), from = profile))
         assertEquals("the Activity covers the window; finishing it shows the profile again", before, stack.savedKeys())
         assertEquals(profile, stack.pages.last())
@@ -329,10 +330,10 @@ class RaftAndroidNav3StackTest {
         val stack = RaftPageStack()
         stack.openLikeTheShell(RaftPages.SETTINGS_ACCOUNT, scope, from = null)
         val account = stack.pages.last()
-        // Account > a web page on the stack; from it a chat (Activity over the window).
+        // Account > a web page on the stack; from it the in-app browser (Activity over the window).
         assertTrue(stack.openLikeTheShell(SETTINGS_WEB, web("marketplace"), from = account))
         val web = stack.pages.last()
-        assertFalse(stack.openLikeTheShell(RaftPages.THREAD, thread, from = web))
+        assertFalse(stack.openLikeTheShell(RaftPages.IN_APP_BROWSER, browser, from = web))
         assertFalse(stack.openLikeTheShell(SETTINGS_WEB, web("onboarding"), from = web))
         assertEquals(listOf(RaftPages.APP_SHELL, RaftPages.SETTINGS_ACCOUNT, SETTINGS_WEB), stack.pages.map { it.args.pageName })
         // The stack page's result routing is unaffected by the Activity over it.
@@ -343,7 +344,150 @@ class RaftAndroidNav3StackTest {
         assertEquals(account, stack.pages.last())
     }
 
+    // Step 2 batch 3 -------------------------------------------------------------------------------
+
+    /** A conversation's route as the shell opens it: identity and intent only (threadLaunchPageData). */
+    private fun chat(channelId: String, vararg extra: Pair<String, String>) =
+        JsonObject(
+            mapOf(
+                "payload" to JsonPrimitive("{\"instanceId\":\"thread-$channelId\",\"surfaceKind\":\"channel\",\"threadId\":\"$channelId\",\"selectedTab\":\"chat\"}"),
+                "instanceId" to JsonPrimitive("thread-$channelId"),
+                "slockShellInstanceId" to JsonPrimitive("shell-1"),
+            ) + extra.associate { (k, v) -> k to JsonPrimitive(v) }
+        )
+
+    private val file =
+        JsonObject(
+            mapOf(
+                "attachmentId" to JsonPrimitive("a1"),
+                "previewKind" to JsonPrimitive("image"),
+                "slockShellInstanceId" to JsonPrimitive("shell-1"),
+            )
+        )
+
+    @Test
+    fun batch3ChatFilesAndSearchOpenOnTheStack() {
+        val stack = RaftPageStack()
+        // Home > a channel > its members, settings, a forwarded bundle, an attachment, an artifact,
+        // a reply thread; Search > a hit's chat.
+        assertTrue(stack.openLikeTheShell(RaftPages.THREAD, chat("c1"), from = null))
+        val channel = stack.pages.last()
+        listOf(
+            "compose_thread_members" to scope,
+            "compose_channel_settings" to scope,
+            "compose_joint_channel_connections" to scope,
+            "compose_thread_forward_bundle_page" to scope,
+            FILE_PREVIEW to file,
+            "compose_artifact_viewer" to scope,
+            RaftPages.THREAD to chat("c1-reply", "threadId" to "t1"),
+        ).forEach { (name, data) ->
+            assertTrue(name, stack.openLikeTheShell(name, data, from = channel))
+        }
+        assertTrue(stack.openLikeTheShell(HOME_SEARCH, JsonObject(mapOf("destination" to JsonPrimitive("search"))), from = null))
+        assertTrue(stack.openLikeTheShell(RaftPages.THREAD, chat("c2"), from = stack.pages.last()))
+        // The in-app browser from a chat still covers the window as an Activity.
+        assertFalse(stack.openLikeTheShell(RaftPages.IN_APP_BROWSER, browser, from = stack.pages.last()))
+    }
+
+    @Test
+    fun backOrderFilePreviewThenChatThenShell() {
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(RaftPages.THREAD, chat("c1"), from = null)
+        val channel = stack.pages.last()
+        stack.openLikeTheShell(FILE_PREVIEW, file, from = channel)
+        assertEquals(listOf(RaftPages.APP_SHELL, RaftPages.THREAD, FILE_PREVIEW), stack.pages.map { it.args.pageName })
+        assertTrue(stack.back())
+        assertSame("Back from the file lands on its chat", channel, stack.pages.last())
+        assertTrue(stack.back())
+        assertFalse("shell alone: the shell's own Back", stack.back())
+    }
+
+    @Test
+    fun aChatOpenedInPlaceReplacesItsOpener() {
+        // A chat opened in place of another (slockReplaceCurrentPage from a stack page).
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(RaftPages.THREAD, chat("c1"), from = null)
+        val first = stack.pages.last()
+        val replacing =
+            JsonObject(
+                chat("c2", "slockOpenWithoutAnimation" to "true") +
+                    ("slockReplaceCurrentPage" to JsonPrimitive(true))
+            )
+        assertTrue(stack.openLikeTheShell(RaftPages.THREAD, replacing, from = first))
+        assertEquals(2, stack.pages.size)
+        assertFalse(first in stack.pages)
+    }
+
+    @Test
+    fun processDeathRestoresAThreadKeyIdentityOnly() {
+        val before = RaftPageStack()
+        before.openLikeTheShell(RaftPages.THREAD, chat("c1"), from = null)
+        before.openLikeTheShell(FILE_PREVIEW, file, from = before.pages.last())
+        val text = RaftPageStackSavedState.encode(before.savedKeys())!!
+
+        val after = RaftPageStack()
+        val keys = raftAndroidNav3RestoredKeys(text)
+        assertTrue(keys != null && after.restore(keys))
+        assertEquals(before.savedKeys(), after.savedKeys())
+        val thread = after.pages[1]
+        assertEquals(RaftPages.THREAD, thread.args.pageName)
+        assertEquals("the same route identity (payload, instance): the chat reloads its own store", chat("c1"), thread.key.pageData)
+        assertEquals("same content key: its saved UI state (scroll) is found again", before.pages[1].contentKey, thread.contentKey)
+        assertEquals(FILE_PREVIEW, after.pages.last().args.pageName)
+
+        // Content never rides the key: an opener's messages are dropped before saving...
+        val withContent = RaftPageStack()
+        withContent.openLikeTheShell(RaftPages.THREAD, JsonObject(chat("c1") + ("messages" to JsonPrimitive("[]"))), from = null)
+        assertFalse("messages" in withContent.pages.last().key.pageData)
+        // ...and saved text that has some is refused whole (shell alone).
+        val tampered = text.replace("\"instanceId\":\"thread-c1\"", "\"instanceId\":\"thread-c1\",\"messages\":\"[]\"")
+        assertTrue(tampered != text)
+        assertNull(raftAndroidNav3RestoredKeys(tampered))
+    }
+
+    @Test
+    fun composerPickerAndCameraResultsReachTheChatThatAsked() {
+        val stack = RaftPageStack()
+        stack.openLikeTheShell(RaftPages.THREAD, chat("c1"), from = null)
+        val channel = stack.pages.last()
+        stack.openLikeTheShell(RaftPages.THREAD, chat("c1-reply", "threadId" to "t1"), from = channel)
+        val reply = stack.pages.last()
+        val bridge = FakeActivityBridge()
+        val results = results(stack)
+        val answers = mutableMapOf<String, String?>()
+        // The reply thread's camera...
+        pageTransport(bridge, stack, reply, results).call("threadAttachmentUpload", """{"channelId":"t1","capture":true}""") { answers["reply"] = it }
+        bridge.answer(0, """{"code":200,"files":["camera.jpg"]}""")
+        assertEquals("""{"code":200,"files":["camera.jpg"]}""", answers["reply"])
+        assertNull("never the other chat's", answers["channel"])
+        // ...then, back on the channel, its photo picker.
+        assertTrue(stack.back())
+        pageTransport(bridge, stack, channel, results).call("threadAttachmentUpload", """{"channelId":"c1","imageOnly":true}""") { answers["channel"] = it }
+        bridge.answer(1, """{"code":200,"files":["photo.png"]}""")
+        assertEquals("""{"code":200,"files":["photo.png"]}""", answers["channel"])
+
+        // The chat closed while the file picker was up (channel deleted: closePage): cancelled.
+        pageTransport(bridge, stack, channel, results).call("threadAttachmentUpload", """{"channelId":"c1"}""") { answers["closed"] = it }
+        stack.close(channel)
+        bridge.answer(2, """{"code":200,"files":["late.pdf"]}""")
+        assertEquals("""{"code":204,"bodyText":""}""", answers["closed"])
+        assertEquals(0, results.pendingCount)
+    }
+
+    @Test
+    fun aNotificationOpensTheChatOnTheStackOverTheShell() {
+        // A notification / share / deep link is a new Intent: the shell recreates (stack dropped, as
+        // singleTask cleared the Activities) and its navigation coordinator opens the chat from the shell.
+        val stack = RaftPageStack()
+        assertTrue(stack.openLikeTheShell(RaftPages.THREAD, chat("c9", "focusedMessageId" to "m1"), from = null))
+        assertEquals(listOf(RaftPages.APP_SHELL, RaftPages.THREAD), stack.pages.map { it.args.pageName })
+        assertTrue(stack.back())
+        assertEquals("Back from the notification's chat lands on the shell", 1, stack.pages.size)
+    }
+
     private companion object {
+        const val FILE_PREVIEW = "compose_file_preview"
+        const val HOME_SEARCH = "compose_home_search"
         const val SETTINGS_DETAIL = "compose_settings_native_detail"
         const val HOME_SAVED = "compose_home_saved"
         const val HOME_DRAFTS = "compose_home_drafts"
