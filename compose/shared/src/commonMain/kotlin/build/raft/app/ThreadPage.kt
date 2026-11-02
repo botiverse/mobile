@@ -312,7 +312,10 @@ import build.raft.app.markdown.raftTraceDiagnosticsEnabled
 import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.markdown.RaftMarkdownDocumentWarmContext
+import build.raft.app.markdown.RaftMarkdownDocumentWarmRequest
 import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
+import build.raft.app.markdown.warmRaftMarkdownRichTextDocuments
 import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
@@ -365,6 +368,8 @@ import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.State
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.setValue
@@ -412,6 +417,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -540,6 +546,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
+import kotlin.math.ceil
 import kotlin.random.Random
 import kotlin.time.TimeMark
 import kotlin.uuid.ExperimentalUuidApi
@@ -553,6 +560,8 @@ internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
 private const val ThreadMessagesMinBeyondBoundsItemCount = 4
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
+private const val ThreadMessagesMinMeasuredBeyondBoundsItemCount = 1
+private const val ThreadMessagesRowHeightSmoothing = 0.5f
 private const val ThreadPerformanceSlowThresholdMs = 4L
 // raft-ui located highlight (0.22.1 #719): the jumped-to row is located for LOCATED_MS.
 private const val ThreadFocusedMessageHighlightDurationMs = RaftLocatedMillis.toLong()
@@ -19842,7 +19851,10 @@ private data class ThreadMarkdownVisiblePreparsePlan(
 private data class ThreadMarkdownPreparseCandidate(
     val id: String,
     val body: String,
-    val messageId: String? = id
+    val messageId: String? = id,
+    // The scope the message row passes to RaftMarkdownBody, so the rich-text document warmed
+    // off-main has the row's exact cache key. Null = parse warm only.
+    val inlineContentScope: String? = null
 )
 
 private const val ThreadMarkdownPriorityPreparseMessageCount = 4
@@ -20031,7 +20043,8 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                         ThreadMarkdownPreparseCandidate(
                             id = message.threadMessageRenderIdentity(),
                             body = message.body,
-                            messageId = message.id
+                            messageId = message.id,
+                            inlineContentScope = message.threadMarkdownRenderSignature().inlineContentScope
                         )
                     )
                 }
@@ -20823,10 +20836,32 @@ private fun ThreadMessagesListContent(
     }
     var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
+    // Beyond-bounds budget of about one viewport, from the rows actually measured (0 = not yet).
+    // Written only when the resulting item count changes, so scrolling does not churn this scope.
+    var measuredListBeyondBoundsItems by remember(threadInstanceKey) { mutableStateOf(0) }
+    LaunchedEffect(threadInstanceKey, listState, threadDensity.density) {
+        val density = threadDensity.density
+        var smoothedRowHeightPx = 0f
+        snapshotFlow {
+            threadAverageVisibleRowHeightPx(listState.raw.layoutInfo.visibleItemsInfo) to measuredThreadViewportHeightDp
+        }
+            .distinctUntilChanged()
+            .collect { (averageRowHeightPx, viewportHeightDp) ->
+                if (averageRowHeightPx <= 0f || density <= 0f) return@collect
+                smoothedRowHeightPx = threadSmoothedRowHeightPx(smoothedRowHeightPx, averageRowHeightPx)
+                val next =
+                    threadMeasuredBeyondBoundsItemCount(
+                        viewportHeightDp = viewportHeightDp,
+                        averageRowHeightDp = smoothedRowHeightPx / density
+                    )
+                if (next != measuredListBeyondBoundsItems) measuredListBeyondBoundsItems = next
+            }
+    }
     val threadLazyWindowConsumerCounts =
         threadLazyWindowConsumerCounts(
             itemCount = lazyItemCount,
-            viewportHeightDp = measuredThreadViewportHeightDp
+            viewportHeightDp = measuredThreadViewportHeightDp,
+            measuredListBeyondBoundsItems = measuredListBeyondBoundsItems
         )
     val coroutineScope = rememberCoroutineScope()
     val imeTailPixelProbeRunner =
@@ -21222,6 +21257,17 @@ private fun ThreadMessagesListContent(
                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
     }
+    // The tag context the message rows render with, so the documents warmed below carry the rows'
+    // exact cache keys (a context change simply misses and the row builds it, never stale).
+    val markdownDocumentWarmContext =
+        remember(highlightedMentions, isMarkdownTagValid, resolveMarkdownTagLabel) {
+            RaftMarkdownDocumentWarmContext(
+                highlightedMentions = highlightedMentions,
+                isTagValid = isMarkdownTagValid,
+                resolveTagLabel = resolveMarkdownTagLabel
+            )
+        }
+    val currentMarkdownDocumentWarmContext by rememberUpdatedState(markdownDocumentWarmContext)
     LaunchedEffect(
         threadInstanceKey,
         markdownTimelineSignature,
@@ -21232,22 +21278,31 @@ private fun ThreadMessagesListContent(
         if (!contentExtrasVisible || markdownTimelineSignature.isEmpty()) {
             return@LaunchedEffect
         }
+        // Per scroll frame only the visible index range is read and compared; the candidate
+        // list and its joined key are built only when that range changes.
         snapshotFlow {
             val visibleItems = listState.layoutInfo.visibleItemsInfo
             if (visibleItems.isEmpty()) {
-                emptyThreadMarkdownVisiblePreparsePlan()
+                null
             } else {
-                val firstVisibleItemIndex = visibleItems.minOf { item -> item.index }
-                val lastVisibleItemIndex = visibleItems.maxOf { item -> item.index }
-                renderPayload.threadVisibleMarkdownPreparsePlan(
-                    firstVisibleItemIndex = firstVisibleItemIndex,
-                    lastVisibleItemIndex = lastVisibleItemIndex,
-                    overscanItems = threadLazyWindowConsumerCounts.markdownPreparseOverscanItems,
-                    prewarmBeforeItems = lastVisibleItemIndex - firstVisibleItemIndex + 1,
-                    contentExtrasVisible = contentExtrasVisible
-                )
+                visibleItems.minOf { item -> item.index } to visibleItems.maxOf { item -> item.index }
             }
         }
+            .distinctUntilChanged()
+            .map { visibleRange ->
+                if (visibleRange == null) {
+                    emptyThreadMarkdownVisiblePreparsePlan()
+                } else {
+                    val (firstVisibleItemIndex, lastVisibleItemIndex) = visibleRange
+                    renderPayload.threadVisibleMarkdownPreparsePlan(
+                        firstVisibleItemIndex = firstVisibleItemIndex,
+                        lastVisibleItemIndex = lastVisibleItemIndex,
+                        overscanItems = threadLazyWindowConsumerCounts.markdownPreparseOverscanItems,
+                        prewarmBeforeItems = lastVisibleItemIndex - firstVisibleItemIndex + 1,
+                        contentExtrasVisible = contentExtrasVisible
+                    )
+                }
+            }
             .distinctUntilChanged()
             .collect { visiblePreparsePlan ->
                 if (visiblePreparsePlan.key.isEmpty()) {
@@ -21259,11 +21314,24 @@ private fun ThreadMessagesListContent(
                         bodies = visiblePreparsePlan.candidates.map { candidate -> candidate.body },
                         maxBodies = visiblePreparsePlan.candidates.size
                     )
+                // Off the main thread (Dispatchers.Default): build the rows' rich-text documents
+                // so a tall row entering the viewport only looks them up.
+                val documents =
+                    warmRaftMarkdownRichTextDocuments(
+                        requests =
+                            visiblePreparsePlan.candidates.mapNotNull { candidate ->
+                                candidate.inlineContentScope?.let { scope ->
+                                    RaftMarkdownDocumentWarmRequest(body = candidate.body, inlineContentScope = scope)
+                                }
+                            },
+                        context = currentMarkdownDocumentWarmContext
+                    )
                 diagnosticsLogger(
                     "thread_markdown_preparse scope=visible_overscan " +
                         "bodyCandidates=${visiblePreparsePlan.candidates.size} " +
                         "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
                         "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
+                        "documentsBuilt=${documents.builtCount} documentsCached=${documents.cacheHitCount} " +
                         "messages=${renderPayload.messages.size} " +
                         "overscan=${threadLazyWindowConsumerCounts.markdownPreparseOverscanItems} " +
                         "prewarmBefore=${visiblePreparsePlan.prewarmBeforeItems} " +
@@ -23846,15 +23914,19 @@ private fun ThreadMessagesListContent(
                     .zIndex(ThreadInlineSearchBarZIndex)
             )
         }
+        // Read through a derived state: this scope is huge, and reading canScrollForward /
+        // layoutInfo here directly recomposed all of it on every scroll frame while scrolled up.
+        // It now recomposes only when one of the two booleans flips.
+        val backToBottomViewportSignals by rememberThreadBackToBottomViewportSignals(listState, latestItemIndex)
         val shouldShowBackToBottomButton =
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
                     initialBottomAnchorReady = initialBottomAnchorReady,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
                     bottomAutoAnchorOwnsViewport = allowBottomAutoAnchor,
-                    canScrollTowardBottom = listState.canScrollForward,
+                    canScrollTowardBottom = backToBottomViewportSignals.canScrollTowardBottom,
                     canonicalTailMissing = renderPayload.canLoadMoreAfter,
-                    latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
+                    latestItemOffBottom = backToBottomViewportSignals.latestItemOffBottom
                 )
             )
         RaftScrollFrameSignalEffect(list = "thread") { listState.isScrollInProgress }
@@ -23863,8 +23935,8 @@ private fun ThreadMessagesListContent(
         // (HuaTuo, #raft-mobile-reconcile:6dbbf8b9) and the pill's inputs were not logged anywhere.
         val backToBottomPillInputs =
             "visible=$shouldShowBackToBottomButton reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
-                "canScrollForward=${listState.canScrollForward} " +
-                "latestItemOffBottom=${listState.shouldShowThreadBackToBottom(latestItemIndex)} " +
+                "canScrollForward=${backToBottomViewportSignals.canScrollTowardBottom} " +
+                "latestItemOffBottom=${backToBottomViewportSignals.latestItemOffBottom} " +
                 "tailMissing=${renderPayload.canLoadMoreAfter} kbd=$pendingKeyboardBottomAnchor " +
                 "scrolling=${listState.isScrollInProgress}"
         LaunchedEffect(threadInstanceKey, backToBottomPillInputs) {
@@ -25030,23 +25102,64 @@ internal data class ThreadLazyWindowConsumerCounts(
     val diagnosticsBeyondBoundsItems: Int
 )
 
+/**
+ * [measuredListBeyondBoundsItems] (from [threadMeasuredBeyondBoundsItemCount], 0 = rows not
+ * measured yet) sizes the composed beyond-bounds window by real row heights: a fixed item count
+ * from a 64dp representative row kept 7 rows composed even when each was 1500-2260px tall, i.e.
+ * several extra screens that all recomposed on any context change. The markdown preparse keeps
+ * the representative-row count: that work runs off the main thread and only fills caches.
+ */
 internal fun threadLazyWindowConsumerCounts(
     itemCount: Int,
     viewportHeightDp: Float,
+    measuredListBeyondBoundsItems: Int = 0,
     representativeRowStepDp: Float = ThreadMessagesRepresentativeRowStepDp
 ): ThreadLazyWindowConsumerCounts {
-    val measuredCount =
+    val representativeCount =
         threadMessagesBeyondBoundsItemCount(
             itemCount = itemCount,
             viewportHeightDp = viewportHeightDp,
             representativeRowStepDp = representativeRowStepDp
         )
+    val listCount =
+        if (measuredListBeyondBoundsItems > 0 && threadViewportMeasurementReady(viewportHeightDp)) {
+            measuredListBeyondBoundsItems.coerceAtMost(itemCount.coerceAtLeast(0))
+        } else {
+            representativeCount
+        }
     return ThreadLazyWindowConsumerCounts(
-        listBeyondBoundsItems = measuredCount,
-        markdownPreparseOverscanItems = measuredCount,
-        diagnosticsBeyondBoundsItems = measuredCount
+        listBeyondBoundsItems = listCount,
+        markdownPreparseOverscanItems = representativeCount,
+        diagnosticsBeyondBoundsItems = listCount
     )
 }
+
+/**
+ * Rows to keep composed beyond the viewport: about one viewport of content at the measured
+ * average row height, clamped to [ThreadMessagesMinMeasuredBeyondBoundsItemCount]..
+ * [ThreadMessagesMaxBeyondBoundsItemCount]. Tall rows give 1-2, short rows up to the cap.
+ * 0 when either measurement is missing.
+ */
+internal fun threadMeasuredBeyondBoundsItemCount(
+    viewportHeightDp: Float,
+    averageRowHeightDp: Float
+): Int {
+    if (!threadViewportMeasurementReady(viewportHeightDp)) return 0
+    if (!averageRowHeightDp.isFinite() || averageRowHeightDp <= 0f) return 0
+    return ceil(viewportHeightDp / averageRowHeightDp).toInt()
+        .coerceIn(ThreadMessagesMinMeasuredBeyondBoundsItemCount, ThreadMessagesMaxBeyondBoundsItemCount)
+}
+
+internal fun threadAverageVisibleRowHeightPx(visibleItems: List<LazyListItemInfo>): Float {
+    if (visibleItems.isEmpty()) return 0f
+    var total = 0L
+    visibleItems.forEach { item -> total += item.size.coerceAtLeast(0) }
+    return total.toFloat() / visibleItems.size
+}
+
+/** Exponential smoothing so one odd row entering or leaving does not flip the window size. */
+internal fun threadSmoothedRowHeightPx(previousPx: Float, samplePx: Float): Float =
+    if (previousPx <= 0f) samplePx else previousPx + (samplePx - previousPx) * ThreadMessagesRowHeightSmoothing
 
 internal fun threadViewportMeasurementReady(viewportHeightDp: Float): Boolean =
     viewportHeightDp.isFinite() && viewportHeightDp > 0f
@@ -26451,6 +26564,29 @@ internal fun threadRepliesFocusedItemScrollOffset(
     val bottomLimitedTop = viewportEnd - reserve - itemSize
     return -minOf(centredTop, bottomLimitedTop)
 }
+
+internal data class ThreadBackToBottomViewportSignals(
+    val canScrollTowardBottom: Boolean,
+    val latestItemOffBottom: Boolean
+)
+
+/**
+ * The scroll-position inputs of the "Back to bottom" pill as a derived state, so a caller's
+ * composition scope is invalidated only when a value flips, not on every scroll frame.
+ */
+@Composable
+internal fun rememberThreadBackToBottomViewportSignals(
+    listState: ThreadListViewport,
+    latestItemIndex: Int
+): State<ThreadBackToBottomViewportSignals> =
+    remember(listState, latestItemIndex) {
+        derivedStateOf {
+            ThreadBackToBottomViewportSignals(
+                canScrollTowardBottom = listState.canScrollForward,
+                latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
+            )
+        }
+    }
 
 private fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
