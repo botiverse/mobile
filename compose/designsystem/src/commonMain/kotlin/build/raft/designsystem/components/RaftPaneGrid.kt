@@ -577,4 +577,3 @@ fun RaftPaneSplitter(
         }
     }
 }
-
