@@ -1291,10 +1291,23 @@ private object RaftMarkdownTextProvider : TextProvider {
         val resolvedStyle = style.withResolvedRaftFontFamily()
         val markdownOverflow = raftMarkdownContentOverflow(overflow)
         val bodyClick = LocalRaftMarkdownBodyClick.current
+        // A drag from a link in another paragraph can extend into this one (RaftMarkdownLinkDragSelect.kt).
+        val linkDrag = rememberRaftMarkdownLinkDragText()
+        val textModifier =
+            linkDrag?.let { (selection, entry) -> modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = false) } ?: modifier
+        val textLayout: ((TextLayoutResult) -> Unit)? =
+            if (linkDrag == null) {
+                onTextLayout
+            } else {
+                { result ->
+                    linkDrag.second.layout = result
+                    onTextLayout?.invoke(result)
+                }
+            }
         if (bodyClick == null) {
             KuiklyText(
                 text = text,
-                modifier = modifier,
+                modifier = textModifier,
                 color = color,
                 fontSize = fontSize,
                 fontStyle = fontStyle,
@@ -1308,13 +1321,13 @@ private object RaftMarkdownTextProvider : TextProvider {
                 softWrap = softWrap,
                 maxLines = maxLines,
                 minLines = minLines,
-                onTextLayout = onTextLayout,
+                onTextLayout = textLayout,
                 style = resolvedStyle
             )
         } else {
             KuiklyText(
                 text = AnnotatedString(text).withRaftMarkdownBodyClick(bodyClick),
-                modifier = modifier,
+                modifier = textModifier,
                 color = color,
                 fontSize = fontSize,
                 fontStyle = fontStyle,
@@ -1329,7 +1342,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                 maxLines = maxLines,
                 minLines = minLines,
                 inlineContent = emptyMap(),
-                onTextLayout = onTextLayout ?: {},
+                onTextLayout = textLayout ?: {},
                 style = resolvedStyle
             )
         }
@@ -1476,11 +1489,15 @@ private object RaftMarkdownTextProvider : TextProvider {
         val hoverInk = raftMarkdownLinkHoverInk()
         val displayText =
             remember(resolvedText, hoveredLink, hoverInk) { resolvedText.withRaftMarkdownLinkHover(hoveredLink, hoverInk) }
+        // The tint restyles the text, and Compose drops a selection in a text that changes: while
+        // the body holds a selection (a mouse drag across a link included) the tint stays as it is.
+        val bodySelection = LocalRaftMarkdownLinkDragSelection.current
         val hoverModifier =
             if (inlineDecorations.underlines.isEmpty()) {
                 Modifier
             } else {
                 Modifier.raftPointerHoverPosition { position ->
+                    if (bodySelection?.holdsSelection == true) return@raftPointerHoverPosition
                     val next = position?.let { at -> decorationLayout?.let { raftMarkdownUnderlinedLinkAt(it, inlineDecorations, at) } }
                     if (next != hoveredLink) hoveredLink = next
                 }
@@ -1488,12 +1505,19 @@ private object RaftMarkdownTextProvider : TextProvider {
         // An @mention's profile card under a mouse or trackpad pointer (web MentionLink), where the
         // page provides who mentions are (the Thread message list); otherwise the text as it was.
         val mentionCards = rememberRaftMarkdownMentionPreviewCards(resolvedText)
+        // In a selectable message body, a mouse drag from a link selects (RaftMarkdownLinkDragSelect.kt).
+        val linkDrag = rememberRaftMarkdownLinkDragText()
+        val linkDragModifier =
+            linkDrag?.let { (selection, entry) ->
+                Modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = resolvedText.hasLinkAnnotations(0, resolvedText.length))
+            } ?: Modifier
         val text: @Composable (Modifier) -> Unit = { textModifier ->
             KuiklyText(
                 text = displayText,
                 modifier =
                     textModifier
                         .then(hoverModifier)
+                        .then(linkDragModifier)
                         .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
                 color = color,
                 fontSize = fontSize,
@@ -1512,6 +1536,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                 onTextLayout = { result ->
                     if (!inlineDecorations.isEmpty) decorationLayout = result
                     mentionCards?.layout = result
+                    linkDrag?.second?.layout = result
                     resolvedOnTextLayout(result)
                 },
                 style = resolvedStyle
