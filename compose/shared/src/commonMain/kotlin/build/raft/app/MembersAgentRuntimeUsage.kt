@@ -251,7 +251,9 @@ internal fun MembersAgentRuntimeUsageChip(
             runtimeLabel = label,
             controller = controller,
             runtimeVersion = null,
-            enabled = offered,
+            // As the Computer chips: hover works while the first read is still loading (the card
+            // has its loading state); only a 403 turns it off.
+            enabled = load !is RuntimeAccountUsageLoad.Forbidden,
             trigger = chip,
         )
     }
@@ -280,35 +282,4 @@ internal fun MembersRuntimeUsageAccountCard(
         // usage says what is used).
         ComputerRuntimeUsageAccountBlock(account, timeContext)
     }
-}
-
-@Composable
-private fun MembersRuntimeUsageBanner(text: String) {
-    Text(
-        text = text,
-        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
-        color = RaftColor.StickerInk,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.AccentOrange)
-                .border(RaftAppStroke.Thin, RaftColor.StickerInk)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-    )
-}
-
-@Composable
-private fun MembersRuntimeUsageNote(
-    text: String,
-    color: Color = RaftColor.TextMutedGray,
-    bold: Boolean = false
-) {
-    Text(
-        text = text,
-        style =
-            RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp).let {
-                if (bold) it.withRaftFontWeight(FontWeight.Bold) else it
-            },
-        color = if (bold) RaftColor.TextBlack else color
-    )
 }
