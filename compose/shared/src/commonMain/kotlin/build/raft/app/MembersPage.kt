@@ -1294,7 +1294,7 @@ internal fun membersAgentComputerNavigationTarget(
 private fun String?.cleanMemberDetailServerId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }
 
-private sealed interface MembersAgentDetailLoadState {
+internal sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
     data object Loading : MembersAgentDetailLoadState
     data class Content(
