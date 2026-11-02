@@ -16,7 +16,7 @@ import build.raft.app.resources.agent_create_label_runtime
 import build.raft.app.resources.runtime_picker_show_all_supported
 import build.raft.app.resources.runtime_picker_show_installed_only
 import build.raft.app.resources.stringResource
-import build.raft.designsystem.components.RaftChoicePicker
+import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftChoicePickerSheetSurface
 import build.raft.designsystem.components.RaftComboboxListAction
 import build.raft.designsystem.components.RaftField
@@ -84,7 +84,7 @@ private fun RuntimePickerFixture(showAll: Boolean) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         RaftField(label = title) {
-            RaftChoicePicker(value = "qwen", options = options, onValueChange = {}, title = title, emptyText = { "" }, listAction = action)
+            RaftCombobox(value = "qwen", options = options, onValueChange = {}, title = title, emptyText = { "" }, listAction = action)
         }
         RaftChoicePickerSheetSurface(
             value = "qwen",

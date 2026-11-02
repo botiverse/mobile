@@ -579,10 +579,10 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   without animation; the sheet slides up but closes without the slide, and has no swipe
   to dismiss or snap points (see the TODO above).
 - **Choice picker on a phone.** raft-ui's Select opens its list in a popup under the
-  trigger; `RaftChoicePicker` (machine and runtime pickers, Jasper's picker rule in
-  #proj-mobile) opens a Select of 6 to 10 options in a bottom sheet without a search row,
-  so each option's description (a quota line) has room. `RaftCombobox` keeps the anchored
-  list for up to 10 values.
+  trigger; `RaftChoicePicker` opens a Select of 6 to 10 options in a bottom sheet without a
+  search row. The app's machine, runtime and action-card pickers no longer use it: they are
+  `RaftCombobox`, a select at any count as on the web (artin 2026-11-02), with the anchored
+  list up to 10 values and `listAction` for the runtime list's Show All Supported.
 - **Combobox on a phone.** raft-ui opens ComboboxSelect's list in a popup under the field;
   on a phone the module opens a pick of more than `RaftComboboxSheetThreshold` values, a
   `create` combobox and every multiple pick in a bottom sheet with the search row at its
