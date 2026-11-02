@@ -27,6 +27,7 @@ data class WireExternalAuthor(
     val installId: String? = null,
     val appRegistrationId: String? = null,
     val actorProjectionRevision: Long? = null,
+    val workspaceName: String? = null,
 )
 
 /**
@@ -69,6 +70,7 @@ internal fun WireExternalAuthor.toExternalMessageAuthor(
         installId = installId?.takeIf { it.isNotBlank() },
         appRegistrationId = appRegistrationId?.takeIf { it.isNotBlank() },
         actorProjectionRevision = actorProjectionRevision,
+        workspaceName = workspaceName?.trim()?.takeIf { it.isNotEmpty() },
         displayNameIsFallback = resolvedName == null,
     )
 }

@@ -461,6 +461,14 @@
     <string name="thread_error_open_thread">スレッドを開けませんでした</string>
     <string name="thread_external_author_hint">外部 %1$s ユーザー</string>
     <string name="message_author_external_fallback">外部ユーザー</string>
+    <string name="message_external_identity_provider_and_kind">%1$s · %2$s</string>
+    <string name="message_external_identity_from_workspace">%1$s から</string>
+    <string name="message_external_identity_projection">外部 ID</string>
+    <string name="message_external_identity_kind_human">人間</string>
+    <string name="message_external_identity_kind_guest">ゲスト</string>
+    <string name="message_external_identity_kind_remote">リモート参加者</string>
+    <string name="message_external_identity_kind_app">アプリ</string>
+    <string name="message_external_identity_kind_unknown">外部参加者</string>
     <string name="thread_error_open_profile">プロフィールを開けませんでした</string>
     <string name="thread_error_comments_unavailable">コメントは利用できません</string>
     <string name="thread_error_send_comment">コメントを送信できませんでした</string>

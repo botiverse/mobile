@@ -27386,6 +27386,11 @@ private fun ThreadMessageCardContent(
                     onViewProfile = { openAuthorProfile("preview_card") },
                 )
             }
+        } else if (message.externalAuthor != null && !shareSelectionActive) {
+            // A Slack-bridged author: who they are outside Raft (web ExternalIdentityPreviewCard).
+            val externalAuthor = message.externalAuthor
+            val shownName = externalAuthorShownName(externalAuthor, externalAuthor.displayName, rememberExternalAuthorFallbackName())
+            { _ -> RaftExternalIdentityPreviewCardContent(externalAuthor, shownName) }
         } else {
             null
         }

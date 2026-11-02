@@ -459,6 +459,14 @@
     <string name="thread_error_open_thread">无法打开消息列</string>
     <string name="thread_external_author_hint">外部 %1$s 用户</string>
     <string name="message_author_external_fallback">外部用户</string>
+    <string name="message_external_identity_provider_and_kind">%1$s · %2$s</string>
+    <string name="message_external_identity_from_workspace">来自 %1$s</string>
+    <string name="message_external_identity_projection">外部身份</string>
+    <string name="message_external_identity_kind_human">人类</string>
+    <string name="message_external_identity_kind_guest">访客</string>
+    <string name="message_external_identity_kind_remote">远程参与者</string>
+    <string name="message_external_identity_kind_app">应用</string>
+    <string name="message_external_identity_kind_unknown">外部参与者</string>
     <string name="thread_error_open_profile">无法打开资料</string>
     <string name="thread_error_comments_unavailable">评论不可用</string>
     <string name="thread_error_send_comment">无法发送评论</string>
