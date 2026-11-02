@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -70,6 +71,12 @@ object RaftPreviewCardDefaults {
      * leaves, so the pointer can cross the 6dp gap from the trigger onto the card.
      */
     const val CloseDelayMillis: Long = 120L
+
+    /**
+     * The web's runtime usage card (`RuntimeUsageHoverCard`, `w-[min(390px,…)]`): wider than a
+     * profile card, for its meters and Refresh row.
+     */
+    val WideWidth: Dp = 390.dp
 }
 
 /**
@@ -79,12 +86,20 @@ object RaftPreviewCardDefaults {
 internal val LocalRaftPreviewCardPreview = staticCompositionLocalOf { false }
 
 /**
- * Whether a preview card wants to be open: the mouse or trackpad pointer is on its trigger or
- * on the card, and the card was not just dismissed (a click, Escape, a scroll) with the
- * pointer still on the trigger.
+ * Whether a preview card wants to be open: it is pinned, or the mouse or trackpad pointer is on
+ * its trigger or on the card and the card was not just dismissed (a click, Escape, a scroll) with
+ * the pointer still on the trigger.
  */
-internal fun raftPreviewCardWantsOpen(overTrigger: Boolean, overCard: Boolean, suppressed: Boolean): Boolean =
-    !suppressed && (overTrigger || overCard)
+internal fun raftPreviewCardWantsOpen(overTrigger: Boolean, overCard: Boolean, suppressed: Boolean, pinned: Boolean = false): Boolean =
+    pinned || (!suppressed && (overTrigger || overCard))
+
+/**
+ * Whether a press and its release on a `pinOnClick` trigger are a click that pins the card: the
+ * pointer let go where it went down (within [touchSlop]) before [longPressMillis] (a long press
+ * is the trigger's own, such as copying).
+ */
+internal fun raftPreviewCardIsPinClick(distance: Float, heldMillis: Long, touchSlop: Float, longPressMillis: Long): Boolean =
+    distance <= touchSlop && heldMillis < longPressMillis
 
 /**
  * How long to wait before an [open] card follows [wantsOpen]: null when it already does,
@@ -128,7 +143,15 @@ class RaftPreviewCardState(
     /** Dismissed while the pointer was on the trigger: stays shut until it leaves. */
     private var suppressed by mutableStateOf(false)
 
-    internal val wantsOpen: Boolean get() = raftPreviewCardWantsOpen(isTriggerHovered, isCardHovered, suppressed)
+    /**
+     * Pinned open by a click on the trigger ([pin]): it stays when the pointer leaves, until a
+     * click outside, Escape or [dismiss] (the card's close button).
+     */
+    val isPinned: Boolean get() = pinnedOpen
+
+    private var pinnedOpen by mutableStateOf(false)
+
+    internal val wantsOpen: Boolean get() = raftPreviewCardWantsOpen(isTriggerHovered, isCardHovered, suppressed, pinnedOpen)
 
     /**
      * Reports a mouse or trackpad pointer entering ([hovered] true) or leaving the trigger. For a
@@ -145,11 +168,22 @@ class RaftPreviewCardState(
     }
 
     /**
+     * Opens the card now and keeps it open whatever the pointer does (web `RuntimeUsageHoverCard`
+     * pins on click): a click on a `pinOnClick` trigger, by any pointer, a finger too.
+     */
+    fun pin() {
+        pinnedOpen = true
+        suppressed = false
+        isOpen = true
+    }
+
+    /**
      * Closes the card now, without the close delay: a click on the trigger or on a button of
      * the card, Escape, a scroll. It opens again once the pointer has left the trigger and comes
      * back.
      */
     fun dismiss() {
+        pinnedOpen = false
         isOpen = false
         hoverOnCard = false
         if (isTriggerHovered) suppressed = true
@@ -185,6 +219,12 @@ fun rememberRaftPreviewCardState(
  *
  * [state] holds the open state: hold it to [RaftPreviewCardState.dismiss] the card from one of
  * its buttons. [enabled] false shows [trigger] alone.
+ *
+ * [pinOnClick] (web `RuntimeUsageHoverCard`, a card with buttons of its own): a click on
+ * [trigger] by any pointer, a finger too, opens the card at once and pins it
+ * ([RaftPreviewCardState.pin]) instead of closing it; a pinned card stays when the pointer
+ * leaves and closes on a click outside, Escape or its own close button. [width] is the card's
+ * ([RaftPreviewCardDefaults.WideWidth] for the usage card).
  */
 @Composable
 fun RaftPreviewCard(
@@ -192,22 +232,25 @@ fun RaftPreviewCard(
     modifier: Modifier = Modifier,
     state: RaftPreviewCardState = rememberRaftPreviewCardState(),
     enabled: Boolean = true,
+    pinOnClick: Boolean = false,
+    width: Dp = RaftPreviewCardDefaults.Width,
     trigger: @Composable () -> Unit,
 ) {
-    Box(modifier.raftPreviewCardTrigger(state, enabled), propagateMinConstraints = true) {
+    Box(modifier.raftPreviewCardTrigger(state, enabled, pinOnClick), propagateMinConstraints = true) {
         trigger()
-        if (enabled) RaftPreviewCardPopup(state = state, card = card)
+        if (enabled) RaftPreviewCardPopup(state = state, width = width, card = card)
     }
 }
 
 /**
  * Makes the element a [RaftPreviewCard] trigger for [state]: a mouse or trackpad pointer
  * entering and leaving it is reported ([RaftPreviewCardState.setTriggerHovered]); a click or a
- * wheel scroll on it dismisses the card, and so does Escape while focus is in it. Consumes
+ * wheel scroll on it dismisses the card, and so does Escape while focus is in it; with
+ * [pinOnClick], a click by any pointer pins it instead ([RaftPreviewCardState.pin]). Consumes
  * nothing. [RaftPreviewCard] attaches it; use it with [RaftPreviewCardPopup] for a trigger laid
  * out elsewhere.
  */
-fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolean = true): Modifier =
+fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolean = true, pinOnClick: Boolean = false): Modifier =
     if (!enabled) {
         this
     } else {
@@ -219,15 +262,42 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                 } else {
                     false
                 }
-            }.pointerInput(state) {
+            }.pointerInput(state, pinOnClick) {
                 awaitPointerEventScope {
+                    var downAt: Offset? = null
+                    var downMillis = 0L
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (event.changes.firstOrNull()?.type != PointerType.Mouse) continue
+                        val change = event.changes.firstOrNull() ?: continue
+                        if (pinOnClick) {
+                            when (event.type) {
+                                PointerEventType.Press -> {
+                                    downAt = change.position.takeIf { event.changes.size == 1 }
+                                    downMillis = change.uptimeMillis
+                                }
+                                PointerEventType.Release -> {
+                                    val start = downAt
+                                    downAt = null
+                                    if (
+                                        start != null &&
+                                        raftPreviewCardIsPinClick(
+                                            distance = (change.position - start).getDistance(),
+                                            heldMillis = change.uptimeMillis - downMillis,
+                                            touchSlop = viewConfiguration.touchSlop,
+                                            longPressMillis = viewConfiguration.longPressTimeoutMillis,
+                                        )
+                                    ) {
+                                        state.pin()
+                                    }
+                                }
+                            }
+                        }
+                        if (change.type != PointerType.Mouse) continue
                         when (event.type) {
                             PointerEventType.Enter -> state.setTriggerHovered(true)
                             PointerEventType.Exit -> state.setTriggerHovered(false)
-                            PointerEventType.Press, PointerEventType.Scroll -> if (state.isOpen || state.wantsOpen) state.dismiss()
+                            PointerEventType.Press -> if (!pinOnClick && (state.isOpen || state.wantsOpen)) state.dismiss()
+                            PointerEventType.Scroll -> if (!state.isPinned && (state.isOpen || state.wantsOpen)) state.dismiss()
                         }
                     }
                 }
@@ -245,6 +315,7 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
 fun RaftPreviewCardPopup(
     state: RaftPreviewCardState,
     anchor: Rect? = null,
+    width: Dp = RaftPreviewCardDefaults.Width,
     card: @Composable ColumnScope.() -> Unit,
 ) {
     val preview = LocalRaftPreviewCardPreview.current
@@ -302,7 +373,8 @@ fun RaftPreviewCardPopup(
             },
         ) {
             RaftPreviewCardSurface(
-                Modifier.pointerInput(state) {
+                width = width,
+                modifier = Modifier.pointerInput(state) {
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -310,7 +382,8 @@ fun RaftPreviewCardPopup(
                             when (event.type) {
                                 PointerEventType.Enter -> state.setCardHovered(true)
                                 PointerEventType.Exit -> state.setCardHovered(false)
-                                PointerEventType.Scroll -> state.dismiss()
+                                // A pinned card's own content scrolls (web `overflow-y-auto`).
+                                PointerEventType.Scroll -> if (!state.isPinned) state.dismiss()
                             }
                         }
                     }
@@ -365,9 +438,10 @@ private class RaftPreviewCardPositionProvider(
 @Composable
 fun RaftPreviewCardSurface(
     modifier: Modifier = Modifier,
+    width: Dp = RaftPreviewCardDefaults.Width,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    RaftPopoverChrome(modifier.width(RaftPreviewCardDefaults.Width)) {
+    RaftPopoverChrome(modifier.width(width)) {
         content()
         Spacer(Modifier.height(4.dp))
     }
