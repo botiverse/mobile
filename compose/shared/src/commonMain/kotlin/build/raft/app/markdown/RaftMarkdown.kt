@@ -82,6 +82,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.lerp
 import build.raft.designsystem.components.raftPointerHoverPosition
+import build.raft.designsystem.text.forCjkLineBox
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.layout.boundsInRoot
@@ -1288,7 +1289,9 @@ private object RaftMarkdownTextProvider : TextProvider {
         onTextLayout: ((TextLayoutResult) -> Unit)?,
         style: TextStyle
     ) {
-        val resolvedStyle = style.withResolvedRaftFontFamily()
+        // The CJK line box (RaftCjkLineHeight.kt) on the text as written: RaftText's rule, here
+        // because markdown text never goes through RaftText.
+        val resolvedStyle = style.withResolvedRaftFontFamily().raftMarkdownCjkLineBox(text, fontSize, lineHeight)
         val markdownOverflow = raftMarkdownContentOverflow(overflow)
         val bodyClick = LocalRaftMarkdownBodyClick.current
         // A drag from a link in another paragraph can extend into this one (RaftMarkdownLinkDragSelect.kt).
@@ -1414,6 +1417,10 @@ private object RaftMarkdownTextProvider : TextProvider {
                 // A chip's painted padding taps as the chip, never as the body (task #wg-mobile:#9).
                 styledText.withRaftInlineChipGapLinks().withRaftMarkdownBodyClick(bodyClick)
             }
+        // The CJK line box (RaftCjkLineHeight.kt) on the text as laid out, chip labels included:
+        // RaftText's rule, here because markdown text never goes through RaftText. Only the layout
+        // style takes it; the span fonts above stay keyed on resolvedStyle.
+        val layoutStyle = resolvedStyle.raftMarkdownCjkLineBox(resolvedText, fontSize, lineHeight)
         val resolvedInlineContent =
             remember(resolvedText, inlineContent, permalinkContent, appLinkContent) {
                 resolvedText.filteredRaftMarkdownInlineContent(
@@ -1545,7 +1552,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                     linkDrag?.second?.layout = result
                     resolvedOnTextLayout(result)
                 },
-                style = resolvedStyle
+                style = layoutStyle
             )
         }
         val appLinkHost = LocalRaftAppLinkChips.current
@@ -1605,6 +1612,35 @@ internal fun AnnotatedString.withRaftMarkdownBodyClick(onClick: (() -> Unit)?): 
 
 internal fun raftMarkdownContentOverflow(overflow: TextOverflow): TextOverflow =
     if (overflow == TextOverflow.Ellipsis) TextOverflow.Clip else overflow
+
+/**
+ * The size and line height a provider text is laid out with: `Text` lays [fontSize] and
+ * [lineHeight] over the style where they are specified. The vendor's MarkdownBasicText merges both
+ * into the style and passes them Unspecified (this style as it is), but the CJK rule must see the
+ * final values whoever calls.
+ */
+internal fun TextStyle.withRaftMarkdownLineMetrics(fontSize: TextUnit, lineHeight: TextUnit): TextStyle =
+    if (!fontSize.isSpecified && !lineHeight.isSpecified) {
+        this
+    } else {
+        copy(
+            fontSize = if (fontSize.isSpecified) fontSize else this.fontSize,
+            lineHeight = if (lineHeight.isSpecified) lineHeight else this.lineHeight,
+        )
+    }
+
+/**
+ * This style with the CJK line box ([forCjkLineBox]) where [text] needs it: on Android, a line
+ * holding Han, kana or Hangul under a line height below the fallback font's (a heading's
+ * leading-tight, a 13/18 comment) would otherwise grow past the Web's line box. The style's
+ * line box is [build.raft.designsystem.theme.RaftTypography.CssLineHeightStyle]: the vendor's
+ * merge drops `lineHeightStyle`, and withResolvedRaftFontFamily puts the CSS one back.
+ */
+@Composable
+private fun TextStyle.raftMarkdownCjkLineBox(text: CharSequence, fontSize: TextUnit, lineHeight: TextUnit): TextStyle {
+    val lineBox = withRaftMarkdownLineMetrics(fontSize, lineHeight).forCjkLineBox(text).lineHeightStyle
+    return if (lineBox == lineHeightStyle) this else copy(lineHeightStyle = lineBox)
+}
 
 private data class RaftMarkdownTextLayoutSignature(
     val size: IntSize,
