@@ -5,7 +5,7 @@ package build.raft.app
 import androidx.compose.ui.graphics.Color
 
 /** Canonical pixelAvatars.json `version` this table was generated from. */
-internal const val PixelAvatarDataVersion = 2
+internal const val PixelAvatarDataVersion = 3
 
 internal val PixelAvatarPaletteArgb = mapOf('_' to "#00000000", 'K' to "#FF141111", 'W' to "#FFFFFFFF", 'P' to "#FFFE7DA8", 'O' to "#FFF8A16F", 'Y' to "#FFFFD440", 'L' to "#FFA9D877", 'C' to "#FF27CCF3", 'V' to "#FFBBAFE6", 'B' to "#FF576574", 'R' to "#FFF97264", 'G' to "#FF9DCAAA", 'D' to "#FFB07A4E")
 internal val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA), 'D' to Color(0xFFB07A4E))
@@ -15,7 +15,7 @@ internal val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0
  * one-off backgrounds (finch, mug) intentionally NOT promoted into the shared
  * palette. Merged into the known-background lookup for the native avatar view.
  */
-internal val PixelAvatarLiteralBackgroundArgb: Map<Color, String> = mapOf(Color(0xFFD7F3FB) to "#FFD7F3FB", Color(0xFFF8EEDF) to "#FFF8EEDF")
+internal val PixelAvatarLiteralBackgroundArgb: Map<Color, String> = mapOf(Color(0xFFD7F3FB) to "#FFD7F3FB", Color(0xFFF8EEDF) to "#FFF8EEDF", Color(0xFFDDEFF2) to "#FFDDEFF2")
 
 /** Fixed avatars in canonical entry order — it is the picker/grid order. */
 internal val PixelAvatarFixedSpecs = mapOf(
@@ -92,7 +92,8 @@ internal val PixelAvatarFixedSpecs = mapOf(
     "wizard" to PixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("___KK___", "___KBK__", "__KBBK__", "__KYBBK_", "_KBBBBK_", "_KBBBYK_", "KBBBBBBK", "KKKKKKKK")),
     "spider" to PixelAvatarSpec(PixelAvatarPalette.getValue('P'), listOf("___KK___", "___KK___", "K_KKKK_K", "_KKKKKK_", "KKWKKWKK", "_KKKKKK_", "K_KKKK_K", "K______K")),
     "finch" to PixelAvatarSpec(Color(0xFFD7F3FB), listOf("__KKKK__", "_KCCCCK_", "KCWCCWCK", "KCKCCKCK", "KCCOOCCK", "_KCCCCK_", "_KCKKCK_", "__K__K__")),
-    "mug" to PixelAvatarSpec(Color(0xFFF8EEDF), listOf("___KK___", "__K__K__", "KKKKKK__", "KDDDDKKK", "KWDDKK_K", "KDDDDKKK", "KDKKDK__", "_KKKKK__"))
+    "mug" to PixelAvatarSpec(Color(0xFFF8EEDF), listOf("___KK___", "__K__K__", "KKKKKK__", "KDDDDKKK", "KWDDKK_K", "KDDDDKKK", "KDKKDK__", "_KKKKK__")),
+    "ottie" to PixelAvatarSpec(Color(0xFFDDEFF2), listOf("_KK__KK_", "KDDKKDDK", "KDDDDDDK", "KDKDDKDK", "KWWWWWWK", "KWWKKWWK", "_KWWWWK_", "__KKKK__"))
 )
 
 /**
@@ -100,7 +101,7 @@ internal val PixelAvatarFixedSpecs = mapOf(
  * Excluded from random selection (CreateAgentDialog) and the manual picker grid
  * (AgentDetailPanel).
  */
-internal val PixelAvatarReservedKeys: Set<String> = setOf("finch", "mug")
+internal val PixelAvatarReservedKeys: Set<String> = setOf("finch", "mug", "ottie")
 
 internal const val PixelAvatarDefaultKey = "robot"
 
