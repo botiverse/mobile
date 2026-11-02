@@ -7427,7 +7427,7 @@ private fun MembersHumanDetailHeader(
 }
 
 @Composable
-private fun MembersDetailHeader(
+internal fun MembersDetailHeader(
     member: MemberProfile,
     currentUserId: String?,
     currentServerId: String?,

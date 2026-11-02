@@ -18413,11 +18413,11 @@ private fun ThreadComposerRoute(
     val composerAtRest = composerUiState.isThreadComposerAtRest()
     // The personal assistant's otter on this composer's frame edge, when the conversation has one.
     val assistantOtter = LocalThreadAssistantOtter.current
-    val frameEdge: (@Composable (Boolean, Boolean) -> Unit)? =
+    val frameEdge: (@Composable (Boolean, Boolean, Boolean) -> Unit)? =
         remember(assistantOtter) {
             assistantOtter?.let { otter ->
-                val edge: @Composable (Boolean, Boolean) -> Unit = { composing, focused ->
-                    ThreadAssistantOtterFrameEdge(otter, composing, focused)
+                val edge: @Composable (Boolean, Boolean, Boolean) -> Unit = { composing, focused, covered ->
+                    ThreadAssistantOtterFrameEdge(otter, composing, focused, covered)
                 }
                 edge
             }
@@ -18539,7 +18539,7 @@ private fun ThreadComposerContentWithSuggestions(
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp,
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())

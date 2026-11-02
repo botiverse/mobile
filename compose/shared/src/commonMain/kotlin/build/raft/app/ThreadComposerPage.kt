@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.assistant.threadComposerComposing
+import build.raft.app.assistant.threadComposerCardAboveFrame
 import build.raft.app.resources.*
 import kotlinx.serialization.Transient
 import build.raft.app.transfer.raftComposerUploadDisplay
@@ -2011,7 +2012,7 @@ internal fun ThreadComposerContent(
      * frame's own box after the frame, given whether the composer holds text or an attachment
      * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     ThreadComposerContent(
         surface =
@@ -2068,7 +2069,7 @@ internal fun ThreadComposerContent(
      * frame's own box after the frame, given whether the composer holds text or an attachment
      * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -2138,7 +2139,7 @@ internal fun ThreadComposerContentLeaf(
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
     externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
-    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -3075,7 +3076,14 @@ internal fun ThreadComposerContentLeaf(
                 }
                 // Web MessageInput `frameEdge`: drawn on the frame's top edge, after the frame (the
                 // assistant's otter). Neither this box nor its parents clip, so it reaches up over the list.
-                frameEdge?.invoke(threadComposerComposing(text, state.pendingAttachments.size), focused)
+                frameEdge?.invoke(
+                    threadComposerComposing(text, state.pendingAttachments.size),
+                    focused,
+                    threadComposerCardAboveFrame(
+                        pendingMentionActions = state.pendingMentionActions.size,
+                        mentionActionNotice = localizedMentionActionNotice != null,
+                    ),
+                )
             }
         }
     }
