@@ -1291,7 +1291,7 @@ private object RaftMarkdownTextProvider : TextProvider {
     ) {
         // The CJK line box (RaftCjkLineHeight.kt) on the text as written: RaftText's rule, here
         // because markdown text never goes through RaftText.
-        val resolvedStyle = style.withResolvedRaftFontFamily().raftMarkdownCjkLineBox(text, fontSize, lineHeight)
+        val resolvedStyle = style.raftMarkdownUserContentLocale().withResolvedRaftFontFamily().raftMarkdownCjkLineBox(text, fontSize, lineHeight)
         val markdownOverflow = raftMarkdownContentOverflow(overflow)
         val bodyClick = LocalRaftMarkdownBodyClick.current
         // A drag from a link in another paragraph can extend into this one (RaftMarkdownLinkDragSelect.kt).
@@ -1372,7 +1372,7 @@ private object RaftMarkdownTextProvider : TextProvider {
         onTextLayout: (TextLayoutResult) -> Unit,
         style: TextStyle
     ) {
-        val resolvedStyle = style.withResolvedRaftFontFamily()
+        val resolvedStyle = style.raftMarkdownUserContentLocale().withResolvedRaftFontFamily()
         val markdownOverflow = raftMarkdownContentOverflow(overflow)
         val bodyClick = LocalRaftMarkdownBodyClick.current
         val permalinkLabelResolver = LocalRaftMessagePermalinkLabelResolver.current
@@ -1641,6 +1641,15 @@ private fun TextStyle.raftMarkdownCjkLineBox(text: CharSequence, fontSize: TextU
     val lineBox = withRaftMarkdownLineMetrics(fontSize, lineHeight).forCjkLineBox(text).lineHeightStyle
     return if (lineBox == lineHeightStyle) this else copy(lineHeightStyle = lineBox)
 }
+
+/**
+ * Markdown is user content ([raftMarkdownTypography] marks every style zh-Hans), but the vendor's
+ * `TextStyle.merge` drops `localeList` on the way to this provider, and [withResolvedRaftFontFamily]
+ * then filled in the UI's locale: with a Japanese UI, Han in a message took Japanese forms. A style
+ * that reaches the provider with no locale gets the user-content one back; one set on purpose stays.
+ */
+internal fun TextStyle.raftMarkdownUserContentLocale(): TextStyle =
+    if (localeList == null) withRaftUserContentLocale() else this
 
 private data class RaftMarkdownTextLayoutSignature(
     val size: IntSize,
