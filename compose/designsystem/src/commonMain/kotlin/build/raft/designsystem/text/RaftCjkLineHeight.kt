@@ -25,9 +25,20 @@ internal val CssCjkLineHeightStyle =
         mode = LineHeightStyle.Mode.Tight,
     )
 
+/**
+ * Noto Sans CJK's ascent plus descent, in em: a line height at or over this already fits the
+ * fallback font, and trimming would cut the half-leading CSS keeps (body 16/24).
+ */
+private const val CjkFallbackLineHeightEm = 1.45f
+
 /** [style] for [text], with [CssCjkLineHeightStyle] where the platform needs it. */
 internal fun TextStyle.forCjkLineBox(text: CharSequence): TextStyle =
-    if (raftTextGrowsForFallbackFonts && lineHeightStyle == RaftTypography.CssLineHeightStyle && text.hasCjk()) {
+    if (
+        raftTextGrowsForFallbackFonts &&
+        lineHeightStyle == RaftTypography.CssLineHeightStyle &&
+        fontSize.isSp && lineHeight.isSp && lineHeight.value < fontSize.value * CjkFallbackLineHeightEm &&
+        text.hasCjk()
+    ) {
         copy(lineHeightStyle = CssCjkLineHeightStyle)
     } else {
         this
