@@ -5208,8 +5208,9 @@ internal class SharedThreadDataSource(
                         fetchThreadSnapshotFromRepository(
                             fallbackCode = "thread_markdown_ref_context_network",
                             expectedProvenance = provenance,
+                            // Only the ref's target: the opened page loads its own header detail.
                             call = { repository ->
-                                repository.getMessageContext(MessageId(shortId), ChannelId(parentChannelId))
+                                repository.resolveMessageContext(MessageId(shortId), ChannelId(parentChannelId))
                             }
                         )
                 ) {
