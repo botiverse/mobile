@@ -52,9 +52,11 @@ import build.raft.designsystem.tokens.RaftStroke
  * - Surface: `layer-popover`, square corners, the `line-seam` ring and `shadow-float`; the
  *   whole height it is given, at most [RaftSideDrawerDefaults.MaxWidth] wide (all of a phone).
  * - Head: at least [RaftSideDrawerDefaults.HeadHeight] tall with a seam under it, the phone's
- *   16dp edges: the [title] in `text-headline` on one line, the optional [subtitle] under it
- *   (the caller's line, e.g. "Channel #design" in caption and mono), and the ghost ×
- *   ([closeLabel]) at the end, its glyph on the head's edge (raft-ui PanelAction).
+ *   16dp edges, and ONE line of content (no subtitle row under the title): the [title] in
+ *   `text-headline`, then the optional [titleTrailing] on the same line, baseline-aligned (a
+ *   secondary item, e.g. "· #design" in muted mono; give a text that may run long
+ *   `Modifier.weight(1f, fill = false)` so it ellipsizes and the title stays whole), and the
+ *   ghost × ([closeLabel]) at the end, its glyph on the head's edge (raft-ui PanelAction).
  * - Body: [content] fills the rest as given (a lazy list scrolls itself); keep
  *   [RaftSideDrawerDefaults.BodyPadding] inside it (`px-5 py-4`).
  * - Footer: with [footer], a seam over a row of buttons at the end (`DrawerActions` on the x
@@ -68,7 +70,7 @@ fun RaftSideDrawerSurface(
     title: String,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    subtitle: (@Composable () -> Unit)? = null,
+    titleTrailing: (@Composable RowScope.() -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     closeEnabled: Boolean = true,
     insets: PaddingValues = PaddingValues(0.dp),
@@ -93,16 +95,19 @@ fun RaftSideDrawerSurface(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                Row(
+                    Modifier.weight(1f).padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     RaftText(
                         title,
-                        Modifier.semantics { heading() },
+                        Modifier.alignByBaseline().semantics { heading() },
                         style = RaftTheme.typography.headline,
                         color = colors.foreground,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    subtitle?.invoke()
+                    titleTrailing?.invoke(this)
                 }
                 // The 32dp ghost × pulled out by its icon inset, so its glyph sits on the edge.
                 Box(Modifier.raftBleed(end = 7.dp)) {
@@ -161,7 +166,7 @@ fun RaftSideDrawer(
     onDismissRequest: () -> Unit,
     title: String,
     modifier: Modifier = Modifier,
-    subtitle: (@Composable () -> Unit)? = null,
+    titleTrailing: (@Composable RowScope.() -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     closeEnabled: Boolean = true,
     dismissOnScrimTap: Boolean = true,
@@ -187,7 +192,7 @@ fun RaftSideDrawer(
                     modifier
                         .graphicsLayer { translationX = size.width * slide.value * direction }
                         .pointerInput(Unit) { detectTapGestures { } },
-                subtitle = subtitle,
+                titleTrailing = titleTrailing,
                 closeLabel = closeLabel,
                 closeEnabled = closeEnabled,
                 insets = WindowInsets.safeDrawing.asPaddingValues(),

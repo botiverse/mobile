@@ -987,7 +987,7 @@ internal fun RaftUnifiedSideDrawer(
     title: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    subtitle: (@Composable () -> Unit)? = null,
+    titleTrailing: (@Composable RowScope.() -> Unit)? = null,
     closeLabel: String = stringResource(Res.string.common_close),
     dismissEnabled: Boolean = true,
     dismissOnOutsideTap: Boolean = true,
@@ -1005,7 +1005,7 @@ internal fun RaftUnifiedSideDrawer(
             CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
                 RaftUnifiedSideDrawerWindow(
                     title = title,
-                    subtitle = subtitle,
+                    titleTrailing = titleTrailing,
                     closeLabel = closeLabel,
                     onDismiss = onDismiss,
                     modifier = modifier,
@@ -1038,7 +1038,7 @@ internal fun RaftUnifiedSideDrawer(
 @Composable
 private fun RaftUnifiedSideDrawerWindow(
     title: String,
-    subtitle: (@Composable () -> Unit)?,
+    titleTrailing: (@Composable RowScope.() -> Unit)?,
     closeLabel: String,
     onDismiss: () -> Unit,
     modifier: Modifier,
@@ -1089,7 +1089,7 @@ private fun RaftUnifiedSideDrawerWindow(
                     .align(Alignment.CenterEnd)
                     .graphicsLayer { translationX = size.width * slide.value * direction }
                     .raftDialogContentPointerBarrier(),
-            subtitle = subtitle,
+            titleTrailing = titleTrailing,
             closeLabel = closeLabel,
             closeEnabled = dismissEnabled,
             insets =
