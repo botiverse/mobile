@@ -161,7 +161,7 @@ class TaskConversationHeadRealTapTest {
     fun aFingerOnTheCreatorOpensTheirProfile() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 3)
-            tapAtCentreOfText("AppFather")
+            tapAtCentreOfText("@AppFather")
             assertTrue(
                 TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" },
                 "a finger on Created by did not open AppFather's profile (opened ${TaskTapFixture.openedProfiles}); trace:\n" +
@@ -201,7 +201,7 @@ class TaskConversationHeadRealTapTest {
     fun withNavigation3AFingerOnTheCreatorOpensTheirProfile() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 3, nav3 = true)
-            tapAtCentreOfText("AppFather")
+            tapAtCentreOfText("@AppFather")
             assertTrue(TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" }, trace.joinToString("\n"))
         }
 
