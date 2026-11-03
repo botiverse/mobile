@@ -3,7 +3,7 @@ type: improved
 area: thread
 platforms:
   - android
-pull_request: https://github.com/botiverse/mobile/pull/0
+pull_request: https://github.com/botiverse/mobile/pull/4184
 rollout: gradual
 ---
 
