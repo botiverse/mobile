@@ -2363,6 +2363,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.SetOriginalImage -> "SetOriginalImage"
         is SharedThreadComposerDraftIntent.InsertMention -> "InsertMention"
         is SharedThreadComposerDraftIntent.AppendQuote -> "AppendQuote"
+        SharedThreadComposerDraftIntent.RequestFocus -> "RequestFocus"
         SharedThreadComposerDraftIntent.Flush -> "Flush"
         is SharedThreadComposerDraftIntent.BeginSend -> "BeginSend"
         is SharedThreadComposerDraftIntent.RestoreAfterFailure -> "RestoreAfterFailure"
@@ -2405,6 +2406,8 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
     /** Appends a Markdown quote after the current draft (Reply on a partial text selection). */
     data class AppendQuote(val quote: String) : SharedThreadComposerDraftIntent
+    /** Put the caret in the composer (an edited image was just added from the image viewer). */
+    data object RequestFocus : SharedThreadComposerDraftIntent
     data object Flush : SharedThreadComposerDraftIntent
     data object BeginSend : SharedThreadComposerDraftIntent
     data class RestoreAfterFailure(
@@ -2652,6 +2655,8 @@ internal class SharedThreadComposerDraftStore(
                     )
                 }
             }
+            SharedThreadComposerDraftIntent.RequestFocus ->
+                current.copy(focusRequestNonce = current.focusRequestNonce + 1, focusRequestShowsKeyboard = true)
             SharedThreadComposerDraftIntent.Flush ->
                 current.copy(persistBoundaryNonce = current.persistBoundaryNonce + 1)
             SharedThreadComposerDraftIntent.BeginSend ->

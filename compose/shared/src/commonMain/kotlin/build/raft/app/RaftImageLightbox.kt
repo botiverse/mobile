@@ -205,7 +205,8 @@ internal fun RaftImageLightbox(
     resolveFullUrl: suspend (attachmentId: String) -> String?,
     onDismiss: () -> Unit,
     onDownload: (RaftThreadAttachmentItem) -> Unit,
-    onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?
+    onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?,
+    onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null
 ) {
     // The window's top safe area, read in the page (the lightbox covers the whole window).
     val topSafeArea = raftWindowTopSafeAreaPadding()
@@ -216,7 +217,8 @@ internal fun RaftImageLightbox(
             onDismiss = onDismiss,
             onDownload = onDownload,
             onOpenWith = onOpenWith,
-            topSafeArea = topSafeArea
+            topSafeArea = topSafeArea,
+            onEdit = onEdit
         )
     }
 }
@@ -234,6 +236,8 @@ internal fun RaftImageLightboxContent(
     onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?,
     modifier: Modifier = Modifier,
     topSafeArea: Dp = 0.dp,
+    /** Edit this image; the result goes to the composer as a new image (RaftViewerImageEdit.kt). */
+    onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
     pageImage: @Composable (item: RaftImageLightboxItem, fullUrl: String?, onContentSize: (Size) -> Unit) -> Unit =
         { item, fullUrl, onContentSize -> RaftImageLightboxRemoteImage(item, fullUrl, onContentSize) }
 ) {
@@ -317,6 +321,7 @@ internal fun RaftImageLightboxContent(
                 count = items.size,
                 onDownload = { onDownload(current.attachment) },
                 onOpenWith = onOpenWith?.let { open -> { open(current.attachment) } },
+                onEdit = onEdit?.let { edit -> { edit(current.attachment) } },
                 onClose = { currentOnDismiss() },
                 padding = barPadding,
                 // The window title bar's hit test sees the bar's events after its buttons.
@@ -463,6 +468,7 @@ private fun RaftImageLightboxTopBar(
     onOpenWith: (() -> Unit)?,
     onClose: () -> Unit,
     padding: PaddingValues,
+    onEdit: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -513,6 +519,14 @@ private fun RaftImageLightboxTopBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onEdit != null) {
+                RaftIconButton(
+                    onClick = onEdit,
+                    tooltip = stringResource(Res.string.common_edit),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Lg
+                ) { RaftSlotIcon(RaftLucideIconName.Pencil) }
+            }
             RaftIconButton(
                 onClick = onDownload,
                 tooltip = stringResource(Res.string.file_preview_action_download),

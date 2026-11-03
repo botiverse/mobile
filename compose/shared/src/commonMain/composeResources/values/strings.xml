@@ -1689,6 +1689,12 @@
     <string name="file_preview_toolbar_crop">Crop</string>
     <string name="file_preview_crop_reset">Reset</string>
     <string name="file_preview_crop_apply">Apply</string>
+    <string name="file_preview_toolbar_rotate">Rotate</string>
+    <string name="file_preview_crop_aspect_free">Free</string>
+    <string name="file_preview_crop_aspect_square">1:1</string>
+    <string name="file_preview_crop_aspect_original">Original</string>
+    <string name="file_preview_pen_width_thin">Thin pen</string>
+    <string name="file_preview_pen_width_thick">Thick pen</string>
     <string name="file_preview_action_comments">Comments</string>
     <string name="file_preview_action_copy_text">Copy Text</string>
     <string name="file_preview_action_download">Download</string>

@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftSegmentedControl
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.raftStateOverlay
@@ -115,6 +119,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -1995,6 +2017,7 @@ private fun RaftFilePreviewStandalonePageContent() {
     val unableToOpenAttachment = stringResource(Res.string.file_preview_error_open_attachment)
     val downloadedFileDeleted = stringResource(Res.string.file_preview_download_deleted)
     val copiedLabel = stringResource(Res.string.common_copied)
+    val viewerImageEditUnavailableLabel = stringResource(Res.string.common_error)
     val unableToDeleteDownload = stringResource(Res.string.file_preview_error_delete_download)
     val attachmentOpenResultTerms =
         RaftAttachmentOpenResultTerms(
@@ -4226,6 +4249,26 @@ private fun RaftFilePreviewStandalonePageContent() {
                             imageGalleryResolutionState.resolvedPayloadByAttachmentId
                         )
                 )
+                if (payload.offersViewerImageEdit()) {
+                    // ⋯ > Edit (artin, task #32): the conversation that shows this image opens
+                    // the editor; the edited copy goes into its composer (RaftViewerImageEdit.kt).
+                    RaftViewerImageMoreButton(
+                        onSelect = { id ->
+                            if (id == RaftViewerImageMenuEditId) {
+                                if (raftPostViewerImageEditRequest(payload.viewerShownAttachmentId())) {
+                                    closePreviewPage()
+                                } else {
+                                    // No open conversation shows this image any more: stay here.
+                                    bridge.toast(viewerImageEditUnavailableLabel)
+                                }
+                            }
+                        },
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = RaftAppSpacing.Md, bottom = RaftAppSpacing.Md + raftBottomSafeAreaPadding()),
+                    )
+                }
             }
             RaftFilePreviewComposerImageActionBar(
                 payload = payload,
@@ -4435,13 +4478,13 @@ internal data class RaftComposerImageCropRect(
     }
 }
 
-private enum class RaftComposerImagePencilMode {
+internal enum class RaftComposerImagePencilMode {
     Ink,
     Eraser,
 }
 
-private val RaftComposerImageEditorDefaultPenColor = Color(0xFFFF3B30) // raft-color: image-editor pen palette
-private val RaftComposerImageEditorPenColors =
+internal val RaftComposerImageEditorDefaultPenColor = Color(0xFFFF3B30) // raft-color: image-editor pen palette
+internal val RaftComposerImageEditorPenColors =
     listOf(
         Color(0xFFFFFFFF), // raft-color: image-editor pen palette
         Color(0xFF111111), // raft-color: image-editor pen palette
@@ -4479,8 +4522,11 @@ private fun RaftFilePreviewImageEditorDoneButton(
 internal data class RaftComposerImageTextAnnotation(
     val id: Int,
     val text: String,
-    val position: Offset
+    val position: Offset,
+    val color: Color = RaftComposerImageTextDefaultColor,
 )
+
+internal val RaftComposerImageTextDefaultColor = Color(0xFFFF3B30) // raft-color: text annotation drawn on the photo
 
 /**
  * Caller-local text draft for one image-editor identity.
@@ -4506,6 +4552,8 @@ internal data class RaftFilePreviewAnnotationDraft(
 internal data class RaftComposerImageStroke(
     val points: List<Offset>,
     val color: Color = Color(0xFFFF3B30), // raft-color: image-editor pen palette default
+    /** Line width in editor-canvas pixels ([RaftComposerImagePenWidth]). */
+    val width: Float = RaftComposerImagePencilStrokeWidthPx,
 )
 
 internal data class RaftComposerImageMosaicTile(
@@ -4534,6 +4582,12 @@ internal data class RaftComposerImageEditorContent(
     val textAnnotations: List<RaftComposerImageTextAnnotation> = emptyList(),
     val drawOperations: List<RaftComposerImageDrawOperation> = emptyList(),
     val cropRect: RaftComposerImageCropRect = RaftComposerImageCropRect.Uncropped,
+    /**
+     * Clockwise quarter turns of the whole picture. The edits above stay in the unrotated canvas;
+     * the canvas is turned as a whole on screen and in the export
+     * (RaftComposerImageEditorTransform.kt).
+     */
+    val rotationQuarterTurns: Int = 0,
 )
 
 internal data class RaftComposerImageEditorHistory(
@@ -4661,6 +4715,14 @@ internal fun RaftFilePreviewComposerImageEditor(
     onDone: () -> Unit,
     initialTool: RaftComposerImageEditorTool = RaftComposerImageEditorTool.Pencil,
     initialPencilOptionsExpanded: Boolean = false,
+    initialCropAspect: RaftComposerImageCropAspect = RaftComposerImageCropAspect.Free,
+    /** The working picture when the caller already has it decoded (screenshot tests). */
+    previewImage: ImageBitmap? = null,
+    /**
+     * Desktop / wide chrome (RaftComposerImageDesktopEditor.kt): a top bar with tool popovers
+     * instead of the bottom bar, plus wheel zoom, Space-pan, Esc and Return. Null: the phone bar.
+     */
+    desktopChrome: RaftComposerImageEditorDesktopChrome? = null,
     modifier: Modifier = Modifier
 ) {
     val activeStrokePoints = remember(payload.imageUrl) { mutableListOf<Offset>() }
@@ -4683,10 +4745,19 @@ internal fun RaftFilePreviewComposerImageEditor(
     var pencilOptionsExpanded by remember(payload.imageUrl, initialPencilOptionsExpanded) {
         mutableStateOf(initialPencilOptionsExpanded)
     }
+    var penWidth by remember(payload.imageUrl) { mutableStateOf(RaftComposerImagePenWidth.Thin) }
+    var cropAspect by remember(payload.imageUrl, initialCropAspect) { mutableStateOf(initialCropAspect) }
+    // Pinch zoom / pan of the stage (two fingers); edits stay in canvas pixels underneath.
+    var viewTransform by remember(payload.imageUrl) { mutableStateOf(RaftComposerImageViewTransform.Identity) }
+    val editorFocusRequester = remember { FocusRequester() }
+    var spaceHeld by remember(payload.imageUrl) { mutableStateOf(false) }
+    val desktopToolBounds = remember(payload.imageUrl) { mutableStateMapOf<RaftComposerImageEditorTool, Pair<Float, Float>>() }
     var keyboardInsetDp by remember(payload.imageUrl) { mutableStateOf(0f) }
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val keyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
-    val mosaicImage = rememberAsyncImageBitmap(payload.imageUrl)
+    // The working picture: decoded no larger than the window (the export decodes the original once).
+    val loadedImage = rememberAsyncImageBitmap(if (previewImage != null) null else payload.imageUrl)
+    val mosaicImage = previewImage ?: loadedImage
     val platformContext = LocalPlatformContext.current
     val textMeasurer = rememberTextMeasurer()
     val annotationTextStyle =
@@ -4735,6 +4806,8 @@ internal fun RaftFilePreviewComposerImageEditor(
         if (tool == RaftComposerImageEditorTool.Text && nextTool != RaftComposerImageEditorTool.Text) {
             focusManager.clearFocus(force = true)
             keyboardInsetDp = 0f
+            // Back to the editor, so Cmd/Ctrl+Z reach it again.
+            runCatching { editorFocusRequester.requestFocus() }
         }
         if (tool == RaftComposerImageEditorTool.Crop && nextTool != RaftComposerImageEditorTool.Crop) {
             transientCropRect = state.history.content.cropRect
@@ -4747,6 +4820,10 @@ internal fun RaftFilePreviewComposerImageEditor(
                 selectedTool = nextTool,
                 currentlyExpanded = pencilOptionsExpanded,
             )
+        if (nextTool == RaftComposerImageEditorTool.Crop) {
+            // The crop handles work on the whole picture.
+            viewTransform = RaftComposerImageViewTransform.Identity
+        }
         tool = nextTool
     }
     fun erasedContentAt(point: Offset): RaftComposerImageEditorContent {
@@ -4812,6 +4889,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         canvasSize = editorCanvasSize,
                     ),
                 annotationId = nextTextAnnotationId,
+                color = selectedPenColor,
             )
         state.update(
             state.history.apply(nextContent)
@@ -4870,7 +4948,170 @@ internal fun RaftFilePreviewComposerImageEditor(
             bottomSafeArea = bottomSafeArea,
             keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
         )
-    Column(modifier = modifier.fillMaxSize()) {
+    fun rotateClockwise() {
+        val image = mosaicImage ?: return
+        if (saving || editorFinishing) return
+        state.update(
+            state.history.apply(
+                raftApplyRotateToContent(
+                    content = state.history.content,
+                    imageWidth = image.width,
+                    imageHeight = image.height,
+                    stageWidth = stageSize.width * editorDensity.density,
+                    stageHeight = stageSize.height * editorDensity.density,
+                )
+            )
+        )
+        viewTransform = RaftComposerImageViewTransform.Identity
+    }
+    fun resetCrop() {
+        cropAspect = RaftComposerImageCropAspect.Free
+        transientCropRect = RaftComposerImageCropRect.Uncropped
+        if (mosaicImage != null) {
+            val nextContent = raftApplyCropToContent(
+                content = state.history.content,
+                newCrop = RaftComposerImageCropRect.Uncropped,
+                imageWidth = mosaicImage.width,
+                imageHeight = mosaicImage.height,
+                maxWidth = stageSize.width * editorDensity.density,
+                maxHeight = stageSize.height * editorDensity.density,
+            )
+            state.update(state.history.apply(nextContent))
+        }
+    }
+    fun selectCropAspect(aspect: RaftComposerImageCropAspect) {
+        cropAspect = aspect
+        val image = mosaicImage ?: return
+        val ratio = aspect.pixelRatio(image.width, image.height) ?: return
+        if (!raftCropMatchesRatio(transientCropRect, ratio, image.width, image.height)) {
+            transientCropRect = raftCropRectForAspect(transientCropRect, ratio, image.width, image.height)
+        }
+    }
+    LaunchedEffect(Unit) {
+        // Desktop: Cmd/Ctrl+Z reach the editor without a click first. The text tool's field
+        // focuses itself instead.
+        if (tool != RaftComposerImageEditorTool.Text) {
+            runCatching { editorFocusRequester.requestFocus() }
+        }
+    }
+    // The text tool's field and Add (the phone's bottom bar, the desktop's Text popover).
+    val textInputRow: @Composable (Modifier) -> Unit = { rowModifier ->
+        Row(
+            modifier = rowModifier,
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+                    TextField(
+                        value = textDraft.text,
+                        onValueChange = { nextText ->
+                            textDraft = textDraft.updated(payload.imageUrl, nextText)
+                        },
+                        placeholder = stringResource(Res.string.file_preview_placeholder_tap_to_add_text),
+                        placeholderColor = RaftTheme.colors.foregroundHint,
+                        autoFocus = true,
+                        keyboardHeightChange = { params ->
+                            keyboardInsetDp = params.height.coerceAtLeast(0f)
+                        },
+                        maxLines = 1,
+                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftTheme.colors.foreground),
+                        // RaftTextField's box (layer-card, 1dp line-field, control radius): this
+                        // field stays the platform TextField for its autofocus and keyboard-height
+                        // callback, which the editor's bottom padding follows.
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 36.dp)
+                                .background(RaftTheme.colors.layerCard, RoundedCornerShape(RaftRadius.Control))
+                                .border(RaftStroke.Hairline, RaftTheme.colors.lineField, RoundedCornerShape(RaftRadius.Control))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                    )
+                    RaftIconButton(
+                        onClick = { addTextAnnotation() },
+                        tooltip = stringResource(Res.string.common_add),
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftIconButtonSize.Md,
+                        enabled = !saving && !editorFinishing && textDraft.text.isNotBlank()
+                    ) {
+                        RaftSlotIcon(RaftLucideIconName.Check)
+                    }
+                    Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
+        }
+    }
+    val editorActionsEnabled = !saving && !editorFinishing
+    Box(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .focusRequester(editorFocusRequester)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    if (desktopChrome != null) {
+                        when (
+                            raftComposerImageDesktopKey(
+                                key = event.key,
+                                down = event.type == KeyEventType.KeyDown,
+                                textTool = tool == RaftComposerImageEditorTool.Text,
+                            )
+                        ) {
+                            RaftComposerImageDesktopKey.SpaceDown -> {
+                                spaceHeld = true
+                                return@onPreviewKeyEvent true
+                            }
+                            RaftComposerImageDesktopKey.SpaceUp -> {
+                                spaceHeld = false
+                                return@onPreviewKeyEvent true
+                            }
+                            RaftComposerImageDesktopKey.Cancel -> {
+                                if (editorActionsEnabled) desktopChrome.onCancel()
+                                return@onPreviewKeyEvent true
+                            }
+                            RaftComposerImageDesktopKey.Done -> {
+                                requestDone()
+                                return@onPreviewKeyEvent true
+                            }
+                            null -> Unit
+                        }
+                    }
+                    // The text tool's field keeps its own undo.
+                    if (event.type != KeyEventType.KeyDown || tool == RaftComposerImageEditorTool.Text) {
+                        return@onPreviewKeyEvent false
+                    }
+                    when (
+                        raftComposerImageEditorShortcut(
+                            key = event.key,
+                            command = event.isMetaPressed || event.isCtrlPressed,
+                            shift = event.isShiftPressed,
+                        )
+                    ) {
+                        RaftComposerImageEditorShortcut.Undo -> {
+                            if (editorActionsEnabled) state.undo()
+                            true
+                        }
+                        RaftComposerImageEditorShortcut.Redo -> {
+                            if (editorActionsEnabled) state.redo()
+                            true
+                        }
+                        null -> false
+                    }
+                }
+    ) {
+        if (desktopChrome != null) {
+            RaftComposerImageDesktopTopBar(
+                tool = tool,
+                enabled = mosaicImage != null && editorActionsEnabled,
+                saving = saving || editorFinishing,
+                canUndo = state.history.canUndo && editorActionsEnabled,
+                canRedo = state.history.canRedo && editorActionsEnabled,
+                onSelectTool = ::selectTool,
+                onRotate = ::rotateClockwise,
+                onUndo = state::undo,
+                onRedo = state::redo,
+                onCancel = desktopChrome.onCancel,
+                onDone = ::requestDone,
+                onToolBounds = { item, left, right -> desktopToolBounds[item] = left to right },
+            )
+        }
         // The black stage may letterbox for editing, but nativeRef must cover only source-ratio
         // pixels. Otherwise toImage bakes the stage's black bars into the uploaded attachment.
         BoxWithConstraints(
@@ -4878,7 +5119,56 @@ internal fun RaftFilePreviewComposerImageEditor(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color(0xFF000000)), // raft-color: image editor stage is black in both modes
+                    .background(Color(0xFF000000)) // raft-color: image editor stage is black in both modes
+                    .clipToBounds()
+                    .pointerInput(payload.imageUrl, tool) {
+                        // Two fingers zoom and pan the picture in every tool but Crop; one finger
+                        // stays with the tool. The pinch takes the gesture in the Initial pass, so
+                        // a stroke the first finger had started is cancelled, not committed.
+                        if (tool == RaftComposerImageEditorTool.Crop) return@pointerInput
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            do {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.changes.count { it.pressed } >= 2) {
+                                    val canvasPx = editorCanvasSize
+                                    val turnedPx =
+                                        if (raftComposerImageTurnSwapsSides(state.history.content.rotationQuarterTurns)) {
+                                            Size(canvasPx.height.toFloat(), canvasPx.width.toFloat())
+                                        } else {
+                                            Size(canvasPx.width.toFloat(), canvasPx.height.toFloat())
+                                        }
+                                    viewTransform =
+                                        viewTransform.raftComposerImagePinch(
+                                            centroid = event.calculateCentroid(useCurrent = true),
+                                            zoomChange = event.calculateZoom(),
+                                            panChange = event.calculatePan(),
+                                            stageSize = Size(size.width.toFloat(), size.height.toFloat()),
+                                            visibleSize = turnedPx,
+                                        )
+                                    event.changes.forEach { it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    }
+                    .then(
+                        if (desktopChrome != null) {
+                            Modifier.raftComposerImageDesktopStageGestures(
+                                enabled = tool != RaftComposerImageEditorTool.Crop,
+                                spaceHeld = spaceHeld,
+                                view = { viewTransform },
+                                onView = { viewTransform = it },
+                                visibleSize = {
+                                    raftComposerImageTurnedSize(
+                                        Size(editorCanvasSize.width.toFloat(), editorCanvasSize.height.toFloat()),
+                                        state.history.content.rotationQuarterTurns,
+                                    )
+                                },
+                            )
+                        } else {
+                            Modifier
+                        }
+                    ),
             contentAlignment = Alignment.Center
         ) {
             val committedContent = state.history.content
@@ -4892,27 +5182,38 @@ internal fun RaftFilePreviewComposerImageEditor(
                     stageSize = currentSize
                 }
             }
+            val quarterTurns = committedContent.rotationQuarterTurns
+            // Unrotated canvas size: turned by the graphics layer below, it fits the stage.
             val captureSize =
                 mosaicImage?.let { image ->
-                    raftComposerImageEditorCaptureSize(
+                    raftComposerImageEditorCanvasSize(
                         imageWidth = image.width,
                         imageHeight = image.height,
-                        maxWidth = stageWidth,
-                        maxHeight = stageHeight,
+                        stageWidth = stageWidth,
+                        stageHeight = stageHeight,
                         cropRect = currentCrop,
+                        turns = quarterTurns,
                     )
                 }
             if (captureSize != null) {
                 Box(
                     modifier =
                         Modifier
-                            .width(captureSize.width.dp)
-                            .height(captureSize.height.dp)
+                            .requiredSize(width = captureSize.width.dp, height = captureSize.height.dp)
+                            .graphicsLayer {
+                                // Pointer input below arrives in the unrotated canvas's own
+                                // coordinates; Compose inverts this layer for hit testing.
+                                rotationZ = quarterTurns * 90f
+                                scaleX = viewTransform.zoom
+                                scaleY = viewTransform.zoom
+                                translationX = viewTransform.pan.x
+                                translationY = viewTransform.pan.y
+                            }
                             .clipToBounds()
                             .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
                             .raftCaptureRef(onRef = onCaptureRef, render = renderFullResolution)
-                            .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
-                        if (tool == RaftComposerImageEditorTool.Crop) return@pointerInput
+                            .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor, penWidth, cropAspect, spaceHeld) {
+                        if (tool == RaftComposerImageEditorTool.Crop || spaceHeld) return@pointerInput
                         detectTapGestures { position ->
                             if (saving || editorFinishing) return@detectTapGestures
                             when (tool) {
@@ -4926,6 +5227,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                                                     RaftComposerImageStroke(
                                                         points = listOf(position, position),
                                                         color = selectedPenColor,
+                                                        width = penWidth.px,
                                                     )
                                                 )
                                             )
@@ -4945,8 +5247,8 @@ internal fun RaftFilePreviewComposerImageEditor(
                         }
                     }
                     .raftKeepsBackSwipe(tool != RaftComposerImageEditorTool.Text)
-                    .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
-                        if (tool == RaftComposerImageEditorTool.Text) return@pointerInput
+                    .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor, penWidth, cropAspect, spaceHeld) {
+                        if (tool == RaftComposerImageEditorTool.Text || spaceHeld) return@pointerInput
                         var lastMosaicPoint = Offset.Zero
                         detectDragGestures(
                             onDragStart = { start ->
@@ -5001,6 +5303,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                                                     RaftComposerImageStroke(
                                                         points = committedPoints,
                                                         color = selectedPenColor,
+                                                        width = penWidth.px,
                                                     )
                                                 )
                                             )
@@ -5090,11 +5393,16 @@ internal fun RaftFilePreviewComposerImageEditor(
                                             } else {
                                                 Size(captureSize.width * editorDensity.density, captureSize.height * editorDensity.density)
                                             }
-                                        transientCropRect = raftCropApplyDrag(
+                                        val imageWidth = mosaicImage?.width ?: 0
+                                        val imageHeight = mosaicImage?.height ?: 0
+                                        transientCropRect = raftCropApplyDragWithAspect(
                                             handle = activeCropHandle,
                                             cropRect = transientCropRect,
                                             dragAmount = dragAmount,
                                             canvasSize = canvasSize,
+                                            ratio = cropAspect.pixelRatio(imageWidth, imageHeight),
+                                            imageWidth = imageWidth,
+                                            imageHeight = imageHeight,
                                         )
                                     }
                                 }
@@ -5131,7 +5439,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         committedTiles = state.history.content.mosaicTiles,
                     )
                 val activeStrokeSnapshot = activeStrokePoints.toList()
-                key(activeMosaicRevision, activeStrokeRevision, selectedPenColor, currentCrop) {
+                key(activeMosaicRevision, activeStrokeRevision, selectedPenColor, penWidth, currentCrop) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawRaftComposerImageMosaic(
                             image = mosaicImage,
@@ -5143,7 +5451,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                                 color = selectedPenColor,
                                 start = segment[0],
                                 end = segment[1],
-                                strokeWidth = RaftComposerImagePencilStrokeWidthPx,
+                                strokeWidth = penWidth.px,
                                 cap = StrokeCap.Round,
                             )
                         }
@@ -5236,8 +5544,8 @@ internal fun RaftFilePreviewComposerImageEditor(
                 ) {
                     Text(
                         text = annotation.text,
-                        style = RaftType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)), // raft-color: text annotation drawn on the photo
-                        color = Color(0xFFFF3B30), // raft-color: text annotation drawn on the photo
+                        style = RaftType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = annotation.color),
+                        color = annotation.color,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -5258,7 +5566,9 @@ internal fun RaftFilePreviewComposerImageEditor(
                 }
             }
         }
-        if (tool == RaftComposerImageEditorTool.Pencil && pencilOptionsExpanded) {
+        if (desktopChrome != null) {
+            // The desktop's tools are in the top bar; their options open as popovers below.
+        } else if (tool == RaftComposerImageEditorTool.Pencil && pencilOptionsExpanded) {
             Column(
                 modifier =
                     Modifier
@@ -5280,6 +5590,11 @@ internal fun RaftFilePreviewComposerImageEditor(
                         selectedPenColor = color
                         pencilMode = RaftComposerImagePencilMode.Ink
                     },
+                    width = penWidth,
+                    onSelectWidth = { width ->
+                        penWidth = width
+                        pencilMode = RaftComposerImagePencilMode.Ink
+                    },
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -5295,6 +5610,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                     saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
+                    onRotate = ::rotateClockwise,
                     onDone = ::requestDone,
                 )
                 Box(modifier = Modifier.fillMaxWidth().height(editorBottomPadding))
@@ -5312,58 +5628,21 @@ internal fun RaftFilePreviewComposerImageEditor(
                         )
                         .background(RaftColor.SurfaceWhite)
             ) {
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                start = RaftAppSpacing.Sm,
-                                end = RaftAppSpacing.Sm,
-                                bottom = RaftAppSpacing.Sm,
-                            ),
-                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextField(
-                        value = textDraft.text,
-                        onValueChange = { nextText ->
-                            textDraft = textDraft.updated(payload.imageUrl, nextText)
-                        },
-                        placeholder = stringResource(Res.string.file_preview_placeholder_tap_to_add_text),
-                        placeholderColor = RaftTheme.colors.foregroundHint,
-                        autoFocus = true,
-                        keyboardHeightChange = { params ->
-                            keyboardInsetDp = params.height.coerceAtLeast(0f)
-                        },
-                        maxLines = 1,
-                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftTheme.colors.foreground),
-                        // RaftTextField's box (layer-card, 1dp line-field, control radius): this
-                        // field stays the platform TextField for its autofocus and keyboard-height
-                        // callback, which the editor's bottom padding follows.
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .heightIn(min = 36.dp)
-                                .background(RaftTheme.colors.layerCard, RoundedCornerShape(RaftRadius.Control))
-                                .border(RaftStroke.Hairline, RaftTheme.colors.lineField, RoundedCornerShape(RaftRadius.Control))
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
-                    )
-                    RaftIconButton(
-                        onClick = { addTextAnnotation() },
-                        tooltip = stringResource(Res.string.common_add),
-                        variant = RaftButtonVariant.Primary,
-                        size = RaftIconButtonSize.Md,
-                        enabled = !saving && !editorFinishing && textDraft.text.isNotBlank()
-                    ) {
-                        RaftSlotIcon(RaftLucideIconName.Check)
-                    }
-                    Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
-                }
+                textInputRow(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = RaftAppSpacing.Sm,
+                            end = RaftAppSpacing.Sm,
+                            bottom = RaftAppSpacing.Sm,
+                        )
+                )
                 RaftFilePreviewImageEditorPrimaryControls(
                     tool = tool,
                     saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
+                    onRotate = ::rotateClockwise,
                     onDone = ::requestDone,
                 )
                 Box(modifier = Modifier.fillMaxWidth().height(editorBottomPadding))
@@ -5382,22 +5661,11 @@ internal fun RaftFilePreviewComposerImageEditor(
                         .background(RaftColor.SurfaceWhite)
             ) {
                 RaftFilePreviewCropOptions(
+                    aspect = cropAspect,
+                    onSelectAspect = ::selectCropAspect,
                     canReset = !transientCropRect.isUncropped || !state.history.content.cropRect.isUncropped,
                     enabled = !saving && !editorFinishing,
-                    onReset = {
-                        transientCropRect = RaftComposerImageCropRect.Uncropped
-                        if (mosaicImage != null) {
-                            val nextContent = raftApplyCropToContent(
-                                content = state.history.content,
-                                newCrop = RaftComposerImageCropRect.Uncropped,
-                                imageWidth = mosaicImage.width,
-                                imageHeight = mosaicImage.height,
-                                maxWidth = stageSize.width * editorDensity.density,
-                                maxHeight = stageSize.height * editorDensity.density,
-                            )
-                            state.update(state.history.apply(nextContent))
-                        }
-                    },
+                    onReset = ::resetCrop,
                     onApply = {
                         applyCurrentCrop()
                     },
@@ -5416,6 +5684,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                     saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
+                    onRotate = ::rotateClockwise,
                     onDone = ::requestDone,
                 )
                 Box(modifier = Modifier.fillMaxWidth().height(editorBottomPadding))
@@ -5438,10 +5707,88 @@ internal fun RaftFilePreviewComposerImageEditor(
                     saving = saving || editorFinishing,
                     imageAvailable = payload.imageUrl != null,
                     onSelectTool = ::selectTool,
+                    onRotate = ::rotateClockwise,
                     onDone = ::requestDone,
                 )
                 Box(modifier = Modifier.fillMaxWidth().height(editorBottomPadding))
             }
+        }
+    }
+    if (desktopChrome != null) {
+        // The active tool's options, in a popover under it (the same option rows as the phone's).
+        val optionsTool = tool.takeIf { it != RaftComposerImageEditorTool.Mosaic }
+        val anchor = optionsTool?.let { desktopToolBounds[it] }
+        if (optionsTool != null && anchor != null) {
+            RaftComposerImageDesktopToolPopover(
+                anchorLeft = anchor.first,
+                anchorRight = anchor.second,
+                width = if (optionsTool == RaftComposerImageEditorTool.Crop) 392.dp else 380.dp,
+            ) {
+                when (optionsTool) {
+                    RaftComposerImageEditorTool.Pencil ->
+                        RaftFilePreviewPencilOptions(
+                            mode = pencilMode,
+                            selectedColor = selectedPenColor,
+                            enabled = editorActionsEnabled,
+                            onSelectEraser = { pencilMode = RaftComposerImagePencilMode.Eraser },
+                            onSelectColor = { color ->
+                                selectedPenColor = color
+                                pencilMode = RaftComposerImagePencilMode.Ink
+                            },
+                            width = penWidth,
+                            onSelectWidth = { width ->
+                                penWidth = width
+                                pencilMode = RaftComposerImagePencilMode.Ink
+                            },
+                        )
+                    RaftComposerImageEditorTool.Text -> {
+                        textInputRow(Modifier.fillMaxWidth())
+                        Box(modifier = Modifier.height(RaftAppSpacing.Sm))
+                        RaftComposerImageColorRow(
+                            selectedColor = selectedPenColor,
+                            enabled = editorActionsEnabled,
+                            onSelectColor = { color -> selectedPenColor = color },
+                        )
+                    }
+                    RaftComposerImageEditorTool.Crop ->
+                        RaftFilePreviewCropOptions(
+                            aspect = cropAspect,
+                            onSelectAspect = ::selectCropAspect,
+                            canReset = !transientCropRect.isUncropped || !state.history.content.cropRect.isUncropped,
+                            enabled = editorActionsEnabled,
+                            onReset = ::resetCrop,
+                            onApply = { applyCurrentCrop() },
+                        )
+                    RaftComposerImageEditorTool.Mosaic -> Unit
+                }
+            }
+        }
+    }
+    }
+}
+
+/** The pen colours as one radio row (the pen options' swatches; the desktop Text popover). */
+@Composable
+internal fun RaftComposerImageColorRow(
+    selectedColor: Color,
+    enabled: Boolean,
+    onSelectColor: (Color) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val penLabel = stringResource(Res.string.file_preview_toolbar_pen)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RaftComposerImageEditorPenColors.forEachIndexed { index, color ->
+            RaftFilePreviewColorSwatch(
+                color = color,
+                selected = selectedColor == color,
+                enabled = enabled,
+                label = "$penLabel ${index + 1}",
+                onClick = { onSelectColor(color) },
+            )
         }
     }
 }
@@ -5452,8 +5799,10 @@ private fun RaftFilePreviewImageEditorPrimaryControls(
     saving: Boolean,
     imageAvailable: Boolean,
     onSelectTool: (RaftComposerImageEditorTool) -> Unit,
+    onRotate: () -> Unit,
     onDone: () -> Unit,
 ) {
+    // Tools, then Rotate (an action, not a mode), then Done; Undo / Redo stay in the page header.
     Row(
         modifier =
             Modifier
@@ -5463,7 +5812,7 @@ private fun RaftFilePreviewImageEditorPrimaryControls(
                     top = 6.dp,
                     end = RaftAppSpacing.Sm,
                 ),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftFilePreviewEditorToolButton(
@@ -5494,6 +5843,13 @@ private fun RaftFilePreviewImageEditorPrimaryControls(
             enabled = !saving,
             onClick = { onSelectTool(RaftComposerImageEditorTool.Crop) }
         )
+        RaftFilePreviewEditorToolButton(
+            label = stringResource(Res.string.file_preview_toolbar_rotate),
+            icon = RaftLucideIconName.RotateCw,
+            selected = false,
+            enabled = !saving && imageAvailable,
+            onClick = onRotate
+        )
         Box(modifier = Modifier.weight(1f))
         RaftFilePreviewImageEditorDoneButton(
             saving = saving,
@@ -5505,17 +5861,20 @@ private fun RaftFilePreviewImageEditorPrimaryControls(
 }
 
 @Composable
-private fun RaftFilePreviewPencilOptions(
+internal fun RaftFilePreviewPencilOptions(
     mode: RaftComposerImagePencilMode,
     selectedColor: Color,
     enabled: Boolean,
     onSelectEraser: () -> Unit,
     onSelectColor: (Color) -> Unit,
+    width: RaftComposerImagePenWidth,
+    onSelectWidth: (RaftComposerImagePenWidth) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val penLabel = stringResource(Res.string.file_preview_toolbar_pen)
+    // Eraser | two widths | colours; scrolls sideways on a narrow phone rather than squeezing.
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -5528,6 +5887,28 @@ private fun RaftFilePreviewPencilOptions(
             size = RaftIconButtonSize.Lg,
             iconSize = 22.dp,
         )
+        Box(
+            modifier =
+                Modifier
+                    .size(width = 1.dp, height = 28.dp)
+                    .background(RaftColor.TextMutedGray.copy(alpha = 0.45f))
+        )
+        RaftComposerImagePenWidth.entries.forEach { choice ->
+            RaftFilePreviewPenWidthChoice(
+                dotSize = if (choice == RaftComposerImagePenWidth.Thin) 6.dp else 13.dp,
+                selected = mode == RaftComposerImagePencilMode.Ink && width == choice,
+                enabled = enabled,
+                label =
+                    stringResource(
+                        if (choice == RaftComposerImagePenWidth.Thin) {
+                            Res.string.file_preview_pen_width_thin
+                        } else {
+                            Res.string.file_preview_pen_width_thick
+                        }
+                    ),
+                onClick = { onSelectWidth(choice) },
+            )
+        }
         Box(
             modifier =
                 Modifier
@@ -5547,7 +5928,49 @@ private fun RaftFilePreviewPencilOptions(
 }
 
 @Composable
-private fun RaftFilePreviewColorSwatch(
+internal fun RaftFilePreviewPenWidthChoice(
+    dotSize: androidx.compose.ui.unit.Dp,
+    selected: Boolean,
+    enabled: Boolean,
+    label: String,
+    onClick: () -> Unit,
+) {
+    // One choice of the pen width group (a radio, like the colour swatches): a dot of the width.
+    val source = remember { MutableInteractionSource() }
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = enabled)
+    Box(
+        modifier =
+            Modifier
+                .size(28.dp)
+                .raftPointerHover(source, enabled)
+                .raftStateOverlay(overlay, CircleShape)
+                .selectable(
+                    selected = selected,
+                    interactionSource = source,
+                    indication = null,
+                    enabled = enabled,
+                    role = Role.RadioButton,
+                    onClick = onClick,
+                )
+                .semantics { contentDescription = label }
+                .border(
+                    width = if (selected) RaftAppStroke.Strong else 0.dp,
+                    color = if (selected) RaftColor.BorderBlack else Color.Transparent,
+                    shape = CircleShape,
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(dotSize)
+                    .background(RaftColor.TextBlack, CircleShape)
+        )
+    }
+}
+
+@Composable
+internal fun RaftFilePreviewColorSwatch(
     color: Color,
     selected: Boolean,
     enabled: Boolean,
@@ -5590,7 +6013,9 @@ private fun RaftFilePreviewColorSwatch(
 }
 
 @Composable
-private fun RaftFilePreviewCropOptions(
+internal fun RaftFilePreviewCropOptions(
+    aspect: RaftComposerImageCropAspect,
+    onSelectAspect: (RaftComposerImageCropAspect) -> Unit,
     canReset: Boolean,
     enabled: Boolean,
     onReset: () -> Unit,
@@ -5602,17 +6027,33 @@ private fun RaftFilePreviewCropOptions(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Free / 1:1 / Original: the shape the crop rectangle keeps while its handles move.
+        RaftSegmentedControl(modifier = Modifier.weight(1f, fill = false)) {
+            RaftComposerImageCropAspect.entries.forEach { choice ->
+                RaftSegment(
+                    text =
+                        stringResource(
+                            when (choice) {
+                                RaftComposerImageCropAspect.Free -> Res.string.file_preview_crop_aspect_free
+                                RaftComposerImageCropAspect.Square -> Res.string.file_preview_crop_aspect_square
+                                RaftComposerImageCropAspect.Original -> Res.string.file_preview_crop_aspect_original
+                            }
+                        ),
+                    selected = aspect == choice,
+                    enabled = enabled,
+                    onClick = { onSelectAspect(choice) },
+                )
+            }
+        }
         RaftButton(
             text = stringResource(Res.string.file_preview_crop_reset),
             onClick = onReset,
             enabled = enabled && canReset,
-            modifier = Modifier.weight(1f),
         )
         RaftButton(
             text = stringResource(Res.string.file_preview_crop_apply),
             onClick = onApply,
             enabled = enabled,
-            modifier = Modifier.weight(1f),
             variant = RaftButtonVariant.Primary,
         )
     }
@@ -5859,6 +6300,7 @@ internal fun raftComposerImageAddTextDraft(
     draft: String,
     position: Offset,
     annotationId: Int,
+    color: Color = RaftComposerImageTextDefaultColor,
 ): RaftComposerImageEditorContent {
     val text = draft.trim()
     if (text.isEmpty()) return content
@@ -5869,6 +6311,7 @@ internal fun raftComposerImageAddTextDraft(
                     id = annotationId,
                     text = text,
                     position = position,
+                    color = color,
                 )
     )
 }
@@ -6401,18 +6844,20 @@ internal fun raftApplyCropToContent(
 ): RaftComposerImageEditorContent {
     val oldCrop = content.cropRect
     if (oldCrop == newCrop) return content
+    // A turned canvas fits the stage with its sides swapped (RaftComposerImageEditorTransform.kt).
+    val fitBox = raftComposerImageEditorFitBox(maxWidth, maxHeight, content.rotationQuarterTurns)
     val oldCapture = raftComposerImageEditorCaptureSize(
         imageWidth = imageWidth,
         imageHeight = imageHeight,
-        maxWidth = maxWidth,
-        maxHeight = maxHeight,
+        maxWidth = fitBox.width,
+        maxHeight = fitBox.height,
         cropRect = oldCrop,
     ) ?: return content.copy(cropRect = newCrop)
     val newCapture = raftComposerImageEditorCaptureSize(
         imageWidth = imageWidth,
         imageHeight = imageHeight,
-        maxWidth = maxWidth,
-        maxHeight = maxHeight,
+        maxWidth = fitBox.width,
+        maxHeight = fitBox.height,
         cropRect = newCrop,
     ) ?: return content.copy(cropRect = newCrop)
     return raftRemapContentForCrop(

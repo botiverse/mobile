@@ -9560,6 +9560,8 @@ private fun SharedThreadRouteContentContent(
     val imageLightboxWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     val imageLightboxEnabled = raftImageLightboxEnabled(raftPlatformHasFinePointer(), imageLightboxWindowWidthDp)
     var imageLightboxRequest by remember(threadInstanceKey) { mutableStateOf<RaftImageLightboxRequest?>(null) }
+    // The image being edited from the image viewer (RaftViewerImageEdit.kt); null: none.
+    var viewerImageEditAttachment by remember(threadInstanceKey) { mutableStateOf<RaftThreadAttachmentItem?>(null) }
     fun requestInlineImageFallback(attachmentId: String) {
         val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
         inlineImageFallbackState = nextState
@@ -9604,6 +9606,7 @@ private fun SharedThreadRouteContentContent(
             bridge.log("thread_image_lightbox status=open count=${imageLightboxRequest?.items?.size ?: 0}")
             return
         }
+        RaftViewerImageEditOpener.threadKey = threadInstanceKey
         pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = "image",
@@ -9785,7 +9788,8 @@ private fun SharedThreadRouteContentContent(
             },
             onDismiss = { imageLightboxRequest = null },
             onDownload = { attachment -> saveAttachmentExternally(attachment) },
-            onOpenWith = { attachment -> openAttachmentExternally(attachment) }
+            onOpenWith = { attachment -> openAttachmentExternally(attachment) },
+            onEdit = { attachment -> viewerImageEditAttachment = attachment }
         )
     }
     fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
@@ -11237,6 +11241,81 @@ private fun SharedThreadRouteContentContent(
             }
         }
         return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
+    }
+    // Image viewer > Edit (artin, task #32): the edited copy goes into this conversation's
+    // composer as a new attachment, like a pasted image; the original message is untouched.
+    var viewerImageEditSequence by remember(threadInstanceKey) { mutableStateOf(0L) }
+    val viewerImageEditMessages by rememberUpdatedState(
+        listOfNotNull(renderedTimelineSlice.originMessage) + renderedTimelineSlice.messages
+    )
+    DisposableEffect(eventBus, threadInstanceKey) {
+        // The phone viewer is its own page: its ⋯ > Edit asks the conversation showing the image.
+        val subscription =
+            eventBus.observe(RAFT_VIEWER_IMAGE_EDIT_EVENT) { data ->
+                if (RaftViewerImageEditOpener.threadKey != threadInstanceKey) return@observe
+                val attachmentId = raftViewerImageEditAttachmentId(data) ?: return@observe
+                val attachment =
+                    viewerImageEditMessages
+                        .asSequence()
+                        .filterNot { it.isRetracted }
+                        .flatMap { it.attachments.asSequence() }
+                        .firstOrNull { it.id == attachmentId && it.isImageAttachment() }
+                        ?: return@observe
+                bridge.log("thread_viewer_image_edit status=open attachmentId=${attachmentId.take(8)}")
+                RaftViewerImageEditOpener.openedAttachmentId = attachmentId
+                viewerImageEditAttachment = attachment
+            }
+        onDispose { subscription.close() }
+    }
+    viewerImageEditAttachment?.let { attachment ->
+        RaftViewerImageEditor(
+            attachment = attachment,
+            desktop = imageLightboxEnabled,
+            resolveFullUrl = { attachmentId ->
+                when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+                    is ThreadApiResult.Success -> response.data.url
+                    is ThreadApiResult.Failure -> {
+                        bridge.log("thread_viewer_image_edit status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
+                        null
+                    }
+                }
+            },
+            onCancel = { viewerImageEditAttachment = null },
+            onSaveFailed = { bridge.toast(genericThreadErrorLabel) },
+            onEdited = { fileRef ->
+                viewerImageEditSequence += 1
+                val edited = raftViewerEditedImageFile(fileRef, attachment.name, viewerImageEditSequence)
+                viewerImageEditAttachment = null
+                imageLightboxRequest = null
+                bridge.log("thread_viewer_image_edit status=done attachmentId=${attachment.id.take(8)}")
+                coroutineScope.launch {
+                    val prepared =
+                        threadComposerCompressPastedImages(
+                            files = listOf(edited),
+                            originalImage = composerDraftViewModel.state.value.originalImage,
+                            compress = { file ->
+                                val response =
+                                    bridge.compressThreadImage(
+                                        fileRef = file.fileRef.orEmpty(),
+                                        fileName = file.fileName,
+                                        mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
+                                    )
+                                (parseRaftFilePreviewCompressedImageResult(response)
+                                    as? RaftFilePreviewCompressedImageResult.Success)?.file
+                            },
+                            retire = { refs ->
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = "thread-viewer-edit-$threadInstanceKey",
+                                    fileRefs = refs
+                                )
+                            },
+                            log = bridge::log,
+                        )
+                    uploadComposerAttachmentFiles(prepared)
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
+                }
+            },
+        )
     }
     fun performComposerSend(): Boolean {
         val currentComposer = currentComposerPayload()

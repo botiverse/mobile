@@ -1691,6 +1691,12 @@
     <string name="file_preview_toolbar_crop">切り抜き</string>
     <string name="file_preview_crop_reset">リセット</string>
     <string name="file_preview_crop_apply">適用</string>
+    <string name="file_preview_toolbar_rotate">回転</string>
+    <string name="file_preview_crop_aspect_free">フリー</string>
+    <string name="file_preview_crop_aspect_square">1:1</string>
+    <string name="file_preview_crop_aspect_original">元の比率</string>
+    <string name="file_preview_pen_width_thin">細いペン</string>
+    <string name="file_preview_pen_width_thick">太いペン</string>
     <string name="file_preview_action_comments">コメント</string>
     <string name="file_preview_action_copy_text">テキストをコピー</string>
     <string name="file_preview_action_download">ダウンロード</string>
