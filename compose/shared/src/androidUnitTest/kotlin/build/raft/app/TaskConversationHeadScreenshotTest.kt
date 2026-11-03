@@ -165,11 +165,14 @@ class TaskConversationHeadScreenshotTest {
 
 /** Where RaftDropdownMenu opens the status menu: under the chip's box (the chip hangs left of it), 6dp down. */
 private fun statusMenuOffset(view: View): IntOffset {
+    // The head's text (fonts, the description's Show More) settles over several frames: measure after it.
+    repeat(10) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(200)) }
     fun find(node: SemanticsNode): SemanticsNode? =
         if (node.config.getOrNull(SemanticsProperties.TestTag) == TaskHeadStatusTestTag) node else node.children.firstNotNullOfOrNull(::find)
     val chip = requireNotNull(find((view as ViewRootForTest).semanticsOwner.unmergedRootSemanticsNode)) { "no status chip" }
     val density = view.resources.displayMetrics.density
     val bounds = chip.boundsInRoot
+    println("status-menu anchor: chip boundsInRoot=$bounds density=$density")
     return IntOffset((bounds.left - TaskHeadChipHang.value * density).roundToInt(), (bounds.bottom + 6 * density).roundToInt())
 }
 
