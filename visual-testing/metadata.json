@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T09:50:41.443Z",
+  "generatedAt": "2026-11-03T10:29:00.830Z",
   "runId": "fcf6ae60-20261103094938",
   "commit": "fcf6ae60-20261103094938",
   "commitSubject": "feat(visual): full-length capture on Android for flagged cases (#4192)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 93,
-        "ready": 14,
-        "pending": 79
+        "ready": 27,
+        "pending": 66
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 93,
-    "ready": 14,
-    "pending": 79
+    "ready": 27,
+    "pending": 66
   },
   "componentMatrixSummary": {
     "total": 122,

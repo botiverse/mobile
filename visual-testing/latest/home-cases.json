@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T09:50:41.443Z",
+  "generatedAt": "2026-11-03T10:29:00.830Z",
   "runId": "fcf6ae60-20261103094938",
   "cases": [
     {
@@ -186,7 +186,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.525Z",
+        "generatedAt": "2026-11-03T10:28:58.603Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -272,7 +272,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.525Z",
+            "generatedAt": "2026-11-03T10:28:58.603Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -320,7 +320,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.533Z",
+        "generatedAt": "2026-11-03T10:28:58.728Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -406,7 +406,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.533Z",
+            "generatedAt": "2026-11-03T10:28:58.728Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -454,7 +454,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.520Z",
+        "generatedAt": "2026-11-03T10:28:58.737Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -540,7 +540,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.520Z",
+            "generatedAt": "2026-11-03T10:28:58.737Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1220,7 +1220,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.562Z",
+        "generatedAt": "2026-11-03T10:28:58.791Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1306,7 +1306,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.562Z",
+            "generatedAt": "2026-11-03T10:28:58.791Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1353,17 +1353,32 @@
         "currentHeight": 240
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.542Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:05:05.533Z",
+        "severity": "low",
+        "summary": [
+          "No material component mismatch is visible: the Unread, Compact, and Warning states retain the same order, alignment, spacing, colors, and rounded-square shapes.",
+          "Android shows only minor edge and text rasterization differences, approximately 1 px in placement or border rendering.",
+          "No elements are missing or clipped, and both images use identical 342×80 component bounds.",
+          "The top-right source badge reads ANDROID instead of REACT."
+        ],
+        "likelyCauses": [
+          "Different platform font rasterization and antialiasing.",
+          "Subpixel rounding of text baselines and attention-dot borders.",
+          "Intentional platform-label substitution in the comparison harness."
+        ],
+        "suggestedOwner": "Attention Dot component and Android UI owner",
+        "suggestedFixes": [
+          "No product UI change is required; treat the comparison as a pass.",
+          "For stricter pixel parity, use identical font family, weight, size, and letter spacing, then snap text and dot edges to the same pixel coordinates.",
+          "Mask or neutralize the source-platform badge when performing pixel comparisons."
+        ],
+        "intentional": [
+          "The REACT and ANDROID badges identify the screenshot source."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -1439,17 +1454,32 @@
             "currentHeight": 240
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.542Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:05:05.533Z",
+            "severity": "low",
+            "summary": [
+              "No material component mismatch is visible: the Unread, Compact, and Warning states retain the same order, alignment, spacing, colors, and rounded-square shapes.",
+              "Android shows only minor edge and text rasterization differences, approximately 1 px in placement or border rendering.",
+              "No elements are missing or clipped, and both images use identical 342×80 component bounds.",
+              "The top-right source badge reads ANDROID instead of REACT."
+            ],
+            "likelyCauses": [
+              "Different platform font rasterization and antialiasing.",
+              "Subpixel rounding of text baselines and attention-dot borders.",
+              "Intentional platform-label substitution in the comparison harness."
+            ],
+            "suggestedOwner": "Attention Dot component and Android UI owner",
+            "suggestedFixes": [
+              "No product UI change is required; treat the comparison as a pass.",
+              "For stricter pixel parity, use identical font family, weight, size, and letter spacing, then snap text and dot edges to the same pixel coordinates.",
+              "Mask or neutralize the source-platform badge when performing pixel comparisons."
+            ],
+            "intentional": [
+              "The REACT and ANDROID badges identify the screenshot source."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -1806,7 +1836,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.560Z",
+        "generatedAt": "2026-11-03T10:28:58.797Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1892,7 +1922,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.560Z",
+            "generatedAt": "2026-11-03T10:28:58.797Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1940,7 +1970,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.559Z",
+        "generatedAt": "2026-11-03T10:28:58.801Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2026,7 +2056,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.559Z",
+            "generatedAt": "2026-11-03T10:28:58.801Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2073,17 +2103,30 @@
         "currentHeight": 366
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.564Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T09:53:07.950Z",
+        "severity": "low",
+        "summary": [
+          "Android's light vertical prefix divider is approximately 2 source pixels farther left than React's.",
+          "The Android prefix slash and active value begin roughly 1 source pixel farther left than React.",
+          "Android's active slash and value sit approximately 1 source pixel higher; the placeholder row is effectively aligned.",
+          "Outer field bounds, border treatments, colors, typography weight, and vertical spacing otherwise match, with no clipping or missing elements."
+        ],
+        "likelyCauses": [
+          "The Android prefix column width or horizontal inset differs from the React implementation.",
+          "Android applies a slightly different content padding to the slash and value area.",
+          "Small Android font-metric or baseline differences shift the active-row content vertically."
+        ],
+        "suggestedOwner": "Android SlugInput component owner",
+        "suggestedFixes": [
+          "Align the Android prefix divider to the React position by increasing the prefix-column width or inset by approximately 2 source pixels.",
+          "Match React's left inset for the prefix slash and input value.",
+          "Match the active input's text baseline, line height, font size, and font weight across platforms."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -2159,17 +2202,30 @@
             "currentHeight": 366
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.564Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T09:53:07.950Z",
+            "severity": "low",
+            "summary": [
+              "Android's light vertical prefix divider is approximately 2 source pixels farther left than React's.",
+              "The Android prefix slash and active value begin roughly 1 source pixel farther left than React.",
+              "Android's active slash and value sit approximately 1 source pixel higher; the placeholder row is effectively aligned.",
+              "Outer field bounds, border treatments, colors, typography weight, and vertical spacing otherwise match, with no clipping or missing elements."
+            ],
+            "likelyCauses": [
+              "The Android prefix column width or horizontal inset differs from the React implementation.",
+              "Android applies a slightly different content padding to the slash and value area.",
+              "Small Android font-metric or baseline differences shift the active-row content vertically."
+            ],
+            "suggestedOwner": "Android SlugInput component owner",
+            "suggestedFixes": [
+              "Align the Android prefix divider to the React position by increasing the prefix-column width or inset by approximately 2 source pixels.",
+              "Match React's left inset for the prefix slash and input value.",
+              "Match the active input's text baseline, line height, font size, and font weight across platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -2208,7 +2264,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.567Z",
+        "generatedAt": "2026-11-03T10:28:58.811Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2294,7 +2350,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.567Z",
+            "generatedAt": "2026-11-03T10:28:58.811Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2972,7 +3028,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.598Z",
+        "generatedAt": "2026-11-03T10:28:58.864Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3058,7 +3114,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.598Z",
+            "generatedAt": "2026-11-03T10:28:58.864Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3106,7 +3162,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.611Z",
+        "generatedAt": "2026-11-03T10:28:58.887Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3192,7 +3248,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.611Z",
+            "generatedAt": "2026-11-03T10:28:58.887Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3399,7 +3455,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.600Z",
+        "generatedAt": "2026-11-03T10:28:58.903Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3485,7 +3541,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.600Z",
+            "generatedAt": "2026-11-03T10:28:58.903Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3540,7 +3596,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.596Z",
+        "generatedAt": "2026-11-03T10:28:58.902Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3626,7 +3682,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.596Z",
+            "generatedAt": "2026-11-03T10:28:58.902Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3681,7 +3737,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.627Z",
+        "generatedAt": "2026-11-03T10:28:58.935Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3767,7 +3823,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.627Z",
+            "generatedAt": "2026-11-03T10:28:58.935Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3822,7 +3878,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.639Z",
+        "generatedAt": "2026-11-03T10:28:58.924Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3908,7 +3964,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.639Z",
+            "generatedAt": "2026-11-03T10:28:58.924Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3964,7 +4020,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.648Z",
+        "generatedAt": "2026-11-03T10:28:58.967Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4050,7 +4106,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.648Z",
+            "generatedAt": "2026-11-03T10:28:58.967Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4105,7 +4161,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.649Z",
+        "generatedAt": "2026-11-03T10:28:58.962Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4191,7 +4247,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.649Z",
+            "generatedAt": "2026-11-03T10:28:58.962Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4246,7 +4302,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.641Z",
+        "generatedAt": "2026-11-03T10:28:58.967Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4332,7 +4388,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.641Z",
+            "generatedAt": "2026-11-03T10:28:58.967Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4387,7 +4443,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.657Z",
+        "generatedAt": "2026-11-03T10:28:58.995Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4473,7 +4529,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.657Z",
+            "generatedAt": "2026-11-03T10:28:58.995Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4691,7 +4747,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.648Z",
+        "generatedAt": "2026-11-03T10:28:59.027Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4777,7 +4833,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.648Z",
+            "generatedAt": "2026-11-03T10:28:59.027Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4832,7 +4888,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.655Z",
+        "generatedAt": "2026-11-03T10:28:59.004Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4918,7 +4974,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.655Z",
+            "generatedAt": "2026-11-03T10:28:59.004Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4968,7 +5024,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.724Z",
+        "generatedAt": "2026-11-03T10:28:59.113Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5054,7 +5110,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.724Z",
+            "generatedAt": "2026-11-03T10:28:59.113Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5104,7 +5160,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.745Z",
+        "generatedAt": "2026-11-03T10:28:59.137Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5190,7 +5246,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.745Z",
+            "generatedAt": "2026-11-03T10:28:59.137Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5240,7 +5296,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.763Z",
+        "generatedAt": "2026-11-03T10:28:59.121Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5326,7 +5382,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.763Z",
+            "generatedAt": "2026-11-03T10:28:59.121Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5375,17 +5431,25 @@
         "currentHeight": 1025
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.698Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-03T09:55:48.804Z",
+        "severity": "low",
+        "summary": [
+          "No actionable unintended differences are visible in typography, spacing, alignment, color, shape, clipping, state indicators, or component bounds; both variants render the modal within the full 390×844 viewport."
+        ],
+        "likelyCauses": [
+          "No concrete styling or layout defect is evident from the rendered comparison."
+        ],
+        "suggestedOwner": "Android UI team for visual-review sign-off; no corrective owner required",
+        "suggestedFixes": [
+          "No implementation change is recommended; preserve the current Android spacing, typography, and viewport-bounded component sizing."
+        ],
+        "intentional": [
+          "React uses a close (X) affordance while Android uses a back arrow, consistent with the intentional platform-specific forward-flow adaptation; these should not be aligned."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -5461,17 +5525,25 @@
             "currentHeight": 1025
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.698Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-03T09:55:48.804Z",
+            "severity": "low",
+            "summary": [
+              "No actionable unintended differences are visible in typography, spacing, alignment, color, shape, clipping, state indicators, or component bounds; both variants render the modal within the full 390×844 viewport."
+            ],
+            "likelyCauses": [
+              "No concrete styling or layout defect is evident from the rendered comparison."
+            ],
+            "suggestedOwner": "Android UI team for visual-review sign-off; no corrective owner required",
+            "suggestedFixes": [
+              "No implementation change is recommended; preserve the current Android spacing, typography, and viewport-bounded component sizing."
+            ],
+            "intentional": [
+              "React uses a close (X) affordance while Android uses a back arrow, consistent with the intentional platform-specific forward-flow adaptation; these should not be aligned."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -5502,7 +5574,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.744Z",
+        "generatedAt": "2026-11-03T10:28:59.184Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5588,7 +5660,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.744Z",
+            "generatedAt": "2026-11-03T10:28:59.184Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5628,7 +5700,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.750Z",
+        "generatedAt": "2026-11-03T10:28:59.235Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5714,7 +5786,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.750Z",
+            "generatedAt": "2026-11-03T10:28:59.235Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5789,17 +5861,29 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.756Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T09:56:02.357Z",
+        "severity": "low",
+        "summary": [
+          "The top-right notification trigger differs: React has a white fill with a prominent dark outline, while Android uses a light-gray fill with no visible outline.",
+          "The Android trigger is approximately 2 px wider and extends slightly farther left, although its height and right alignment are similar.",
+          "The bell, pink badge, notification card bounds, typography, dividers, icons, and action buttons otherwise appear visually matched."
+        ],
+        "likelyCauses": [
+          "The Android implementation uses a filled tonal surface while React uses a bordered button style.",
+          "The Android trigger has different width or inset/padding tokens."
+        ],
+        "suggestedOwner": "Android UI component team",
+        "suggestedFixes": [
+          "Match the React trigger's white background, dark 2 px border, and corner radius.",
+          "Align the trigger width and right inset with the React dimensions and component bounds.",
+          "Verify that both platforms represent the same interaction or selection state.",
+          "Use shared design tokens for the trigger fill, stroke, radius, width, and height."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -5875,17 +5959,29 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.756Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T09:56:02.357Z",
+            "severity": "low",
+            "summary": [
+              "The top-right notification trigger differs: React has a white fill with a prominent dark outline, while Android uses a light-gray fill with no visible outline.",
+              "The Android trigger is approximately 2 px wider and extends slightly farther left, although its height and right alignment are similar.",
+              "The bell, pink badge, notification card bounds, typography, dividers, icons, and action buttons otherwise appear visually matched."
+            ],
+            "likelyCauses": [
+              "The Android implementation uses a filled tonal surface while React uses a bordered button style.",
+              "The Android trigger has different width or inset/padding tokens."
+            ],
+            "suggestedOwner": "Android UI component team",
+            "suggestedFixes": [
+              "Match the React trigger's white background, dark 2 px border, and corner radius.",
+              "Align the trigger width and right inset with the React dimensions and component bounds.",
+              "Verify that both platforms represent the same interaction or selection state.",
+              "Use shared design tokens for the trigger fill, stroke, radius, width, and height."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -5929,7 +6025,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.727Z",
+        "generatedAt": "2026-11-03T10:28:59.230Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6015,7 +6111,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.727Z",
+            "generatedAt": "2026-11-03T10:28:59.230Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6072,7 +6168,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.799Z",
+        "generatedAt": "2026-11-03T10:28:59.314Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6158,7 +6254,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.799Z",
+            "generatedAt": "2026-11-03T10:28:59.314Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6211,7 +6307,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.795Z",
+        "generatedAt": "2026-11-03T10:28:59.368Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6297,7 +6393,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.795Z",
+            "generatedAt": "2026-11-03T10:28:59.368Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6351,7 +6447,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.786Z",
+        "generatedAt": "2026-11-03T10:28:59.316Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6437,7 +6533,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.786Z",
+            "generatedAt": "2026-11-03T10:28:59.316Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6491,17 +6587,33 @@
         "currentHeight": 2909
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.852Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:21:43.162Z",
+        "severity": "medium",
+        "summary": [
+          "React task-section headers omit the small downward chevron shown before each colored status marker on Android, leaving the Android status labels offset farther to the right.",
+          "The view-mode switch differs: React shows icon-only controls, while Android visibly labels them \"Board\" and \"List\".",
+          "The Android panel ends before the trailing \"Closed 0\" section visible in React; its captured bounds are 978 px high versus 1023 px for React."
+        ],
+        "likelyCauses": [
+          "React and Android use different task-section header composition, with Android including an expansion/collapse indicator.",
+          "The shared view-mode switch does not have a common label-visibility token or implementation.",
+          "The Android capture or component height is capped below the full panel content."
+        ],
+        "suggestedOwner": "Tasks panel component owner",
+        "suggestedFixes": [
+          "Add the same chevron and matching marker-to-label spacing to React task-section headers, or remove it from Android if it is not part of the shared specification.",
+          "Use one shared view-switch treatment: either label both \"Board\" and \"List\" in React or remove those labels on Android.",
+          "Capture the Android panel to the same full-content height as React, ensuring the trailing \"Closed 0\" row is included rather than truncated."
+        ],
+        "intentional": [
+          "Android shows relative per-task timestamps at card top-right; React will adopt this later.",
+          "Android shows assignee pills at the bottom of task cards, including Unassigned or @name; React will adopt this later.",
+          "Android keeps the Channel, Creator, and Assignee filters in one row while React wraps them; this platform-specific layout is intentional."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -6577,17 +6689,33 @@
             "currentHeight": 2909
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.852Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:21:43.162Z",
+            "severity": "medium",
+            "summary": [
+              "React task-section headers omit the small downward chevron shown before each colored status marker on Android, leaving the Android status labels offset farther to the right.",
+              "The view-mode switch differs: React shows icon-only controls, while Android visibly labels them \"Board\" and \"List\".",
+              "The Android panel ends before the trailing \"Closed 0\" section visible in React; its captured bounds are 978 px high versus 1023 px for React."
+            ],
+            "likelyCauses": [
+              "React and Android use different task-section header composition, with Android including an expansion/collapse indicator.",
+              "The shared view-mode switch does not have a common label-visibility token or implementation.",
+              "The Android capture or component height is capped below the full panel content."
+            ],
+            "suggestedOwner": "Tasks panel component owner",
+            "suggestedFixes": [
+              "Add the same chevron and matching marker-to-label spacing to React task-section headers, or remove it from Android if it is not part of the shared specification.",
+              "Use one shared view-switch treatment: either label both \"Board\" and \"List\" in React or remove those labels on Android.",
+              "Capture the Android panel to the same full-content height as React, ensuring the trailing \"Closed 0\" row is included rather than truncated."
+            ],
+            "intentional": [
+              "Android shows relative per-task timestamps at card top-right; React will adopt this later.",
+              "Android shows assignee pills at the bottom of task cards, including Unassigned or @name; React will adopt this later.",
+              "Android keeps the Channel, Creator, and Assignee filters in one row while React wraps them; this platform-specific layout is intentional."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -6632,7 +6760,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.794Z",
+        "generatedAt": "2026-11-03T10:28:59.351Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6718,7 +6846,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.794Z",
+            "generatedAt": "2026-11-03T10:28:59.351Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6771,7 +6899,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.846Z",
+        "generatedAt": "2026-11-03T10:28:59.425Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6857,7 +6985,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.846Z",
+            "generatedAt": "2026-11-03T10:28:59.425Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6912,7 +7040,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.846Z",
+        "generatedAt": "2026-11-03T10:28:59.452Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6998,7 +7126,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.846Z",
+            "generatedAt": "2026-11-03T10:28:59.452Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7054,7 +7182,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.866Z",
+        "generatedAt": "2026-11-03T10:28:59.474Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7140,7 +7268,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.866Z",
+            "generatedAt": "2026-11-03T10:28:59.474Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7190,17 +7318,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.882Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:09:55.433Z",
+        "severity": "high",
+        "summary": [
+          "The Android agent-limit alert adds an outlined warning-triangle icon and indents the text; React has no icon. React bolds “Upgrade for more,” while Android renders it at regular weight.",
+          "Android adds a pink “Runtime configuration is unavailable.” notice below the description counter; React has no corresponding element.",
+          "The Runtime field differs: React shows “Runtime *” with a gray “Select…” placeholder, while Android omits the required marker and shows the selected value “Claude Code.”",
+          "Android shows “Description (optional),” with a lighter regular-weight suffix; React shows only the bold “Description” label.",
+          "Android's description textarea is shorter, lacks React's bottom-right resize handle, and has more vertical space before Runtime, shifting the lower form downward."
+        ],
+        "likelyCauses": [
+          "Platform-specific alert variants instead of a shared alert component.",
+          "Different runtime-availability and selection branches between implementations.",
+          "Inconsistent required/optional field-label metadata.",
+          "Native Android textarea default sizing and resize-handle behavior.",
+          "Independent spacing tokens or margins between the React and Android forms."
+        ],
+        "suggestedOwner": "Create Agent dialog cross-platform UI owner, including shared form components",
+        "suggestedFixes": [
+          "Use one alert variant across platforms: align the icon, text inset, and “Upgrade for more” weight to the React baseline.",
+          "For baseline parity, remove the Android runtime-unavailable notice, restore the Runtime required marker, and show the same gray “Select…” placeholder; otherwise deliberately update the baseline.",
+          "Use a shared label contract for optional and required fields, matching both the text and its weight/color.",
+          "Match the description textarea height and define a consistent resize-handle policy.",
+          "Normalize vertical margins and gaps around the limit alert, labels, character counter, and Runtime field."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -7276,17 +7422,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.882Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:09:55.433Z",
+            "severity": "high",
+            "summary": [
+              "The Android agent-limit alert adds an outlined warning-triangle icon and indents the text; React has no icon. React bolds “Upgrade for more,” while Android renders it at regular weight.",
+              "Android adds a pink “Runtime configuration is unavailable.” notice below the description counter; React has no corresponding element.",
+              "The Runtime field differs: React shows “Runtime *” with a gray “Select…” placeholder, while Android omits the required marker and shows the selected value “Claude Code.”",
+              "Android shows “Description (optional),” with a lighter regular-weight suffix; React shows only the bold “Description” label.",
+              "Android's description textarea is shorter, lacks React's bottom-right resize handle, and has more vertical space before Runtime, shifting the lower form downward."
+            ],
+            "likelyCauses": [
+              "Platform-specific alert variants instead of a shared alert component.",
+              "Different runtime-availability and selection branches between implementations.",
+              "Inconsistent required/optional field-label metadata.",
+              "Native Android textarea default sizing and resize-handle behavior.",
+              "Independent spacing tokens or margins between the React and Android forms."
+            ],
+            "suggestedOwner": "Create Agent dialog cross-platform UI owner, including shared form components",
+            "suggestedFixes": [
+              "Use one alert variant across platforms: align the icon, text inset, and “Upgrade for more” weight to the React baseline.",
+              "For baseline parity, remove the Android runtime-unavailable notice, restore the Runtime required marker, and show the same gray “Select…” placeholder; otherwise deliberately update the baseline.",
+              "Use a shared label contract for optional and required fields, matching both the text and its weight/color.",
+              "Match the description textarea height and define a consistent resize-handle policy.",
+              "Normalize vertical margins and gaps around the limit alert, labels, character counter, and Runtime field."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -7497,7 +7661,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.979Z",
+        "generatedAt": "2026-11-03T10:28:59.677Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7583,7 +7747,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.979Z",
+            "generatedAt": "2026-11-03T10:28:59.677Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7639,7 +7803,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.895Z",
+        "generatedAt": "2026-11-03T10:28:59.592Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7725,7 +7889,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.895Z",
+            "generatedAt": "2026-11-03T10:28:59.592Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7778,7 +7942,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.955Z",
+        "generatedAt": "2026-11-03T10:28:59.642Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7864,7 +8028,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.955Z",
+            "generatedAt": "2026-11-03T10:28:59.642Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7916,7 +8080,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.949Z",
+        "generatedAt": "2026-11-03T10:28:59.711Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8002,7 +8166,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.949Z",
+            "generatedAt": "2026-11-03T10:28:59.711Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8056,7 +8220,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.970Z",
+        "generatedAt": "2026-11-03T10:28:59.750Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8142,7 +8306,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.970Z",
+            "generatedAt": "2026-11-03T10:28:59.750Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8195,7 +8359,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.007Z",
+        "generatedAt": "2026-11-03T10:28:59.807Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8281,7 +8445,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.007Z",
+            "generatedAt": "2026-11-03T10:28:59.807Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8334,17 +8498,34 @@
         "currentHeight": 1401
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.958Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:23:36.398Z",
+        "severity": "high",
+        "summary": [
+          "Android omits React's profile summary: black square avatar with yellow \"V\", bold \"Visual Server\" title, monospace \"/visual\" slug, and horizontal divider; its card begins directly with the Name field.",
+          "The form labels and controls differ: Android uses \"Name *\" instead of \"Name\", and renders slug as one plain field without React's \"/\" prefix and vertical divider.",
+          "Android's disabled Save Profile button includes a floppy-disk icon and is wider; React's disabled button is text-only.",
+          "The Danger Zone card is vertically stacked on React, while Android uses a two-column layout with the description on the left and red Delete Server button on the right, causing three-line description wrapping.",
+          "The captured page is 480 source pixels shorter on Android: 1170×1401 versus React's 1170×1881, with matching width."
+        ],
+        "likelyCauses": [
+          "The Android screen does not render the shared profile-summary component.",
+          "Android uses a different form-control composition for labels, slug affixes, and save-button iconography.",
+          "The Danger Zone uses a platform-specific horizontal action layout instead of the React stacked layout.",
+          "The images use different capture contracts: React element/component bounds versus Android manual viewport bounds, affecting canvas height and component bounds."
+        ],
+        "suggestedOwner": "Android Settings UI team, with Slock capture-pipeline support for bounds alignment",
+        "suggestedFixes": [
+          "Add the matching avatar, bold server name, monospace slug preview, and divider to Android above the form fields.",
+          "Use the same label treatment and slug control, including the slash prefix, vertical separator, field dimensions, and disabled styling.",
+          "Align the Save Profile action by adding or removing the disk icon and matching width, padding, and typography across platforms.",
+          "Stack the Danger Zone title, description, and Delete Server button vertically in Android to match the React card and its text wrapping.",
+          "Capture both variants with the same viewport/component contract and target the baseline 1170×1881 canvas height."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -8420,17 +8601,34 @@
             "currentHeight": 1401
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.958Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:23:36.398Z",
+            "severity": "high",
+            "summary": [
+              "Android omits React's profile summary: black square avatar with yellow \"V\", bold \"Visual Server\" title, monospace \"/visual\" slug, and horizontal divider; its card begins directly with the Name field.",
+              "The form labels and controls differ: Android uses \"Name *\" instead of \"Name\", and renders slug as one plain field without React's \"/\" prefix and vertical divider.",
+              "Android's disabled Save Profile button includes a floppy-disk icon and is wider; React's disabled button is text-only.",
+              "The Danger Zone card is vertically stacked on React, while Android uses a two-column layout with the description on the left and red Delete Server button on the right, causing three-line description wrapping.",
+              "The captured page is 480 source pixels shorter on Android: 1170×1401 versus React's 1170×1881, with matching width."
+            ],
+            "likelyCauses": [
+              "The Android screen does not render the shared profile-summary component.",
+              "Android uses a different form-control composition for labels, slug affixes, and save-button iconography.",
+              "The Danger Zone uses a platform-specific horizontal action layout instead of the React stacked layout.",
+              "The images use different capture contracts: React element/component bounds versus Android manual viewport bounds, affecting canvas height and component bounds."
+            ],
+            "suggestedOwner": "Android Settings UI team, with Slock capture-pipeline support for bounds alignment",
+            "suggestedFixes": [
+              "Add the matching avatar, bold server name, monospace slug preview, and divider to Android above the form fields.",
+              "Use the same label treatment and slug control, including the slash prefix, vertical separator, field dimensions, and disabled styling.",
+              "Align the Save Profile action by adding or removing the disk icon and matching width, padding, and typography across platforms.",
+              "Stack the Danger Zone title, description, and Delete Server button vertically in Android to match the React card and its text wrapping.",
+              "Capture both variants with the same viewport/component contract and target the baseline 1170×1881 canvas height."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -8475,7 +8673,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.993Z",
+        "generatedAt": "2026-11-03T10:28:59.847Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8561,7 +8759,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.993Z",
+            "generatedAt": "2026-11-03T10:28:59.847Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8613,17 +8811,35 @@
         "currentHeight": 3627
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.029Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T09:59:24.727Z",
+        "severity": "high",
+        "summary": [
+          "Android replaces React’s browser-notification panel and pale “Unavailable” badge with a green “Notifications allowed” status card; the green permission banner is missing on React.",
+          "Android shows four right-aligned switches—one gold/on and three gray/off—plus a “Send a test notification” action. React instead presents pause, quiet-hours, preview, sound, and phone-alert controls with different states and bounds.",
+          "Workspace selection differs substantially: Android uses three full-width, thick black-outlined radio cards with the first selected, while React has one compact, light-gray collapsed row.",
+          "Preview selection uses different component shapes: Android has a horizontal segmented control with a yellow selected “Show all” option, whereas React uses full-width gray dropdowns. Android’s rightmost option is visibly clipped after “H”.",
+          "Android body copy is slightly smaller and more densely spaced than React, and its 1245px viewport has a different bottom crop than React’s 1232px element-bounded capture."
+        ],
+        "likelyCauses": [
+          "The Android screen implements a different information architecture rather than a direct port of the React notifications page.",
+          "Shared design-system components and visual tokens are not being used for switches, radio cards, dropdowns, segmented controls, borders, and selected states.",
+          "Platform state mapping differs: Android renders OS notifications as allowed and device notifications as on, while React renders browser push as unavailable.",
+          "The Android segmented preview control likely uses fixed or minimum widths that exceed the available card width.",
+          "Different crop contracts and viewport heights reduce alignment accuracy near the bottom of the comparison."
+        ],
+        "suggestedOwner": "Android notifications/settings UI team, with product and design-system review",
+        "suggestedFixes": [
+          "Reconcile the Android information hierarchy with the approved React design, or obtain explicit design sign-off for the Android-specific redesign.",
+          "Use shared design-system equivalents for switches, radio cards, dropdowns or segmented buttons, border weights, corner radii, typography, and selected-state colors.",
+          "Make the preview selector responsive with flexible or grid-based sizing, allowing the complete “Hide” label to fit without horizontal clipping.",
+          "Normalize state treatments, including the gold enabled switch, gray off or disabled controls, black selected radios, green permission status, and unavailable badge styling.",
+          "Regenerate both captures using the same crop contract and viewport height, and verify bottom padding and component bounds remain fully visible."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -8699,17 +8915,35 @@
             "currentHeight": 3627
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.029Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T09:59:24.727Z",
+            "severity": "high",
+            "summary": [
+              "Android replaces React’s browser-notification panel and pale “Unavailable” badge with a green “Notifications allowed” status card; the green permission banner is missing on React.",
+              "Android shows four right-aligned switches—one gold/on and three gray/off—plus a “Send a test notification” action. React instead presents pause, quiet-hours, preview, sound, and phone-alert controls with different states and bounds.",
+              "Workspace selection differs substantially: Android uses three full-width, thick black-outlined radio cards with the first selected, while React has one compact, light-gray collapsed row.",
+              "Preview selection uses different component shapes: Android has a horizontal segmented control with a yellow selected “Show all” option, whereas React uses full-width gray dropdowns. Android’s rightmost option is visibly clipped after “H”.",
+              "Android body copy is slightly smaller and more densely spaced than React, and its 1245px viewport has a different bottom crop than React’s 1232px element-bounded capture."
+            ],
+            "likelyCauses": [
+              "The Android screen implements a different information architecture rather than a direct port of the React notifications page.",
+              "Shared design-system components and visual tokens are not being used for switches, radio cards, dropdowns, segmented controls, borders, and selected states.",
+              "Platform state mapping differs: Android renders OS notifications as allowed and device notifications as on, while React renders browser push as unavailable.",
+              "The Android segmented preview control likely uses fixed or minimum widths that exceed the available card width.",
+              "Different crop contracts and viewport heights reduce alignment accuracy near the bottom of the comparison."
+            ],
+            "suggestedOwner": "Android notifications/settings UI team, with product and design-system review",
+            "suggestedFixes": [
+              "Reconcile the Android information hierarchy with the approved React design, or obtain explicit design sign-off for the Android-specific redesign.",
+              "Use shared design-system equivalents for switches, radio cards, dropdowns or segmented buttons, border weights, corner radii, typography, and selected-state colors.",
+              "Make the preview selector responsive with flexible or grid-based sizing, allowing the complete “Hide” label to fit without horizontal clipping.",
+              "Normalize state treatments, including the gold enabled switch, gray off or disabled controls, black selected radios, green permission status, and unavailable badge styling.",
+              "Regenerate both captures using the same crop contract and viewport height, and verify bottom padding and component bounds remain fully visible."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -8753,7 +8987,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.122Z",
+        "generatedAt": "2026-11-03T10:28:59.948Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8839,7 +9073,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.122Z",
+            "generatedAt": "2026-11-03T10:28:59.948Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8892,7 +9126,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.115Z",
+        "generatedAt": "2026-11-03T10:28:59.994Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8978,7 +9212,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.115Z",
+            "generatedAt": "2026-11-03T10:28:59.994Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9025,17 +9259,35 @@
         "currentHeight": 4539
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.120Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:24:00.995Z",
+        "severity": "medium",
+        "summary": [
+          "Android adds a header chat icon, forcing the title to truncate to \"Computer Missing Pr...\"; React shows the full title without that icon.",
+          "The tab rows differ: React shows Profile, Chat, Reminders, and a clipped Workspace tab, while Android shows Profile, Activity, Chat, and a clipped Reminders tab.",
+          "The yellow status banner uses different copy: React begins \"Holding a fixed Computer-row...\", while Android begins \"Capturing deterministic profile...\".",
+          "Skills use different hierarchy and bounds: React renders compact nested Global/Workspace rows, while Android renders larger standalone feature-map and visual-testing cards with descriptions below the titles.",
+          "Android adds a \"Report Issue\" action, shifting Archive Agent downward; the screenshots also use unequal element and viewport crop heights of 1463px and 1693px."
+        ],
+        "likelyCauses": [
+          "The Android header applies different navigation actions and flex constraints to the title.",
+          "The platforms expose different tab sets or ordering, with horizontal overflow clipping the final tab.",
+          "The Android skills renderer uses a flat, expanded card layout rather than React's nested compact layout.",
+          "Android includes an additional action in the profile action list.",
+          "Fixture data differs for the status banner, and the mismatched crop contracts reduce comparison reliability."
+        ],
+        "suggestedOwner": "Android client and cross-platform profile UI owner",
+        "suggestedFixes": [
+          "Align header actions and title sizing, or deliberately reserve space for the Android chat icon and use the same truncation behavior.",
+          "Match tab ordering, labels, icons, and overflow behavior across platforms, or document platform-specific navigation as intentional.",
+          "Use a shared skills component contract for hierarchy, ordering, count placement, card height, and description wrapping.",
+          "Make the action lists parity-consistent by adding or removing \"Report Issue\" based on the intended shared feature set.",
+          "Capture both variants with the same screen-route crop contract and viewport height before running visual comparisons."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9111,17 +9363,35 @@
             "currentHeight": 4539
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.120Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:24:00.995Z",
+            "severity": "medium",
+            "summary": [
+              "Android adds a header chat icon, forcing the title to truncate to \"Computer Missing Pr...\"; React shows the full title without that icon.",
+              "The tab rows differ: React shows Profile, Chat, Reminders, and a clipped Workspace tab, while Android shows Profile, Activity, Chat, and a clipped Reminders tab.",
+              "The yellow status banner uses different copy: React begins \"Holding a fixed Computer-row...\", while Android begins \"Capturing deterministic profile...\".",
+              "Skills use different hierarchy and bounds: React renders compact nested Global/Workspace rows, while Android renders larger standalone feature-map and visual-testing cards with descriptions below the titles.",
+              "Android adds a \"Report Issue\" action, shifting Archive Agent downward; the screenshots also use unequal element and viewport crop heights of 1463px and 1693px."
+            ],
+            "likelyCauses": [
+              "The Android header applies different navigation actions and flex constraints to the title.",
+              "The platforms expose different tab sets or ordering, with horizontal overflow clipping the final tab.",
+              "The Android skills renderer uses a flat, expanded card layout rather than React's nested compact layout.",
+              "Android includes an additional action in the profile action list.",
+              "Fixture data differs for the status banner, and the mismatched crop contracts reduce comparison reliability."
+            ],
+            "suggestedOwner": "Android client and cross-platform profile UI owner",
+            "suggestedFixes": [
+              "Align header actions and title sizing, or deliberately reserve space for the Android chat icon and use the same truncation behavior.",
+              "Match tab ordering, labels, icons, and overflow behavior across platforms, or document platform-specific navigation as intentional.",
+              "Use a shared skills component contract for hierarchy, ordering, count placement, card height, and description wrapping.",
+              "Make the action lists parity-consistent by adding or removing \"Report Issue\" based on the intended shared feature set.",
+              "Capture both variants with the same screen-route crop contract and viewport height before running visual comparisons."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -9160,7 +9430,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.161Z",
+        "generatedAt": "2026-11-03T10:29:00.092Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9246,7 +9516,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.161Z",
+            "generatedAt": "2026-11-03T10:29:00.092Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9293,17 +9563,35 @@
         "currentHeight": 4903
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.171Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:24:23.607Z",
+        "severity": "high",
+        "summary": [
+          "The Android app bar truncates the title to \"Long Machine Name ...\", while React shows \"Long Machine Name Probe\"; Android also adds a chat-bubble action before the overflow menu.",
+          "The tab strip differs: React shows Profile, Chat, Reminders, and a clipped Work item, while Android inserts Activity and shows a clipped Reminders item at the right edge.",
+          "The computer identifier wraps onto two lines in Android but remains single-line and truncated in React, adding height to the Info section.",
+          "Skills have different hierarchy and card bounds: React shows Global and Workspace groups with compact rows, while Android shows a flat Product review group with two taller, filled cards.",
+          "Android adds a \"Report Issue\" action button, and its yellow status-banner copy differs from React's; the Android capture is also 252 px taller overall (1815 px versus 1563 px)."
+        ],
+        "likelyCauses": [
+          "The platforms use different app-bar action sets and title width constraints.",
+          "The tab data source or ordering differs between React and Android.",
+          "Android allows the computer value to wrap instead of applying single-line ellipsis.",
+          "The skill tree is flattened or rendered with a different card component on Android.",
+          "Action composition and status fixture copy are not synchronized across platforms."
+        ],
+        "suggestedOwner": "Cross-platform Agent Detail profile UI owner",
+        "suggestedFixes": [
+          "Match the app-bar title truncation behavior and chat/overflow action set across both platforms.",
+          "Use the same tab order, labels, widths, and horizontal overflow behavior.",
+          "Apply the same overflow rule to the computer identifier, preferably single-line truncation, or deliberately wrap it in both implementations.",
+          "Render the same skills hierarchy and use matching card fill, padding, and text layout.",
+          "Align the action list, including Report Issue, and capture both platforms with identical yellow status-banner text."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9379,17 +9667,35 @@
             "currentHeight": 4903
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.171Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:24:23.607Z",
+            "severity": "high",
+            "summary": [
+              "The Android app bar truncates the title to \"Long Machine Name ...\", while React shows \"Long Machine Name Probe\"; Android also adds a chat-bubble action before the overflow menu.",
+              "The tab strip differs: React shows Profile, Chat, Reminders, and a clipped Work item, while Android inserts Activity and shows a clipped Reminders item at the right edge.",
+              "The computer identifier wraps onto two lines in Android but remains single-line and truncated in React, adding height to the Info section.",
+              "Skills have different hierarchy and card bounds: React shows Global and Workspace groups with compact rows, while Android shows a flat Product review group with two taller, filled cards.",
+              "Android adds a \"Report Issue\" action button, and its yellow status-banner copy differs from React's; the Android capture is also 252 px taller overall (1815 px versus 1563 px)."
+            ],
+            "likelyCauses": [
+              "The platforms use different app-bar action sets and title width constraints.",
+              "The tab data source or ordering differs between React and Android.",
+              "Android allows the computer value to wrap instead of applying single-line ellipsis.",
+              "The skill tree is flattened or rendered with a different card component on Android.",
+              "Action composition and status fixture copy are not synchronized across platforms."
+            ],
+            "suggestedOwner": "Cross-platform Agent Detail profile UI owner",
+            "suggestedFixes": [
+              "Match the app-bar title truncation behavior and chat/overflow action set across both platforms.",
+              "Use the same tab order, labels, widths, and horizontal overflow behavior.",
+              "Apply the same overflow rule to the computer identifier, preferably single-line truncation, or deliberately wrap it in both implementations.",
+              "Render the same skills hierarchy and use matching card fill, padding, and text layout.",
+              "Align the action list, including Report Issue, and capture both platforms with identical yellow status-banner text."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -9428,7 +9734,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.163Z",
+        "generatedAt": "2026-11-03T10:29:00.202Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9514,7 +9820,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.163Z",
+            "generatedAt": "2026-11-03T10:29:00.202Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9562,7 +9868,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.180Z",
+        "generatedAt": "2026-11-03T10:29:00.216Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9648,7 +9954,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.180Z",
+            "generatedAt": "2026-11-03T10:29:00.216Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9696,7 +10002,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.174Z",
+        "generatedAt": "2026-11-03T10:29:00.299Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9782,7 +10088,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.174Z",
+            "generatedAt": "2026-11-03T10:29:00.299Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9830,7 +10136,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.148Z",
+        "generatedAt": "2026-11-03T10:29:00.199Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9916,7 +10222,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.148Z",
+            "generatedAt": "2026-11-03T10:29:00.199Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9969,7 +10275,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.213Z",
+        "generatedAt": "2026-11-03T10:29:00.275Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10055,7 +10361,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.213Z",
+            "generatedAt": "2026-11-03T10:29:00.275Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10107,17 +10413,35 @@
         "currentHeight": 2166
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.217Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:13:04.954Z",
+        "severity": "high",
+        "summary": [
+          "Primary content state differs: React shows empty \"Apps\" and \"App events\" sections with \"Grant Access\" and \"Refresh\" buttons, while Android shows populated Connected Apps cards for Raft Actions and Calendar.",
+          "Android adds an outlined chat/comment action before the overflow menu, shifting the avatar and title left; React shows only the overflow menu.",
+          "The selected Apps tab differs: React uses a flat yellow fill and briefcase-style icon, while Android uses a gold gradient, link icon, and more prominent border/shadow.",
+          "React's leftmost Chat tab is clipped by the viewport edge, while Android's Chat tab is fully visible; tab spacing and icon glyphs also differ.",
+          "Android adds nested rounded app-card bounds, green \"Active\" pills, connection times, permission chips, and full-width \"View service\" buttons; the Android capture is also 58 logical pixels taller than React."
+        ],
+        "likelyCauses": [
+          "React and Android are running against different authentication states or backend fixtures.",
+          "The platforms use separate implementations for the Connected Apps content hierarchy.",
+          "Platform-specific icon assets and header action sets were not standardized.",
+          "Active-tab colors, borders, and elevation were implemented independently.",
+          "Slock is comparing different crop contracts and logical viewport heights."
+        ],
+        "suggestedOwner": "Android Apps screen owner, with shared design-system and Slock fixture support",
+        "suggestedFixes": [
+          "Use the same connected-app fixture in both builds; either clear Raft/Calendar and verify the empty state or update the React reference to the populated state.",
+          "Make the header action set consistent by adding or removing the chat/comment button on one platform.",
+          "Standardize the Apps icon, active-tab fill, border, radius, and elevation across React and Android.",
+          "Fix the horizontal tab offset so the Chat label is fully visible and align tab spacing and icon styles.",
+          "Configure Slock to use identical logical viewport dimensions, crop bounds, content state, and scroll position for both platforms."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10193,17 +10517,35 @@
             "currentHeight": 2166
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.217Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:13:04.954Z",
+            "severity": "high",
+            "summary": [
+              "Primary content state differs: React shows empty \"Apps\" and \"App events\" sections with \"Grant Access\" and \"Refresh\" buttons, while Android shows populated Connected Apps cards for Raft Actions and Calendar.",
+              "Android adds an outlined chat/comment action before the overflow menu, shifting the avatar and title left; React shows only the overflow menu.",
+              "The selected Apps tab differs: React uses a flat yellow fill and briefcase-style icon, while Android uses a gold gradient, link icon, and more prominent border/shadow.",
+              "React's leftmost Chat tab is clipped by the viewport edge, while Android's Chat tab is fully visible; tab spacing and icon glyphs also differ.",
+              "Android adds nested rounded app-card bounds, green \"Active\" pills, connection times, permission chips, and full-width \"View service\" buttons; the Android capture is also 58 logical pixels taller than React."
+            ],
+            "likelyCauses": [
+              "React and Android are running against different authentication states or backend fixtures.",
+              "The platforms use separate implementations for the Connected Apps content hierarchy.",
+              "Platform-specific icon assets and header action sets were not standardized.",
+              "Active-tab colors, borders, and elevation were implemented independently.",
+              "Slock is comparing different crop contracts and logical viewport heights."
+            ],
+            "suggestedOwner": "Android Apps screen owner, with shared design-system and Slock fixture support",
+            "suggestedFixes": [
+              "Use the same connected-app fixture in both builds; either clear Raft/Calendar and verify the empty state or update the React reference to the populated state.",
+              "Make the header action set consistent by adding or removing the chat/comment button on one platform.",
+              "Standardize the Apps icon, active-tab fill, border, radius, and elevation across React and Android.",
+              "Fix the horizontal tab offset so the Chat label is fully visible and align tab spacing and icon styles.",
+              "Configure Slock to use identical logical viewport dimensions, crop bounds, content state, and scroll position for both platforms."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -10247,7 +10589,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.220Z",
+        "generatedAt": "2026-11-03T10:29:00.287Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10333,7 +10675,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.220Z",
+            "generatedAt": "2026-11-03T10:29:00.287Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10385,17 +10727,35 @@
         "currentHeight": 2104
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.253Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:01:27.874Z",
+        "severity": "high",
+        "summary": [
+          "Android renders the letter \"A\" in both header and large profile avatars, while React uses a person icon.",
+          "Android omits the outlined \"(you)\" badge beside the profile name and uses a speech-bubble header action instead of React's user/action icon.",
+          "Description content and controls differ: React shows \"Owner\" with a pencil beside the heading, while Android shows \"Product design and server administration.\" with no Description pencil.",
+          "The Role row differs: React shows a question-mark help icon and an \"Owner\" badge; Android shows an information icon, adds a pencil, and displays a \"Member\" badge.",
+          "Created Agents state differs substantially: React shows count 0 and an empty message, while Android shows count 2 and two populated agent cards with green and gray status indicators."
+        ],
+        "likelyCauses": [
+          "Android uses an initial-based avatar fallback instead of the shared person-avatar component.",
+          "Profile fields are populated from different data sources or visual-test fixtures.",
+          "Icon assets and action placement were implemented independently on each platform.",
+          "The platforms render different empty and populated Created Agents states.",
+          "The comparison uses unequal viewport heights and crop contracts: React 390×844 versus Android 390×882, with the metadata reporting 17.49% padding as mismatch."
+        ],
+        "suggestedOwner": "Android client team for the member profile screen, with shared design-system and test-fixture support",
+        "suggestedFixes": [
+          "Use the same avatar fallback in the header and profile summary, either the person icon or the letter \"A\" on both platforms.",
+          "Restore the \"(you)\" badge and match the top-right action icon and spacing to React.",
+          "Align Description and Role controls: place the edit pencil consistently and use the same help/info icon.",
+          "Use identical profile and Created Agents fixtures or API data so Description, role, count, and list contents match.",
+          "Run the comparison at a common 390×844 viewport or apply the same screen-route crop to both platforms, then verify divider positions and vertical spacing."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10471,17 +10831,35 @@
             "currentHeight": 2104
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.253Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:01:27.874Z",
+            "severity": "high",
+            "summary": [
+              "Android renders the letter \"A\" in both header and large profile avatars, while React uses a person icon.",
+              "Android omits the outlined \"(you)\" badge beside the profile name and uses a speech-bubble header action instead of React's user/action icon.",
+              "Description content and controls differ: React shows \"Owner\" with a pencil beside the heading, while Android shows \"Product design and server administration.\" with no Description pencil.",
+              "The Role row differs: React shows a question-mark help icon and an \"Owner\" badge; Android shows an information icon, adds a pencil, and displays a \"Member\" badge.",
+              "Created Agents state differs substantially: React shows count 0 and an empty message, while Android shows count 2 and two populated agent cards with green and gray status indicators."
+            ],
+            "likelyCauses": [
+              "Android uses an initial-based avatar fallback instead of the shared person-avatar component.",
+              "Profile fields are populated from different data sources or visual-test fixtures.",
+              "Icon assets and action placement were implemented independently on each platform.",
+              "The platforms render different empty and populated Created Agents states.",
+              "The comparison uses unequal viewport heights and crop contracts: React 390×844 versus Android 390×882, with the metadata reporting 17.49% padding as mismatch."
+            ],
+            "suggestedOwner": "Android client team for the member profile screen, with shared design-system and test-fixture support",
+            "suggestedFixes": [
+              "Use the same avatar fallback in the header and profile summary, either the person icon or the letter \"A\" on both platforms.",
+              "Restore the \"(you)\" badge and match the top-right action icon and spacing to React.",
+              "Align Description and Role controls: place the edit pencil consistently and use the same help/info icon.",
+              "Use identical profile and Created Agents fixtures or API data so Description, role, count, and list contents match.",
+              "Run the comparison at a common 390×844 viewport or apply the same screen-route crop to both platforms, then verify divider positions and vertical spacing."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -10525,7 +10903,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.335Z",
+        "generatedAt": "2026-11-03T10:29:00.456Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10611,7 +10989,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.335Z",
+            "generatedAt": "2026-11-03T10:29:00.456Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10656,7 +11034,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.268Z",
+        "generatedAt": "2026-11-03T10:29:00.404Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10742,7 +11120,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.268Z",
+            "generatedAt": "2026-11-03T10:29:00.404Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10787,7 +11165,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.266Z",
+        "generatedAt": "2026-11-03T10:29:00.414Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10873,7 +11251,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.266Z",
+            "generatedAt": "2026-11-03T10:29:00.414Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10918,7 +11296,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.284Z",
+        "generatedAt": "2026-11-03T10:29:00.473Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11004,7 +11382,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.284Z",
+            "generatedAt": "2026-11-03T10:29:00.473Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11049,7 +11427,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.315Z",
+        "generatedAt": "2026-11-03T10:29:00.519Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11135,7 +11513,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.315Z",
+            "generatedAt": "2026-11-03T10:29:00.519Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11185,7 +11563,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.313Z",
+        "generatedAt": "2026-11-03T10:29:00.532Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11271,7 +11649,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.313Z",
+            "generatedAt": "2026-11-03T10:29:00.532Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11323,17 +11701,33 @@
         "currentHeight": 1224
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.274Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-03T10:02:41.396Z",
+        "severity": "medium",
+        "summary": [
+          "Android omits the \"Document preview\" subtitle from the PDF attachment card, leaving blank space above its metadata row.",
+          "Android omits the blue replies pill labeled \"7 replies · 2 new\" shown beneath the task chip on React.",
+          "Android moves the reaction count and plus button onto the task-chip row, while React places them on a second row.",
+          "The inline #222 chip is light blue with a cyan square icon on React but light gray without an icon on Android.",
+          "The bottom task chip uses an outlined triangle-like icon on Android versus React's filled cyan square; the Android component is also 27 px shorter (408 vs 435)."
+        ],
+        "likelyCauses": [
+          "The Android PDF attachment renderer is not binding or displaying the preview subtitle.",
+          "The Android replies-summary component or its state is omitted from the rich-content footer.",
+          "The Android footer uses a single-row layout instead of React's wrapping layout.",
+          "Android applies a different task-chip token and icon mapping for inline and footer variants."
+        ],
+        "suggestedOwner": "Android message-row and rich-content component owner",
+        "suggestedFixes": [
+          "Render the PDF card's \"Document preview\" subtitle at the same position and typography as React.",
+          "Add the light-blue replies pill with the outlined speech-bubble icon and the text \"7 replies · 2 new\".",
+          "Restore the React footer arrangement: task chip and replies pill on the first row, then reaction count and plus button on the second row.",
+          "Use the light-blue inline #222 chip with a filled cyan square icon and replace the Android bottom outlined triangle icon with the filled square."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -11409,17 +11803,33 @@
             "currentHeight": 1224
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.274Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-03T10:02:41.396Z",
+            "severity": "medium",
+            "summary": [
+              "Android omits the \"Document preview\" subtitle from the PDF attachment card, leaving blank space above its metadata row.",
+              "Android omits the blue replies pill labeled \"7 replies · 2 new\" shown beneath the task chip on React.",
+              "Android moves the reaction count and plus button onto the task-chip row, while React places them on a second row.",
+              "The inline #222 chip is light blue with a cyan square icon on React but light gray without an icon on Android.",
+              "The bottom task chip uses an outlined triangle-like icon on Android versus React's filled cyan square; the Android component is also 27 px shorter (408 vs 435)."
+            ],
+            "likelyCauses": [
+              "The Android PDF attachment renderer is not binding or displaying the preview subtitle.",
+              "The Android replies-summary component or its state is omitted from the rich-content footer.",
+              "The Android footer uses a single-row layout instead of React's wrapping layout.",
+              "Android applies a different task-chip token and icon mapping for inline and footer variants."
+            ],
+            "suggestedOwner": "Android message-row and rich-content component owner",
+            "suggestedFixes": [
+              "Render the PDF card's \"Document preview\" subtitle at the same position and typography as React.",
+              "Add the light-blue replies pill with the outlined speech-bubble icon and the text \"7 replies · 2 new\".",
+              "Restore the React footer arrangement: task chip and replies pill on the first row, then reaction count and plus button on the second row.",
+              "Use the light-blue inline #222 chip with a filled cyan square icon and replace the Android bottom outlined triangle icon with the filled square."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -11455,7 +11865,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.357Z",
+        "generatedAt": "2026-11-03T10:29:00.568Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11541,7 +11951,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.357Z",
+            "generatedAt": "2026-11-03T10:29:00.568Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11586,7 +11996,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.309Z",
+        "generatedAt": "2026-11-03T10:29:00.543Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11672,7 +12082,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.309Z",
+            "generatedAt": "2026-11-03T10:29:00.543Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11717,7 +12127,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.305Z",
+        "generatedAt": "2026-11-03T10:29:00.566Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11803,7 +12213,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.305Z",
+            "generatedAt": "2026-11-03T10:29:00.566Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11848,7 +12258,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.356Z",
+        "generatedAt": "2026-11-03T10:29:00.615Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11934,7 +12344,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.356Z",
+            "generatedAt": "2026-11-03T10:29:00.615Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11979,7 +12389,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.347Z",
+        "generatedAt": "2026-11-03T10:29:00.600Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12065,7 +12475,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.347Z",
+            "generatedAt": "2026-11-03T10:29:00.600Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12110,7 +12520,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.331Z",
+        "generatedAt": "2026-11-03T10:29:00.595Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12196,7 +12606,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.331Z",
+            "generatedAt": "2026-11-03T10:29:00.595Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12241,7 +12651,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.353Z",
+        "generatedAt": "2026-11-03T10:29:00.612Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12327,7 +12737,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.353Z",
+            "generatedAt": "2026-11-03T10:29:00.612Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12372,7 +12782,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.351Z",
+        "generatedAt": "2026-11-03T10:29:00.639Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12458,7 +12868,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.351Z",
+            "generatedAt": "2026-11-03T10:29:00.639Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12503,7 +12913,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.404Z",
+        "generatedAt": "2026-11-03T10:29:00.703Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12589,7 +12999,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.404Z",
+            "generatedAt": "2026-11-03T10:29:00.703Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12640,7 +13050,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:41.413Z",
+        "generatedAt": "2026-11-03T10:29:00.711Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12726,7 +13136,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:41.413Z",
+            "generatedAt": "2026-11-03T10:29:00.711Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12766,7 +13176,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.495Z",
+        "generatedAt": "2026-11-03T10:28:58.588Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12823,7 +13233,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.495Z",
+            "generatedAt": "2026-11-03T10:28:58.588Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12866,7 +13276,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-03T09:50:40.495Z",
+        "generatedAt": "2026-11-03T10:28:58.588Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12923,7 +13333,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-03T09:50:40.495Z",
+            "generatedAt": "2026-11-03T10:28:58.588Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

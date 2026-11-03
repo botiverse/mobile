@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 09:50:41 UTC
+Generated: 2026-11-03 10:29:00 UTC
 Latest run: fcf6ae60-20261103094938
 Latest commit: fcf6ae60-20261103094938
 Commit subject: feat(visual): full-length capture on Android for flagged cases (#4192)
 Providers: react vs android
 Summary: total 93, same 0, pass 1, basic-pass 12, different 78, missing 2
-AI analysis: ready 14 / total 93, pending 79
+AI analysis: ready 27 / total 93, pending 66
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
