@@ -92,6 +92,7 @@ internal fun <T> RaftTabbedScaffold(
         onUserSwipeSettled = { index -> raftTabbedScaffoldPageKey(tabs, index)?.let(onTabSwiped) },
         gesturePolicy = TabPagerGesturePolicy(
             startEdgeInset = raftPlatformTabPagerStartEdgeInsetDp().dp,
+            swipeEnabled = raftPlatformTabPagerSwipeEnabled(),
         ),
         keepItemAlive = true,
         tabBar = {

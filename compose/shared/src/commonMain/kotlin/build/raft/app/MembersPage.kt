@@ -6888,6 +6888,7 @@ private fun MembersDetailContent(
                     pageCount = visibleTabs.size.coerceAtLeast(1),
                     gesturePolicy = TabPagerGesturePolicy(
                         startEdgeInset = raftPlatformTabPagerStartEdgeInsetDp().dp,
+                        swipeEnabled = raftPlatformTabPagerSwipeEnabled(),
                     ),
                     keepItemAlive = true,
                     tabBar = {

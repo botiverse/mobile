@@ -250,6 +250,15 @@ internal expect fun raftPlatformTabPagerStartEdgeInsetDp(): Float
 internal expect fun raftPlatformTabPagerOverscrollEnabled(): Boolean
 
 /**
+ * Whether a [build.raft.app.components.TabPager] pages with the pointer (a drag, a trackpad's
+ * horizontal scroll). Phones and tablets swipe between tabs. Desktop returns false: Compose Desktop
+ * hands a Mac trackpad's two-finger sideways swipe (the gesture people use for Back) to the pager as
+ * horizontal scroll, so a conversation the person never touched turned from Chat to Tasks or Files
+ * on its own (artin 2026-11-03). Desktop switches tabs with the tab strip only, as the web does.
+ */
+internal expect fun raftPlatformTabPagerSwipeEnabled(): Boolean
+
+/**
  * Whether switching the phone bottom tabs plays Material's fade through
  * ([build.raft.designsystem.motion.RaftMotion.fadeThrough]). Android only (artin 2026-10-29):
  * iOS switches at once like its system tab bar, and desktop keeps its instant switch.
