@@ -48,6 +48,9 @@ private fun RaftFilePreviewEditorVisualContent() {
             iconName = payload.previewIconName(),
             onBack = {},
             contentPadding = 0.dp,
+            trailingActions = {
+                RaftFilePreviewComposerImageHeaderEdit(enabled = true, onEdit = {})
+            },
         ) {
             RaftFilePreviewPayloadContent(
                 payload = payload,
@@ -69,9 +72,10 @@ private fun RaftFilePreviewEditorVisualContent() {
         onBack = {},
         contentPadding = 0.dp,
         trailingContent = {
-            RaftFilePreviewImageEditorHistoryActions(
+            RaftFilePreviewImageEditorHeaderDone(
                 state = editorState,
                 saving = false,
+                imageAvailable = true,
             )
         },
     ) {

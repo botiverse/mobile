@@ -1676,6 +1676,12 @@
     <string name="file_preview_toolbar_crop">裁剪</string>
     <string name="file_preview_crop_reset">重置</string>
     <string name="file_preview_crop_apply">应用</string>
+    <string name="file_preview_toolbar_rotate">旋转</string>
+    <string name="file_preview_crop_aspect_free">自由</string>
+    <string name="file_preview_crop_aspect_square">1:1</string>
+    <string name="file_preview_crop_aspect_original">原始比例</string>
+    <string name="file_preview_pen_width_thin">细笔</string>
+    <string name="file_preview_pen_width_thick">粗笔</string>
     <string name="file_preview_action_comments">评论</string>
     <string name="file_preview_action_copy_text">复制文本</string>
     <string name="file_preview_action_download">下载</string>
