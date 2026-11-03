@@ -13352,11 +13352,11 @@ private fun SharedThreadRouteContentContent(
                     onOpenThreadPayload(loadingPayload)
                 }
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
-                    val target = itemId.toRaftThreadWebLinkTarget()
-                    if (target == null) {
-                        linkNavigator.open(itemId)
+                    val open = raftMarkdownUrlOpen(itemId, sharedStores.apiEnvironmentStore.current().webUrl)
+                    if (open.target == null) {
+                        linkNavigator.open(open.url)
                     } else {
-                        openThreadWebLinkTargetInApp(target)
+                        openThreadWebLinkTargetInApp(open.target)
                     }
                 }
                 // A4: a spec card's navigate to a channel, as a channel link opens it.
@@ -14990,8 +14990,26 @@ internal fun raftThreadAttachmentSavedMessage(
     fallbackMessage: String
 ): String = nativeMessage.trim().ifBlank { fallbackMessage }
 
-internal fun String.toRaftThreadWebLinkTarget(): RaftThreadWebLinkTarget? {
-    toRaftMessagePermalinkTarget()?.let { target ->
+/** A tapped message-body link: the [url] to open and, when it is a message link, its in-app [target]. */
+internal data class RaftMarkdownUrlOpen(
+    val url: String,
+    val target: RaftThreadWebLinkTarget?,
+)
+
+/**
+ * How a tapped message-body link opens. A Raft Desktop link (`raft:///s/…`, `raft://s/…`) is first
+ * turned into its web link on [webUrl], the Developer environment's web URL (AGENTS.md
+ * "Environment Web Link URL Rule"), and then opens exactly as that web link does: a channel/dm
+ * message link in-app, any other `/s/` page in the browser. Every other link is unchanged.
+ */
+internal fun raftMarkdownUrlOpen(rawUrl: String, webUrl: String?): RaftMarkdownUrlOpen {
+    val webLink = raftSchemeLinkToWebLink(rawUrl, webUrl)
+        ?: return RaftMarkdownUrlOpen(rawUrl, rawUrl.toRaftThreadWebLinkTarget())
+    return RaftMarkdownUrlOpen(webLink, webLink.toRaftThreadWebLinkTarget(configuredWebUrl = webUrl))
+}
+
+internal fun String.toRaftThreadWebLinkTarget(configuredWebUrl: String? = null): RaftThreadWebLinkTarget? {
+    toRaftMessagePermalinkTarget(configuredWebUrl = configuredWebUrl)?.let { target ->
         return RaftThreadWebLinkTarget(
             channelId = target.channelId.value,
             messageId = target.messageId.value,

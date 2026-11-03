@@ -193,9 +193,11 @@ private class RaftMarkdownLexer : GeneratedLexer {
                 add(RaftLexerSegment(delegate.tokenStart, delegate.tokenEnd, type))
             }
         }
+        val content = buffer.toString()
         segments = baseSegments
-            .withResolvedAutolinkBoundaries(buffer.toString(), start, end)
-            .withRaftReferenceTokens(buffer.toString(), start, end)
+            .withResolvedAutolinkBoundaries(content, start, end)
+            .withRaftSchemeAutolinks(content, start, end)
+            .withRaftReferenceTokens(content, start, end)
         segmentIndex = 0
         currentStart = start
         currentEnd = start
@@ -492,6 +494,131 @@ private fun CharSequence.matchUrlPrefix(pos: Int, end: Int): Int {
     }
     return 0
 }
+
+/**
+ * Raft Desktop message links (`raft:///s/{slug}/…` and `raft://s/{slug}/…`, slock
+ * `desktopAppLink.ts`) as GFM autolinks, so they render and open like `https://` ones. The stock
+ * GFM lexer only autolinks http(s)/ftp/file/`www.`, so these arrived as plain TEXT/COLON tokens.
+ *
+ * Only `/s/{slug}/` forms: `raft://login`, `raft://oauth/…` and the rest stay text. Code-span
+ * payloads are matched on the same shadow the lexer reads, so a link in `` `…` `` stays code.
+ * The link ends where an http autolink ends (whitespace, `<`/`>`, CJK punctuation, an unbalanced
+ * `)`, trailing `.,:;!?"'*_~]`). A candidate is taken only when every token it covers is plain
+ * text, so `<raft://…>`, a link already inside another autolink, HTML or math keeps its tokens.
+ * Costs one substring search per inline run when no `raft://` is present.
+ */
+private fun List<RaftLexerSegment>.withRaftSchemeAutolinks(
+    content: String,
+    start: Int,
+    end: Int,
+): List<RaftLexerSegment> {
+    if (isEmpty()) return this
+    val first = content.indexOf(RAFT_SCHEME_PREFIX, start, ignoreCase = true)
+    if (first < 0 || first >= end) return this
+    val shadow = content.raftCodeSpanLexerShadow(start, end)
+    val ranges = mutableListOf<IntRange>()
+    var cursor = first
+    while (cursor in start until end) {
+        val hit = shadow.indexOf(RAFT_SCHEME_PREFIX, cursor, ignoreCase = true)
+        if (hit < 0 || hit >= end) break
+        val linkEnd = shadow.raftSchemeLinkEnd(hit, start, end)
+        if (linkEnd > hit) {
+            ranges.add(hit until linkEnd)
+            cursor = linkEnd
+        } else {
+            cursor = hit + RAFT_SCHEME_PREFIX.length
+        }
+    }
+    if (ranges.isEmpty()) return this
+    val eligible = ranges.filter { range ->
+        all { segment ->
+            val overlaps = segment.start <= range.last && range.first < segment.endExclusive
+            !overlaps ||
+                segment.type in RaftSchemeLinkSourceTokenTypes &&
+                // Only a text run may be split at the link's edges.
+                (segment.type == MarkdownTokenTypes.TEXT ||
+                    (segment.start >= range.first && segment.endExclusive <= range.last + 1))
+        }
+    }
+    if (eligible.isEmpty()) return this
+    return buildList {
+        var rangeIndex = 0
+        for (segment in this@withRaftSchemeAutolinks) {
+            var segmentStart = segment.start
+            while (rangeIndex < eligible.size && eligible[rangeIndex].last < segmentStart) rangeIndex++
+            while (segmentStart < segment.endExclusive) {
+                val range = eligible.getOrNull(rangeIndex)
+                if (range == null || range.first >= segment.endExclusive) {
+                    add(RaftLexerSegment(segmentStart, segment.endExclusive, segment.type))
+                    break
+                }
+                if (segmentStart < range.first) {
+                    add(RaftLexerSegment(segmentStart, range.first, segment.type))
+                }
+                val rangeEnd = range.last + 1
+                if (range.first >= segment.start) {
+                    add(RaftLexerSegment(range.first, rangeEnd, GFMTokenTypes.GFM_AUTOLINK))
+                }
+                segmentStart = rangeEnd.coerceAtMost(segment.endExclusive)
+                if (rangeEnd <= segment.endExclusive) rangeIndex++
+            }
+        }
+    }
+}
+
+/**
+ * End (exclusive) of the Raft scheme link at [at], or [at] when there is none: the prefix must
+ * not continue a scheme, and `/s/` (or `s/`) must be followed by a slug.
+ */
+private fun CharSequence.raftSchemeLinkEnd(at: Int, start: Int, end: Int): Int {
+    if (at > start) {
+        val before = this[at - 1]
+        // An ASCII scheme character would make this a longer scheme (`xraft://`); CJK text may
+        // touch the link, as it may touch an http autolink.
+        if (before in 'a'..'z' || before in 'A'..'Z' || before in '0'..'9' || before in "+-.") return at
+    }
+    var pathStart = at + RAFT_SCHEME_PREFIX.length
+    if (pathStart < end && this[pathStart] == '/') pathStart++
+    if (!(pathStart + 2 <= end && this[pathStart] == 's' && this[pathStart + 1] == '/')) return at
+    val slugStart = pathStart + 2
+    var cursor = slugStart
+    var roundDepth = 0
+    while (cursor < end) {
+        val c = this[cursor]
+        if (c.isWhitespace() || c in RAFT_SCHEME_LINK_STOP_CHARS || c in CJK_URL_BOUNDARY_PUNCTUATION) break
+        if (c == ',' && cursor + 1 < end && this[cursor + 1].isCjkTextOrWhitespace()) break
+        if (c == '(') {
+            roundDepth++
+        } else if (c == ')') {
+            if (roundDepth == 0) break
+            roundDepth--
+        }
+        cursor++
+    }
+    while (cursor > slugStart && (this[cursor - 1] in ".,:;!?\"'*_~]" || this[cursor - 1] in CJK_URL_BOUNDARY_PUNCTUATION)) {
+        cursor--
+    }
+    // A slug is required: `raft:///s/` or `raft:///s//…` is not a server link.
+    if (cursor == slugStart || this[slugStart] == '/') return at
+    return cursor
+}
+
+private const val RAFT_SCHEME_PREFIX: String = "raft://"
+
+private const val RAFT_SCHEME_LINK_STOP_CHARS: String = "<>[]`"
+
+private val RaftSchemeLinkSourceTokenTypes: Set<IElementType> =
+    setOf(
+        MarkdownTokenTypes.TEXT,
+        MarkdownTokenTypes.COLON,
+        MarkdownTokenTypes.EMPH,
+        MarkdownTokenTypes.LPAREN,
+        MarkdownTokenTypes.RPAREN,
+        MarkdownTokenTypes.EXCLAMATION_MARK,
+        MarkdownTokenTypes.SINGLE_QUOTE,
+        MarkdownTokenTypes.DOUBLE_QUOTE,
+        GFMTokenTypes.TILDE,
+    )
 
 private data class RaftLexerSegment(
     val start: Int,
