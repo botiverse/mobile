@@ -60,6 +60,8 @@ import build.raft.designsystem.theme.RaftTheme
  * - [visitedThreadIds]: the conversations the wide layout showed, newest first (its history),
  *   for Recent conversations; [excludeThreadId] is the one behind the panel.
  * - [onDismiss]: close the panel (Escape, a click on the dimmed page, after a row opened).
+ * - [focusRequest]: advances with each ⌘K / Ctrl+K while the panel is open: the field takes
+ *   focus again with its text selected (web routeGlobalSearchShortcut "focused").
  * - [onOpenFullResults]: "Search for": the full results page (the list column's Search) with the
  *   query given and the filters the store holds.
  */
@@ -71,6 +73,7 @@ internal class HomeSearchOverlayChrome(
     val excludeThreadId: String?,
     val onDismiss: () -> Unit,
     val onOpenFullResults: (query: String) -> Unit,
+    val focusRequest: Int = 0,
 )
 
 /** What the panel's body shows: its rows by section, already capped. */
@@ -464,9 +467,15 @@ internal fun HomeSearchOverlayPanel(
         }
         popups()
     }
-    // The field takes focus as the panel opens, so typing and the arrow keys work at once.
+    // The field takes focus as the panel opens, so typing and the arrow keys work at once, and
+    // again (its text selected) with each ⌘K while it is open.
     LaunchedEffect(Unit) {
         delay(50)
         runCatching { focusRequester.requestFocus() }
+    }
+    LaunchedEffect(overlay.focusRequest) {
+        if (overlay.focusRequest == 0) return@LaunchedEffect
+        runCatching { focusRequester.requestFocus() }
+        editor.selectAll()
     }
 }

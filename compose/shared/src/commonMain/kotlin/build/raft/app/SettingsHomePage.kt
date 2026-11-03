@@ -7115,6 +7115,7 @@ private fun RaftAppShellReadyContent(
     // as it is behind the scrim; "Search for" goes on to the full results page (the list column's
     // Search). The phone layout keeps its Search tab: ⌘K there opens it.
     var searchOverlayOpen by remember { mutableStateOf(false) }
+    var searchOverlayFocusRequest by remember { mutableStateOf(0) }
     LaunchedEffect(navRailActive) { if (!navRailActive) searchOverlayOpen = false }
     fun openSearchOverlay(source: String) {
         if (!navRailActive) {
@@ -7128,6 +7129,8 @@ private fun RaftAppShellReadyContent(
             surface = RaftNavSurface.TopBar,
             wasActive = searchOverlayOpen,
         )
+        // Already open: its field takes focus again (web: ⌘K on search focuses the mounted field).
+        if (searchOverlayOpen) searchOverlayFocusRequest += 1
         searchOverlayOpen = true
         bridge.log("app_shell_search_overlay_open from=$source")
     }
@@ -7138,7 +7141,11 @@ private fun RaftAppShellReadyContent(
         val density = LocalDensity.current
         val fieldBounds = appShellTopBar.searchFieldBounds.takeIf { appShellTopBar.drawn }
         val visited = remember(wideNavHistory) { wideNavHistory.visitedThreadIds() }
-        val closeOverlay = { searchOverlayOpen = false }
+        val closeOverlay = {
+            searchOverlayOpen = false
+            // A reopened panel focuses as a new one, not as a ⌘K refocus.
+            searchOverlayFocusRequest = 0
+        }
         RaftWindowDialog(
             onDismissRequest = {
                 bridge.log("app_shell_search_overlay_close")
@@ -7166,6 +7173,7 @@ private fun RaftAppShellReadyContent(
                         visitedThreadIds = visited,
                         excludeThreadId = adaptiveWorkspaceState?.selection?.identity?.threadId,
                         onDismiss = closeOverlay,
+                        focusRequest = searchOverlayFocusRequest,
                         onOpenFullResults = { query ->
                             bridge.log("app_shell_search_overlay_full_results queryLength=${query.length}")
                             closeOverlay()

@@ -2,7 +2,9 @@ package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -145,7 +147,12 @@ fun RaftSearchPanel(
     body: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    // Under a window title bar (macOS desktop, [LocalRaftWindowTitleBar]) the panel hangs into the
+    // title bar's band: its hit test sees every event here, and as the scrim and the card take
+    // every press, nothing in the panel's window moves the window (the field, Clear and chips
+    // included).
+    val titleBar = LocalRaftWindowTitleBar.current
+    BoxWithConstraints(modifier.fillMaxSize().then(titleBar.modifier)) {
         val top = anchorTop ?: RaftSearchPanelDefaults.fallbackTop(maxHeight)
         val width = RaftSearchPanelDefaults.width(maxWidth, anchorWidth)
         val height = RaftSearchPanelDefaults.height(maxHeight, top)
@@ -153,7 +160,18 @@ fun RaftSearchPanel(
             Modifier
                 .fillMaxSize()
                 .background(RaftTheme.scrim)
-                .pointerInput(onDismissRequest) { detectTapGestures { onDismissRequest() } }
+                .pointerInput(onDismissRequest) {
+                    // Every press and release on the scrim is consumed (the app's, never the title
+                    // bar's); a tap dismisses.
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false).consume()
+                        val up = waitForUpOrCancellation()
+                        if (up != null) {
+                            up.consume()
+                            onDismissRequest()
+                        }
+                    }
+                }
                 .clearAndSetSemantics {
                     contentDescription = dismissLabel
                     onClick(label = dismissLabel) { onDismissRequest(); true }
@@ -171,7 +189,16 @@ fun RaftSearchPanel(
                     .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog)
                     // The card takes every pointer event that reaches it: a click on its blank
                     // parts never falls through to the scrim and closes it.
-                    .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                // Main pass, after the card's controls: what they left is the card's.
+                                awaitPointerEvent().changes.forEach { change ->
+                                    if (change.pressed != change.previousPressed) change.consume()
+                                }
+                            }
+                        }
+                    },
             ) {
                 head()
                 RaftSearchPanelSeam()
