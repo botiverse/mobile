@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import kotlinx.atomicfu.locks.ReentrantLock
 import kotlinx.atomicfu.locks.reentrantLock
 import kotlinx.atomicfu.locks.withLock
 import kotlinx.coroutines.CoroutineScope
@@ -39,11 +40,17 @@ class MviStoreRuntime<State, Intent>(
      * diagnostic, but must not throw from the callback.
      */
     private val completionFailureLogger: (String) -> Unit = {},
+    /**
+     * A re-entrant common lock covers both the synchronous compatibility API and queued
+     * coroutine admission.  A coroutine-only Mutex would leave direct [accept] calls outside the
+     * serialization domain and let a draft switch race an aggregate commit receipt.
+     *
+     * Runtimes whose persist slices share a process-wide transition gate pass that gate's lock
+     * here, so a transition started on another thread by a sibling runtime is waited for instead
+     * of being rejected as a conflict.
+     */
+    private val reducerLock: ReentrantLock = reentrantLock(),
 ) {
-    // A re-entrant common lock covers both the synchronous compatibility API and queued
-    // coroutine admission.  A coroutine-only Mutex would leave direct [accept] calls outside the
-    // serialization domain and let a draft switch race an aggregate commit receipt.
-    private val reducerLock = reentrantLock()
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<State> = _state.asStateFlow()
 
