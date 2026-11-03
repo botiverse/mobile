@@ -468,7 +468,10 @@ import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.HorizontalAlignmentLine
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
@@ -492,6 +495,7 @@ import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
@@ -28046,7 +28050,9 @@ private fun ThreadMessageCardContent(
                                     // fixed cap (web `max-w-full`): it truncates only when it alone is
                                     // wider than the cluster, and the subtitle gives up its room first.
                                     Row(
-                                        modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
+                                        // The time lines up with the name's baseline, not whichever
+                                        // badge or label in the cluster sits highest.
+                                        modifier = Modifier.weight(1f, fill = false).alignBy(ThreadSenderNameBaseline),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
@@ -28068,6 +28074,7 @@ private fun ThreadMessageCardContent(
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier =
                                                     nameModifier
+                                                        .threadSenderNameBaseline()
                                                         .clickable {
                                                             if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
                                                         }
@@ -33986,6 +33993,17 @@ private fun ThreadAttachmentOpenUiState?.threadAttachmentOpenFailed(): Boolean =
 
 // raft-ui MessageAttachmentGroup `max-w-[360px]`.
 private val ThreadAttachmentGroupMaxWidth = 360.dp
+
+/** The sender name's first baseline, carried out of the sender cluster for the header time. */
+private val ThreadSenderNameBaseline = HorizontalAlignmentLine { a, b -> minOf(a, b) }
+
+private fun Modifier.threadSenderNameBaseline(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val baseline = placeable[FirstBaseline]
+        val lines = if (baseline == AlignmentLine.Unspecified) emptyMap() else mapOf(ThreadSenderNameBaseline to baseline)
+        layout(placeable.width, placeable.height, lines) { placeable.place(0, 0) }
+    }
 
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =
