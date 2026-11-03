@@ -1350,7 +1350,7 @@ internal fun raftComposerImagePickerFilesAreStrictImages(files: List<PlatformFil
                 mimeType = file.mimeType.orEmpty(),
             )
         }
-private data class ThreadMembersProjection(
+internal data class ThreadMembersProjection(
     val membersCount: Int,
     val members: List<RaftThreadMemberItem>,
     val memberCandidates: List<RaftThreadMemberItem>,
@@ -3793,7 +3793,13 @@ internal fun List<String>.toKnownMarkdownChannelNameSet(): Set<String> =
     mapNotNull { it.trim().takeIf { name -> name.isNotBlank() }?.lowercase() }
         .toSet()
 
-internal fun RaftThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String> =
+/**
+ * [timelineMessages]: the rows on screen. A cached timeline shows before the payload carries its
+ * messages, and their authors are known names from that first frame on.
+ */
+internal fun RaftThreadScreenPayload.toKnownMarkdownMentionNameSet(
+    timelineMessages: List<RaftThreadMessageItem> = emptyList()
+): Set<String> =
     if (knownMarkdownMentionNames.isNotEmpty()) {
         buildSet {
             knownMarkdownMentionNames.forEach { name -> addKnownThreadMentionValue(name) }
@@ -3804,6 +3810,7 @@ internal fun RaftThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String
             memberCandidates.forEach { member -> addKnownThreadMentionValues(member) }
             originMessage?.let { message -> addKnownThreadMentionValues(message) }
             messages.forEach { message -> addKnownThreadMentionValues(message) }
+            timelineMessages.forEach { message -> addKnownThreadMentionValues(message) }
         }
     }
 
@@ -8488,7 +8495,11 @@ private fun SharedThreadRouteContentContent(
                     "${sharedStores.apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')}|$userId"
                 }
         }
-    val threadMembersServerId = currentServerId?.let(::ServerId)
+    // The session is captured a few frames after the page composes. Until then the shell's server
+    // keys the member directory, so @mentions in the first content frame are already chips with
+    // their names; reading nothing there painted them as plain text and re-laid the rows out as
+    // chips a few frames later (Compose 版 open jitter, artin 11-03).
+    val threadMembersServerId = threadMemberDirectoryServerId(currentServerId, storeScope.initialServerId)?.let(::ServerId)
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val threadServerMembersEntry by remember(serverMembersStore, threadMembersServerId) {
         if (serverMembersStore != null && threadMembersServerId != null) {
@@ -8722,9 +8733,17 @@ private fun SharedThreadRouteContentContent(
                 threadChannelMembersSlice.status == SharedServerMembersLoadStatus.Loaded,
             payloadMembers = threadMembersProjection.members.mapNotNull { it.toMemberProfile() }
         )
+    // Channel refs (`#name`) are chips only for channels the reader knows. The store adds those names
+    // once its Home lookup answers; the Home snapshot already in memory gives them to the first frame.
+    val firstFrameHomeSnapshot =
+        (sharedHomeState.content as? SharedHomeContentState.Content)
+            ?.snapshot
+            ?.takeIf { snapshot -> snapshot.server.id == threadMembersServerId }
     val renderedPayload =
-        remember(baseRenderedPayload, threadMembersProjection) {
-            baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
+        remember(baseRenderedPayload, threadMembersProjection, firstFrameHomeSnapshot) {
+            baseRenderedPayload
+                .withThreadMembersProjection(threadMembersProjection)
+                .withFirstFrameKnownMarkdownChannelNames(firstFrameHomeSnapshot)
         }
     val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
@@ -16895,8 +16914,15 @@ private fun ThreadPageContentContent(
             payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
         }
     val knownMarkdownMentionNames =
-        remember(payload.knownMarkdownMentionNames, payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
-            payload.toKnownMarkdownMentionNameSet()
+        remember(
+            payload.knownMarkdownMentionNames,
+            payload.members,
+            payload.memberCandidates,
+            payload.originMessage,
+            payload.messages,
+            timelineSlice.messages
+        ) {
+            payload.toKnownMarkdownMentionNameSet(timelineMessages = timelineSlice.messages)
         }
     val knownMarkdownDirectMessagePeerNames =
         remember(
@@ -36710,7 +36736,18 @@ internal fun threadAddMemberRowInteraction(
         clickEnabled = !blocked && !alreadyJoined && !adding
     )
 
-private fun RaftThreadScreenPayload.withThreadMembersProjection(
+/** The server a thread page's member directory is read for: the session's once captured, the shell's before. */
+internal fun threadMemberDirectoryServerId(sessionServerId: String?, shellServerId: String?): String? =
+    sessionServerId?.trim()?.takeIf { it.isNotBlank() } ?: shellServerId?.trim()?.takeIf { it.isNotBlank() }
+
+/** Fills the known channel names from [home] while the store has not added them yet; never overrides them. */
+internal fun RaftThreadScreenPayload.withFirstFrameKnownMarkdownChannelNames(home: HomeSnapshot?): RaftThreadScreenPayload {
+    if (home == null || knownMarkdownChannelNames.isNotEmpty()) return this
+    val names = home.knownMarkdownChannelNames()
+    return if (names.isEmpty()) this else copy(knownMarkdownChannelNames = names)
+}
+
+internal fun RaftThreadScreenPayload.withThreadMembersProjection(
     projection: ThreadMembersProjection
 ): RaftThreadScreenPayload =
     copy(
@@ -36720,7 +36757,7 @@ private fun RaftThreadScreenPayload.withThreadMembersProjection(
         canAddMembers = projection.canAddMembers
     )
 
-private fun threadMembersProjection(
+internal fun threadMembersProjection(
     basePayload: RaftThreadScreenPayload,
     channelMembersSlice: SharedServerChannelMembersSlice,
     serverMembersEntry: SharedServerMembersEntry,
