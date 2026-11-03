@@ -2218,6 +2218,19 @@ internal open class RaftCmpActivity :
         }
     }
 
+    override fun readDroppedThreadAttachments(uris: List<String>, callback: RaftBridgeCallback?) {
+        val parsed = uris.mapNotNull { ref -> runCatching { Uri.parse(ref) }.getOrNull()?.takeIf { it.scheme == "content" } }
+        RaftAppLog.record("SlockKuiklyAttachment", "drop_result uriCount=${parsed.size}")
+        if (parsed.isEmpty()) {
+            callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = readThreadPlatformPickedFiles(uris = parsed, source = "drop")
+            withContext(Dispatchers.Main) { callback?.invoke(result) }
+        }
+    }
+
     private fun persistThreadAttachmentUriPermissions(uris: List<Uri>) {
         uris.forEach { uri ->
             runCatching {
@@ -3877,6 +3890,20 @@ internal class RaftBridgeModule(
                                 "errorBodyText" to "Attachment picker unavailable"
                         )
                 )
+                null
+            }
+            "threadAttachmentDrop" -> {
+                val refs = JSONObject(params ?: "{}").optJSONArray("fileRefs")
+                val uris = (0 until (refs?.length() ?: 0)).mapNotNull { index -> refs?.optString(index)?.takeIf { it.isNotBlank() } }
+                (activity as? RaftHostActivity)?.readDroppedThreadAttachments(uris, callback)
+                        ?: callback?.invoke(
+                                mapOf(
+                                        "code" to 0,
+                                        "bodyText" to "",
+                                        "errorCode" to "attachment_picker_unavailable",
+                                        "errorBodyText" to "Attachment picker unavailable"
+                                )
+                        )
                 null
             }
             "compressThreadImage" -> {

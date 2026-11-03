@@ -1062,6 +1062,22 @@ internal class BridgeModule : Module() {
         }
 
     /**
+     * Files dropped on the composer ([fileRefs]: desktop paths, Android `content:` URIs), read by
+     * the host as a File pick: the same files envelope as [threadAttachmentUpload] (`code`,
+     * `files`, `skippedCount`, `errorCode`), images never compressed.
+     */
+    suspend fun threadAttachmentDrop(fileRefs: List<String>): JSONObject? =
+        suspendCoroutine { continuation ->
+            val refs = JSONArray()
+            fileRefs.forEach(refs::put)
+            val methodArgs = JSONObject()
+            methodArgs.put("fileRefs", refs)
+            callNativeMethod("threadAttachmentDrop", methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
+    /**
      * Compresses one app-owned editor output on the host and returns the new temporary file
      * metadata.  The request id is part of the native cancellation/late-callback fence; it is
      * intentionally generated in shared code rather than inferred from a file path.

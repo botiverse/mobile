@@ -38,6 +38,7 @@ class RaftDesktopBridgeTransport(
             "reportRealTime" -> RaftDesktopRealtimeHost.report(params)
             "settingsCapability" -> RaftDesktopSettingsCapability.handle(params, callback)
             "threadAttachmentUpload" -> attachments.threadAttachmentUpload(params, callback)
+            "threadAttachmentDrop" -> attachments.threadAttachmentDrop(params, callback)
             "compressThreadImage" -> attachments.compressThreadImage(params, callback)
             "cancelCompressThreadImage" -> attachments.cancelCompressThreadImage(params)
             "saveAttachment" -> attachments.saveAttachment(params, callback)

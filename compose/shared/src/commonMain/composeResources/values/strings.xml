@@ -602,6 +602,9 @@
     <string name="thread_error_save_message">Unable to save message</string>
     <string name="thread_error_remove_saved_message">Unable to remove saved message</string>
     <string name="thread_attachment_skipped_one">One attachment could not be read and was skipped.</string>
+    <string name="thread_composer_drop_to_attach">Drop files to attach</string>
+    <string name="thread_composer_drop_folders_cant_upload">Folders can't be uploaded — drag individual files instead.</string>
+    <string name="thread_composer_drop_folders_skipped">Folders were skipped — only individual files can be uploaded.</string>
     <string name="thread_attachment_skipped_many">%1$s attachments could not be read and were skipped.</string>
     <string name="thread_attachment_meta_file">file</string>
     <string name="thread_composer_payload_failed">Composer payload parse failed</string>

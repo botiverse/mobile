@@ -602,6 +602,9 @@
     <string name="thread_error_save_message">无法收藏消息</string>
     <string name="thread_error_remove_saved_message">无法移除收藏的消息</string>
     <string name="thread_attachment_skipped_one">有 1 个附件无法读取，已跳过。</string>
+    <string name="thread_composer_drop_to_attach">拖放文件以添加附件</string>
+    <string name="thread_composer_drop_folders_cant_upload">无法上传文件夹——请改为拖放单个文件。</string>
+    <string name="thread_composer_drop_folders_skipped">文件夹已被跳过——只能上传单个文件。</string>
     <string name="thread_attachment_skipped_many">有 %1$s 个附件无法读取，已跳过。</string>
     <string name="thread_attachment_meta_file">文件</string>
     <string name="thread_composer_payload_failed">编辑器数据解析失败</string>

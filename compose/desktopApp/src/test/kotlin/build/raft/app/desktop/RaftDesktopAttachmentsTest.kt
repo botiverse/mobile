@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.int
@@ -78,6 +79,25 @@ class RaftDesktopAttachmentsTest {
         // The same files inside bodyText (Android puts them in both places).
         val body = assertNotNull(parseRaftJsonObjectOrNull(response["bodyText"]!!.jsonPrimitive.content))
         assertEquals(2, body["files"]!!.jsonArray.size)
+    }
+
+    @Test fun `dropped files answer as a pick of the same files, unreadable and empty ones skipped`() {
+        val photo = File(root, "photo.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val doc = File(root, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val empty = File(root, "empty.txt").apply { createNewFile() }
+        val dialogs = FakeDialogs()
+        val attachments = RaftDesktopAttachments(dialogs, CoroutineScope(Dispatchers.IO))
+        val refs = JsonArray(listOf(photo, doc, empty, File(root, "missing.bin")).map { JsonPrimitive(it.absolutePath) })
+        val response = call { attachments.threadAttachmentDrop(JsonObject(mapOf("fileRefs" to refs)), it) }
+        assertTrue(dialogs.imagesOnlyCalls.isEmpty(), "a drop must not open the panel")
+        assertEquals(206, response["code"]!!.jsonPrimitive.int)
+        assertEquals(2, response["skippedCount"]!!.jsonPrimitive.int)
+        val files = response["files"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf(photo.canonicalPath, doc.canonicalPath), files.map { it["fileRef"]!!.jsonPrimitive.content })
+        assertEquals(listOf("image/png", "application/pdf"), files.map { it["mimeType"]!!.jsonPrimitive.content })
+        assertTrue(files.all { it["source"]!!.jsonPrimitive.content == "desktop_picker" })
+        val nothing = call { attachments.threadAttachmentDrop(JsonObject(emptyMap()), it) }
+        assertEquals(204, nothing["code"]!!.jsonPrimitive.int)
     }
 
     @Test fun `the image button opens an images-only panel and a cancel answers 204`() {
