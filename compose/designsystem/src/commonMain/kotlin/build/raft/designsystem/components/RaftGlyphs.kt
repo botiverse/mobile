@@ -48,6 +48,9 @@ enum class RaftGlyph(internal vararg val paths: String) {
     X("M18 6 6 18", "m6 6 12 12"),
     Search("m21 21-4.34-4.34", circle(11f, 11f, 8f)),
 
+    /** Lucide `clock`: the search panel's Recent conversations heading. */
+    Clock(circle(12f, 12f, 10f), "M12 6v6l4 2"),
+
     /** Lucide `ellipsis`: a "More Actions" overflow ([RaftSideActionColumn], an item card's More menu). */
     Ellipsis(circle(12f, 12f, 1f), circle(19f, 12f, 1f), circle(5f, 12f, 1f)),
     Info(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01"),
