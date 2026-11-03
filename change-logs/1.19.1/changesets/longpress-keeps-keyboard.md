@@ -4,6 +4,7 @@ area: conversation
 platforms:
   - android
   - ios
+pull_request: https://github.com/botiverse/mobile/pull/4219
 rollout: full
 ---
 
