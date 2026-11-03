@@ -15,6 +15,7 @@ import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.raftToastAvoid
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.resources.*
 import build.raft.app.emoji.RaftEmojiCatalog
 import build.raft.app.emoji.RaftEmojiPickerPreferences
@@ -1515,15 +1516,25 @@ internal fun RaftThreadScreenPayload.shouldRenderThreadLoadingShell(
  * only until that bounded, offline-safe local lookup has answered (or access settled another way),
  * so timeline and composer appear in the same frame. Once revealed, a later refresh that re-runs
  * the lookup never puts the shell back over the content.
+ *
+ * [pageInMotion] ([LocalRaftStackPageInMotion]): the page is still sliding in on the Android page
+ * stack. The first content build (the message list's rows, markdown, avatars, the composer) takes
+ * 80-340 ms on a mid-range phone; landing mid slide it froze the push (nav_transition_frames: 3-19
+ * frames in 440-840 ms). The light shell slides in instead and the content is built the frame the
+ * slide settles, when the page also turns active. Only the first reveal waits: content already
+ * shown (a pop back onto the chat) is never hidden again.
  */
 internal fun threadHoldsFirstContentReveal(
     contentRevealed: Boolean,
     accessResolution: ThreadAccessResolution,
-    initialHomeAccessLookupComplete: Boolean
+    initialHomeAccessLookupComplete: Boolean,
+    pageInMotion: Boolean = false
 ): Boolean =
     !contentRevealed &&
-        accessResolution == ThreadAccessResolution.Loading &&
-        !initialHomeAccessLookupComplete
+        (
+            pageInMotion ||
+                (accessResolution == ThreadAccessResolution.Loading && !initialHomeAccessLookupComplete)
+        )
 
 internal enum class ThreadRouteMountPlan {
     LoadingShell,
@@ -7165,14 +7176,33 @@ private fun SharedThreadRouteContentContent(
             payload.threadConversationPinTarget(stableHeaderProjection)?.toUiState(sidebarOrder)
         }
     var threadFirstContentRevealed by remember(threadInstanceKey) { mutableStateOf(false) }
+    val threadPageInMotion = LocalRaftStackPageInMotion.current
     val holdFirstContentReveal =
         threadHoldsFirstContentReveal(
             contentRevealed = threadFirstContentRevealed,
             accessResolution = renderSlice.accessResolution,
-            initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete
+            initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete,
+            pageInMotion = threadPageInMotion
         )
     if (!holdFirstContentReveal && !threadFirstContentRevealed) {
         SideEffect { threadFirstContentRevealed = true }
+    }
+    // Diagnostics: content was ready mid slide and its first reveal waits for the push to settle.
+    val revealWaitsForPush =
+        holdFirstContentReveal &&
+            !threadHoldsFirstContentReveal(
+                contentRevealed = threadFirstContentRevealed,
+                accessResolution = renderSlice.accessResolution,
+                initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete
+            ) &&
+            !payload.shouldRenderThreadLoadingShell(timelineSlice, renderSlice.accessResolution)
+    LaunchedEffect(threadInstanceKey, revealWaitsForPush) {
+        if (revealWaitsForPush) {
+            bridge.log(
+                "thread_first_reveal_waits_for_push threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                    "messages=${timelineSlice.messages.size}"
+            )
+        }
     }
     val routeMountPlan =
         payload.threadRouteMountPlan(

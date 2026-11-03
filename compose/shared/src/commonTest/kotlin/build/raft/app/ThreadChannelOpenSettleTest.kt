@@ -181,13 +181,15 @@ class ThreadChannelOpenSettleTest {
         val access: ThreadAccessResolution,
         val homeLookupComplete: Boolean,
         val payload: RaftThreadScreenPayload,
+        /** LocalRaftStackPageInMotion: the page is still sliding in on the Android page stack. */
+        val inMotion: Boolean = false,
     )
 
     /** Runs the route's reveal latch over [emissions]; returns, per emission, the mount plan. */
     private fun mountPlans(emissions: List<Emission>): List<ThreadRouteMountPlan> {
         var revealed = false
         return emissions.map { emission ->
-            val hold = threadHoldsFirstContentReveal(revealed, emission.access, emission.homeLookupComplete)
+            val hold = threadHoldsFirstContentReveal(revealed, emission.access, emission.homeLookupComplete, emission.inMotion)
             if (!hold) revealed = true
             emission.payload.threadRouteMountPlan(
                 timelineSlice = emission.payload.toThreadTimelineSlice(),
@@ -254,6 +256,51 @@ class ThreadChannelOpenSettleTest {
         assertTrue(
             threadOfflineLastKnownChrome(standIn.copy(mainLoadFailed = true, errorCode = "network_timeout")).tipVisible,
             "the tip appears once the load really failed"
+        )
+    }
+
+    @Test
+    fun contentReadyMidPushIsRevealedWhenTheSlideSettlesAndNeverHiddenByALaterMotion() {
+        // Device trace (HUAWEI CMU-AL10): the cached timeline and the Home lookup answer a few frames
+        // into the push slide. Revealing then built the whole list on the slide's frames.
+        val cached = contentPayload()
+        val plans =
+            mountPlans(
+                listOf(
+                    Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached, inMotion = true),
+                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = true),
+                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = false),
+                    // A later motion with the chat on top (a pop back onto it) keeps the content.
+                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = true),
+                )
+            )
+        assertEquals(
+            listOf(
+                ThreadRouteMountPlan.LoadingShell,
+                ThreadRouteMountPlan.LoadingShell,
+                ThreadRouteMountPlan.FeatureSurfaces,
+                ThreadRouteMountPlan.FeatureSurfaces,
+            ),
+            plans,
+            "the first content build waits for the slide, and only the first one"
+        )
+    }
+
+    @Test
+    fun contentStillLoadingWhenTheSlideSettlesIsRevealedWhenItArrivesAsBefore() {
+        // A cold open: the slide settles first, the content then reveals on its own answer, as without motion.
+        val cached = contentPayload()
+        val plans =
+            mountPlans(
+                listOf(
+                    Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached, inMotion = true),
+                    Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached, inMotion = false),
+                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = false),
+                )
+            )
+        assertEquals(
+            listOf(ThreadRouteMountPlan.LoadingShell, ThreadRouteMountPlan.LoadingShell, ThreadRouteMountPlan.FeatureSurfaces),
+            plans
         )
     }
 
