@@ -915,6 +915,8 @@ data class AgentDetailSummary(
     val machineId: String? = null,
     val machineName: String? = null,
     val daemonVersion: String? = null,
+    /** The workspace path the agent's runtime reported; null when it reported none. */
+    val workspacePath: String? = null,
     val avatarUrl: String? = null,
     val creatorId: String? = null,
     val creatorType: String? = null,

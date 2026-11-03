@@ -117,6 +117,7 @@ class MemberRepositoryDataSourceTest {
         assertEquals("machine-1", detail.data.summary?.machineId)
         assertEquals("Mac Studio", detail.data.summary?.machineName)
         assertEquals("0.57.1", detail.data.summary?.daemonVersion)
+        assertEquals("/Users/noel/agents/noel/", detail.data.summary?.workspacePath)
         assertEquals("user-1", detail.data.summary?.creatorId)
         assertEquals("human", detail.data.summary?.creatorType)
         assertEquals("Artin", detail.data.summary?.creator?.displayName)
@@ -558,7 +559,7 @@ class MemberRepositoryDataSourceTest {
                           "daemonVersion":"0.57.1",
                           "envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},
                           "createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],
-                          "runtimeProfile":{"current":{"machineId":"machine-1","machineName":"Mac Studio","runtime":"codex","model":"gpt-5","reasoningEffort":"medium","executionMode":"local"}}
+                          "runtimeProfile":{"current":{"machineId":"machine-1","machineName":"Mac Studio","runtime":"codex","model":"gpt-5","reasoningEffort":"medium","executionMode":"local","workspacePathRef":{"label":"Workspace","path":" /Users/noel/agents/noel/ "}}}
                         }
                         """.trimIndent()
                     )
