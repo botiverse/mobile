@@ -295,16 +295,35 @@ private class InlineScope(private val row: FlowRowScope) : RaftDescriptionListSc
     /** raft-ui inline facts truncate: a text value is one line, cut with an ellipsis. */
     @Composable
     override fun Item(term: String, value: String?, mono: Boolean, copyable: Boolean) {
-        Item(term) { RaftDescriptionValue(value, mono = mono, copyable = copyable, maxLines = 1) }
+        val lines = remember { HorizontalFactLines() }
+        val valueModifier = remember(lines) { Modifier.textLineInto(lines.valueBaseline) }
+        Fact(term, null, lines) { RaftDescriptionValue(value, valueModifier, mono = mono, copyable = copyable, maxLines = 1) }
     }
 
     @Composable
     override fun Item(term: String, termAccessory: (@Composable () -> Unit)?, details: @Composable RowScope.() -> Unit) {
+        val lines = remember { HorizontalFactLines() }
+        Fact(term, termAccessory, lines, details)
+    }
+
+    /**
+     * As [HorizontalScope]'s fact, the inline fact reads no alignment line of its label's or its
+     * value's subtree while it is measured (crash 69fdce17): the label's and a text value's
+     * baselines come from the text nodes ([textLineInto]); any other value's is read once placed.
+     */
+    @Composable
+    private fun Fact(
+        term: String,
+        termAccessory: (@Composable () -> Unit)?,
+        lines: HorizontalFactLines,
+        details: @Composable RowScope.() -> Unit,
+    ) {
+        val termLineHeight = raftDescriptionTermStyle(RaftTheme.typography).lineHeight
         with(row) {
             Layout(
                 content = {
-                    DescriptionTerm(term, termAccessory)
-                    DescriptionDetails(0.dp, details)
+                    DescriptionTerm(term, termAccessory, lines = lines)
+                    DescriptionDetails(0.dp, details, lines = lines)
                 },
                 modifier = Modifier.alignByBaseline().semantics(mergeDescendants = true) {},
             ) { measurables, constraints ->
@@ -318,26 +337,48 @@ private class InlineScope(private val row: FlowRowScope) : RaftDescriptionListSc
                 // room beside its label (raft-ui truncates; text values are one line with an
                 // ellipsis); only when the label leaves under 96dp does the value go under it.
                 val t = termMeasurable.measure(Constraints(maxWidth = maxW))
+                // The label's first baseline: its text is centred in its row (beside a help button).
+                val termTextHeight = lines.termTextHeight.intValue
+                val termTextTop = Alignment.CenterVertically.align(termTextHeight, t.height)
+                val tb = termTextTop + (lines.termBaseline.intValue.takeIf { it != AlignmentLine.Unspecified } ?: 0)
                 val beside = (maxW - t.width - gapX).coerceAtLeast(0)
                 val stacked = beside < RaftDescriptionInlineMinValueWidth.roundToPx()
                 if (stacked) {
                     val gapY = 2.dp.roundToPx()
                     val v = detailsMeasurable.measure(Constraints(maxWidth = maxW))
-                    val tb = t[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: 0
                     layout(max(t.width, v.width), t.height + gapY + v.height, mapOf(FirstBaseline to tb)) {
                         t.place(0, 0)
                         v.place(0, t.height + gapY)
                     }
                 } else {
                     val v = detailsMeasurable.measure(Constraints(maxWidth = beside))
-                    val tb = t[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: 0
-                    val vb = v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb
+                    // The value's first baseline: a text value's own; any other value's as read when
+                    // it was last placed; before that, the label's first line centred on the value's.
+                    val lineTop = lines.valueLineTop.intValue
+                    val textValue = lines.valueBaseline.intValue != AlignmentLine.Unspecified
+                    val vb =
+                        when {
+                            textValue -> lineTop + lines.valueBaseline.intValue
+                            lines.placedValueBaseline.intValue != AlignmentLine.Unspecified -> lines.placedValueBaseline.intValue
+                            else -> {
+                                val labelLine = if (termLineHeight.isSp) min(termLineHeight.roundToPx(), termTextHeight) else termTextHeight
+                                lineTop + Alignment.CenterVertically.align(labelLine, lines.valueLineHeight.intValue) - termTextTop + tb
+                            }
+                        }
                     val baseline = max(tb, vb)
-                    val tTop = baseline - tb
                     val vTop = baseline - vb
-                    layout(t.width + gapX + v.width, max(tTop + t.height, vTop + v.height), mapOf(FirstBaseline to baseline)) {
-                        t.place(0, tTop)
-                        v.place(t.width + gapX, vTop)
+                    layout(t.width + gapX + v.width, max(baseline - tb + t.height, vTop + v.height), mapOf(FirstBaseline to baseline)) {
+                        // The value goes first, so its baseline can be read once it and its content
+                        // are placed (safe, unlike while measuring); zIndex keeps the label first for
+                        // screen readers. A baseline that moved from the measured one lays it out again.
+                        v.place(t.width + gapX, vTop, zIndex = 1f)
+                        val placedVb =
+                            if (textValue) {
+                                vb
+                            } else {
+                                (v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb).also { lines.placedValueBaseline.intValue = it }
+                            }
+                        t.place(0, (vTop + placedVb - tb).coerceAtLeast(0))
                     }
                 }
             }
