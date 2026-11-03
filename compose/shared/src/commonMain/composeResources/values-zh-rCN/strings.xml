@@ -1716,6 +1716,12 @@
     <string name="file_preview_private_download_saved">下载完成</string>
     <string name="file_preview_export_saved">已保存到文件</string>
     <string name="file_preview_export_failed">无法保存到文件</string>
+    <string name="file_preview_saved_to_folder">已保存到 %1$s</string>
+    <string name="file_preview_action_show_in_finder">在访达中显示</string>
+    <string name="file_preview_action_show_in_folder">在文件夹中显示</string>
+    <string name="download_bar_count">%1$d 个下载</string>
+    <string name="link_hover_status_message">消息</string>
+    <string name="link_hover_status_thread">消息列</string>
     <string name="file_preview_error_download_attachment">无法下载附件</string>
     <string name="file_preview_error_no_app">没有应用可以打开此文件</string>
     <string name="file_preview_error_storage_unavailable">存储空间不可用</string>

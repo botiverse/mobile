@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -22,6 +23,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
+import build.raft.app.RaftDesktopDownloadBar
 import build.raft.app.cmp.RaftCmpRoot
 import build.raft.app.cmp.RaftCmpToastLayer
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
@@ -40,7 +42,11 @@ import build.raft.app.nav.RaftPageStackDisplay
 fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
     // The window's one toast host, over every page of the stack (each page's RaftCmpRoot uses it).
     RaftCmpToastLayer {
-        RaftDesktopNavDisplay(navigator) { page -> RaftDesktopPageContent(navigator, page) }
+        Box(Modifier.fillMaxSize()) {
+            RaftDesktopNavDisplay(navigator) { page -> RaftDesktopPageContent(navigator, page) }
+            // Downloads outlive their file page: the window says how they are going.
+            RaftDesktopDownloadBar(Modifier.align(Alignment.BottomEnd))
+        }
     }
 }
 

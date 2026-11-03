@@ -1983,6 +1983,12 @@ private fun RaftFilePreviewStandalonePageContent() {
     val privateDownloadSaved = stringResource(Res.string.file_preview_private_download_saved)
     val fileExportSaved = stringResource(Res.string.file_preview_export_saved)
     val fileExportFailed = stringResource(Res.string.file_preview_export_failed)
+    val savedFileTerms =
+        RaftFilePreviewSavedFileTerms(
+            showInFinder = stringResource(Res.string.file_preview_action_show_in_finder),
+            showInFolder = stringResource(Res.string.file_preview_action_show_in_folder),
+            savedToFolder = stringResource(Res.string.file_preview_saved_to_folder, RaftSavedToFolderPlaceholder),
+        )
     val unableToDownloadAttachment = stringResource(Res.string.file_preview_error_download_attachment)
     val noAppCanOpenFile = stringResource(Res.string.file_preview_error_no_app)
     val storageUnavailable = stringResource(Res.string.file_preview_error_storage_unavailable)
@@ -2101,6 +2107,10 @@ private fun RaftFilePreviewStandalonePageContent() {
     val centerEntry by remember(centerEntryId) {
         centerEntryId?.let(downloadCenter::entry) ?: flowOf(null)
     }.collectAsState(initial = null)
+    // Compose 版: where the save panel put this attachment, to show it in Finder or open it.
+    val savedFileHost = remember { raftPlatformSavedFileHost() }
+    // Bumped when a saved file turns out to be gone, so the page offers Download again.
+    var savedFileRecheck by remember(centerEntryId) { mutableStateOf(0) }
     // A download this page did not start (or started before it was reopened) is still running
     // in the centre: show its progress and controls instead of a second Download button.
     val centerOwnsActiveDownload =
@@ -2751,6 +2761,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 JSONObject().apply {
                     put("status", outcome.hostStatus)
                     (outcome as? RaftDownloadOutcome.Failed)?.message?.let { put("message", it) }
+                    (outcome as? RaftDownloadOutcome.Completed)?.localUri?.let { put("uri", it) }
                 }
             } else {
                 bridge.saveAttachment(
@@ -2780,7 +2791,12 @@ private fun RaftFilePreviewStandalonePageContent() {
                     }
                 }
                 if (!exportPrivateDownload) activeDownloadId = null
-                bridge.toast(
+                // Compose 版: the window's download bar says "Saved to Downloads · Show in Finder"
+                // (RaftDesktopDownloadBar), wherever the user is by then; no second toast here.
+                val savedToFolder =
+                    result?.optString("uri")?.takeIf { it.isNotBlank() && !toPhotos }
+                        ?.let { uri -> savedFileHost?.folderName(uri) }
+                if (savedToFolder == null) bridge.toast(
                     raftFilePreviewSavedMessage(
                         exportPrivateDownload = exportPrivateDownload,
                         toPhotos = toPhotos,
@@ -3897,6 +3913,25 @@ private fun RaftFilePreviewStandalonePageContent() {
         )
     val downloadUiState = raftFilePreviewDownloadUiState(visiblePublicDownloadState, shownDownloadStatus)
     val downloadActive = downloadUiState == RaftFilePreviewDownloadUiState.Downloading
+    val savedFile =
+        remember(savedFileHost, centerEntry?.status, centerEntry?.localUri, downloadActive, savedFileRecheck) {
+            raftFilePreviewSavedFile(centerEntry, downloading = downloadActive, host = savedFileHost)
+        }
+    fun requestSavedFileAction(reveal: Boolean) {
+        val host = savedFileHost ?: return
+        val file = savedFile ?: return
+        coroutineScope.launch {
+            val done = if (reveal) host.reveal(file.uri) else host.open(file.uri)
+            if (!done) {
+                if (!host.exists(file.uri)) {
+                    // Moved or deleted since: back to Download.
+                    savedFileRecheck += 1
+                } else {
+                    bridge.toast(unableToOpenAttachment)
+                }
+            }
+        }
+    }
     // The page's close path: the header back button, and a swipe down on the image viewer.
     fun closePreviewPage() {
         if (launchPayloadTrace.routeKind == RaftFilePreviewRouteEphemeral) {
@@ -4138,6 +4173,16 @@ private fun RaftFilePreviewStandalonePageContent() {
                     downloadView = downloadView,
                     downloadState = downloadUiState,
                     primaryActionEnabled = primaryActionEnabled,
+                    savedFileActions =
+                        savedFile?.takeIf { canOpenWith }?.let {
+                            RaftFilePreviewSavedFileActions(
+                                revealLabel = raftFilePreviewRevealActionLabel(savedFileHost?.revealsInFinder == true, savedFileTerms),
+                                openLabel = actionTerms.open,
+                                message = raftFilePreviewSavedToFolderMessage(it.folderName, savedFileTerms),
+                                onReveal = { requestSavedFileAction(reveal = true) },
+                                onOpen = { requestSavedFileAction(reveal = false) },
+                            )
+                        },
                     onDownload =
                         if (canOpenWith) {
                             when (raftFilePreviewPrimaryAction(downloadUiState)) {
@@ -8171,6 +8216,8 @@ internal fun RaftFilePreviewPayloadContent(
     downloadView: RaftFilePreviewDownloadView? = null,
     downloadState: RaftFilePreviewDownloadUiState? = RaftFilePreviewDownloadUiState.NotDownloaded,
     primaryActionEnabled: Boolean = true,
+    /** Compose 版: the saved copy's Show in Finder / Open, in place of Download; null otherwise. */
+    savedFileActions: RaftFilePreviewSavedFileActions? = null,
     onDownload: (() -> Unit)? = null,
     onPauseDownload: (() -> Unit)? = null,
     onResumeDownload: (() -> Unit)? = null,
@@ -8509,7 +8556,9 @@ internal fun RaftFilePreviewPayloadContent(
                 name = payload.name.ifBlank { payload.path.ifBlank { fallbackFile } },
                 meta = payload.meta,
                 message =
-                    if (downloadState == RaftFilePreviewDownloadUiState.Downloaded && onDownload != null) {
+                    if (savedFileActions != null && !downloadInProgress) {
+                        savedFileActions.message ?: raftFilePreviewUnsupportedFileMessage(payload, downloadable = true).localized()
+                    } else if (downloadState == RaftFilePreviewDownloadUiState.Downloaded && onDownload != null) {
                         stringResource(Res.string.file_preview_download_completed_hint)
                     } else {
                         raftFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null).localized()
@@ -8523,17 +8572,20 @@ internal fun RaftFilePreviewPayloadContent(
                 secondaryActionEnabled = !downloadInProgress,
                 onSecondaryAction = onExternalBrowserOpen,
                 actionLabel =
-                    onDownload
-                        ?.takeIf { !downloadInProgress }
-                        ?.let { raftFilePreviewPrimaryActionLabel(payload, downloadState, actionTerms) },
+                    savedFileActions?.revealLabel?.takeIf { !downloadInProgress }
+                        ?: onDownload
+                            ?.takeIf { !downloadInProgress }
+                            ?.let { raftFilePreviewPrimaryActionLabel(payload, downloadState, actionTerms) },
                 actionIcon =
-                    if (downloadInProgress) {
-                        null
-                    } else {
-                        raftFilePreviewPrimaryActionIcon(payload, downloadState)
+                    when {
+                        downloadInProgress -> null
+                        savedFileActions != null -> RaftLucideIconName.FolderOpen
+                        else -> raftFilePreviewPrimaryActionIcon(payload, downloadState)
                     },
                 actionEnabled = primaryActionEnabled,
-                onAction = onDownload,
+                onAction = savedFileActions?.onReveal ?: onDownload,
+                companionAction =
+                    savedFileActions?.let { RaftFilePreviewCardAction(it.openLabel, RaftLucideIconName.ExternalLink, it.onOpen) },
                 onShare = onShare,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -10529,6 +10581,7 @@ internal fun RaftFilePreviewGenericCard(
     secondaryActionIcon: RaftLucideIconName? = null,
     secondaryActionEnabled: Boolean = true,
     onSecondaryAction: (() -> Unit)? = null,
+    companionAction: RaftFilePreviewCardAction? = null,
     onShare: (() -> Unit)? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
@@ -10566,6 +10619,7 @@ internal fun RaftFilePreviewGenericCard(
         secondaryActionIcon = secondaryActionIcon,
         secondaryActionEnabled = secondaryActionEnabled,
         onSecondaryAction = onSecondaryAction,
+        companionAction = companionAction,
         onShare = onShare,
         onPause = onToggleDownload.takeIf { !downloadPaused },
         onResume = onToggleDownload.takeIf { downloadPaused },

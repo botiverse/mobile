@@ -364,4 +364,41 @@ class RaftDownloadCenterTest {
     ) {
         launch { onResult(result.await()) }
     }
+
+    /** Compose 版's window download bar follows the centre: start, progress, saved, failed, two at once. */
+    @Test
+    fun windowDownloadBarFollowsTheCentre() = runTest {
+        val center = center()
+        val since = now
+        fun bar() = raftDownloadBarState(center.state.value.entries, since)
+
+        val first = ScriptedTask()
+        center.start(descriptor("a1"), first)
+        runCurrent()
+        assertEquals(RaftDownloadBarState.Downloading(count = 1, entryId = "a1", fileName = "a1.pdf", fraction = null), bar())
+        first.progress!!(progressSample(downloadedBytes = 256, totalBytes = 1024))
+        assertEquals(0.25f, (bar() as RaftDownloadBarState.Downloading).fraction)
+
+        // A second download: the bar sums them ("2 downloads", bytes over both).
+        val second = ScriptedTask()
+        center.start(descriptor("b2"), second)
+        runCurrent()
+        second.progress!!(progressSample(downloadedBytes = 768, totalBytes = 1024))
+        assertEquals(RaftDownloadBarState.Downloading(count = 2, entryId = null, fileName = null, fraction = 0.5f), bar())
+
+        now += 10
+        first.finish(RaftDownloadOutcome.Completed(localUri = "file:/Users/a/Downloads/a1.pdf"))
+        runCurrent()
+        assertEquals(1, (bar() as RaftDownloadBarState.Downloading).count, "one still running keeps the progress bar")
+
+        now += 10
+        second.finish(RaftDownloadOutcome.Failed(hostStatus = "download_failed", message = "network"))
+        runCurrent()
+        assertEquals(RaftDownloadBarState.Failed("b2", "b2.pdf", "network"), bar(), "the newest finished row")
+        assertEquals(
+            RaftDownloadBarState.Saved("a1", "a1.pdf", "file:/Users/a/Downloads/a1.pdf"),
+            raftDownloadBarState(center.state.value.entries, since, dismissed = mapOf("b2" to center.row("b2").updatedAtMillis)),
+            "closing the failure shows the save before it",
+        )
+    }
 }

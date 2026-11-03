@@ -16,6 +16,7 @@ class RaftPageLayersTest {
                     RaftPageLayer.DatabaseLaunchGate,
                     RaftPageLayer.EnvironmentIndicator,
                     RaftPageLayer.SideColumnScaffold,
+                    RaftPageLayer.LinkHoverStatus,
                 ),
                 raftPageLayers(ownsDatabaseLaunch = true, embedded = false, sharedStoreBuilt = sharedStoreBuilt),
                 "sharedStoreBuilt=$sharedStoreBuilt",
@@ -32,6 +33,7 @@ class RaftPageLayersTest {
                 RaftPageLayer.DatabaseLaunchGate,
                 RaftPageLayer.EnvironmentIndicator,
                 RaftPageLayer.SideColumnScaffold,
+                RaftPageLayer.LinkHoverStatus,
             ),
             layers,
         )
@@ -50,7 +52,7 @@ class RaftPageLayersTest {
     @Test
     fun pagesAfterLaunchAndEmbeddedChildrenSkipTheGate() {
         assertEquals(
-            listOf(RaftPageLayer.EnvironmentIndicator, RaftPageLayer.SideColumnScaffold),
+            listOf(RaftPageLayer.EnvironmentIndicator, RaftPageLayer.SideColumnScaffold, RaftPageLayer.LinkHoverStatus),
             raftPageLayers(ownsDatabaseLaunch = false, embedded = false, sharedStoreBuilt = true),
         )
         listOf(false, true).forEach { sharedStoreBuilt ->

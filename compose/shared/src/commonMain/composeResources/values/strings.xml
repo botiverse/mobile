@@ -1718,6 +1718,12 @@
     <string name="file_preview_private_download_saved">Downloaded</string>
     <string name="file_preview_export_saved">Saved to Files</string>
     <string name="file_preview_export_failed">Unable to save to Files</string>
+    <string name="file_preview_saved_to_folder">Saved to %1$s</string>
+    <string name="file_preview_action_show_in_finder">Show in Finder</string>
+    <string name="file_preview_action_show_in_folder">Show in folder</string>
+    <string name="download_bar_count">%1$d downloads</string>
+    <string name="link_hover_status_message">message</string>
+    <string name="link_hover_status_thread">thread</string>
     <string name="file_preview_error_download_attachment">Unable to download attachment</string>
     <string name="file_preview_error_no_app">No app can open this file</string>
     <string name="file_preview_error_storage_unavailable">Storage unavailable</string>

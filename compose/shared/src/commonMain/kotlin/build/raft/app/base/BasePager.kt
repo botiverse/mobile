@@ -17,6 +17,7 @@ import build.raft.app.RaftSideColumnPosture
 import build.raft.app.RaftSideColumnScaffold
 import build.raft.app.toRaftSideColumnPosture
 import build.raft.app.toRaftAdaptivePaneEventOrNull
+import build.raft.app.markdown.RaftLinkHoverStatusHost
 import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.RaftEnhancedNotifyCenter
 import build.raft.app.data.RaftProductEvents
@@ -100,6 +101,7 @@ internal abstract class BasePager : ComposeContainer() {
                 )
             RaftPageLayer.SideColumnScaffold ->
                 RaftSideColumnScaffold(posture = raftSideColumnPosture, content = inner)
+            RaftPageLayer.LinkHoverStatus -> RaftLinkHoverStatusHost(content = inner)
         }
     }
 
