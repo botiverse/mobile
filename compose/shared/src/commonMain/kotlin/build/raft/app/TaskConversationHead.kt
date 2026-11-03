@@ -675,7 +675,8 @@ private fun TaskHeadFacts(
     var statusMenuOpen by remember { mutableStateOf(false) }
     RaftDescriptionList(direction = RaftDescriptionListDirection.Inline) {
         Item(stringResource(Res.string.task_head_status)) {
-            Box {
+            val anchor = LocalTaskHeadStatusMenuAnchor.current
+            Box(if (anchor != null) Modifier.onGloballyPositioned(anchor) else Modifier) {
                 // Web InlineBadgeEditor: the chip opens the status menu; a status the reader may not
                 // change is the plain badge, with no chevron.
                 RaftTaskStatusBadge(
@@ -749,6 +750,9 @@ private fun TaskHeadFacts(
 internal const val TaskHeadStatusTestTag = "task-head-status"
 internal const val TaskHeadAssigneeTestTag = "task-head-assignee"
 internal val TaskHeadStatusMenuMinWidth = 200.dp
+
+/** Screenshots only: the status menu's anchor (the chip's box), so a capture can draw the popup's surface in place. */
+internal val LocalTaskHeadStatusMenuAnchor = staticCompositionLocalOf<((LayoutCoordinates) -> Unit)?> { null }
 
 /**
  * The status menu's rows (web InlineBadgeEditor's options): every status, the current one checked,
@@ -928,7 +932,7 @@ private fun TaskHeadToggleTarget(label: String, expanded: Boolean, onToggle: () 
 }
 
 /** raft-ui inline facts: a leading chip / picker trigger hangs 7dp outward. */
-internal val TaskHeadChipHang = (-7).dp
+private val TaskHeadChipHang = (-7).dp
 
 @Composable
 private fun TaskHeadHistoryTimeline(rows: List<TaskHeadHistoryRow>) {
