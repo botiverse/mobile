@@ -465,6 +465,13 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.RectangleShape
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.RaftConversationKindIcon
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftMessageItemToolbar
+import build.raft.designsystem.components.RaftMessageItemToolbarButton
+import build.raft.designsystem.components.RaftMessageItemToolbarDefaults
+import build.raft.designsystem.components.raftPointerHoverPosition
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.components.raftStateOverlay
 import build.raft.designsystem.components.rememberRaftStateOverlay
 import androidx.compose.ui.graphics.ImageBitmap
@@ -21040,6 +21047,8 @@ private fun ThreadMessagesListContent(
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
     // A double tap's quick reaction bar (stdrc, 2026-10-29, #proj-raft-ui:911ccc08).
     var quickReactionBar by remember(threadInstanceKey) { mutableStateOf<ThreadQuickReactionBarRequest?>(null) }
+    // The message row whose hover toolbar shows (web MessageHoverToolbar): drawn over its neighbours.
+    var hoverToolbarMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Product analytics: the open menu came from a long press (not the reaction "+" chip), so its
     // chosen items are `message_action_selected` with surface long_press.
@@ -23606,7 +23615,30 @@ private fun ThreadMessagesListContent(
                             },
                         onToggleLongMessage = { messageId ->
                             toggleLongMessage(messageId, ThreadOriginListItemIndex)
-                        }
+                        },
+                        popupOpen =
+                            renderPayload.originMessage?.id?.let { originId ->
+                                actionMessageId == originId || quickReactionBar?.messageId == originId
+                            } == true,
+                        hoverToolbar =
+                            renderPayload.originMessage?.let { origin ->
+                                threadMessageHoverToolbarActions(
+                                    message = origin,
+                                    capabilities =
+                                        threadMessageMenuCapabilities(
+                                            message = origin,
+                                            replyMetadata = origin.toThreadReplyMetadata(),
+                                            slice = renderPayload,
+                                            writeActionsEnabled = writeActionsEnabled
+                                        ),
+                                    onShowReactions = { anchor ->
+                                        quickReactionBar =
+                                            ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
+                                    },
+                                    onForward = { onForwardMessage(origin.id) },
+                                    onToggleSave = { onThreadEvent("toggleMessageSaved", origin.id, null, null) }
+                                )
+                            }
                     )
                 }
             }
@@ -23773,10 +23805,16 @@ private fun ThreadMessagesListContent(
                             timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
                         )
                     }
+                // The row showing its hover toolbar draws over its neighbours: the toolbar reaches
+                // 18dp into the row above, which a reversed list draws later.
+                val raisedForHoverToolbar by remember(message.id) {
+                    derivedStateOf { hoverToolbarMessageId == message.id }
+                }
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
+                            .zIndex(if (raisedForHoverToolbar) 1f else 0f)
                             .onGloballyPositioned { coordinates ->
                                 recordMessageItemHeight(message.id, coordinates.size.height)
                                 imeTailDrawProbe.recordPlaced(message.id)
@@ -23855,6 +23893,30 @@ private fun ThreadMessagesListContent(
                                 focused = activeFocusedMessageId == message.id,
                                 searchMatch = activeInlineSearchMessageId == message.id,
                                 popupOpen = actionMessageId == message.id || quickReactionBar?.messageId == message.id,
+                                hoverToolbar =
+                                    threadMessageHoverToolbarActions(
+                                        message = message,
+                                        capabilities =
+                                            threadMessageMenuCapabilities(
+                                                message = message,
+                                                replyMetadata = replyMetadata,
+                                                slice = renderPayload,
+                                                writeActionsEnabled = writeActionsEnabled
+                                            ),
+                                        onShowReactions = { anchor ->
+                                            quickReactionBar =
+                                                ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
+                                        },
+                                        onForward = { onForwardMessage(message.id) },
+                                        onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
+                                        onShownChange = { shown ->
+                                            if (shown) {
+                                                hoverToolbarMessageId = message.id
+                                            } else if (hoverToolbarMessageId == message.id) {
+                                                hoverToolbarMessageId = null
+                                            }
+                                        }
+                                    ),
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
                                 onToggleShareSelection = { onToggleShareSelection(message.id) },
@@ -24697,6 +24759,7 @@ private fun ThreadMessagesListContent(
             ThreadMessageQuickReactionBar(
                 messageId = message.id,
                 anchor = request.anchor,
+                fromHoverToolbar = request.fromHoverToolbar,
                 onDismiss = closeQuickReactionBar,
                 onReact = { emoji ->
                     closeQuickReactionBar()
@@ -27275,6 +27338,7 @@ private data class ThreadMessageCardData(
     val longMessageCollapse: RaftLongMessageCollapseController?,
     val longPressGestureInstanceKey: Any,
     val outerPadding: androidx.compose.ui.unit.Dp,
+    val hoverToolbar: ThreadMessageHoverToolbarActions? = null,
 )
 
 /** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
@@ -27397,7 +27461,9 @@ fun ThreadMessageCard(
     longPressGestureInstanceKey: Any = message.id,
     quotedPermalinkLoader: ThreadQuotedPermalinkLoader? = null,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
-    outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm
+    outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm,
+    /** web MessageHoverToolbar: the row's hover toolbar under a mouse or trackpad; null: none. */
+    hoverToolbar: ThreadMessageHoverToolbarActions? = null
 )
  {
     // RFC 077 PR 2b (web MessageItem `retracted`): a retracted message is one non-interactive
@@ -27448,6 +27514,8 @@ fun ThreadMessageCard(
                 longMessageCollapse = longMessageCollapse,
                 longPressGestureInstanceKey = longPressGestureInstanceKey,
                 outerPadding = outerPadding,
+                // web MessageItem `actionable`: a retracted message has no toolbar.
+                hoverToolbar = if (retracted) null else hoverToolbar,
             ),
         callbacks =
             ThreadMessageCardCallbacks(
@@ -27885,12 +27953,17 @@ private fun ThreadMessageCardContent(
     val rowHoverEnabled =
         !(shareSelectionActive && selectedForShare) && !popupOpen && !searchMatch && locatedStrength <= 0f
     val rowHover = rememberRaftStateOverlay(rowHoverSource, RaftHoverTier.Subtle, enabled = rowHoverEnabled)
+    // web MessageHoverToolbar: none while messages are being selected (select mode).
+    val hoverToolbar = data.hoverToolbar?.takeIf { !shareSelectionActive }
+    // A mouse or trackpad over the row, open menu or not (the row's hover fill pauses under one).
+    var rowPointerOver by remember { mutableStateOf(false) }
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
                 .raftPointerHover(rowHoverSource)
+                .raftPointerHoverPosition(enabled = hoverToolbar != null) { rowPointerOver = it != null }
                 .then(
                     if (inPlaceSelection != null) {
                         Modifier.onGloballyPositioned { inPlaceSelection.rowCoordinates = it }
@@ -28645,6 +28718,23 @@ private fun ThreadMessageCardContent(
             pressed = pressed,
             origin = pressRippleOrigin
         )
+        if (hoverToolbar != null) {
+            ThreadMessageHoverToolbar(
+                messageId = message.id,
+                actions = hoverToolbar,
+                rowHovered = rowPointerOver,
+                popupOpen = popupOpen,
+                onShowActions = onShowActions,
+                onReplyInThread = { onOpenThread(message.id) },
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(
+                            x = -RaftMessageItemToolbarDefaults.EndInset,
+                            y = RaftMessageItemToolbarDefaults.TopOffset
+                        )
+            )
+        }
     }
 }
 
@@ -32927,8 +33017,168 @@ private fun ThreadMessageEmojiPickerPopover(
 /** A double tap's quick reaction bar: which message, anchored where the second tap landed. */
 internal data class ThreadQuickReactionBarRequest(
     val messageId: String,
-    val anchor: RaftPopoverAnchor
+    val anchor: RaftPopoverAnchor,
+    /** Opened by the hover toolbar's Add Reaction: under the button, its end on the button's end. */
+    val fromHoverToolbar: Boolean = false
 )
+
+/**
+ * web MessageHoverToolbar (slock packages/web/src/components/message/MessageHoverToolbar.tsx):
+ * which buttons one message's hover toolbar has, in the web's order (the message menu's: Add
+ * Reaction, Reply in Thread, Forward, Save, then More Actions, which opens that menu). Built from
+ * the message menu's capabilities ([threadMessageHoverToolbarActions]), so a button is there
+ * exactly when its menu item is.
+ */
+internal class ThreadMessageHoverToolbarActions(
+    /** Add Reaction: the quick reactions under the button (web `canReact && !isSystem`). */
+    val reaction: Boolean,
+    /** Reply in Thread: not on the rows of a thread (web `hideThreadActions`). */
+    val reply: Boolean,
+    /** Forward: where the message can be forwarded (web `canForwardThisMessage`). */
+    val forward: Boolean,
+    val save: Boolean,
+    val saved: Boolean,
+    /** More Actions: the message menu under the button (web `canOpenMenuFromToolbar`). */
+    val more: Boolean,
+    val onShowReactions: (RaftPopoverAnchor) -> Unit,
+    val onForward: () -> Unit,
+    val onToggleSave: () -> Unit,
+    /** Whether the toolbar shows: the list draws that row over its neighbours, as the toolbar reaches into the row above. */
+    val onShownChange: (Boolean) -> Unit = {},
+) {
+    val isEmpty: Boolean
+        get() = !reaction && !reply && !forward && !save && !more
+}
+
+internal fun threadMessageHoverToolbarActions(
+    message: RaftThreadMessageItem,
+    capabilities: ThreadMessageMenuCapabilities,
+    onShowReactions: (RaftPopoverAnchor) -> Unit,
+    onForward: () -> Unit,
+    onToggleSave: () -> Unit,
+    onShownChange: (Boolean) -> Unit = {},
+): ThreadMessageHoverToolbarActions? {
+    if (message.isRetracted) return null
+    val actions =
+        ThreadMessageHoverToolbarActions(
+            reaction = capabilities.quickReactions,
+            reply = capabilities.reply,
+            forward = capabilities.forward,
+            save = capabilities.save,
+            saved = message.isSaved,
+            more = !message.isSystemMessage(),
+            onShowReactions = onShowReactions,
+            onForward = onForward,
+            onToggleSave = onToggleSave,
+            onShownChange = onShownChange,
+        )
+    return actions.takeUnless { it.isEmpty }
+}
+
+/** Between a hover toolbar button and the menu or reactions it opens (web: 4px). */
+internal val ThreadMessageHoverToolbarPopupGap = 4.dp
+
+private enum class ThreadMessageHoverToolbarOpener { Reaction, More }
+
+/**
+ * web MessageHoverToolbar on a message row: the design-system [RaftMessageItemToolbar] over the
+ * row's top right corner (the caller places it), shown only for a mouse or trackpad
+ * ([RaftPointerInput.Fine]; web returns null for `pointer: coarse`, where a press and hold opens
+ * the menu) while the pointer is over the row or over the toolbar itself (its upper half rides
+ * above the row), and while one of the row's popups is open (raft-ui `has-data-popup-open`).
+ * The button whose popup is open stays marked (`data-popup-open`). No tooltips, as on the web.
+ */
+@Composable
+private fun ThreadMessageHoverToolbar(
+    messageId: String,
+    actions: ThreadMessageHoverToolbarActions,
+    rowHovered: Boolean,
+    popupOpen: Boolean,
+    onShowActions: (RaftPopoverAnchor) -> Unit,
+    onReplyInThread: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var toolbarHovered by remember { mutableStateOf(false) }
+    var opener by remember { mutableStateOf<ThreadMessageHoverToolbarOpener?>(null) }
+    LaunchedEffect(popupOpen) { if (!popupOpen) opener = null }
+    val shown = RaftTheme.pointerInput == RaftPointerInput.Fine && (rowHovered || toolbarHovered || popupOpen)
+    val currentOnShownChange by rememberUpdatedState(actions.onShownChange)
+    DisposableEffect(shown) {
+        if (shown) currentOnShownChange(true)
+        onDispose { if (shown) currentOnShownChange(false) }
+    }
+    if (!shown) return
+    val density = LocalDensity.current
+    val anchorIdentity = threadMessageMenuOwnerIdentity(messageId)
+    val reactionAnchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
+    val moreAnchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
+    val buttonPx = with(density) { RaftMessageItemToolbarDefaults.ButtonSize.toPx() }
+    val gapPx = with(density) { ThreadMessageHoverToolbarPopupGap.toPx() }
+    RaftMessageItemToolbar(
+        modifier = modifier.raftPointerHoverPosition { toolbarHovered = it != null }
+    ) {
+        if (actions.reaction) {
+            RaftMessageItemToolbarButton(
+                onClick = {
+                    // web `positionReactionPickerFromRect`: the bar's end on the button's end.
+                    reactionAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { anchor ->
+                        opener = ThreadMessageHoverToolbarOpener.Reaction
+                        actions.onShowReactions(anchor)
+                    }
+                },
+                label = stringResource(Res.string.thread_action_add_reaction),
+                modifier = Modifier.raftCaptureLiveRootAnchor(reactionAnchor),
+                open = popupOpen && opener == ThreadMessageHoverToolbarOpener.Reaction,
+            ) {
+                RaftSlotIcon(RaftLucideIconName.SmilePlus)
+            }
+        }
+        if (actions.reply) {
+            RaftMessageItemToolbarButton(
+                onClick = onReplyInThread,
+                label = stringResource(Res.string.thread_action_reply_in_thread),
+            ) {
+                RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftMessageItemToolbarDefaults.IconSize)
+            }
+        }
+        if (actions.forward) {
+            RaftMessageItemToolbarButton(
+                onClick = actions.onForward,
+                label = stringResource(Res.string.thread_action_forward),
+            ) {
+                RaftGlyphIcon(RaftGlyph.Forward)
+            }
+        }
+        if (actions.save) {
+            RaftMessageItemToolbarButton(
+                onClick = actions.onToggleSave,
+                label =
+                    stringResource(
+                        if (actions.saved) Res.string.thread_action_remove_from_saved else Res.string.common_save
+                    ),
+                active = actions.saved,
+            ) {
+                if (actions.saved) RaftSlotIcon(RaftLucideIconName.BookmarkMinus) else RaftGlyphIcon(RaftGlyph.Bookmark)
+            }
+        }
+        if (actions.more) {
+            RaftMessageItemToolbarButton(
+                onClick = {
+                    // web `handleOpenMenuFromToolbar`: the menu at the button's start, 4px under it.
+                    moreAnchor.resolve(RaftPopoverLocalPoint.Exact(Offset(0f, buttonPx + gapPx)))?.let { anchor ->
+                        opener = ThreadMessageHoverToolbarOpener.More
+                        onShowActions(anchor)
+                    }
+                },
+                label = stringResource(Res.string.common_more_actions),
+                modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor),
+                open = popupOpen && opener == ThreadMessageHoverToolbarOpener.More,
+            ) {
+                RaftGlyphIcon(RaftGlyph.Ellipsis)
+            }
+        }
+    }
+}
 
 /** The quick reaction bar's distance from the finger that double tapped (web: 24px). */
 internal val ThreadMessageQuickReactionBarFingerGap = 24.dp
@@ -32950,10 +33200,11 @@ private fun ThreadMessageQuickReactionBar(
     anchor: RaftPopoverAnchor,
     onDismiss: () -> Unit,
     onReact: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    fromHoverToolbar: Boolean = false
 ) {
     Modal(onWillDismiss = { onDismiss() }) {
-        ThreadMessageQuickReactionBarPopover(messageId, anchor, onDismiss, onReact, diagnosticsLogger)
+        ThreadMessageQuickReactionBarPopover(messageId, anchor, onDismiss, onReact, diagnosticsLogger, fromHoverToolbar)
     }
 }
 
@@ -32967,7 +33218,9 @@ internal fun ThreadMessageQuickReactionBarPopover(
     anchor: RaftPopoverAnchor,
     onDismiss: () -> Unit,
     onReact: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    /** [anchor] is the bottom end of the hover toolbar's Add Reaction (web `positionReactionPickerFromRect`). */
+    fromHoverToolbar: Boolean = false
 ) {
     val density = LocalDensity.current
     val barWidthDp = threadMessageMenuWidthDp(showReactionActions = true)
@@ -32980,18 +33233,23 @@ internal fun ThreadMessageQuickReactionBarPopover(
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
     val fingerGapPx = with(density) { ThreadMessageQuickReactionBarFingerGap.toPx() }
+    val toolbarGapPx = with(density) { ThreadMessageHoverToolbarPopupGap.toPx() }
+    val toolbarButtonPx = with(density) { RaftMessageItemToolbarDefaults.ButtonSize.toPx() }
     // Like the mobile web (slock #11851): above the second tap, 24dp clear of the finger, so it
     // covers neither the line that was tapped nor the finger; below only when there is no room
-    // above. Centred on the finger and kept on screen.
+    // above. Centred on the finger and kept on screen. From the hover toolbar, like the web's
+    // picker: 4dp under the button with its end on the button's end, above it when there is no
+    // room below.
     RaftAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
         viewportGap = viewportGapPx,
-        horizontalOffset = -contentSize.width / 2f,
-        verticalOffset = fingerGapPx,
-        verticalOffsetAbove = fingerGapPx,
-        verticalPlacement = RaftFloatingVerticalPlacement.AbovePreferred,
+        horizontalOffset = if (fromHoverToolbar) -contentSize.width else -contentSize.width / 2f,
+        verticalOffset = if (fromHoverToolbar) toolbarGapPx else fingerGapPx,
+        verticalOffsetAbove = if (fromHoverToolbar) toolbarButtonPx + toolbarGapPx else fingerGapPx,
+        verticalPlacement =
+            if (fromHoverToolbar) RaftFloatingVerticalPlacement.Auto else RaftFloatingVerticalPlacement.AbovePreferred,
         horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor
     ) {
         LaunchedEffect(messageId, anchor) {
@@ -33314,7 +33572,11 @@ private fun ThreadOriginCard(
     selectedShareMessageIds: Set<String> = emptySet(),
     onToggleShareSelection: (String) -> Unit = {},
     longMessageCollapse: RaftLongMessageCollapseController? = null,
-    onToggleLongMessage: (String) -> Unit = {}
+    onToggleLongMessage: (String) -> Unit = {},
+    /** web MessageItem `data-popup-open`: the parent's menu or quick reactions are open. */
+    popupOpen: Boolean = false,
+    /** The parent's hover toolbar (web MessageHoverToolbar, no Reply in Thread in a thread). */
+    hoverToolbar: ThreadMessageHoverToolbarActions? = null
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     Column(
@@ -33402,6 +33664,8 @@ private fun ThreadOriginCard(
                                 isMarkdownTagValid = isMarkdownTagValid,
                                 onShowActions = { anchor -> onShowActions(origin, anchor) },
                                 onLongPressMenuOpened = { onLongPressMenuOpened(origin) },
+                                popupOpen = popupOpen,
+                                hoverToolbar = hoverToolbar,
                                 // The thread's parent takes a double tap too: its reaction bar.
                                 quickReactionsEnabled = threadMessageCanQuickReact(origin, timelineSlice, writeActionsEnabled),
                                 onShowQuickReactions = { anchor -> onShowQuickReactions(origin, anchor) },

@@ -14,6 +14,7 @@ import build.raft.app.model.ForwardMessageBundle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -69,6 +70,29 @@ class ThreadMessageMenuParityTest {
                 case.name,
             )
         }
+    }
+
+    @Test
+    fun hoverToolbarOffersWhatTheMenuOffers() {
+        // web MessageHoverToolbar: Add Reaction, Reply in Thread, Forward, Save, More Actions, each
+        // where the menu has it; a system message has no reaction and no More.
+        fun toolbar(message: RaftThreadMessageItem, slice: ThreadTimelineSlice = slice()) =
+            threadMessageHoverToolbarActions(
+                message = message,
+                capabilities = capabilities(message, slice = slice),
+                onShowReactions = {},
+                onForward = {},
+                onToggleSave = {},
+            )
+
+        val ordinary = assertNotNull(toolbar(message(isSaved = true)))
+        assertTrue(ordinary.reaction && ordinary.reply && ordinary.forward && ordinary.save && ordinary.more)
+        assertTrue(ordinary.saved)
+        val guest = assertNotNull(toolbar(message(), slice().withThreadViewerMessageActions(viewerIsGuest = true, forwardSourceAvailable = true)))
+        assertFalse(guest.forward)
+        val system = assertNotNull(toolbar(message(messageType = "System")))
+        assertFalse(system.reaction)
+        assertFalse(system.more)
     }
 
     @Test
