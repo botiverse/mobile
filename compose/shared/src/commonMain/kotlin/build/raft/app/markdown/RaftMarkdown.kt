@@ -105,6 +105,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
@@ -3335,8 +3336,11 @@ internal fun raftMarkdownTypography(
 ): DefaultMarkdownTypography {
     // Markdown is user content: every style derives from this base, so Han characters render in
     // Simplified Chinese forms throughout.
-    val resolvedBase =
+    val tableBase =
         raftMarkdownTextStyleWithInlineLineHeight(base, minInlineLineHeight).withRaftUserContentLocale()
+    // CSS fills each line greedily; Compose's default paragraph strategy re-balances the lines
+    // (a word or a code run moves down early). `LineBreak.Simple` is the greedy preset.
+    val resolvedBase = tableBase.copy(lineBreak = LineBreak.Simple)
     // web pre: `font-mono [font-size:inherit]` — Space Mono at the body size.
     val codeBlock =
         resolvedBase.copy(
@@ -3365,7 +3369,7 @@ internal fun raftMarkdownTypography(
         list = resolvedBase,
         link = resolvedBase.copy(color = RaftMarkdownLinkBlue),
         textLink = TextLinkStyles(style = raftMarkdownLinkSpanStyle(resolvedBase)),
-        table = resolvedBase
+        table = tableBase
     )
 }
 

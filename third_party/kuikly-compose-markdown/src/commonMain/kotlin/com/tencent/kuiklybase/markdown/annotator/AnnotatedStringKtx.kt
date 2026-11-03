@@ -41,6 +41,7 @@ import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
 import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
 import build.raft.app.markdown.raftMarkdownInlineCodeEdgeStyle
+import build.raft.app.markdown.withRaftInlineChipGaps
 import build.raft.app.markdown.raftInlineMathContentId
 import build.raft.app.markdown.raftMathFormulaRenders
 import build.raft.app.markdown.RaftMathErrorColor
@@ -543,7 +544,15 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                                 }.toAnnotatedString().text.withRaftInlineCodeWebBreaks()
                             }
                         if (usesEdgePaddingBridge) {
-                            appendRaftInlineCodeWithEdgeBoxes(codeText)
+                            // raft-ui InlineCode `px-1` is part of the code's inline box, so the
+                            // text beside it (and the line's edge) starts after it: reserve it as
+                            // glued gaps the painted fill covers, as chips do.
+                            withRaftInlineChipGaps(
+                                raftMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
+                                    .takeIf { codeText.isNotEmpty() }
+                            ) {
+                                appendRaftInlineCodeWithEdgeBoxes(codeText)
+                            }
                         } else {
                             append(codeText)
                         }
