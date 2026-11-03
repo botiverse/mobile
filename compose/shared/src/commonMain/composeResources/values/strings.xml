@@ -1942,6 +1942,7 @@
     <string name="agent_create_placeholder_select_runtime">Select runtime</string>
     <string name="agent_create_title">Create Agent</string>
     <string name="agent_create_title_external">Create External Agent</string>
+    <string name="agent_create_auto_join_channel">Will join %1$s automatically after it is created</string>
     <string name="agent_create_placeholder_description">Leave blank for a general-purpose agent, or describe a role...</string>
     <string name="agent_create_error_description_length">Description must be at most %1$d characters.</string>
     <string name="agent_create_action_create">Create Agent</string>
@@ -3050,7 +3051,6 @@
     <string name="thread_members_create_no_permission">You can add members here, but creating Agents on this server needs an owner or admin. Ask one to grant the permission, or have them create the Agent so you can add it.</string>
     <string name="thread_members_created_join_failed">Agent created, but joining this channel failed. Retry joining without creating another agent.</string>
     <string name="thread_members_create_named_agent">Create Agent “%1$s”</string>
-    <string name="thread_members_create_named_external_agent">Create External Agent “%1$s”</string>
     <string name="app_update_download_paused">Download paused — waiting to resume</string>
     <string name="app_update_download_failed">Download failed. Tap Retry to download again.</string>
     <string name="thread_audio_playback_position">Playback position</string>

@@ -51,9 +51,7 @@ import build.raft.designsystem.components.RaftChoiceListGroup
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
-import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftHoverTier
-import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMultiChoiceList
 import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.raftStateOverlay
@@ -71,8 +69,8 @@ import build.raft.designsystem.tokens.RaftStroke
  * Search, then raft-ui ChoiceList `multiple` ([RaftMultiChoiceList]): an Agents and a Humans
  * heading, a checkbox per candidate (tapping ticks it, never adds it), the selected people as
  * removable badges above the list, the "Create Agent" and "Create External Agent" rows pinned
- * under it (the new agent joins this channel once created), and "Add Selected (N)" — disabled at
- * 0 — sending one atomic batch.
+ * under it as on the web (the new agent joins this channel once created), and "Add Selected (N)"
+ * — disabled at 0 — sending one atomic batch.
  * Members already in this server's projection are not listed (web `memberCandidates`).
  */
 @Composable
@@ -217,7 +215,7 @@ internal fun ThreadAddMemberPanel(
                     createName = createName,
                     channelName = channelName,
                     enabled = !adding,
-                    onCreateAgent = { mode -> onCreateAgent(createName, mode) },
+                    onCreateAgent = onCreateAgent,
                 )
             },
         )
@@ -272,12 +270,67 @@ private fun ThreadAddMemberAvatar(
 private val ThreadAddMemberAvatarSize = 20.dp
 
 /**
- * The list's footer: one "Create Agent" row (artin 10-30, option A: two near-identical rows read
- * as clutter). It opens the web sidebar Agents "+" menu's two entries, in its order and wording
- * (`layout.sidebar.createAgent` / `createExternalAgent`): "Create Agent" (managed) and "Create
- * External Agent". Both open their create dialog with this channel preselected; a search that
- * found no one names the new agent in the row. Without create permission the row stays,
- * disabled, with the reason under it, so the way out is never hidden.
+ * One create row's state (web `createAgentFooter`, slock staging 947bd94): which kind it
+ * creates, whether it can be tapped, the name it carries into the dialog and how it reads.
+ */
+internal data class ThreadAddMemberCreateRowSpec(
+    val mode: MembersCreateAgentMode,
+    /** Tappable: create permission, and no batch is being added. */
+    val enabled: Boolean,
+    /**
+     * The name the dialog opens with; blank lets it suggest one. Only the managed row carries a
+     * search that found no one (web `createEntryPromoted`): the external dialog never gets it.
+     */
+    val initialName: String,
+    /** The managed row on the brand wash, named after the search, as the suggested way out. */
+    val promoted: Boolean,
+    /** "Joins #channel automatically after creation" under the label; not without permission. */
+    val showsAutoJoin: Boolean,
+)
+
+/**
+ * The list footer's create rows, in the web sidebar Agents "+" menu's order: "Create Agent"
+ * (managed) then "Create External Agent". Both stay listed without create permission (owner or
+ * admin, web `capabilities.createAgents`), disabled, so the way out is never hidden.
+ */
+internal fun threadAddMemberCreateRowSpecs(
+    canCreateAgents: Boolean,
+    createName: String,
+    adding: Boolean,
+): List<ThreadAddMemberCreateRowSpec> {
+    val enabled = canCreateAgents && !adding
+    val named = createName.isNotBlank() && canCreateAgents
+    return listOf(
+        ThreadAddMemberCreateRowSpec(
+            mode = MembersCreateAgentMode.Managed,
+            enabled = enabled,
+            initialName = if (named) createName else "",
+            promoted = named,
+            showsAutoJoin = canCreateAgents,
+        ),
+        ThreadAddMemberCreateRowSpec(
+            mode = MembersCreateAgentMode.External,
+            enabled = enabled,
+            initialName = "",
+            promoted = false,
+            showsAutoJoin = canCreateAgents,
+        ),
+    )
+}
+
+/**
+ * Who may create agents from Add Member (web `capabilities.createAgents`, which
+ * `serverPermissions.ts` grants to owners and admins only).
+ */
+internal fun threadAddMemberCanCreateAgents(permissions: build.raft.app.model.ServerPermissions?): Boolean =
+    permissions?.canManageSettings == true
+
+/**
+ * The list's footer (web `createAgentFooter`): a "Create Agent" row and a "Create External
+ * Agent" row, each opening its create dialog with this channel preselected; the new agent joins
+ * this channel once created (an external one then opens on its profile, to be set up). A search
+ * that found no one names the managed row. Without create permission both rows stay, disabled,
+ * with the one reason under them.
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRows(
@@ -285,40 +338,17 @@ internal fun ThreadAddMemberCreateAgentRows(
     createName: String,
     channelName: String,
     enabled: Boolean,
-    onCreateAgent: (MembersCreateAgentMode) -> Unit,
+    onCreateAgent: (name: String, mode: MembersCreateAgentMode) -> Unit,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
+    val specs = threadAddMemberCreateRowSpecs(canCreateAgents = canCreateAgents, createName = createName, adding = !enabled)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Box {
+        specs.forEach { spec ->
             ThreadAddMemberCreateAgentRow(
-                mode = MembersCreateAgentMode.Managed,
+                spec = spec,
                 canCreateAgents = canCreateAgents,
-                createName = createName,
                 channelName = channelName,
-                enabled = enabled,
-                onClick = { menuOpen = true },
+                onClick = { onCreateAgent(spec.initialName, spec.mode) },
             )
-            RaftDropdownMenu(
-                expanded = menuOpen && canCreateAgents && enabled,
-                onDismissRequest = { menuOpen = false },
-            ) {
-                RaftMenuItem(
-                    text = stringResource(Res.string.thread_members_create_agent),
-                    leadingIcon = { RaftGlyphIcon(RaftGlyph.Plus, size = 16.dp, color = RaftTheme.colors.foreground) },
-                    onClick = {
-                        menuOpen = false
-                        onCreateAgent(MembersCreateAgentMode.Managed)
-                    },
-                )
-                RaftMenuItem(
-                    text = stringResource(Res.string.agent_create_action_create_external),
-                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plug, size = 16.dp, color = RaftTheme.colors.foreground) },
-                    onClick = {
-                        menuOpen = false
-                        onCreateAgent(MembersCreateAgentMode.External)
-                    },
-                )
-            }
         }
         if (!canCreateAgents) {
             RaftText(
@@ -332,26 +362,22 @@ internal fun ThreadAddMemberCreateAgentRows(
 }
 
 /**
- * One create row (web `createAgentFooter`): a dashed tile (plus for a managed agent, the web
- * menu's plug for an external one), "Create Agent" / "Create External Agent" (or with
- * “name” when the search found no one; the managed row then sits on the brand wash as the
- * suggested way out) and "Joins #channel automatically after creation".
+ * One create row (web `createAgentFooter`): a dashed tile (plus for a managed agent, the plug for
+ * an external one), "Create Agent" / "Create External Agent" (the managed one "Create Agent
+ * “name”" on the brand wash when the search found no one) and "Joins #channel automatically
+ * after creation".
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRow(
-    mode: MembersCreateAgentMode,
+    spec: ThreadAddMemberCreateRowSpec,
     canCreateAgents: Boolean,
-    createName: String,
     channelName: String,
-    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val external = mode == MembersCreateAgentMode.External
-    val named = createName.isNotBlank() && canCreateAgents
-    val promoted = named && !external
-    val active = canCreateAgents && enabled
+    val external = spec.mode == MembersCreateAgentMode.External
+    val active = spec.enabled
     val chipShape = RoundedCornerShape(RaftRadius.Chip)
     val tileInk = if (canCreateAgents) colors.foregroundHint else colors.foregroundDisabled
     val source = remember { MutableInteractionSource() }
@@ -359,7 +385,7 @@ internal fun ThreadAddMemberCreateAgentRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .then(if (promoted) Modifier.background(colors.brandSoft, chipShape) else Modifier)
+            .then(if (spec.promoted) Modifier.background(colors.brandSoft, chipShape) else Modifier)
             .raftStateOverlay(overlay, chipShape)
             .raftPointerHover(source, enabled = active)
             .clickable(interactionSource = source, indication = null, enabled = active, role = Role.Button, onClick = onClick)
@@ -391,9 +417,8 @@ internal fun ThreadAddMemberCreateAgentRow(
         Column(Modifier.weight(1f)) {
             RaftText(
                 when {
-                    external && named -> stringResource(Res.string.thread_members_create_named_external_agent, createName)
                     external -> stringResource(Res.string.agent_create_action_create_external)
-                    named -> stringResource(Res.string.thread_members_create_named_agent, createName)
+                    spec.promoted -> stringResource(Res.string.thread_members_create_named_agent, spec.initialName)
                     else -> stringResource(Res.string.thread_members_create_agent)
                 },
                 style = typography.callout.copy(fontWeight = FontWeight.SemiBold),
@@ -401,7 +426,7 @@ internal fun ThreadAddMemberCreateAgentRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (canCreateAgents) {
+            if (spec.showsAutoJoin) {
                 RaftText(
                     stringResource(Res.string.thread_add_member_create_agent_auto_join, "#$channelName"),
                     style = typography.caption,
