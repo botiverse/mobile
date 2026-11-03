@@ -5,6 +5,9 @@ import android.content.Context
 import android.graphics.Canvas
 import android.os.SystemClock
 import android.os.Trace
+import android.view.ActionMode
+import android.view.View
+import build.raft.app.RaftFloatingToolbarAnchorGuard
 import android.util.AttributeSet
 import android.widget.FrameLayout
 
@@ -46,6 +49,19 @@ internal class RaftTraceFrameLayout @JvmOverloads constructor(
             reportHostTraversal("dispatchDraw", startedAt)
         }
     }
+
+    // Every Compose page sits under this container: its text fields' floating toolbars (the
+    // Cut / Copy / Paste bar) stay where they are while they close (RaftFloatingToolbarAnchorGuard).
+    override fun startActionModeForChild(
+            originalView: View?,
+            callback: ActionMode.Callback?,
+            type: Int
+    ): ActionMode? =
+            super.startActionModeForChild(
+                    originalView,
+                    callback?.let { RaftFloatingToolbarAnchorGuard.wrap(it, type) },
+                    type
+            )
 
     private fun reportHostTraversal(stage: String, startedAt: Long) {
         RaftPerformanceDiagnostics.recordHostTraversal(
