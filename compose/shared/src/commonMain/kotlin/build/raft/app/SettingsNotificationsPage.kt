@@ -1,52 +1,5 @@
 package build.raft.app
 
-import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
-import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonSize
-import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftSwitchButton
-import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.raftCardSurface
-import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
-import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
-import build.raft.app.data.RaftBackgroundConnectionControls
-import build.raft.app.data.RaftBackgroundConnectionControlsRegistry
-import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
-import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
-import build.raft.app.data.MOBILE_ACTION_PERMISSION
-import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
-import build.raft.app.data.MOBILE_ACTION_PUSH_PREVIEW_MODE
-import build.raft.app.data.MOBILE_ACTION_SETTINGS
-import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
-import build.raft.app.data.SharedSettingsActionState
-import org.jetbrains.compose.resources.StringResource
-import build.raft.app.data.NotificationPreferenceSnapshot
-import build.raft.app.data.ServerPushMode
-import build.raft.app.data.PushPreviewMode
-import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.SettingsMobileSnapshot
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import build.raft.app.data.RaftNotificationAccountSettingsPatch
-import build.raft.app.data.RaftNotificationAccountSettings
-import build.raft.app.data.RaftNotificationAccountSettingsStore
-import build.raft.app.data.RaftNotificationMobileDelay
-import build.raft.app.data.RaftNotificationPauseOption
-import build.raft.app.data.raftCurrentTimeZoneId
-import build.raft.app.data.raftMinuteOfDayLabel
-import build.raft.app.data.raftNowEpochMillis
-import build.raft.app.data.raftPausedUntilLabel
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,14 +15,58 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
+import build.raft.app.components.RaftSlotIcon
+import build.raft.app.components.RaftSwitchButton
+import build.raft.app.components.SegmentedControlOption
+import build.raft.app.components.raftCardSurface
+import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
+import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
+import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
+import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
+import build.raft.app.data.MOBILE_ACTION_PERMISSION
+import build.raft.app.data.MOBILE_ACTION_PUSH_PREVIEW_MODE
+import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
+import build.raft.app.data.MOBILE_ACTION_SETTINGS
+import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
+import build.raft.app.data.NotificationPreferenceSnapshot
+import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.RaftBackgroundConnectionControls
+import build.raft.app.data.RaftBackgroundConnectionControlsRegistry
+import build.raft.app.data.RaftNotificationAccountSettings
+import build.raft.app.data.RaftNotificationAccountSettingsPatch
+import build.raft.app.data.RaftNotificationAccountSettingsStore
+import build.raft.app.data.RaftNotificationMobileDelay
+import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.ServerPushMode
+import build.raft.app.data.SettingsMobileSnapshot
+import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.data.raftCurrentTimeZoneId
+import build.raft.app.data.raftNowEpochMillis
+import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowValue
+import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.theme.RaftTheme
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 
 @Composable
 internal fun SettingsNotificationsContent(
@@ -95,11 +92,36 @@ internal fun SettingsNotificationsContent(
     onPermission: () -> Unit,
     onSettings: () -> Unit,
     onTest: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    /** The account's servers, the current one first ([settingsNotificationServers]). */
+    servers: List<SettingsNotificationServer> = emptyList(),
+    /** Fixed clock and zone for screenshot fixtures; null: the device's. */
+    nowEpochMillis: Long? = null,
+    timeZoneId: String? = null,
+    /** Fixture account settings in place of the store's (screenshot and visual fixtures). */
+    accountSettingsOverride: RaftNotificationAccountSettings? = null
 ) {
+    // The account settings (`me/notification-settings`): null on an older server or before they
+    // load, which keeps the previous workspace and preview cards instead of controls that could
+    // only fail.
+    val accountState by RaftNotificationAccountSettingsStore.state.collectAsState()
+    val accountSettings = accountSettingsOverride ?: accountState.settings
+    val scope = rememberCoroutineScope()
+    var failedSection by remember { mutableStateOf<SettingsNotificationsSaveSection?>(null) }
+    fun save(section: SettingsNotificationsSaveSection, patch: RaftNotificationAccountSettingsPatch, onDone: (Boolean) -> Unit = {}) {
+        failedSection = null
+        scope.launch {
+            val saved = RaftNotificationAccountSettingsStore.update(patch)
+            if (!saved) failedSection = section
+            onDone(saved)
+        }
+    }
+    val now = nowEpochMillis ?: raftNowEpochMillis()
+    val zone = timeZoneId ?: raftCurrentTimeZoneId()
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        // Web `stack-y-6` between the sections.
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         when (state) {
             ScreenLoadState.Loading ->
@@ -158,6 +180,8 @@ internal fun SettingsNotificationsContent(
                     item { Spacer(Modifier.height(bottomContentPadding)) }
                     return@LazyColumn
                 }
+                // Web order (NotificationSettingsSection): this device, pause and schedule, content,
+                // servers.
                 item {
                     SettingsPushStatusCard(
                         snapshot = snapshot,
@@ -176,23 +200,57 @@ internal fun SettingsNotificationsContent(
                         onTest = onTest
                     )
                 }
-                item {
-                    SettingsServerNotificationModeCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onServerNotificationModeChange = onServerNotificationModeChange
-                    )
-                }
-                // Account-wide (slock docs/contracts/notifications.md §1.2 / §1.5): pause, quiet
-                // hours and sound apply on every device; preview privacy below too.
-                item { SettingsNotificationAccountCard() }
-                if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available) {
+                if (accountSettings != null) {
                     item {
-                        SettingsPushPreviewModeCard(
+                        SettingsNotificationPauseSection(
+                            settings = accountSettings,
+                            saving = accountState.saving,
+                            saveFailed = failedSection == SettingsNotificationsSaveSection.Schedule,
+                            nowEpochMillis = now,
+                            timeZoneId = zone,
+                            onSave = { patch, onDone -> save(SettingsNotificationsSaveSection.Schedule, patch, onDone) }
+                        )
+                    }
+                    item {
+                        // The phone keeps a device copy of the preview for the text it builds itself:
+                        // it saves through the settings store, which writes the account too.
+                        val devicePreview = raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available
+                        SettingsNotificationContentSection(
+                            settings = accountSettings,
+                            previewMode = accountSettings.preview,
+                            saving = accountState.saving || actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.inProgress,
+                            saveFailed =
+                                failedSection == SettingsNotificationsSaveSection.Content ||
+                                    actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.errorCode != null,
+                            onPreviewChange = { mode ->
+                                if (devicePreview) {
+                                    onPushPreviewModeChange(mode.wireName)
+                                } else {
+                                    save(SettingsNotificationsSaveSection.Content, RaftNotificationAccountSettingsPatch(previewMode = mode))
+                                }
+                            },
+                            onSave = { patch -> save(SettingsNotificationsSaveSection.Content, patch) }
+                        )
+                    }
+                    if (servers.isNotEmpty()) {
+                        item { SettingsNotificationServersSection(servers) }
+                    }
+                } else {
+                    item {
+                        SettingsServerNotificationModeCard(
                             snapshot = snapshot,
                             actionState = actionState,
-                            onPushPreviewModeChange = onPushPreviewModeChange
+                            onServerNotificationModeChange = onServerNotificationModeChange
                         )
+                    }
+                    if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available) {
+                        item {
+                            SettingsPushPreviewModeCard(
+                                snapshot = snapshot,
+                                actionState = actionState,
+                                onPushPreviewModeChange = onPushPreviewModeChange
+                            )
+                        }
                     }
                 }
             }
@@ -201,6 +259,13 @@ internal fun SettingsNotificationsContent(
     }
 }
 
+/** The card a failed account save shows its warning in. */
+private enum class SettingsNotificationsSaveSection { Schedule, Content }
+
+/**
+ * This device (web `ThisDeviceCard`): what this device can do. The system permission, the device's
+ * own switches and a test notification through the real push path.
+ */
 @Composable
 private fun SettingsPushStatusCard(
     snapshot: SettingsMobileSnapshot,
@@ -220,8 +285,8 @@ private fun SettingsPushStatusCard(
 ) {
     val anyActionBusy = actionState?.inProgress == true
     val permissionGranted = settingsNotificationPermissionGranted(snapshot.notificationPermission.statusLabel)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNotificationSectionLabel(stringResource(Res.string.settings_notifications_system))
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SettingsNotificationsSectionHeader(RaftLucideIconName.Bell, stringResource(Res.string.settings_notifications_device_section))
         SettingsNotificationPermissionBanner(
             detail = settingsNotificationPermissionDetail(
                 permissionGranted = permissionGranted,
@@ -237,22 +302,20 @@ private fun SettingsPushStatusCard(
         if (actionState?.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_SETTINGS) && actionState?.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
-
-        SettingsNotificationSectionLabel(stringResource(Res.string.settings_notifications_on_device))
-        SettingsNotificationPreferenceGroup {
-            SettingsNotificationToggleRow(
+        RaftListRowGroup {
+            SettingsNotificationSwitchRow(
                 title = stringResource(Res.string.settings_notifications_message_title),
                 detail = stringResource(Res.string.settings_notifications_message_detail),
                 checked = notificationPreferenceSnapshot.enabled,
                 enabled = !preferenceBusy,
+                divider = false,
                 onCheckedChange = onNotificationPreferenceChange
             )
-            SettingsNotificationDivider()
             val backgroundConnection = remember { RaftBackgroundConnectionControlsRegistry.offeredControls() }
             if (backgroundConnection != null) {
                 // Android without Google Play services: the same preference keeps the realtime connection
                 // alive from a foreground service, the only notification path such a device has.
-                SettingsNotificationToggleRow(
+                SettingsNotificationSwitchRow(
                     title = stringResource(Res.string.settings_notifications_keep_connection_title),
                     detail = stringResource(Res.string.settings_notifications_keep_connection_detail),
                     checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
@@ -265,36 +328,31 @@ private fun SettingsPushStatusCard(
                     }
                 )
                 if (notificationPreferenceSnapshot.foregroundKeepAliveEnabled) {
-                    SettingsNotificationDivider()
                     RaftBackgroundConnectionBatteryRow(backgroundConnection)
                 }
-                SettingsNotificationDivider()
             } else if (raftPlatformSupportsBackgroundRealtime()) {
-                SettingsNotificationToggleRow(
+                SettingsNotificationSwitchRow(
                     title = stringResource(Res.string.settings_notifications_background_realtime_title),
                     detail = stringResource(Res.string.settings_notifications_background_realtime_detail, raftPlatformProductName()),
                     checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
                     enabled = !foregroundKeepAliveBusy,
                     onCheckedChange = onForegroundKeepAlivePreferenceChange
                 )
-                SettingsNotificationDivider()
             }
-            SettingsNotificationToggleRow(
+            SettingsNotificationSwitchRow(
                 title = stringResource(Res.string.settings_notifications_offline_computers_title),
                 detail = stringResource(Res.string.settings_notifications_offline_computers_detail),
                 checked = notificationPreferenceSnapshot.offlineComputerAlertsEnabled,
                 enabled = !offlineComputerAlertsBusy,
                 onCheckedChange = onOfflineComputerAlertsChange
             )
-            SettingsNotificationDivider()
-            SettingsNotificationToggleRow(
+            SettingsNotificationSwitchRow(
                 title = stringResource(Res.string.settings_foreground_banners_title),
                 detail = stringResource(Res.string.settings_foreground_banners_detail),
                 checked = snapshot.foregroundMessageBanners.enabled,
                 enabled = snapshot.foregroundMessageBanners.available && !foregroundMessageBannersBusy,
                 onCheckedChange = onForegroundMessageBannersChange
             )
-            SettingsNotificationDivider()
             SettingsNotificationActionRow(
                 title = stringResource(Res.string.settings_notifications_test_title),
                 detail = snapshot.testNotification.localizedTestNotificationDetail(),
@@ -302,24 +360,38 @@ private fun SettingsPushStatusCard(
                 enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && !anyActionBusy,
                 onClick = onTest
             )
-            if (actionState?.action in setOf(
-                    MOBILE_ACTION_NOTIFICATION_PREFERENCE,
-                    MOBILE_ACTION_FOREGROUND_KEEP_ALIVE,
-                    MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS,
-                    MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
-                ) && actionState?.errorCode != null
-            ) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    SettingsFormErrorText(actionState)
-                }
-            }
-            if (actionState?.action == MOBILE_ACTION_TEST_NOTIFICATION && actionState.errorCode != null) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    SettingsFormErrorText(actionState)
-                }
-            }
+        }
+        if (actionState?.action in setOf(
+                MOBILE_ACTION_NOTIFICATION_PREFERENCE,
+                MOBILE_ACTION_FOREGROUND_KEEP_ALIVE,
+                MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS,
+                MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS,
+                MOBILE_ACTION_TEST_NOTIFICATION
+            ) && actionState?.errorCode != null
+        ) {
+            SettingsFormErrorText(actionState)
         }
     }
+}
+
+/** A device setting that applies at once: ListRow plain with its switch (web `ListRow` + `Switch`). */
+@Composable
+private fun SettingsNotificationSwitchRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    divider: Boolean = true
+) {
+    RaftListRow(
+        title = title,
+        variant = RaftListRowVariant.Plain,
+        description = detail,
+        wrapDescription = true,
+        divider = divider,
+        trailing = { RaftSwitch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled, label = title) }
+    )
 }
 
 internal fun settingsNotificationPermissionGranted(status: String): Boolean =
@@ -482,11 +554,6 @@ private fun SettingsNotificationPreferenceGroup(content: @Composable ColumnScope
 }
 
 @Composable
-private fun SettingsNotificationDivider() {
-    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-}
-
-@Composable
 private fun SettingsNotificationActionRow(
     title: String,
     detail: String,
@@ -494,34 +561,19 @@ private fun SettingsNotificationActionRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = title,
-                style = RaftType.Button.copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            SettingsFormDetailText(detail)
+    RaftListRow(
+        title = title,
+        variant = RaftListRowVariant.Plain,
+        description = detail,
+        wrapDescription = true,
+        divider = true,
+        enabled = enabled,
+        onClick = onClick,
+        trailing = {
+            RaftListRowValue(status)
+            RaftLucideIcon(RaftLucideIconName.Send, modifier = Modifier.size(18.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
         }
-        Text(
-            text = status,
-            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        RaftLucideIcon(RaftLucideIconName.Send, modifier = Modifier.size(18.dp))
-    }
+    )
 }
 
 /**
@@ -686,209 +738,6 @@ private fun ServerPushMode.settingsNotificationModeDetail(): String =
     }
 
 /**
- * Pause, quiet hours, sound and the phone push delay: the account-wide settings of `me/notification-settings` (design
- * §4.3), read from and written through [RaftNotificationAccountSettingsStore], which applies a change
- * at once and rolls it back when the server refuses.
- */
-@Composable
-private fun SettingsNotificationAccountCard() {
-    val accountState by RaftNotificationAccountSettingsStore.state.collectAsState()
-    // Shown once the account settings loaded: an older server without `me/notification-settings`
-    // (or no answer yet) shows no controls that could only fail.
-    val settings = accountState.settings ?: return
-    val scope = rememberCoroutineScope()
-    var pauseDialogOpen by remember { mutableStateOf(false) }
-    var quietTimeEditing by remember { mutableStateOf<Boolean?>(null) } // true: start, false: end
-    var mobileDelayDialogOpen by remember { mutableStateOf(false) }
-    // Null on a server without `mobileDelay`: no row, so the field is never sent to it.
-    val mobileDelay = settings.mobileDelaySetting
-    val busy = accountState.saving
-    fun update(patch: RaftNotificationAccountSettingsPatch) {
-        scope.launch { RaftNotificationAccountSettingsStore.update(patch) }
-    }
-    val now = raftNowEpochMillis()
-    val pausedUntil = settings.pausedUntilEpochMillis()?.takeIf { it > now }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNotificationSectionLabel(stringResource(Res.string.settings_notifications_everywhere))
-        SettingsNotificationPreferenceGroup {
-            SettingsNotificationValueRow(
-                title = stringResource(Res.string.settings_notifications_pause_title),
-                detail = stringResource(Res.string.settings_notifications_pause_detail),
-                value =
-                    pausedUntil?.let { stringResource(Res.string.settings_notifications_paused_until, raftPausedUntilLabel(it, now)) }
-                        ?: stringResource(Res.string.settings_notifications_pause_off),
-                enabled = !busy,
-                onClick = { pauseDialogOpen = true }
-            )
-            SettingsNotificationDivider()
-            SettingsNotificationToggleRow(
-                title = stringResource(Res.string.settings_notifications_quiet_hours_title),
-                detail = stringResource(Res.string.settings_notifications_quiet_hours_detail, settings.quietHours.timeZone),
-                checked = settings.quietHours.enabled,
-                enabled = !busy,
-                onCheckedChange = { enabled ->
-                    // Turning quiet hours on records this device's zone (the server needs an IANA zone).
-                    val zone = if (enabled) raftCurrentTimeZoneId() else settings.quietHours.timeZone
-                    update(RaftNotificationAccountSettingsPatch(quietHours = settings.quietHours.copy(enabled = enabled, timeZone = zone)))
-                }
-            )
-            if (settings.quietHours.enabled) {
-                SettingsNotificationDivider()
-                SettingsNotificationValueRow(
-                    title = stringResource(Res.string.settings_notifications_quiet_hours_start),
-                    detail = "",
-                    value = raftMinuteOfDayLabel(settings.quietHours.startMinute),
-                    enabled = !busy,
-                    onClick = { quietTimeEditing = true }
-                )
-                SettingsNotificationDivider()
-                SettingsNotificationValueRow(
-                    title = stringResource(Res.string.settings_notifications_quiet_hours_end),
-                    detail = "",
-                    value = raftMinuteOfDayLabel(settings.quietHours.endMinute),
-                    enabled = !busy,
-                    onClick = { quietTimeEditing = false }
-                )
-            }
-            SettingsNotificationDivider()
-            SettingsNotificationToggleRow(
-                title = stringResource(Res.string.settings_notifications_sound_title),
-                detail = stringResource(Res.string.settings_notifications_sound_detail),
-                checked = settings.sound,
-                enabled = !busy,
-                onCheckedChange = { sound -> update(RaftNotificationAccountSettingsPatch(sound = sound)) }
-            )
-            if (mobileDelay != null) {
-                SettingsNotificationDivider()
-                SettingsNotificationValueRow(
-                    title = stringResource(Res.string.settings_notifications_mobile_delay_title),
-                    detail = mobileDelay.localizedMobileDelayLabel(),
-                    value = "",
-                    enabled = !busy,
-                    onClick = { mobileDelayDialogOpen = true }
-                )
-            }
-            if (accountState.errorCode != null && accountState.settings != null) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    SettingsFormErrorText(stringResource(Res.string.settings_notifications_account_save_failed))
-                }
-            }
-        }
-    }
-    if (pauseDialogOpen) {
-        RaftUnifiedDialog(
-            title = stringResource(Res.string.settings_notifications_pause_title),
-            onDismiss = { pauseDialogOpen = false },
-            contentSpacing = 8.dp
-        ) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SettingsServerSelectRow(
-                    title =
-                        if (pausedUntil != null) {
-                            stringResource(Res.string.settings_notifications_resume)
-                        } else {
-                            stringResource(Res.string.settings_notifications_pause_off)
-                        },
-                    detail = "",
-                    selected = pausedUntil == null,
-                    enabled = true,
-                    onClick = {
-                        pauseDialogOpen = false
-                        if (pausedUntil != null) update(RaftNotificationAccountSettingsPatch(resume = true))
-                    }
-                )
-                RaftNotificationPauseOption.entries.forEach { option ->
-                    SettingsServerSelectRow(
-                        title = option.localizedPauseLabel(),
-                        detail = "",
-                        selected = false,
-                        enabled = true,
-                        onClick = {
-                            pauseDialogOpen = false
-                            update(RaftNotificationAccountSettingsPatch(pausedUntil = option.pausedUntil(raftNowEpochMillis())))
-                        }
-                    )
-                }
-            }
-        }
-    }
-    if (mobileDelayDialogOpen && mobileDelay != null) {
-        RaftUnifiedDialog(
-            title = stringResource(Res.string.settings_notifications_mobile_delay_title),
-            onDismiss = { mobileDelayDialogOpen = false },
-            contentSpacing = 8.dp
-        ) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                RaftNotificationMobileDelay.entries.forEach { option ->
-                    SettingsServerSelectRow(
-                        title = option.localizedMobileDelayLabel(),
-                        detail =
-                            if (option == RaftNotificationMobileDelay.Always) {
-                                stringResource(Res.string.settings_notifications_mobile_delay_always_detail)
-                            } else {
-                                ""
-                            },
-                        selected = option == mobileDelay,
-                        enabled = true,
-                        onClick = {
-                            mobileDelayDialogOpen = false
-                            settingsMobileDelayPatch(settings, option)?.let(::update)
-                        }
-                    )
-                }
-            }
-        }
-    }
-    quietTimeEditing?.let { editingStart ->
-        val current = if (editingStart) settings.quietHours.startMinute else settings.quietHours.endMinute
-        RaftUnifiedDialog(
-            title =
-                stringResource(
-                    if (editingStart) Res.string.settings_notifications_quiet_hours_start else Res.string.settings_notifications_quiet_hours_end
-                ),
-            onDismiss = { quietTimeEditing = null },
-            contentSpacing = 8.dp
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                (0 until 48).map { it * 30 }.forEach { minute ->
-                    SettingsServerSelectRow(
-                        title = raftMinuteOfDayLabel(minute),
-                        detail = "",
-                        selected = minute == current,
-                        // Start and end must differ (an empty window); the other end's time is not offered.
-                        enabled = minute != (if (editingStart) settings.quietHours.endMinute else settings.quietHours.startMinute),
-                        onClick = {
-                            quietTimeEditing = null
-                            // An edit also records this device's zone: the hours mean local time here.
-                            val zone = raftCurrentTimeZoneId()
-                            val quiet =
-                                if (editingStart) {
-                                    settings.quietHours.copy(startMinute = minute, timeZone = zone)
-                                } else {
-                                    settings.quietHours.copy(endMinute = minute, timeZone = zone)
-                                }
-                            update(RaftNotificationAccountSettingsPatch(quietHours = quiet))
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RaftNotificationPauseOption.localizedPauseLabel(): String =
-    when (this) {
-        RaftNotificationPauseOption.Minutes30 -> stringResource(Res.string.settings_notifications_pause_30m)
-        RaftNotificationPauseOption.Hour1 -> stringResource(Res.string.settings_notifications_pause_1h)
-        RaftNotificationPauseOption.Hours2 -> stringResource(Res.string.settings_notifications_pause_2h)
-        RaftNotificationPauseOption.TomorrowMorning -> stringResource(Res.string.settings_notifications_pause_tomorrow)
-    }
-
-/**
  * The PATCH for picking [option], or null when it is already the stored wire value. An unknown
  * stored value shows as Inactive, so picking Inactive still writes it.
  */
@@ -903,49 +752,10 @@ internal fun settingsMobileDelayPatch(
     }
 
 @Composable
-private fun RaftNotificationMobileDelay.localizedMobileDelayLabel(): String =
+internal fun RaftNotificationMobileDelay.localizedMobileDelayLabel(): String =
     when (this) {
         RaftNotificationMobileDelay.Always -> stringResource(Res.string.settings_notifications_mobile_delay_always)
         RaftNotificationMobileDelay.Inactive -> stringResource(Res.string.settings_notifications_mobile_delay_inactive)
         RaftNotificationMobileDelay.Minutes1 -> stringResource(Res.string.settings_notifications_mobile_delay_minute_1)
         else -> stringResource(Res.string.settings_notifications_mobile_delay_minutes, minutes ?: 0)
     }
-
-/** A row with a value on its trailing side that opens a choice (pause, quiet hours start / end). */
-@Composable
-private fun SettingsNotificationValueRow(
-    title: String,
-    detail: String,
-    value: String,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = title,
-                style = RaftType.Button.copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (detail.isNotBlank()) SettingsFormDetailText(detail)
-        }
-        Text(
-            text = value,
-            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(18.dp))
-    }
-}

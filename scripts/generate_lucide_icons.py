@@ -226,6 +226,7 @@ LUCIDE_ICONS = [
     "message-square-plus",
     "monitor",
     "monitor-x",
+    "moon",
     "mosaic",
     "music",
     "network",

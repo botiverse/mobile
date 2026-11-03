@@ -695,7 +695,8 @@ internal fun SettingsNativeDetailPageContent(
                     onPermission = { onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission) },
                     onSettings = { onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings) },
                     onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
-                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
+                    servers = remember(session) { settingsNotificationServers(session) }
                 )
             SettingsNativeDetailPage.Mobile ->
                 SettingsMobileContent(
