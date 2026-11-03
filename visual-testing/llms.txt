@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 20:28:44 UTC
-Latest run: cd8e52ea-20261103200309
-Latest commit: cd8e52ea-20261103200309
-Commit subject: People in Add Member show the person icon, as on the web (#4244)
+Generated: 2026-11-03 20:58:18 UTC
+Latest run: 515ed2a6-20261103205636
+Latest commit: 515ed2a6-20261103205636
+Commit subject: refactor(thread): one threadPageServerId for flags and the member directory
 Providers: react vs android
 Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 33 / total 93, pending 60
+AI analysis: ready 30 / total 93, pending 63
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -114,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 515ed2a6-20261103205636: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/515ed2a6-20261103205636/component-matrix.json, page runs/515ed2a6-20261103205636/
 - cd8e52ea-20261103200309: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/cd8e52ea-20261103200309/component-matrix.json, page runs/cd8e52ea-20261103200309/
 - 2bf19cb1-20261103170447: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/2bf19cb1-20261103170447/component-matrix.json, page runs/2bf19cb1-20261103170447/
 - fcf6ae60-20261103094938: react vs android, total 93, pass 1, basic-pass 12, different 78, matrix runs/fcf6ae60-20261103094938/component-matrix.json, page runs/fcf6ae60-20261103094938/
