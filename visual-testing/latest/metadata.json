@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T04:17:50.647Z",
+  "generatedAt": "2026-11-03T04:52:04.663Z",
   "runId": "da544d25-20261103041702",
   "commit": "da544d25-20261103041702",
   "commitSubject": "test(vt): the search pin-menu cases long-press the entity row below the wrapped filter chips",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 95,
-        "ready": 10,
-        "pending": 85
+        "ready": 23,
+        "pending": 72
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 95,
-    "ready": 10,
-    "pending": 85
+    "ready": 23,
+    "pending": 72
   },
   "componentMatrixSummary": {
     "total": 124,
