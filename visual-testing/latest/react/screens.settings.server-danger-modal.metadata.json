@@ -8,6 +8,11 @@
     "height": 844,
     "density": 3
   },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
   "selector": "[data-visual-case='screens.settings.server-danger-modal']",
   "crop": {
     "mode": "element",
@@ -26,5 +31,6 @@
     },
     "outset": null
   },
-  "capturedAt": "2026-11-03T06:57:05.851Z"
+  "fullLength": null,
+  "capturedAt": "2026-11-03T09:41:32.563Z"
 }

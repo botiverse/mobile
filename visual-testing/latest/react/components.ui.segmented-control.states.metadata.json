@@ -8,6 +8,11 @@
     "height": 760,
     "density": 3
   },
+  "captureViewport": {
+    "width": 390,
+    "height": 760,
+    "density": 3
+  },
   "selector": "[data-visual-case='components.ui.segmented-control.states']",
   "crop": {
     "mode": "element",
@@ -26,5 +31,6 @@
     },
     "outset": null
   },
-  "capturedAt": "2026-11-03T06:55:12.210Z"
+  "fullLength": null,
+  "capturedAt": "2026-11-03T09:37:12.030Z"
 }

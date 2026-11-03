@@ -1,0 +1,53 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "screens.home.channel-list",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_home_channel_list_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.home.channel-list.png",
+              "viewport": { "width": 1170, "height": 2916, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 972 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-viewport-density-resize-full-length",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 473,
+                  "dominantRatio": 0.8969227
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2726,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2916,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4275,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "6b2a62b59263aeb6296cab19d53e4795",
+                "bootId": "0686545f-0dfa-4007-b5d4-c48122f7731d",
+                "capturedAtEpochMs": 1793699154730,
+                "capturedAtMonotonicNs": 199012959277
+              },
+              "clampedToShortWindow": false,
+              "fullLength": {"requested":true,"baseViewportHeight":844,"expandedViewportHeight":972,"initialOverflowDp":128,"residualOverflowDp":0,"iterations":1,"capped":false,"maxHeight":2700,"scroller":"lazy#1952@168..2256"},
+              "capturedAt": "1793699154730"
+            }

@@ -8,6 +8,11 @@
     "height": 844,
     "density": 3
   },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
   "selector": "[data-visual-case='screens.members.agent-detail.reminders']",
   "crop": {
     "mode": "element",
@@ -26,5 +31,16 @@
     },
     "outset": null
   },
-  "capturedAt": "2026-11-03T06:56:55.308Z"
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 844,
+    "initialOverflowPx": 0,
+    "residualOverflowPx": 0,
+    "iterations": 0,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": null
+  },
+  "capturedAt": "2026-11-03T09:41:06.483Z"
 }

@@ -1,0 +1,46 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "screens.home.channel-list.dark",
+  "image": "visual-testing-results/react/screens.home.channel-list.dark.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 882,
+    "density": 3
+  },
+  "selector": "[data-visual-case='screens.home.channel-list.dark']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 882
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 882
+    },
+    "outset": null
+  },
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 882,
+    "initialOverflowPx": 38,
+    "residualOverflowPx": 0,
+    "iterations": 1,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": "div[data-testid=sidebar-scroll-surface].scrollbar-list.flex-1.overflow-x-hidden.overflow-y-auto"
+  },
+  "capturedAt": "2026-11-03T09:41:43.435Z"
+}

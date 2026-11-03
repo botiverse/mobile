@@ -7,20 +7,20 @@
               "stringDescLocale": null,
               "route": {"pageName":"compose_thread_composer_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.thread.composer.member-suggestions.png",
-              "viewport": { "width": 1026, "height": 960, "density": 1 },
+              "viewport": { "width": 1026, "height": 1074, "density": 1 },
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
                 "contract": "component-bounds",
-                "rect": { "x": 24, "y": 0, "width": 342, "height": 320 }
+                "rect": { "x": 24, "y": 0, "width": 342, "height": 358 }
               },
               "capture": {
                 "method": "app-window-root-draw-manual-crop-density-resize",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 781,
-                  "dominantRatio": 0.65687543
+                  "uniqueColors": 942,
+                  "dominantRatio": 0.6515694
                 },
                 "readyTokenObserved": false,
                 "readyTokenRequired": false,
@@ -37,16 +37,17 @@
     "laidOutViews": 7,
     "visibleContentLeafViews": 0,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4873,
+    "processId": 4605,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "5c3f15185b4c590c7b15d54b005afedf",
-                "bootId": "d34ff7c9-9031-4c07-b3ff-f34c84d1b083",
-                "capturedAtEpochMs": 1793689257966,
-                "capturedAtMonotonicNs": 148305313439
+                "generation": "cdfe2043d674dfb869e1d3e41c315157",
+                "bootId": "91117f3b-0e48-4711-9702-c82dfeb59ccf",
+                "capturedAtEpochMs": 1793699143583,
+                "capturedAtMonotonicNs": 190341893238
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1793689257966"
+              "fullLength": null,
+              "capturedAt": "1793699143583"
             }

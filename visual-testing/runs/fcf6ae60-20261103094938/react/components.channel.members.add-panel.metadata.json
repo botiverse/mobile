@@ -1,0 +1,46 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.channel.members.add-panel",
+  "image": "visual-testing-results/react/components.channel.members.add-panel.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 895,
+    "density": 3
+  },
+  "selector": "body",
+  "crop": {
+    "mode": "element",
+    "contract": "page-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 895
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 895
+    },
+    "outset": null
+  },
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 895,
+    "initialOverflowPx": 51,
+    "residualOverflowPx": 0,
+    "iterations": 1,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": "div.min-h-0.min-w-0.p-1.flex-1"
+  },
+  "capturedAt": "2026-11-03T09:39:47.929Z"
+}

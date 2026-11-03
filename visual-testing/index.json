@@ -1,40 +1,40 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-03T07:45:22.731Z",
-  "latestRunId": "5468c13a-20261103070304",
+  "generatedAt": "2026-11-03T09:50:41.443Z",
+  "latestRunId": "fcf6ae60-20261103094938",
   "latest": {
-    "runId": "5468c13a-20261103070304",
-    "commit": "5468c13a-20261103070304",
-    "commitSubject": "fix(ui): thread header title uses the headline token; bottom bar height is 60 (#4181)",
-    "generatedAt": "2026-11-03T07:45:22.731Z",
+    "runId": "fcf6ae60-20261103094938",
+    "commit": "fcf6ae60-20261103094938",
+    "commitSubject": "feat(visual): full-length capture on Android for flagged cases (#4192)",
+    "generatedAt": "2026-11-03T09:50:41.443Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 94,
+      "total": 93,
       "same": 0,
-      "pass": 2,
-      "basic-pass": 14,
-      "different": 76,
+      "pass": 1,
+      "basic-pass": 12,
+      "different": 78,
       "missing": 2
     },
     "analysisSummary": {
-      "total": 94,
-      "ready": 27,
-      "pending": 67
+      "total": 93,
+      "ready": 14,
+      "pending": 79
     },
     "comparisons": [
       "react__android"
     ],
     "componentMatrixSummary": {
-      "total": 123,
-      "active": 103,
+      "total": 122,
+      "active": 102,
       "pending": 17,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 90,
-          "active": 85,
+          "total": 89,
+          "active": 84,
           "pending": 3,
           "skipped": 2
         },
@@ -72,19 +72,19 @@
         }
       }
     },
-    "href": "runs/5468c13a-20261103070304/",
-    "componentMatrix": "runs/5468c13a-20261103070304/component-matrix.json",
-    "llms": "runs/5468c13a-20261103070304/metadata.json"
+    "href": "runs/fcf6ae60-20261103094938/",
+    "componentMatrix": "runs/fcf6ae60-20261103094938/component-matrix.json",
+    "llms": "runs/fcf6ae60-20261103094938/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 123,
-    "active": 103,
+    "total": 122,
+    "active": 102,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 90,
-        "active": 85,
+        "total": 89,
+        "active": 84,
         "pending": 3,
         "skipped": 2
       },
@@ -123,6 +123,79 @@
     }
   },
   "runs": [
+    {
+      "runId": "fcf6ae60-20261103094938",
+      "commit": "fcf6ae60-20261103094938",
+      "commitSubject": "feat(visual): full-length capture on Android for flagged cases (#4192)",
+      "generatedAt": "2026-11-03T09:50:41.443Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 93,
+        "same": 0,
+        "pass": 1,
+        "basic-pass": 12,
+        "different": 78,
+        "missing": 2
+      },
+      "analysisSummary": {
+        "total": 93,
+        "ready": 14,
+        "pending": 79
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 122,
+        "active": 102,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 89,
+            "active": 84,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 92,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 105
+          },
+          "android": {
+            "active": 85,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 103
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 80,
+            "unsupported": 0,
+            "total": 80
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/fcf6ae60-20261103094938/",
+      "componentMatrix": "runs/fcf6ae60-20261103094938/component-matrix.json",
+      "llms": "runs/fcf6ae60-20261103094938/metadata.json"
+    },
     {
       "runId": "5468c13a-20261103070304",
       "commit": "5468c13a-20261103070304",

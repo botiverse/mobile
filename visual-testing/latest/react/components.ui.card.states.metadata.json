@@ -8,6 +8,11 @@
     "height": 844,
     "density": 3
   },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
   "selector": "[data-visual-case='components.ui.card.states']",
   "crop": {
     "mode": "element",
@@ -26,5 +31,6 @@
     },
     "outset": null
   },
-  "capturedAt": "2026-11-03T06:55:14.595Z"
+  "fullLength": null,
+  "capturedAt": "2026-11-03T09:37:15.913Z"
 }

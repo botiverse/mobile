@@ -8,6 +8,11 @@
     "height": 844,
     "density": 3
   },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
   "selector": "[data-visual-case='components.thread.message-row.md-wrap-status606']",
   "crop": {
     "mode": "element",
@@ -26,5 +31,6 @@
     },
     "outset": null
   },
-  "capturedAt": "2026-11-03T06:57:20.193Z"
+  "fullLength": null,
+  "capturedAt": "2026-11-03T09:42:03.242Z"
 }

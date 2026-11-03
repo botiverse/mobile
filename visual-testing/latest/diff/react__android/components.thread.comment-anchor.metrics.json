@@ -10,5 +10,11 @@
   "pixelMismatchRatio": 0.08605710157842861,
   "compositor": "sharp",
   "displayMode": "preserve-provider-raw-size",
-  "metricMode": "rgb-resize-pixel-pad-no-crop"
+  "metricMode": "full-length-marker-pad-no-rescale",
+  "fullLength": {
+    "heightDelta": 0,
+    "paddedPixels": 0,
+    "paddedRatio": 0,
+    "padMarker": "#ff00ff"
+  }
 }

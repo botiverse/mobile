@@ -1,22 +1,22 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 07:45:22 UTC
-Latest run: 5468c13a-20261103070304
-Latest commit: 5468c13a-20261103070304
-Commit subject: fix(ui): thread header title uses the headline token; bottom bar height is 60 (#4181)
+Generated: 2026-11-03 09:50:41 UTC
+Latest run: fcf6ae60-20261103094938
+Latest commit: fcf6ae60-20261103094938
+Commit subject: feat(visual): full-length capture on Android for flagged cases (#4192)
 Providers: react vs android
-Summary: total 94, same 0, pass 2, basic-pass 14, different 76, missing 2
-AI analysis: ready 27 / total 94, pending 67
-Visual coverage matrix: active 103 / total 123, pending 17, skipped 3
+Summary: total 93, same 0, pass 1, basic-pass 12, different 78, missing 2
+AI analysis: ready 14 / total 93, pending 79
+Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 94, same 0, pass 2, basic-pass 14, different 76, missing 2
+- react__android: total 93, same 0, pass 1, basic-pass 12, different 78, missing 2
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 85, pending 3, total 90
+- Components Parity (component-fixture): active 84, pending 3, total 89
 - Screens Parity (real-screen): active 18, pending 14, total 33
 
 ## Provider Coverage
@@ -114,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- fcf6ae60-20261103094938: react vs android, total 93, pass 1, basic-pass 12, different 78, matrix runs/fcf6ae60-20261103094938/component-matrix.json, page runs/fcf6ae60-20261103094938/
 - 5468c13a-20261103070304: react vs android, total 94, pass 2, basic-pass 14, different 76, matrix runs/5468c13a-20261103070304/component-matrix.json, page runs/5468c13a-20261103070304/
 - da544d25-20261103041702: react vs android, total 95, pass 2, basic-pass 14, different 77, matrix runs/da544d25-20261103041702/component-matrix.json, page runs/da544d25-20261103041702/
 - 4f79b778-20261102183226: react vs android, total 101, pass 1, basic-pass 16, different 81, matrix runs/4f79b778-20261102183226/component-matrix.json, page runs/4f79b778-20261102183226/
