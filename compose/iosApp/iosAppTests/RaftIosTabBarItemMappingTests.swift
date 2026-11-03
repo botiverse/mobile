@@ -188,6 +188,17 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         )
     }
 
+    func testBandOfASideBarInFromTheEdgeMeasuresItsSafeAreaFromTheContainerEdge() {
+        // A bar 11 pt in from the right edge with 73 pt of it in the strip: the strip ends 84 pt
+        // from the container's edge, past the bar's inner edge (81 pt), so the band is the bar's.
+        let container = CGRect(x: 0, y: 0, width: 951, height: 669)
+        let bar = CGRect(x: 870, y: 180, width: 70, height: 310)
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: bar, safeArea: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 73)),
+            RaftIosTabBarBand(edge: .right, points: 81)
+        )
+    }
+
     func testBandOfAFloatingBottomBarRunsToTheContainerBottom() {
         // iOS 26 floating glass bar: narrower than the window and above the home indicator, so its
         // maxY is not the container's maxY. It is still a bottom bar, and the band includes the gap.
