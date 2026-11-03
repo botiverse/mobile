@@ -165,8 +165,9 @@ class RaftComposerImageEditorExportRenderTest {
         assertPen(out.getPixel(1100, 800), "turned stroke centre")
         // The thick pen (16 canvas px) is 64 px wide here: 25 px across the line is still ink.
         assertPen(out.getPixel(1100 + 25, 800), "inside the thick stroke")
-        // The photo turned with it: source (100, 1400) -> (100, 100).
-        assertEquals(source.asAndroidBitmap().getPixel(100, 1400), out.getPixel(100, 100), "photo pixel follows the turn")
+        // The photo turned with it: source pixel (x, y) is turned pixel (1499 - y, x). (102, 1401)
+        // sits inside one 4 px gradient step, so filtering at the pixel edges cannot change it.
+        assertEquals(source.asAndroidBitmap().getPixel(102, 1401), out.getPixel(98, 102), "photo pixel follows the turn")
     }
 
     private fun render(

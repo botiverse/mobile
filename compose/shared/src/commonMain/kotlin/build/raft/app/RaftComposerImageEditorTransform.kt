@@ -361,3 +361,25 @@ internal enum class RaftComposerImagePenWidth(val px: Float) {
 }
 
 internal const val RaftComposerImagePencilThickStrokeWidthPx: Float = 16f
+
+/** Editor keyboard shortcuts (desktop; hardware keyboards on tablets). */
+internal enum class RaftComposerImageEditorShortcut {
+    Undo,
+    Redo,
+}
+
+/**
+ * Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z and Ctrl+Y redo. [command] is Cmd or Ctrl held.
+ */
+internal fun raftComposerImageEditorShortcut(
+    key: androidx.compose.ui.input.key.Key,
+    command: Boolean,
+    shift: Boolean,
+): RaftComposerImageEditorShortcut? =
+    when {
+        !command -> null
+        key == androidx.compose.ui.input.key.Key.Z ->
+            if (shift) RaftComposerImageEditorShortcut.Redo else RaftComposerImageEditorShortcut.Undo
+        key == androidx.compose.ui.input.key.Key.Y && !shift -> RaftComposerImageEditorShortcut.Redo
+        else -> null
+    }

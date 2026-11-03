@@ -218,4 +218,15 @@ class RaftComposerImageEditorTransformTest {
         state.update(state.history.apply(state.history.content.copy(cropRect = RaftComposerImageCropRect(0f, 0f, 0.5f, 0.5f))))
         assertFalse(state.history.canRedo)
     }
+
+    @Test
+    fun undoRedoShortcuts() {
+        val z = androidx.compose.ui.input.key.Key.Z
+        val y = androidx.compose.ui.input.key.Key.Y
+        assertEquals(RaftComposerImageEditorShortcut.Undo, raftComposerImageEditorShortcut(z, command = true, shift = false))
+        assertEquals(RaftComposerImageEditorShortcut.Redo, raftComposerImageEditorShortcut(z, command = true, shift = true))
+        assertEquals(RaftComposerImageEditorShortcut.Redo, raftComposerImageEditorShortcut(y, command = true, shift = false))
+        assertNull(raftComposerImageEditorShortcut(z, command = false, shift = false))
+        assertNull(raftComposerImageEditorShortcut(androidx.compose.ui.input.key.Key.A, command = true, shift = false))
+    }
 }
