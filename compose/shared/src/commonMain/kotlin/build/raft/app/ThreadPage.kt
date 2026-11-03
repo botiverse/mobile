@@ -483,7 +483,10 @@ import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.HorizontalAlignmentLine
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
@@ -507,6 +510,7 @@ import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
@@ -28298,100 +28302,113 @@ private fun ThreadMessageCardContent(
                                             Arrangement.spacedBy(6.dp)
                                         }
                                 ) {
-                                    // Web MessageItem: the sender's name mentions them in the composer
-                                    // (tooltip "Mention @name"); the avatar opens the profile (artin
-                                    // 2026-11-02). External, deleted and removed authors keep the profile.
-                                    val nameMentionHandle =
-                                        message.authorHandle.trim().removePrefix("@").takeIf {
-                                            it.isNotBlank() && !shareSelectionActive && message.externalAuthor == null &&
-                                                message.threadAuthorBadgeLabel() == null
-                                        }
-                                    val authorNameText: @Composable (Modifier) -> Unit = { nameModifier ->
-                                        Text(
-                                            text = localizedAuthorName,
-                                            // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
-                                            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
-                                            color = RaftColor.TextBlack,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier =
-                                                nameModifier
-                                                    .widthIn(max = 220.dp)
-                                                    .clickable {
-                                                        if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
-                                                    }
-                                        )
-                                    }
-                                    // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
-                                    // subtitle and time share the first baseline.
-                                    if (nameMentionHandle != null) {
-                                        RaftTooltip(
-                                            text = stringResource(Res.string.message_mention_sender, nameMentionHandle),
-                                            modifier = Modifier.alignByBaseline(),
-                                            openOnLongPress = false,
-                                        ) { authorNameText(Modifier) }
-                                    } else {
-                                        authorNameText(Modifier.alignByBaseline())
-                                    }
-                                    authorAppBot?.let { appBot ->
-                                        RaftAppBotBadge(identity = appBot, botName = localizedAuthorName)
-                                    }
-                                    // task #392 (port of Web PR #7545): agent
-                                    // model name after the name, before
-                                    // badge/subtitle; raft-ui MessageItemMeta.
-                                    authorModelLabel?.takeIf { authorAppBot == null }?.let { modelLabel ->
-                                        Text(
-                                            text = modelLabel,
-                                            style =
-                                                RaftType.Caption.copy(
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = RaftColor.ForegroundHint,
-                                                ),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.alignByBaseline(),
-                                        )
-                                    }
-                                    authorBadgeLabel?.let { label ->
-                                        ThreadMessageAuthorBadge(label)
-                                    }
-                                    message.authorDescription?.let { description ->
-                                        val subtitleAnchor =
-                                            remember(message.id) {
-                                                RaftLiveRootAnchorRef(
-                                                    identity = "thread_author_subtitle:${message.id}"
-                                                )
+                                    // Web MessageItem `MessageItemSenderGroup`: name, badges, model,
+                                    // subtitle and "sent by" share one cluster; the time sits outside it,
+                                    // so a long name can never push the time off the row. The name has no
+                                    // fixed cap (web `max-w-full`): it truncates only when it alone is
+                                    // wider than the cluster, and the subtitle gives up its room first.
+                                    Row(
+                                        // The time lines up with the name's baseline, not whichever
+                                        // badge or label in the cluster sits highest.
+                                        modifier = Modifier.weight(1f, fill = false).alignBy(ThreadSenderNameBaseline),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        // Web MessageItem: the sender's name mentions them in the composer
+                                        // (tooltip "Mention @name"); the avatar opens the profile (artin
+                                        // 2026-11-02). External, deleted and removed authors keep the profile.
+                                        val nameMentionHandle =
+                                            message.authorHandle.trim().removePrefix("@").takeIf {
+                                                it.isNotBlank() && !shareSelectionActive && message.externalAuthor == null &&
+                                                    message.threadAuthorBadgeLabel() == null
                                             }
-                                        val onShowDescription = callbacks.onShowAuthorDescription
-                                        val handleSubtitleClick: (() -> Unit)? =
-                                            if (onShowDescription != null && !shareSelectionActive && description.isNotBlank()) {
-                                                {
-                                                    tapMovementGate.rejectChildAction("author_subtitle")
-                                                    diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
-                                                    subtitleAnchor
-                                                        .resolve(RaftPopoverLocalPoint.BottomStart)
-                                                        ?.let { anchor ->
-                                                            onShowDescription(description, anchor)
+                                        val authorNameText: @Composable (Modifier) -> Unit = { nameModifier ->
+                                            Text(
+                                                text = localizedAuthorName,
+                                                // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
+                                                style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
+                                                color = RaftColor.TextBlack,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier =
+                                                    nameModifier
+                                                        .threadSenderNameBaseline()
+                                                        .clickable {
+                                                            if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
                                                         }
+                                            )
+                                        }
+                                        // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
+                                        // subtitle and time share the first baseline.
+                                        if (nameMentionHandle != null) {
+                                            RaftTooltip(
+                                                text = stringResource(Res.string.message_mention_sender, nameMentionHandle),
+                                                modifier = Modifier.alignByBaseline(),
+                                                openOnLongPress = false,
+                                            ) { authorNameText(Modifier) }
+                                        } else {
+                                            authorNameText(Modifier.alignByBaseline())
+                                        }
+                                        authorAppBot?.let { appBot ->
+                                            RaftAppBotBadge(identity = appBot, botName = localizedAuthorName)
+                                        }
+                                        // task #392 (port of Web PR #7545): agent
+                                        // model name after the name, before
+                                        // badge/subtitle; raft-ui MessageItemMeta.
+                                        authorModelLabel?.takeIf { authorAppBot == null }?.let { modelLabel ->
+                                            Text(
+                                                text = modelLabel,
+                                                style =
+                                                    RaftType.Caption.copy(
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = RaftColor.ForegroundHint,
+                                                    ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.alignByBaseline(),
+                                            )
+                                        }
+                                        authorBadgeLabel?.let { label ->
+                                            ThreadMessageAuthorBadge(label)
+                                        }
+                                        message.authorDescription?.let { description ->
+                                            val subtitleAnchor =
+                                                remember(message.id) {
+                                                    RaftLiveRootAnchorRef(
+                                                        identity = "thread_author_subtitle:${message.id}"
+                                                    )
                                                 }
-                                            } else {
-                                                null
-                                            }
-                                        ThreadMessageAuthorSubtitle(
-                                            description = description,
-                                            rootAnchor = subtitleAnchor,
-                                            onClick = handleSubtitleClick,
-                                            modifier = Modifier.weight(1f, fill = false).alignByBaseline()
-                                        )
-                                    }
-                                    // RFC 077: "sent by Friday" after the sender cluster, before
-                                    // the time (web MessageItem DelegatedByLabel).
-                                    message.delegatedBy?.let { delegatedBy ->
-                                        ThreadMessageDelegatedByLabel(
-                                            delegatedBy = delegatedBy,
-                                            placement = DelegatedLabelPlacement.Header,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
+                                            val onShowDescription = callbacks.onShowAuthorDescription
+                                            val handleSubtitleClick: (() -> Unit)? =
+                                                if (onShowDescription != null && !shareSelectionActive && description.isNotBlank()) {
+                                                    {
+                                                        tapMovementGate.rejectChildAction("author_subtitle")
+                                                        diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
+                                                        subtitleAnchor
+                                                            .resolve(RaftPopoverLocalPoint.BottomStart)
+                                                            ?.let { anchor ->
+                                                                onShowDescription(description, anchor)
+                                                            }
+                                                    }
+                                                } else {
+                                                    null
+                                                }
+                                            ThreadMessageAuthorSubtitle(
+                                                description = description,
+                                                rootAnchor = subtitleAnchor,
+                                                onClick = handleSubtitleClick,
+                                                modifier = Modifier.weight(1f, fill = false).alignByBaseline()
+                                            )
+                                        }
+                                        // RFC 077: "sent by Friday" after the sender cluster, before
+                                        // the time (web MessageItem DelegatedByLabel).
+                                        message.delegatedBy?.let { delegatedBy ->
+                                            ThreadMessageDelegatedByLabel(
+                                                delegatedBy = delegatedBy,
+                                                placement = DelegatedLabelPlacement.Header,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                        }
                                     }
                                     if (showTimestampInHeader) {
                                         ThreadMessageTimestampLabel(
@@ -31958,7 +31975,8 @@ internal fun ThreadMessageFooterMeta(
                 horizontalPadding = 7.dp,
                 labelFontSize = 12.sp,
                 labelLineHeight = 16.sp,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
+                // raft-ui TaskChip `max-w-full`: no fixed cap; it truncates only when the footer runs out.
+                modifier = Modifier.weight(1f, fill = false),
                 clickIdentity = taskClickIdentity,
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
                 onClick = taskChipClick
@@ -31968,7 +31986,6 @@ internal fun ThreadMessageFooterMeta(
             // raft-ui MessageItemSavedIndicator (gap 23): `fill-muted`, an ink bookmark, muted label.
             build.raft.designsystem.components.RaftMessageSavedIndicator(
                 label = stringResource(Res.string.thread_label_saved),
-                modifier = Modifier.widthIn(max = 96.dp)
             )
         }
         if (hasReactions) {
@@ -34450,6 +34467,17 @@ private fun ThreadAttachmentOpenUiState?.threadAttachmentOpenFailed(): Boolean =
 
 // raft-ui MessageAttachmentGroup `max-w-[360px]`.
 private val ThreadAttachmentGroupMaxWidth = 360.dp
+
+/** The sender name's first baseline, carried out of the sender cluster for the header time. */
+private val ThreadSenderNameBaseline = HorizontalAlignmentLine { a, b -> minOf(a, b) }
+
+private fun Modifier.threadSenderNameBaseline(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val baseline = placeable[FirstBaseline]
+        val lines: Map<AlignmentLine, Int> = if (baseline == AlignmentLine.Unspecified) emptyMap() else mapOf(ThreadSenderNameBaseline to baseline)
+        layout(placeable.width, placeable.height, lines) { placeable.place(0, 0) }
+    }
 
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =
