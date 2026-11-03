@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 17:05:58 UTC
+Generated: 2026-11-03 17:37:20 UTC
 Latest run: 2bf19cb1-20261103170447
 Latest commit: 2bf19cb1-20261103170447
 Commit subject: test(visual): the create-agent empty case waits for its own window before clearing the name
 Providers: react vs android
 Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 23 / total 93, pending 70
+AI analysis: ready 28 / total 93, pending 65
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

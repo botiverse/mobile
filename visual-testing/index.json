@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-03T17:05:58.544Z",
+  "generatedAt": "2026-11-03T17:37:20.699Z",
   "latestRunId": "2bf19cb1-20261103170447",
   "latest": {
     "runId": "2bf19cb1-20261103170447",
     "commit": "2bf19cb1-20261103170447",
     "commitSubject": "test(visual): the create-agent empty case waits for its own window before clearing the name",
-    "generatedAt": "2026-11-03T17:05:58.544Z",
+    "generatedAt": "2026-11-03T17:37:20.699Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 93,
-      "ready": 23,
-      "pending": 70
+      "ready": 28,
+      "pending": 65
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "2bf19cb1-20261103170447",
       "commit": "2bf19cb1-20261103170447",
       "commitSubject": "test(visual): the create-agent empty case waits for its own window before clearing the name",
-      "generatedAt": "2026-11-03T17:05:58.544Z",
+      "generatedAt": "2026-11-03T17:37:20.699Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 93,
-        "ready": 23,
-        "pending": 70
+        "ready": 28,
+        "pending": 65
       },
       "comparisons": [
         "react__android"
