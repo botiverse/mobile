@@ -16239,6 +16239,14 @@ private fun ThreadPageContentContent(
     val adaptiveCloseRequest = data.adaptiveCloseRequest
     val adaptiveStoreScope = data.adaptiveStoreScope
     val adaptiveEventBus = data.adaptiveEventBus
+    // Desktop / hardware keyboard: the composer takes the focus when the conversation opens; the
+    // wide detail's conversation leaves it to the reply thread shown beside it.
+    val composerAutofocusOnOpen =
+        rememberThreadComposerAutofocusOnOpen(
+            routeActive = routeActive,
+            adaptiveCloseRequest = adaptiveCloseRequest,
+            adaptiveStoreScope = adaptiveStoreScope,
+        )
     val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
     val onViewportFollowsLatestChange = callbacks.onViewportFollowsLatestChange
     val onLoadNewer = callbacks.onLoadNewer
@@ -17565,7 +17573,8 @@ private fun ThreadPageContentContent(
                                 }
                             },
                             adaptiveNativeEditingStateReader =
-                                LocalThreadAdaptiveNativeEditingReader.current
+                                LocalThreadAdaptiveNativeEditingReader.current,
+                            autofocusOnOpen = composerAutofocusOnOpen,
                         )
                     }
                 }
@@ -18578,6 +18587,36 @@ private fun ConversationHeaderToggle(
     }
 }
 
+/**
+ * Whether this page's composer takes the focus when it opens: the platform policy
+ * ([rememberComposerAutofocusOnOpen]), the page shown, and, in the wide detail, no reply thread
+ * beside it ([composerAutofocusYieldsToSideThread]: the thread panel gets the focus, and gives it
+ * back when it closes). Recomposes the page only when the answer changes.
+ */
+@Composable
+private fun rememberThreadComposerAutofocusOnOpen(
+    routeActive: Boolean,
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
+    adaptiveStoreScope: RaftShellStoreScope,
+): Boolean {
+    val policy = rememberComposerAutofocusOnOpen()
+    if (adaptiveCloseRequest == null) return policy && routeActive
+    val pager = LocalActivity.current.getPager() as Pager
+    val workspaceStore =
+        remember(pager, adaptiveStoreScope) {
+            RaftSharedStoreRegistry.get(Utils.bridgeModule(pager.pagerId)).adaptiveWorkspaceStore(adaptiveStoreScope)
+        }
+    val yieldsToSideThread by
+        remember(workspaceStore, adaptiveCloseRequest) {
+            workspaceStore.state
+                .map { it.composerAutofocusYieldsToSideThread(adaptiveCloseRequest) }
+                .distinctUntilChanged()
+        }.collectAsState(
+            initial = workspaceStore.snapshot().composerAutofocusYieldsToSideThread(adaptiveCloseRequest)
+        )
+    return policy && routeActive && !yieldsToSideThread
+}
+
 @Composable
 private fun ThreadComposerRoute(
     baseComposerState: RaftThreadComposerPayload,
@@ -18599,6 +18638,8 @@ private fun ThreadComposerRoute(
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     /** A removed App Bot's DM (or a thread in it): notice above a disabled composer. */
     removedAppBot: RaftAppBotIdentity? = null,
+    /** Focus the composer when the conversation opens (ComposerAutofocusPolicy.kt). */
+    autofocusOnOpen: Boolean = false,
 ) {
     if (removedAppBot != null) {
         // The editor never mounts, so the saved draft stays in the store untouched.
@@ -18668,6 +18709,7 @@ private fun ThreadComposerRoute(
         contentPaddingBottom = 0.dp,
         adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
         frameEdge = frameEdge,
+        autofocusOnOpen = autofocusOnOpen,
     )
     }
 }
@@ -18760,6 +18802,7 @@ private fun ThreadComposerContentWithSuggestions(
     contentPaddingBottom: Dp,
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    autofocusOnOpen: Boolean = false,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
@@ -18852,6 +18895,7 @@ private fun ThreadComposerContentWithSuggestions(
         composerSendKeyEnabled = composerSendKeyEnabled,
         externalNativeEditingStateReader = adaptiveNativeEditingStateReader,
         frameEdge = frameEdge,
+        autofocusOnOpen = autofocusOnOpen,
     )
 }
 
