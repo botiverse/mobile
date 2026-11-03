@@ -788,36 +788,6 @@ private fun SharedHomeSearchEntityLeadingAvatar(
     }
 }
 
-// search-message `messageSender`: a 14dp avatar and the name in `text-callout` bold ink.
-@Composable
-private fun SharedHomeSearchSenderMeta(
-    sender: String,
-    avatarWireValue: String?,
-    avatarCacheIdentity: RaftMemberAvatarCacheIdentity? = null,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftAppAvatar(
-            avatarWireValue = avatarWireValue ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
-            label = sender,
-            avatarSize = RaftSearchMetrics.SenderAvatar,
-            cacheSubject = avatarCacheIdentity?.subject,
-            cacheServerId = avatarCacheIdentity?.serverId
-        )
-        RaftText(
-            text = sender,
-            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
 internal val settingsTabBarSmokePayload = RaftSettingsHomePayload(
     title = "Settings",
     subtitle = "Tab bar smoke",
@@ -14359,7 +14329,7 @@ internal fun SharedHomeSearchEntityRow(
                 if (appBot != null) {
                     RaftAppBotBadge(identity = appBot, botName = result.title, appearance = RaftBadgeAppearance.Outline)
                 } else {
-                    SharedHomeEntityTypeBadge(result.type, muted = mutedArchived)
+                    SharedHomeEntityTypeBadge(result.type, agent = result.showPresence, muted = mutedArchived)
                 }
                 if (result.archived) {
                     RaftBadge(
@@ -14461,17 +14431,21 @@ internal fun SettingsServerSidebarOrderSnapshot?.pinnedChannelConversationIds():
 
 // raft-ui search-entity Badge: `solid` `default`, or `soft` `muted` on an archived channel.
 @Composable
-private fun SharedHomeEntityTypeBadge(type: SearchEntityType, muted: Boolean = false) {
+// web EntityResultRow: the kind is a machine label after the name in the outline badge
+// (DS `rf-tag`) — Channel, Computer, Agent, or Human; a DM says who it is with (an agent's DM
+// is Agent, a person's Human).
+private fun SharedHomeEntityTypeBadge(type: SearchEntityType, agent: Boolean, muted: Boolean = false) {
     RaftBadge(
         text =
             when (type) {
                 SearchEntityType.Channel -> stringResource(Res.string.search_entity_channel)
-                SearchEntityType.DirectMessage -> stringResource(Res.string.search_entity_dm)
-                SearchEntityType.Human -> stringResource(Res.string.search_entity_dm)
-                SearchEntityType.Agent -> stringResource(Res.string.search_entity_dm)
                 SearchEntityType.Computer -> stringResource(Res.string.search_entity_computer)
+                SearchEntityType.Agent -> stringResource(Res.string.search_entity_agent)
+                SearchEntityType.Human -> stringResource(Res.string.search_badge_human)
+                SearchEntityType.DirectMessage ->
+                    stringResource(if (agent) Res.string.search_entity_agent else Res.string.search_badge_human)
             },
-        appearance = if (muted) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Solid,
+        appearance = RaftBadgeAppearance.Outline,
         variant = if (muted) RaftBadgeVariant.Muted else RaftBadgeVariant.Default
     )
 }
@@ -14603,7 +14577,9 @@ internal fun SharedHomeSearchMessageResultRow(
     val metaStyle = sharedHomeSearchTimestampTextStyle()
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    Column(
+    // web MessageHitRow (DS `.rf-hit`): the sender's 27dp avatar in its own column, then who /
+    // where / thread / when on one line and a two-line excerpt under it, 12dp after the avatar.
+    Row(
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -14611,61 +14587,76 @@ internal fun SharedHomeSearchMessageResultRow(
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
                 .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
+        verticalAlignment = Alignment.Top
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        val senderLabel = sender?.takeIf { it.isNotBlank() }
+        RaftAppAvatar(
+            avatarWireValue =
+                item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
+                    ?: AvatarReference.Random((senderLabel ?: item.key).searchAvatarSeed()).wireValue,
+            label = senderLabel.orEmpty(),
+            avatarSize = RaftSearchMetrics.EntityLeading,
+            cacheSubject = avatarCacheIdentity?.subject,
+            cacheServerId = avatarCacheIdentity?.serverId
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!sender.isNullOrBlank()) {
-                    SharedHomeSearchSenderMeta(
-                        sender = sender,
-                        avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
-                        avatarCacheIdentity = avatarCacheIdentity,
-                        modifier = Modifier.widthIn(max = 180.dp)
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (senderLabel != null) {
+                        RaftText(
+                            text = senderLabel,
+                            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+                            color = RaftColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 180.dp)
+                        )
+                    }
+                    if (!nested) {
+                        Text(
+                            text = searchResultSourceLabel(item),
+                            style = metaStyle,
+                            color = RaftColor.ForegroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+                    if (item.kind == InboxItemKind.Thread && !nested) {
+                        SharedHomeSearchThreadMeta(metaStyle)
+                    }
+                    if (item.hasDraft) {
+                        SharedHomeDraftPencilIcon(compact = true)
+                    }
                 }
-                if (!nested) {
-                    Text(
-                        text = searchResultSourceLabel(item),
+                if (!time.isNullOrBlank()) {
+                    RaftRelativeTimestampText(
+                        value = time,
+                        timeContext = timeContext,
                         style = metaStyle,
                         color = RaftColor.ForegroundHint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        maxLines = 1
                     )
                 }
-                if (item.kind == InboxItemKind.Thread && !nested) {
-                    SharedHomeSearchThreadMeta(metaStyle)
-                }
-                if (item.hasDraft) {
-                    SharedHomeDraftPencilIcon(compact = true)
-                }
             }
-            if (!time.isNullOrBlank()) {
-                RaftRelativeTimestampText(
-                    value = time,
-                    timeContext = timeContext,
-                    style = metaStyle,
-                    color = RaftColor.ForegroundHint,
-                    maxLines = 1
-                )
-            }
+            RaftSearchHitText(
+                text = preview,
+                query = query,
+                style = RaftTheme.typography.callout,
+                color = RaftColor.TextMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        RaftSearchHitText(
-            text = preview,
-            query = query,
-            style = RaftTheme.typography.callout,
-            color = RaftColor.TextMuted,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
@@ -15425,20 +15416,15 @@ internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
         key = "sender:${sourceServerId.value}:$kind:${identity.memberId.value}",
         type = if (kind == MemberKind.Agent) SearchEntityType.Agent else SearchEntityType.Human,
         title = displayLabel,
+        // web searchEntities: an agent's subtitle is its "@handle", a person's their handle; with
+        // none, the fixed kind label, which is never marked.
         subtitle =
-            buildString {
-                append(if (kind == MemberKind.Agent) agentLabel else personLabel)
-                if (handle.isNotBlank()) append(" · @$handle")
-                if (conversationIdentity == null) append(" · $membersLabel")
+            when {
+                handle.isBlank() -> if (kind == MemberKind.Agent) agentLabel else personLabel
+                kind == MemberKind.Agent -> "@$handle"
+                else -> handle
             },
-        // Only the "@handle" is data; "Agent" and "Members" are fixed labels.
-        subtitleDataRange =
-            if (handle.isBlank()) {
-                IntRange.EMPTY
-            } else {
-                val start = (if (kind == MemberKind.Agent) agentLabel else personLabel).length + " · ".length
-                start until start + 1 + handle.length
-            },
+        subtitleDataRange = if (handle.isBlank()) IntRange.EMPTY else null,
         threadId = conversationIdentity?.threadId?.value,
         memberIdentity = identity,
         conversationIdentity = conversationIdentity,

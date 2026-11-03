@@ -2209,6 +2209,7 @@
     <string name="search_entity_person">Human</string>
     <string name="search_entity_members">Members</string>
     <string name="search_entity_computer">Computer</string>
+    <string name="search_badge_human">Human</string>
     <string name="search_meta_thread">Thread</string>
     <string name="search_hits_count">%1$d hits</string>
     <string name="search_state_no_preview">No preview</string>

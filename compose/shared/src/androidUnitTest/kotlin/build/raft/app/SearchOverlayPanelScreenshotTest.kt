@@ -29,6 +29,7 @@ import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.toHomeDirectMessageRow
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -46,6 +47,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -105,6 +107,13 @@ class SearchOverlayPanelScreenshotTest {
                             onOpenItem = {},
                             onOpenEntity = {},
                             bottomContentPadding = 0.dp,
+                            // Android Developer 4 is online: the lime square on its avatar (web AgentActivityDot).
+                            agentStatusResolver = { id ->
+                                flowOf(
+                                    RaftAgentStatusIndicatorState(status = AgentStatus.Online, color = RaftColor.AccentLime, pulsing = false, label = "Online", external = false)
+                                        .takeIf { id == "agent-android-developer-4" }
+                                )
+                            },
                             // The web render's clock: the fixture's June messages read "134 days ago".
                             timeContext =
                                 RaftTimeContext(

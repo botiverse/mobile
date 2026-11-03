@@ -233,7 +233,7 @@ internal fun HomeSearchOverlayBody(
                                 SharedHomeSearchMessageResultRow(
                                     item = group.item,
                                     query = query,
-                                    showSeparator = entry.index > 0 && !selected,
+                                    showSeparator = false,
                                     cacheServerId = cacheServerId,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
@@ -243,7 +243,7 @@ internal fun HomeSearchOverlayBody(
                                 SharedHomeThreadResultGroup(
                                     group = group,
                                     query = query,
-                                    showSeparator = entry.index > 0 && !selected,
+                                    showSeparator = false,
                                     cacheServerId = cacheServerId,
                                     memberAvatarResolver = memberAvatarResolver,
                                     timeContext = timeContext,
