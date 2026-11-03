@@ -32899,6 +32899,11 @@ internal fun threadMessageMenuActions(
     // task), take it elsewhere (copy, forward, select), just for me (save, translate); a local
     // send's own Delete / Cancel close the menu.
     buildList {
+        // A right-click over selected text leads with Copy for it (artin, 2026-10-29), before
+        // the sections (web: the browser's own Copy).
+        if (onCopySelection != null) {
+            add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
+        }
         if (showReplyAction) {
             add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.Thread, "message", onClick = onReply))
         }
@@ -32964,9 +32969,6 @@ internal fun threadMessageMenuActions(
                     onClick = onConvertToTask
                 )
             )
-        }
-        if (onCopySelection != null) {
-            add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
         }
         if (showCopyLinkAction) {
             add(

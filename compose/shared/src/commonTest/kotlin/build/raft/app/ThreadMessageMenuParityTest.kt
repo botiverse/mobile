@@ -260,7 +260,7 @@ class ThreadMessageMenuParityTest {
 
     @Test
     fun classicSaveTogglesToRemoveFromSaved() {
-        val saved = classicActions(message(isSaved = true)).single { it.group == "message" && it.icon == RaftLucideIconName.BookmarkMinus }
+        val saved = classicActions(message(isSaved = true)).single { it.group == "personal" && it.icon == RaftLucideIconName.BookmarkMinus }
         assertEquals(Res.string.thread_action_remove_from_saved.desc(), saved.label)
     }
 
