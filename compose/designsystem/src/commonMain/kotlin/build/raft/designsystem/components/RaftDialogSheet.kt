@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -269,11 +270,15 @@ private fun RaftDialogSheetBottom(
 ) {
     val slide = remember { Animatable(1f) }
     LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftMotion.EaseSlide)) }
+    // 90% of the whole window, as raft-ui's `h-[90dvh]` and RaftDialog's sheet; the status bar
+    // or a top cutout only caps it (it never reaches under them). Padding the top first made the
+    // sheet 90% of what is left below the status bar, so it sat ~4dp per 40dp of bar lower.
+    val topInsetPx = WindowInsets.safeDrawing.getTop(LocalDensity.current)
     Box(
         Modifier
             .fillMaxSize()
-            // Never under the status bar or a side cutout; the bottom is the sheet's own.
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+            // Never under a side cutout; the bottom is the sheet's own.
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
         contentAlignment = Alignment.BottomCenter,
     ) {
         RaftDialogSheetSurfaceImpl(
@@ -286,7 +291,7 @@ private fun RaftDialogSheetBottom(
                     .graphicsLayer { translationY = size.height * slide.value }
                     .pointerInput(Unit) { detectTapGestures { } }
                     .layout { measurable, constraints ->
-                        val placeable = measurable.measure(raftDialogSheetConstraints(constraints))
+                        val placeable = measurable.measure(raftDialogSheetConstraints(constraints, topInsetPx))
                         layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                     },
             commitEnabled = commitEnabled,
@@ -365,11 +370,16 @@ fun RaftDialogSheetCenteredSurface(
     }
 }
 
-/** A fixed 90% of the window's height (unchanged when the height is unbounded). */
-internal fun raftDialogSheetConstraints(constraints: Constraints): Constraints =
+/**
+ * A fixed 90% of the window's height, never taller than the window below [topInsetPx] (the status
+ * bar or a top cutout); unchanged when the height is unbounded.
+ */
+internal fun raftDialogSheetConstraints(constraints: Constraints, topInsetPx: Int = 0): Constraints =
     if (!constraints.hasBoundedHeight) {
         constraints
     } else {
-        val height = (constraints.maxHeight * RaftDialogSheetDefaults.HeightFraction).toInt().coerceAtLeast(constraints.minHeight)
+        val ninety = (constraints.maxHeight * RaftDialogSheetDefaults.HeightFraction).toInt()
+        val height =
+            minOf(ninety, constraints.maxHeight - topInsetPx.coerceAtLeast(0)).coerceAtLeast(constraints.minHeight)
         constraints.copy(minHeight = height, maxHeight = height)
     }

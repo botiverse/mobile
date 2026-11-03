@@ -39,4 +39,14 @@ class RaftDialogSheetLayoutTest {
         val unbounded = Constraints(maxWidth = 1170)
         assertEquals(unbounded, raftDialogSheetConstraints(unbounded))
     }
+
+    @Test
+    fun theStatusBarCapsTheSheetButDoesNotShrinkItsNinetyPercent() {
+        // 844dp phone at 3x, a 40dp status bar: 90% of the whole window, not of what is below the bar.
+        val phone = raftDialogSheetConstraints(Constraints(maxWidth = 1170, maxHeight = 2532), topInsetPx = 120)
+        assertEquals(2278, phone.maxHeight)
+        // A bar taller than the 10% margin caps the sheet at the window below it.
+        val tallBar = raftDialogSheetConstraints(Constraints(maxWidth = 1170, maxHeight = 1000), topInsetPx = 200)
+        assertEquals(800, tallBar.maxHeight)
+    }
 }
