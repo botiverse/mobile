@@ -2170,6 +2170,13 @@
     <string name="search_empty_filters_detail">Try a different filter set.</string>
     <string name="search_section_channels_dms">Channels &amp; DMs</string>
     <string name="search_section_entities">Server entities</string>
+    <string name="search_overlay_search_for">Search for “%1$s”</string>
+    <string name="search_overlay_search_for_hint">Open the full results page with filters and context preview</string>
+    <string name="search_overlay_recent_conversations">Recent conversations</string>
+    <string name="search_overlay_footer_select">Select</string>
+    <string name="search_overlay_footer_open">Open</string>
+    <string name="search_show_all_entities">Show All %1$d</string>
+    <string name="search_show_fewer_entities">Show Fewer</string>
     <string name="search_section_messages">Messages</string>
     <string name="search_action_load_more_results">Load more results</string>
     <string name="search_filter_scope">Scope</string>
@@ -2202,6 +2209,7 @@
     <string name="search_entity_person">Human</string>
     <string name="search_entity_members">Members</string>
     <string name="search_entity_computer">Computer</string>
+    <string name="search_badge_human">Human</string>
     <string name="search_meta_thread">Thread</string>
     <string name="search_hits_count">%1$d hits</string>
     <string name="search_state_no_preview">No preview</string>

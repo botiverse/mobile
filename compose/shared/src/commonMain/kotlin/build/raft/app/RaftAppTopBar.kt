@@ -10,6 +10,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -62,6 +65,8 @@ internal fun RaftAppShellTopBar(
     onBellToggle: () -> Unit = {},
     /** The Back / Forward arrows just before the search field; null draws none. */
     history: RaftAppShellTopBarHistory? = null,
+    /** The search field's shortcut hint (⌘K / Ctrl+K, web SearchTriggerShortcut); null draws none. */
+    searchShortcut: String? = null,
 ) {
     val unreadDescription = stringResource(Res.string.tab_activity_unread_dot)
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
@@ -137,7 +142,19 @@ internal fun RaftAppShellTopBar(
                     )
                 }
             },
-            center = { RaftSearchTrigger(label = searchLabel, onClick = onSearchClick, windowWidth = windowWidth) },
+            center = {
+                RaftSearchTrigger(
+                    label = searchLabel,
+                    onClick = onSearchClick,
+                    windowWidth = windowWidth,
+                    shortcut = searchShortcut,
+                    // Where the search panel hangs from (web --desktop-search-anchor-top / -width).
+                    modifier =
+                        Modifier.onGloballyPositioned { coordinates ->
+                            bell?.searchFieldBounds = coordinates.boundsInWindow()
+                        },
+                )
+            },
             // artin 2026-10-27: the arrows sit just before the search field, outside its width, so
             // the search stays centred; on a short bar they move with it, never over the workspace.
             centerLeading = history?.let { { RaftAppShellTopBarHistoryButtons(it) } },
@@ -226,6 +243,12 @@ internal class RaftAppShellTopBarState {
      * name, its seam on the rail header's. The server switcher stays the rail's.
      */
     var drawn: Boolean by mutableStateOf(true)
+
+    /**
+     * The search field's bounds in the window, in pixels: the search panel's top edge sits on
+     * its top and the panel is at least as wide (web `searchOverlayAnchor`). Null until laid out.
+     */
+    var searchFieldBounds: Rect? by mutableStateOf(null)
 }
 
 /** The wide top bar over the shell's pages; null on the phone (and outside the shell). */

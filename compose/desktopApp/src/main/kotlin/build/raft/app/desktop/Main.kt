@@ -62,6 +62,18 @@ fun main(args: Array<String>) {
             onCloseRequest = ::exitApplication,
             state = windowState,
             title = "Raft",
+            // ⌘K / Ctrl+K before the content: the shell opens search even from a text field.
+            onPreviewKeyEvent = { event ->
+                raftDesktopSearchShortcut(
+                    keyDown = event.type == KeyEventType.KeyDown,
+                    key = event.key,
+                    meta = event.isMetaPressed,
+                    ctrl = event.isCtrlPressed,
+                    alt = event.isAltPressed,
+                    shift = event.isShiftPressed,
+                    mac = RaftDesktopHistoryInput.isMac,
+                ) && navigator.searchShortcut()
+            },
             onKeyEvent = { event ->
                 raftDesktopHistoryShortcut(
                     keyDown = event.type == KeyEventType.KeyDown,

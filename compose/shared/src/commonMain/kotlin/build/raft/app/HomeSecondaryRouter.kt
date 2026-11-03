@@ -295,6 +295,8 @@ internal fun HomeSecondaryRouterContent(
     onSearchQueryApplied: () -> Unit = {},
     // The rail's inline list (two-pane): marks the row whose conversation is open in the detail.
     inlineListSelection: RaftInlineListSelection? = null,
+    // The wide layout's search panel over the page (web SearchOverlay); Search only.
+    searchOverlay: HomeSearchOverlayChrome? = null,
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment(
         routeVisibleTick,
@@ -329,6 +331,7 @@ internal fun HomeSecondaryRouterContent(
                     queryRequest = searchQueryRequest,
                     onQueryApplied = onSearchQueryApplied,
                     inlineListSelection = inlineListSelection,
+                    overlay = searchOverlay,
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick, inlineListSelection)
             HomeDestinationDrafts -> HomeDraftsRouterContent(environment, routeVisibleTick, inlineListSelection)
@@ -789,6 +792,7 @@ private fun HomeSearchRouterContent(
     queryRequest: RaftSearchTabQueryRequest? = null,
     onQueryApplied: () -> Unit = {},
     inlineListSelection: RaftInlineListSelection? = null,
+    overlay: HomeSearchOverlayChrome? = null,
 ) {
     val conversationNotReadyMessage = stringResource(Res.string.home_error_conversation_not_ready)
     val homeDataSource =
@@ -1102,7 +1106,8 @@ private fun HomeSearchRouterContent(
             bottomContentPadding ?: environment.shellScope.bottomInset(includeBottomTabBar = chrome.aboveBottomBar),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
-        listState = searchListState
+        listState = searchListState,
+        overlay = overlay,
     )
 }
 

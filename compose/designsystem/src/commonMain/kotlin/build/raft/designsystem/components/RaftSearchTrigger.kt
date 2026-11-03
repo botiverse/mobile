@@ -111,7 +111,9 @@ fun RaftSearchTrigger(
 
 /**
  * raft-ui `Kbd`: a keyboard shortcut, `text-mono-meta` in `foreground-hint` inside a 1dp
- * `line-hairline` ring on a 3dp radius, at least 16dp wide, 4dp each side.
+ * `line-hairline` ring on a 3dp radius, at least 16dp wide, 4dp each side. The Return key
+ * ([RaftKeyGlyph.Return], ↵) is drawn as the 12dp corner-down-left glyph (Kbd's `size-3` svg):
+ * the mono face has no ↵, and the fallback font's drew a clipped mark on Android.
  */
 @Composable
 fun RaftKbd(text: String, modifier: Modifier = Modifier) {
@@ -124,6 +126,12 @@ fun RaftKbd(text: String, modifier: Modifier = Modifier) {
             .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        RaftText(text = text, style = RaftTheme.typography.monoMeta, color = colors.foregroundHint, maxLines = 1, softWrap = false)
+        if (text == RaftKeyGlyph.Return) {
+            // A blank line of the key's type keeps its height; the glyph sits on it.
+            RaftText(text = " ", style = RaftTheme.typography.monoMeta, color = colors.foregroundHint, maxLines = 1, softWrap = false)
+            RaftGlyphIcon(RaftGlyph.CornerDownLeft, size = 12.dp, color = colors.foregroundHint)
+        } else {
+            RaftText(text = text, style = RaftTheme.typography.monoMeta, color = colors.foregroundHint, maxLines = 1, softWrap = false)
+        }
     }
 }

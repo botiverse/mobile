@@ -2172,6 +2172,13 @@
     <string name="search_empty_filters_detail">別のフィルターの組み合わせをお試しください。</string>
     <string name="search_section_channels_dms">チャンネルと DM</string>
     <string name="search_section_entities">サーバー内の項目</string>
+    <string name="search_overlay_search_for">「%1$s」を検索</string>
+    <string name="search_overlay_search_for_hint">絞り込みや前後の文脈のプレビューができる結果ページを開く</string>
+    <string name="search_overlay_recent_conversations">最近の会話</string>
+    <string name="search_overlay_footer_select">選択</string>
+    <string name="search_overlay_footer_open">開く</string>
+    <string name="search_show_all_entities">%1$d 件すべて表示</string>
+    <string name="search_show_fewer_entities">折りたたむ</string>
     <string name="search_section_messages">メッセージ</string>
     <string name="search_action_load_more_results">さらに結果を読み込む</string>
     <string name="search_filter_scope">範囲</string>
@@ -2204,6 +2211,7 @@
     <string name="search_entity_person">人間</string>
     <string name="search_entity_members">メンバー</string>
     <string name="search_entity_computer">コンピューター</string>
+    <string name="search_badge_human">人間</string>
     <string name="search_meta_thread">スレッド</string>
     <string name="search_hits_count">%1$d 件ヒット</string>
     <string name="search_state_no_preview">プレビューなし</string>

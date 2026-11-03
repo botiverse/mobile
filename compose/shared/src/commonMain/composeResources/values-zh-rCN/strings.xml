@@ -2170,6 +2170,13 @@
     <string name="search_empty_filters_detail">请尝试其他筛选组合。</string>
     <string name="search_section_channels_dms">频道和私信</string>
     <string name="search_section_entities">服务器内容</string>
+    <string name="search_overlay_search_for">搜索「%1$s」</string>
+    <string name="search_overlay_search_for_hint">打开完整结果页，可筛选并预览上下文</string>
+    <string name="search_overlay_recent_conversations">最近的会话</string>
+    <string name="search_overlay_footer_select">选择</string>
+    <string name="search_overlay_footer_open">打开</string>
+    <string name="search_show_all_entities">显示全部 %1$d 项</string>
+    <string name="search_show_fewer_entities">收起</string>
     <string name="search_section_messages">消息</string>
     <string name="search_action_load_more_results">加载更多结果</string>
     <string name="search_filter_scope">范围</string>
@@ -2202,6 +2209,7 @@
     <string name="search_entity_person">人类成员</string>
     <string name="search_entity_members">成员</string>
     <string name="search_entity_computer">计算机</string>
+    <string name="search_badge_human">人类成员</string>
     <string name="search_meta_thread">消息列</string>
     <string name="search_hits_count">%1$d 条命中</string>
     <string name="search_state_no_preview">暂无预览</string>
