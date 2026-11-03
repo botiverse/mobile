@@ -20,6 +20,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import build.raft.app.compat.ui.ProvideRaftPlatformImeInsets
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.RaftProvideTextRendering
 import build.raft.app.components.RaftProvideDesignSystemMisuse
@@ -79,7 +80,7 @@ object RaftPageRegistry {
         val factory = factories[pageName] ?: return null
         // Hosts load the stored theme at startup; this covers a host that did not (idempotent).
         RaftAppAppearanceRuntime.ensureLoaded()
-        return { RaftPagerHost(factory) }
+        return { ProvideRaftPlatformImeInsets { RaftPagerHost(factory) } }
     }
 
     /** Hosts call this once at startup (Android: `RaftApplication.onCreate`). */

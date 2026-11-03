@@ -1,5 +1,6 @@
 package build.raft.app.compat.ui
 
+import androidx.compose.runtime.Composable
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.ui.graphics.ImageBitmap
@@ -21,3 +22,7 @@ internal fun Bitmap.raftSoftwareBitmap(): Bitmap =
     }
 
 internal actual val raftKeyboardHeightExcludesNavigationBars: Boolean = true
+
+/** The Android host provides LocalRaftHostImeInsets round its page stack; the desktop has no soft keyboard. */
+@Composable
+internal actual fun ProvideRaftPlatformImeInsets(content: @Composable () -> Unit) = content()
