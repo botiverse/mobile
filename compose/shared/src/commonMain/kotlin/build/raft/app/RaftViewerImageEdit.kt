@@ -49,6 +49,9 @@ import kotlinx.coroutines.withContext
  */
 internal object RaftViewerImageEditOpener {
     var threadKey: String = ""
+
+    /** The attachment the conversation last opened the editor for (the viewer's acknowledgement). */
+    var openedAttachmentId: String = ""
 }
 
 /** In-process request from the phone image viewer: edit attachment `attachmentId`. */
@@ -62,11 +65,16 @@ internal fun raftViewerImageEditAttachmentId(eventData: Any?): String? =
         .getOrNull()
         ?.takeIf { it.isNotBlank() }
 
+/** True once a conversation has opened the editor for [attachmentId]; the viewer closes only then. */
 internal fun raftPostViewerImageEditRequest(
     attachmentId: String,
     eventBus: RaftEventBus = RaftEventBuses.inProcess(),
-): Boolean =
-    runCatching { eventBus.post(RAFT_VIEWER_IMAGE_EDIT_EVENT, raftViewerImageEditEvent(attachmentId), crossProcess = false) }.isSuccess
+): Boolean {
+    RaftViewerImageEditOpener.openedAttachmentId = ""
+    val posted =
+        runCatching { eventBus.post(RAFT_VIEWER_IMAGE_EDIT_EVENT, raftViewerImageEditEvent(attachmentId), crossProcess = false) }.isSuccess
+    return posted && RaftViewerImageEditOpener.openedAttachmentId == attachmentId
+}
 
 /** Whether the phone viewer offers ⋯ > Edit for [payload]: an image from a conversation. */
 internal fun RaftFilePreviewPayload.offersViewerImageEdit(): Boolean =
@@ -74,6 +82,7 @@ internal fun RaftFilePreviewPayload.offersViewerImageEdit(): Boolean =
         source == RaftFilePreviewSourceThreadAttachment &&
         attachmentId.isNotBlank() &&
         composerImageActionId.isBlank() &&
+        RaftViewerImageEditOpener.threadKey.isNotBlank() &&
         !imageUrl.isNullOrBlank()
 
 /** File name of the edited copy: `photo.jpg` -> `photo-edited.png` (the editor writes PNG). */
@@ -93,7 +102,8 @@ internal fun raftViewerEditedImageFile(fileRef: String, originalName: String, se
         mimeType = "image/png",
         previewUri = fileRef,
         fileRef = fileRef,
-        source = RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
+        // The pasted-image source, so the composer compresses it like a paste (unless Original).
+        source = ThreadComposerClipboardImageSource,
     )
 
 /**

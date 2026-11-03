@@ -58,6 +58,8 @@ class RaftComposerImageEditorTransformTest {
         assertEquals(1, turned.rotationQuarterTurns)
         val first = turned.strokes.single().points.first()
         assertNear(Offset(133.33f, 200f), first, "rescaled with the fit")
+        // The line keeps its weight on the photo: 6 px on the 0.1 fit is 8 px on the 0.1333 fit.
+        assertNear(RaftComposerImagePencilStrokeWidthPx * 4f / 3f, turned.strokes.single().width, "width", eps = 0.02f)
         // The draw operation list follows the strokes.
         val op = turned.raftComposerImageResolvedDrawOperations().single() as RaftComposerImageDrawOperation.Pencil
         assertNear(first, op.stroke.points.first(), "op")

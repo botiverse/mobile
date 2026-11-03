@@ -2017,6 +2017,7 @@ private fun RaftFilePreviewStandalonePageContent() {
     val unableToOpenAttachment = stringResource(Res.string.file_preview_error_open_attachment)
     val downloadedFileDeleted = stringResource(Res.string.file_preview_download_deleted)
     val copiedLabel = stringResource(Res.string.common_copied)
+    val viewerImageEditUnavailableLabel = stringResource(Res.string.common_error)
     val unableToDeleteDownload = stringResource(Res.string.file_preview_error_delete_download)
     val attachmentOpenResultTerms =
         RaftAttachmentOpenResultTerms(
@@ -4253,10 +4254,13 @@ private fun RaftFilePreviewStandalonePageContent() {
                     // the editor; the edited copy goes into its composer (RaftViewerImageEdit.kt).
                     RaftViewerImageMoreButton(
                         onSelect = { id ->
-                            if (id == RaftViewerImageMenuEditId &&
-                                raftPostViewerImageEditRequest(payload.viewerShownAttachmentId())
-                            ) {
-                                closePreviewPage()
+                            if (id == RaftViewerImageMenuEditId) {
+                                if (raftPostViewerImageEditRequest(payload.viewerShownAttachmentId())) {
+                                    closePreviewPage()
+                                } else {
+                                    // No open conversation shows this image any more: stay here.
+                                    bridge.toast(viewerImageEditUnavailableLabel)
+                                }
                             }
                         },
                         modifier =

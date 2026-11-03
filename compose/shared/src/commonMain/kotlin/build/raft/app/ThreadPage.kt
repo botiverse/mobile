@@ -11262,6 +11262,7 @@ private fun SharedThreadRouteContentContent(
                         .firstOrNull { it.id == attachmentId && it.isImageAttachment() }
                         ?: return@observe
                 bridge.log("thread_viewer_image_edit status=open attachmentId=${attachmentId.take(8)}")
+                RaftViewerImageEditOpener.openedAttachmentId = attachmentId
                 viewerImageEditAttachment = attachment
             }
         onDispose { subscription.close() }

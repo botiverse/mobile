@@ -28,6 +28,7 @@ class RaftViewerImageEditTest {
 
     @Test
     fun onlyConversationImagesOfferEdit() {
+        RaftViewerImageEditOpener.threadKey = "thread-1"
         val image =
             RaftFilePreviewPayload(
                 kind = "image",
@@ -41,6 +42,9 @@ class RaftViewerImageEditTest {
         // A composer image (before sending) has its own editor contract.
         assertFalse(image.copy(composerImageActionId = "a").offersViewerImageEdit())
         assertFalse(image.copy(imageUrl = null).offersViewerImageEdit())
+        // A viewer no conversation opened (restored after the process died) offers nothing.
+        RaftViewerImageEditOpener.threadKey = ""
+        assertFalse(image.offersViewerImageEdit())
     }
 
     @Test

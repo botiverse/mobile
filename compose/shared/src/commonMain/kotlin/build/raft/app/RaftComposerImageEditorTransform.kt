@@ -67,9 +67,14 @@ internal fun raftRemapContentForCanvas(
 ): RaftComposerImageEditorContent {
     val oldCrop = content.cropRect
     if (oldCrop == newCrop && oldCanvasSize == newCanvasSize) return content
+    // A turn rescales the canvas: pen widths scale with it so lines keep their weight on the photo.
+    val widthScale =
+        if (oldCrop == newCrop && oldCanvasSize.width > 0f) newCanvasSize.width / oldCanvasSize.width else 1f
+    fun remap(stroke: RaftComposerImageStroke): RaftComposerImageStroke =
+        raftRemapStroke(stroke, oldCrop, newCrop, oldCanvasSize, newCanvasSize).let { it.copy(width = it.width * widthScale) }
     return content.copy(
         cropRect = newCrop,
-        strokes = content.strokes.map { raftRemapStroke(it, oldCrop, newCrop, oldCanvasSize, newCanvasSize) },
+        strokes = content.strokes.map(::remap),
         textAnnotations = raftRemapTextAnnotations(content.textAnnotations, oldCrop, newCrop, oldCanvasSize, newCanvasSize),
         mosaicTiles = raftRemapMosaicTiles(content.mosaicTiles, oldCrop, newCrop, oldCanvasSize, newCanvasSize),
         drawOperations =
@@ -80,9 +85,7 @@ internal fun raftRemapContentForCanvas(
                             raftRemapMosaicTiles(op.tiles, oldCrop, newCrop, oldCanvasSize, newCanvasSize)
                         )
                     is RaftComposerImageDrawOperation.Pencil ->
-                        RaftComposerImageDrawOperation.Pencil(
-                            raftRemapStroke(op.stroke, oldCrop, newCrop, oldCanvasSize, newCanvasSize)
-                        )
+                        RaftComposerImageDrawOperation.Pencil(remap(op.stroke))
                 }
             },
     )
