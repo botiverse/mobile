@@ -428,7 +428,12 @@ private fun RaftRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) ->
     return { tag ->
         when (tag.kind) {
             ThreadMarkdownTagKind.Task ->
-                knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
+                when {
+                    tag.channelName != null -> channelKeys.contains(tag.channelName.trim().lowercase())
+                    tag.directMessagePeerName != null ->
+                        directMessagePeerKeys.contains(tag.directMessagePeerName.trim().lowercase())
+                    else -> knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
+                }
             ThreadMarkdownTagKind.UserMention ->
                 mentionKeys.contains(tag.label.removePrefix("@").trim().lowercase())
             ThreadMarkdownTagKind.DirectMessageThread ->

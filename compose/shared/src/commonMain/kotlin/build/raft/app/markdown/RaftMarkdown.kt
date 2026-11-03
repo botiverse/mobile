@@ -712,8 +712,19 @@ private fun Set<String>.containsThreadMention(label: String): Boolean {
     return key.isNotBlank() && contains(key)
 }
 
-private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
-    when {
+private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? {
+    // `#channel:#7` / `dm:@peer:#7`: a task of a named conversation (Web task refs). Checked first:
+    // the channel / DM forms below would otherwise read `triage:#7` as a channel name.
+    parseRaftMarkdownTaskRefLabel(this)?.takeIf { it.qualified }?.let { ref ->
+        return ThreadMarkdownTag(
+            label = this,
+            kind = ThreadMarkdownTagKind.Task,
+            channelName = ref.channelName,
+            directMessagePeerName = ref.directMessagePeerName
+        )
+    }
+    if (contains(":#")) return null
+    return when {
         isThreadDirectMessageReference() -> {
             val peerStart = indexOf('@') + 1
             val colonIndex = indexOf(':', peerStart)
@@ -746,6 +757,7 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
         startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel, channelName = drop(1))
         else -> null
     }
+}
 
 private fun String.isThreadDirectMessageReference(): Boolean {
     if (!startsWith("dm:@", ignoreCase = true)) return false
@@ -843,10 +855,12 @@ internal fun raftMarkdownAnnotator(
     softLineBreaksAsNewLines: Boolean = true,
     taskStatuses: () -> Map<Int, TaskStatus>? = { null },
     mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
-    mentionReadFontSize: TextUnit = RaftTextSize.Content
+    mentionReadFontSize: TextUnit = RaftTextSize.Content,
+    taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() }
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates, mentionReadFontSize)
+    val rendererInput =
+        RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates, mentionReadFontSize, taskRefStatuses)
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             rendererInput.raftRefTokenCount,
@@ -898,7 +912,9 @@ private data class RaftRichTextRendererInput(
     val capabilities: RaftRichTextCapabilities,
     val taskStatuses: () -> Map<Int, TaskStatus>? = { null },
     val mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
-    val mentionReadFontSize: TextUnit = RaftTextSize.Content
+    val mentionReadFontSize: TextUnit = RaftTextSize.Content,
+    /** Statuses of conversation-qualified task refs (`#proj:#7`), [raftMarkdownTaskRefStatusKey]. */
+    val taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() }
 ) {
     val raftRefTokens: List<RaftRichTextInlineToken> =
         document.inlineTokens
@@ -1166,7 +1182,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
     if (action.refKind == RaftRichTextRefKind.Task) {
         val taskStatuses = rendererInput.taskStatusesOrNull()
         if (taskStatuses != null) {
-            appendRaftRichTextTaskChipToken(token, action, label, taskStatuses, onOpenAction)
+            appendRaftRichTextTaskChipToken(token, action, label, taskStatuses, rendererInput.taskRefStatuses(), onOpenAction)
             return
         }
     }
@@ -1219,9 +1235,10 @@ private fun AnnotatedString.Builder.appendRaftRichTextTaskChipToken(
     action: RaftRichTextAction,
     label: String,
     taskStatuses: Map<Int, TaskStatus>,
+    taskRefStatuses: Map<String, TaskStatus>,
     onOpenAction: (RaftRichTextAction) -> Unit,
 ) {
-    val style = raftMarkdownTaskChipStyle(taskNumberFromRefLabel(action.label)?.let(taskStatuses::get))
+    val style = raftMarkdownTaskChipStyle(raftMarkdownTaskChipStatus(action, taskStatuses, taskRefStatuses))
     withRaftInlineChipGaps(style.box) {
         pushStringAnnotation(
             tag = RaftMarkdownTagAnnotationTag,
@@ -2432,6 +2449,8 @@ fun RaftMarkdownBody(
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val taskStatuses = LocalRaftMarkdownTaskStatuses.current
     val currentTaskStatuses by rememberUpdatedState(taskStatuses)
+    val taskRefStatuses = LocalRaftMarkdownTaskRefStatuses.current
+    val currentTaskRefStatuses by rememberUpdatedState(taskRefStatuses)
     val mentionReadStates = LocalRaftMarkdownMentionReadStates.current
     val currentMentionReadStates by rememberUpdatedState(mentionReadStates)
     val colors = RaftMarkdownColorsDefault
@@ -2554,7 +2573,8 @@ fun RaftMarkdownBody(
             taskStatuses = { currentTaskStatuses },
             mentionReadStates = { currentMentionReadStates },
             // A read mark follows someone else's @mention, which is set at the sentence's size.
-            mentionReadFontSize = mentionReadFontSize
+            mentionReadFontSize = mentionReadFontSize,
+            taskRefStatuses = { currentTaskRefStatuses }
         )
     }
     if (DEBUG_RAFT_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -2590,7 +2610,7 @@ fun RaftMarkdownBody(
             }
             // Task chips read the status map and the theme at annotation time.
             if (taskStatuses != null) {
-                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, markdownDark))
+                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, markdownDark, taskRefStatuses))
             }
             // read_receipts_v0 mention badges read the provided states at annotation time.
             if (mentionReadStates != null) {

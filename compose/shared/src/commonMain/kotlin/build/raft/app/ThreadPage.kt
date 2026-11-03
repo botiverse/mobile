@@ -314,6 +314,8 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
+import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
@@ -3867,8 +3869,15 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     knownTaskNumbers: Set<Int>? = null
 ): Boolean =
     when (kind) {
+        // `#proj:#7` / `dm:@peer:#7` chip when the reader knows the conversation (Web: a channel the
+        // reader cannot resolve keeps the ref as plain text); the task itself is resolved on open.
         ThreadMarkdownTagKind.Task ->
-            knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
+            when {
+                channelName != null -> channelName.trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
+                directMessagePeerName != null ->
+                    directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
+                else -> knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
+            }
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
         ThreadMarkdownTagKind.DirectMessageThread ->
             directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
@@ -4053,7 +4062,9 @@ internal suspend fun openMarkdownTaskNumberPayload(
     tasksDataStore: SharedTasksDataStore?,
     /** `task_v2_conversations_v0` for the server ([taskOpenTarget]). */
     taskV2Enabled: Boolean = false,
-    conversationIdentityProvider: SharedConversationIdentityProvider? = null
+    conversationIdentityProvider: SharedConversationIdentityProvider? = null,
+    /** `#proj:#7` / `dm:@peer:#7`: only a task of [currentTaskChannelId] matches. */
+    channelQualified: Boolean = false
 ): MarkdownTaskNumberOpenResult {
     return when (
         val resolution =
@@ -4062,7 +4073,8 @@ internal suspend fun openMarkdownTaskNumberPayload(
                 taskNumber = taskNumber,
                 currentChannelId = currentTaskChannelId,
                 tasksDataSource = tasksDataSource,
-                tasksDataStore = tasksDataStore
+                tasksDataStore = tasksDataStore,
+                channelQualified = channelQualified
             )
     ) {
         is SharedTaskReferenceResolution.Found -> {
@@ -8665,6 +8677,17 @@ private fun SharedThreadRouteContentContent(
                 loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
             )
         }
+    val markdownTaskRefStatuses =
+        remember(taskProjectionSlice, serverTaskProjectionSlice, payload.dmPeerName, payload.surfaceKind, payload.channelKind) {
+            threadMarkdownTaskRefStatuses(
+                channelTasks = taskProjectionSlice.tasks,
+                serverTasks = serverTaskProjectionSlice.tasks,
+                currentDirectMessagePeerName =
+                    payload.dmPeerName.takeIf {
+                        payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || payload.channelKind == "dm"
+                    }
+            )
+        }
     val sourceTaskListsEnabled = payload.supportsChannelTasks()
     val linkedTasksProjection =
         remember(
@@ -12216,6 +12239,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadAttachmentDownloadHost provides attachmentDownloadHost,
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
+                LocalRaftMarkdownTaskRefStatuses provides markdownTaskRefStatuses,
                 LocalRaftMarkdownRenderConfig provides
                     RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
@@ -13290,7 +13314,9 @@ private fun SharedThreadRouteContentContent(
                 action == "openMarkdownTaskNumber" && !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    val taskNumber = itemId.removePrefix("#").trim().toIntOrNull()
+                    // `#7`, or a conversation-qualified `#proj:#7` / `dm:@peer:#7` (Web task refs).
+                    val qualifiedTaskRef = parseRaftMarkdownTaskRefLabel(itemId)?.takeIf { it.qualified }
+                    val taskNumber = qualifiedTaskRef?.taskNumber ?: itemId.removePrefix("#").trim().toIntOrNull()
                     if (taskNumber == null || currentServerId.isNullOrBlank()) {
                         finishMarkdownReferencePending(markdownPendingToken)
                         bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
@@ -13305,16 +13331,33 @@ private fun SharedThreadRouteContentContent(
                     )
                     coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
                         try {
+                            val resolveChannelId =
+                                if (qualifiedTaskRef == null) {
+                                    taskChannelId
+                                } else {
+                                    dataSource.markdownTaskRefChannelId(
+                                        currentPayload = renderedThread,
+                                        conversationLabel =
+                                            qualifiedTaskRef.channelName ?: qualifiedTaskRef.directMessagePeerName.orEmpty(),
+                                        requiredKind =
+                                            if (qualifiedTaskRef.directMessagePeerName != null) {
+                                                ConversationKind.DirectMessage
+                                            } else {
+                                                null
+                                            }
+                                    )
+                                }
                             val resolved =
                                 openMarkdownTaskNumberPayload(
                                     serverId = ServerId(currentServerId),
                                     taskNumber = taskNumber,
                                     currentPayload = renderedThread,
-                                    currentTaskChannelId = taskChannelId,
+                                    currentTaskChannelId = resolveChannelId,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = tasksDataStore,
                                     taskV2Enabled = taskV2Enabled,
-                                    conversationIdentityProvider = conversationIdentityProvider
+                                    conversationIdentityProvider = conversationIdentityProvider,
+                                    channelQualified = qualifiedTaskRef != null
                                 )
                             val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
                             if (result == null) {
@@ -16753,7 +16796,14 @@ private fun ThreadPageContentContent(
                 onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
             }
             ThreadMarkdownTagKind.Task -> {
-                val taskId = timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
+                // `#proj:#7` / `dm:@peer:#7` name the task's conversation; the loaded timeline's own
+                // `#7` may be another conversation's task, so they always resolve by conversation.
+                val taskId =
+                    if (tag.channelName != null || tag.directMessagePeerName != null) {
+                        null
+                    } else {
+                        timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
+                    }
                 if (!taskId.isNullOrBlank()) {
                     onThreadEvent("openTask", taskId, markdownActionId = actionId)
                 } else {

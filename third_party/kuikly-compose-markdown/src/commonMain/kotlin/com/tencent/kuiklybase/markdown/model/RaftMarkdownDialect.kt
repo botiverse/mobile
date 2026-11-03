@@ -16,7 +16,8 @@ data class RaftMarkdownInlineRef(
 
 /**
  * Raft's GFM extension for `@member`, `#channel`, `#channel:thread`,
- * `dm:@peer:thread`, and numeric `#task` references.
+ * `dm:@peer:thread`, numeric `#task`, and conversation-qualified task
+ * (`#channel:#7`, `dm:@peer:#7`) references.
  *
  * GFM parses first and therefore owns nesting. Raft recognition runs only on
  * source ranges not claimed by Markdown links/definitions, images, code,
@@ -120,6 +121,9 @@ private fun String.raftDirectMessageRange(start: Int): IntRange? {
     }
     // A peer longer than the scan cap is not a DM target at all.
     if (peerEnd < length && (this[peerEnd].isRaftDirectMessagePeerPart() || this[peerEnd] == '~')) return null
+    // `dm:@peer:#7` is a task in the DM (Web `createRaftDmTaskRefRegex`, run
+    // before the DM thread and bare DM passes).
+    raftTaskRefEnd(peerEnd)?.let { taskEnd -> return start until taskEnd }
     // `dm:@peer:short` is the DM thread form. Without a valid short id the
     // token is the plain DM form `dm:@peer` (Web `createRaftDmRefRegex`: the
     // thread pass runs first, then the DM pass claims the peer part only).
@@ -198,6 +202,11 @@ private fun String.raftHashRange(start: Int): IntRange? {
         nameEnd++
         count++
     }
+    // `#channel:#7` is a task of that channel (Web `createRaftChannelTaskRefRegex`,
+    // run before the channel and bare task passes). A `:#` that does not end in a
+    // well-formed task number leaves `#channel` as a channel ref, as on the Web.
+    raftTaskRefEnd(nameEnd)?.let { taskEnd -> return start until taskEnd }
+    if (startsWith(RaftTaskRefSeparator, nameEnd)) return start until nameEnd
     val shortStart = nameEnd + 1
     if (nameEnd < length && this[nameEnd] == ':' && shortStart < length) {
         if (this[shortStart].isWhitespace()) return start until nameEnd
@@ -212,6 +221,30 @@ private fun String.raftHashRange(start: Int): IntRange? {
         return null
     }
     return start until nameEnd
+}
+
+/**
+ * The task ref separator (Web `RAFT_TASK_REF_SEPARATOR`): a task ref is its
+ * conversation, `:#`, then the task number (`#proj:#7`, `dm:@peer:#7`).
+ */
+internal const val RaftTaskRefSeparator = ":#"
+
+/**
+ * End offset of a `:#N` task-ref tail starting at [separatorIndex], or null.
+ * Mirrors Web `RAFT_REF_TASK_NUMBER_PATTERN` (`[1-9]\d*`) and
+ * `RAFT_TASK_REF_END_PATTERN`: the number must end the token, so no letter,
+ * digit, `_`, `/`, `-` or a second separator may follow (`#proj:#7a`,
+ * `#proj:#7/x` and `#proj:#7:#8` are not task refs).
+ */
+private fun String.raftTaskRefEnd(separatorIndex: Int): Int? {
+    if (!startsWith(RaftTaskRefSeparator, separatorIndex)) return null
+    val numberStart = separatorIndex + RaftTaskRefSeparator.length
+    if (numberStart >= length || this[numberStart] !in '1'..'9') return null
+    var end = numberStart + 1
+    while (end < length && this[end].isDigit()) end++
+    if (end < length && (this[end].isLetterOrDigit() || this[end] == '_' || this[end] == '/' || this[end] == '-')) return null
+    if (startsWith(RaftTaskRefSeparator, end)) return null
+    return end
 }
 
 // Left boundaries follow Web `raftRefs.ts`, per ref kind:
