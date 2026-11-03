@@ -145,6 +145,7 @@ internal fun RaftComposerImageDesktopEditor(
                     .focusable()
         ) {
             val density = LocalDensity.current
+            val windowWidth = maxWidth
             val stagePx =
                 with(density) {
                     Size(
@@ -416,7 +417,7 @@ internal fun RaftComposerImageDesktopEditor(
                 if (anchor != null && (activeTool == RaftComposerImageEditorTool.Pencil || activeTool == RaftComposerImageEditorTool.Crop)) {
                     // The tool's options in a popover under the tool, kept inside the window.
                     var popoverWidthPx by remember(activeTool) { mutableStateOf(0) }
-                    val windowWidthPx = with(density) { maxWidth.toPx() }
+                    val windowWidthPx = with(density) { windowWidth.toPx() }
                     val centre = (anchor.first + anchor.second) / 2f
                     val x = (centre - popoverWidthPx / 2f).coerceIn(8f, (windowWidthPx - popoverWidthPx - 8f).coerceAtLeast(8f))
                     val y = with(density) { (RaftComposerImageDesktopBarHeight - 6.dp).toPx() }
