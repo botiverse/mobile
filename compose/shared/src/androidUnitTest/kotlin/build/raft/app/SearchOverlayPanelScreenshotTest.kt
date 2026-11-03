@@ -180,6 +180,7 @@ private val homeState: SharedHomeState
                                         presenceMemberId = MemberId("agent-cindy"),
                                     ).toHomeDirectMessageRow(),
                                 ),
+                            unreadTotal = 0,
                         ),
                     session = homeSearchVisualSession,
                 ),
