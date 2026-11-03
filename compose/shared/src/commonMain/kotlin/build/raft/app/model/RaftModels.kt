@@ -458,7 +458,7 @@ data class MemberProfile(
     val managedByAppInstallId: String? = null,
     /**
      * App Bots only: the owning App's name (`managedByApp.name` on `GET /agents` and
-     * `GET /agents/:id`, botiverse/slock #11273). Web `AppBotBadge` reads it for "Bot · <App>".
+     * `GET /agents/:id`, botiverse/slock #11273). Web `AppBadge` reads it for "App · <App>".
      */
     val managedByAppName: String? = null,
     /**

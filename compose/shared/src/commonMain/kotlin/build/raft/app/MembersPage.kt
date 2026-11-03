@@ -9401,7 +9401,7 @@ internal fun MembersAgentProfileHeader(
                         RaftAppBotBadge(identity = appBot, botName = appBot.appName)
                         appBot.appName?.let { appName ->
                             RaftText(
-                                text = stringResource(Res.string.member_label_bot_from_app, appName),
+                                text = stringResource(Res.string.member_label_app_from_app, appName),
                                 style = typography.footnote,
                                 color = colors.foregroundMuted,
                                 maxLines = 1,

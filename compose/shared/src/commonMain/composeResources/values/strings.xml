@@ -1447,10 +1447,10 @@
     <string name="member_label_active">Active</string>
     <string name="channel_bridge_provider_slack">Slack</string>
     <string name="member_label_muted">Muted</string>
-    <string name="member_label_bot">Bot</string>
-    <string name="member_label_bot_with_app">Bot · %1$s</string>
-    <string name="member_label_bot_created_by_app">Created by the %1$s app</string>
-    <string name="member_label_bot_from_app">From %1$s</string>
+    <string name="member_label_app">App</string>
+    <string name="member_label_app_with_app">App · %1$s</string>
+    <string name="member_label_app_tooltip">Created by the %1$s app</string>
+    <string name="member_label_app_from_app">From %1$s</string>
     <string name="profile_preview_unavailable">Profile unavailable</string>
     <string name="profile_preview_view_profile">View Profile</string>
     <string name="profile_preview_managed_by_app">Managed by app</string>
