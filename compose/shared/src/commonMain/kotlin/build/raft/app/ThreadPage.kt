@@ -6,7 +6,6 @@ import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
 import build.raft.app.assistant.ThreadAssistantPanelMessagesReport
 import build.raft.app.assistant.ThreadAssistantPanelSheet
 import build.raft.app.assistant.ThreadAssistantOtterFrameEdge
-import build.raft.app.assistant.ThreadAssistantOtterListEnd
 import build.raft.app.assistant.assistantOtterDmOpenRequest
 import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
@@ -8381,11 +8380,15 @@ private fun SharedThreadRouteContentContent(
         }
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
+    // The session is captured a few frames after the page composes; until then the shell's server
+    // decides, or the first frame laid out the old Chat / Tasks / Files tab row and the list jumped
+    // when it went away (Compose 版 open jitter).
+    val taskV2FlagServerId = threadFeatureFlagServerId(currentServerId, storeScope.initialServerId)
     val taskV2Enabled =
-        remember(featureFlagSnapshotRevision, currentServerId) {
-            currentServerId != null &&
+        remember(featureFlagSnapshotRevision, taskV2FlagServerId) {
+            taskV2FlagServerId != null &&
                 sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(currentServerId),
+                    ServerId(taskV2FlagServerId),
                     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
                 )
         }
@@ -17477,10 +17480,33 @@ private fun ThreadPageContentContent(
                 threadTabContent()
             }
             if (!primaryFooterReady) {
-                // Loading/permission/error owns the whole content frame. Join and
-                // composer mount only with the same resolved render-slice emission
-                // that removes the loading UI, avoiding a second LazyColumn resize.
-                Unit
+                // Join and the composer mount only with the resolved render-slice emission. A
+                // cached timeline is shown before that (access still refreshing), so while a
+                // composer is still expected its dock keeps the composer's resting height:
+                // the bottom-pinned list is laid out at its final height on the first frame
+                // instead of jumping up when the composer mounts (Compose 版 open jitter).
+                if (
+                    threadReservesPendingComposerSlot(
+                        accessResolution = accessResolution,
+                        payloadStatus = payload.status,
+                        joined = payload.joined,
+                        showComposer = payload.showComposer,
+                        selectedTab = selectedTab.wireValue,
+                        composerLocked = jointBillingNotice == JointBillingNotice.Locked
+                    )
+                ) {
+                    ThreadComposerDock(
+                        edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                        composerModifier =
+                            Modifier.raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea =
+                                    composerKeyboardInsetExcludesBottomSafeArea
+                            )
+                    ) {
+                        ThreadComposerRestingHeightPlaceholder(composerSurface)
+                    }
+                }
             } else if (
                 !writeActionsEnabled &&
                 payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
@@ -18751,7 +18777,7 @@ private fun ThreadComposerRoute(
         // Reserve the editor's resting height while it waits to mount, so the message list above
         // is laid out at its final height on the first frame. Returning nothing here made the
         // bottom-pinned list jump up ~76pt one frame later on every channel entry.
-        Spacer(Modifier.fillMaxWidth().height(ThreadComposerRestingHeight.get(restingHeightKey).dp))
+        ThreadComposerRestingHeightPlaceholder(surface)
         return
     }
     val composerState =
@@ -18851,6 +18877,43 @@ internal object ThreadComposerRestingHeight {
 }
 
 internal fun ThreadComposerSurface.threadComposerRestingHeightKey(): String = "$kind|$showTaskButton"
+
+/** The server a page reads per-server flags for: the session's once captured, the shell's before. */
+internal fun threadFeatureFlagServerId(sessionServerId: String?, shellServerId: String?): String? =
+    sessionServerId?.trim()?.takeIf { it.isNotBlank() } ?: shellServerId?.trim()?.takeIf { it.isNotBlank() }
+
+/** The composer's slot at its resting height, before the editor itself can mount. */
+@Composable
+internal fun ThreadComposerRestingHeightPlaceholder(surface: ThreadComposerSurface) {
+    Spacer(
+        Modifier.fillMaxWidth()
+            .height(ThreadComposerRestingHeight.get(surface.threadComposerRestingHeightKey()).dp)
+            .testTag(ThreadComposerRestingHeightPlaceholderTestTag)
+    )
+}
+
+internal const val ThreadComposerRestingHeightPlaceholderTestTag = "thread-composer-resting-placeholder"
+
+/**
+ * Whether the composer's dock keeps its slot while the footer is not decided yet: the timeline can
+ * show (a cached frame while access refreshes) before the composer may mount, and an empty footer
+ * then let the bottom-pinned list jump up by the composer's height a few frames after it appeared.
+ * Only while a composer is still expected — never under an access error, a closed conversation or
+ * another tab.
+ */
+internal fun threadReservesPendingComposerSlot(
+    accessResolution: ThreadAccessResolution,
+    payloadStatus: String,
+    joined: Boolean,
+    showComposer: Boolean,
+    selectedTab: String?,
+    composerLocked: Boolean
+): Boolean =
+    accessResolution != ThreadAccessResolution.Error &&
+        accessResolution != ThreadAccessResolution.NoPermission &&
+        payloadStatus != "error" &&
+        !composerLocked &&
+        shouldShowThreadComposerForTab(joined = joined, showComposer = showComposer, selectedTab = selectedTab)
 
 internal fun ThreadComposerUiState.isThreadComposerAtRest(): Boolean =
     seedText.isBlank() &&
@@ -20775,7 +20838,6 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
-    val assistantOtter = LocalThreadAssistantOtter.current
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -24206,9 +24268,8 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             item(key = ThreadBottomScrollPaddingListItemKey) {
                 Column(Modifier.fillMaxWidth()) {
-                // While the otter lies on this conversation's composer, the list ends a band as
-                // tall as the otter higher (web AssistantOtterListEnd), so it never covers a message.
-                ThreadAssistantOtterListEnd(assistantOtter)
+                // No band for the assistant's otter: it lies over the list's end, so the list
+                // never moves when it comes or goes (artin 11-03); a reader scrolls if it covers.
                 Spacer(
                     modifier = Modifier
                         .fillMaxWidth()

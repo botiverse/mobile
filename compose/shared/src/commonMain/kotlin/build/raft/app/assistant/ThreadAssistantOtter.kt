@@ -1,6 +1,5 @@
 package build.raft.app.assistant
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -45,13 +44,14 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 // The page side of the personal assistant's otter (web assistant/AssistantOtter.tsx
-// `AssistantOtterAnchor` / `AssistantOtterListEnd` and assistantOtterState.ts): which composer it
-// lies on, its mood's inputs, and what a press does: it opens the assistant's panel
-// (ThreadAssistantPanel.kt). The view is RaftAssistantOtter.kt.
+// `AssistantOtterAnchor` and assistantOtterState.ts): which composer it lies on, its mood's
+// inputs, and what a press does: it opens the assistant's panel (ThreadAssistantPanel.kt). The
+// view is RaftAssistantOtter.kt. Unlike the web there is no list-end band: the otter lies over
+// the message list, which never moves for it (artin 11-03).
 
 /**
  * One conversation's otter, when that conversation may carry it: its composer shows the otter
- * while [hostId] is the host it lies on ([hosts]), and its message list keeps the band free.
+ * while [hostId] is the host it lies on ([hosts]).
  *
  * A press ([onOpen]) opens the assistant's panel over the page ([panelOpen]; web AssistantOtter
  * `open`), which shows [assistantName] with its meta line ([readsDms], [mood]) and [paused], and
@@ -324,21 +324,5 @@ internal fun newAssistantOtterHostId(): String = "thread-otter-${Uuid.random()}"
 internal fun threadComposerComposing(text: String, attachmentCount: Int): Boolean =
     text.isNotBlank() || attachmentCount > 0
 
-/**
- * At the end of the conversation's message list (web `AssistantOtterListEnd`): while the otter
- * lies on this conversation's composer, a full-width band as tall as the otter, so the last
- * message is never under it. Nothing otherwise.
- */
-@Composable
-internal fun ThreadAssistantOtterListEnd(otter: ThreadAssistantOtter?) {
-    if (otter == null) return
-    val order by otter.hosts.order.collectAsState()
-    if (order.activeAssistantOtterHost() != otter.hostId) return
-    Box(Modifier.testTag(ThreadAssistantOtterListEndTestTag)) {
-        RaftAssistantOtterListEndBand(otter.mood, scale = otter.scale)
-    }
-}
-
-/** Web `data-testid="assistant-otter"` / `"assistant-otter-list-end"`. */
+/** Web `data-testid="assistant-otter"`. */
 internal const val ThreadAssistantOtterTestTag = "assistant-otter"
-internal const val ThreadAssistantOtterListEndTestTag = "assistant-otter-list-end"
