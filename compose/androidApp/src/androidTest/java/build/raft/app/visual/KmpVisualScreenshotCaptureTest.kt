@@ -3085,6 +3085,10 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // The entity row under the search header, whose filter chips wrap onto two lines
+    // since #4160; the Pin item opens 30dp below the press.
+    private val SEARCH_PIN_ROW_Y_DP = 260f
+
     private fun captureHomeSearchEntityPinMenu(
         caseId: String,
         pageName: String,
@@ -3110,7 +3114,7 @@ class KmpVisualScreenshotCaptureTest {
                     menuOpen = captureAfterLongPressRendered(
                         label = "$caseId.open",
                         before = before,
-                        longPress = { longPressDisplayDp(x = 180f, y = 220f) },
+                        longPress = { longPressDisplayDp(x = 180f, y = SEARCH_PIN_ROW_Y_DP) },
                         rendered = { _, _, changedRatio ->
                             changedRatio >= SEARCH_PIN_MENU_MIN_CHANGED_RATIO
                         },
@@ -3126,7 +3130,7 @@ class KmpVisualScreenshotCaptureTest {
                         yellowMenuOpen < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
                     )
 
-                    tapDisplayDp(x = 240f, y = 250f)
+                    tapDisplayDp(x = 240f, y = SEARCH_PIN_ROW_Y_DP + 30f)
                     waitForIdleBounded()
                     Thread.sleep(300)
                     selected = captureActivityScreenshot("$caseId.selected")
@@ -3148,7 +3152,7 @@ class KmpVisualScreenshotCaptureTest {
 
                     Thread.sleep(1_000)
                     waitForIdleBounded()
-                    longPressDisplayDp(x = 180f, y = 220f)
+                    longPressDisplayDp(x = 180f, y = SEARCH_PIN_ROW_Y_DP)
                     waitForIdleBounded()
                     Thread.sleep(500)
                 } finally {
