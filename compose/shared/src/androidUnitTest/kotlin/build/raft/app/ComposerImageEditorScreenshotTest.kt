@@ -18,6 +18,8 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.resources.*
+import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -148,7 +150,11 @@ class ComposerImageEditorScreenshotTest {
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { content(image) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
+                    content(image)
+                }
+            }
         }
     }
 
