@@ -427,6 +427,12 @@ internal suspend fun flushRaftPlatformLogs() {
 
 internal suspend fun flushRaftPlatformLogsForTest() = flushRaftPlatformLogs()
 
+/**
+ * The credential redaction every shared log line gets ([RaftPlatformLogQueue]), for platform log
+ * writers that also take lines from outside the queue (the desktop log file: host logs, crashes).
+ */
+internal fun raftRedactLogMessage(message: String): String = message.sanitizeRaftLogMessage()
+
 private fun String.sanitizeRaftLogMessage(): String =
     RaftCredentialLikePatterns.fold(this) { current, pattern ->
         pattern.replace(current) { match ->

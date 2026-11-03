@@ -22870,7 +22870,18 @@ private fun ThreadMessagesListContent(
             ThreadInitialBottomAnchorStage.Settled -> Unit
         }
         if (!initialBottomAnchorReady) {
+            var initialBottomAnchorRetries = 0
             while (!initialBottomAnchorReady) {
+                // Bounded: a copy that can never anchor (a kept-alive, unplaced tab's thread) retried
+                // every 80 ms for as long as it stayed composed. Give up and accept the viewport.
+                if (++initialBottomAnchorRetries > ThreadInitialBottomAnchorMaxRetries) {
+                    diagnosticsLogger(
+                        "thread_initial_bottom_anchor result=retry_cap retries=$ThreadInitialBottomAnchorMaxRetries " +
+                            "latestItemIndex=$latestItemIndex targetItemIndex=$initialBottomAnchorTargetItemIndex"
+                    )
+                    initialBottomAnchorReady = true
+                    return@LaunchedEffect
+                }
                 if (adaptiveAnchorRestoreInFlight) {
                     // A4 restore owns the viewport (task #18): yield this frame rather than
                     // dispatching FollowLatest on top of an in-flight staged-anchor scroll.
@@ -27037,6 +27048,9 @@ internal const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
+
+/** At least 80 ms each (plus the command settlement): the initial bottom anchor gives up after ~5 s. */
+internal const val ThreadInitialBottomAnchorMaxRetries = 60
 private const val ThreadFocusedTailMeasurementRetryFrames = 2
 private const val ThreadViewportPixelProbeTimeoutMs = 2_500L
 private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f

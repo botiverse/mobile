@@ -6,6 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -140,12 +142,22 @@ internal fun AppShellTabFadeThroughStack(
                             .then(fade)
                             .fillMaxSize()
                 ) {
-                    layer(tab, active, placed)
+                    CompositionLocalProvider(LocalRaftAppShellTabSelected provides active) {
+                        layer(tab, active, placed)
+                    }
                 }
             }
         }
     }
 }
+
+/**
+ * Whether the enclosing app-shell tab is the selected one (true outside the kept-alive tab stack).
+ * Unlike a page's `active`, it stays true while another page covers the shell. Kept-alive tabs
+ * stay composed unselected, so per-tab copies of something only the selected tab shows (the wide
+ * reply-thread column) check it instead of being composed once per retained tab.
+ */
+internal val LocalRaftAppShellTabSelected = compositionLocalOf { true }
 
 /** Measured and kept, but neither drawn nor hit-tested while not [placed] (see RaftChildPage). */
 private fun Modifier.appShellTabPlacedOnlyWhen(placed: Boolean): Modifier =

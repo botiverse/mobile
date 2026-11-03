@@ -1,6 +1,7 @@
 package build.raft.app.desktop
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -25,6 +26,8 @@ import java.awt.Dimension
 fun main(args: Array<String>) {
     // First: a second launch only forwards its sign-in callback to the running app.
     RaftDesktopLoginCallbacks.install(args)
+    // Then the log file and crash recording (~/Library/Logs/Raft), before anything else can fail.
+    RaftDesktopCrashReporting.install()
     val debugBuild = System.getProperty("raft.desktop.debug") == "true"
     RaftCmpRouter.configure(debugBuild = debugBuild)
     RaftPageRegistry.install()
@@ -68,6 +71,9 @@ fun main(args: Array<String>) {
         ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT) }
             RaftDesktopInUseTracker(window)
+            // A composition failure is logged before Compose's error dialog closes the window.
+            @OptIn(ExperimentalComposeUiApi::class)
+            LaunchedEffect(Unit) { window.exceptionHandler = RaftDesktopCrashReporting.wrapWindowExceptionHandler(window.exceptionHandler) }
             RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
         }
     }

@@ -2,6 +2,7 @@ package build.raft.app.desktop
 
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.RaftDesktopFileLog
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.nav.RaftPageStack
 import build.raft.app.nav.RaftStackPage
@@ -76,4 +77,7 @@ object RaftDesktopPages {
     const val APP_SHELL = RAFT_APP_SHELL_PAGE
 }
 
-internal fun log(message: String) = println("RaftDesktop: $message")
+internal fun log(message: String) {
+    println("RaftDesktop: $message")
+    RaftDesktopFileLog.write("I", "RaftDesktop", message)
+}

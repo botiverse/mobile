@@ -39,6 +39,10 @@ dependencies {
     // System open / save panels (RaftDesktopFileDialogs).
     implementation(libs.filekit.dialogs)
     testImplementation(kotlin("test"))
+    // RaftDesktopSqliteDriverTest (the shared desktop driver over SQLDelight's JDBC driver).
+    testImplementation(libs.sqldelight.sqlite.driver)
+    // RaftDesktopImageLoaderTest (the shared loader's desktop decode cap).
+    testImplementation(libs.coil.compose)
     // NavDisplay host tests (runComposeUiTest).
     testImplementation(libs.cmp.ui.test)
 }
@@ -88,6 +92,10 @@ compose.desktop {
     application {
         mainClass = "build.raft.app.desktop.MainKt"
         jvmArgs += listOf("-Dapple.awt.application.name=Raft")
+        // Skiko calls System.gc() every 30 s while frames are drawn (skiko.gc.auto, to release native
+        // Skia memory); on G1 that is a stop-the-world full collection of the whole heap, which the
+        // freeze's sample caught (VM_G1CollectFull). Run those as concurrent cycles instead.
+        jvmArgs += listOf("-XX:+ExplicitGCInvokesConcurrent")
         nativeDistributions {
             // macOS dmg only for now (Linux packages would need their own data-dir and URL handler story).
             targetFormats(TargetFormat.Dmg)
@@ -95,8 +103,9 @@ compose.desktop {
             packageVersion = raftDesktopVersion.get()
             description = "Raft"
             vendor = "Raft"
-            // java.sql: SQLDelight's JDBC SQLite driver; jdk.unsupported: OkHttp / Skiko.
-            modules("java.sql", "jdk.unsupported", "java.naming")
+            // java.sql: SQLDelight's JDBC SQLite driver; jdk.unsupported: OkHttp / Skiko;
+            // java.management + jdk.management: the garbage-collection log lines (RaftDesktopCrashReporting).
+            modules("java.sql", "jdk.unsupported", "java.naming", "java.management", "jdk.management")
             macOS {
                 // Not the iOS app's build.raft.app: on Apple Silicon the iOS app can be installed too.
                 bundleID = "build.raft.app.desktop"

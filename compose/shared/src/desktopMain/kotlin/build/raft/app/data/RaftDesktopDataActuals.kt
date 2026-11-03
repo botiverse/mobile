@@ -1,13 +1,14 @@
 package build.raft.app.data
 
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.Properties
 
+// Connections are reused (RaftDesktopSqliteDriver): SQLDelight's JdbcSqliteDriver reopened the file
+// for every statement, on the UI thread for the pages' reads.
 internal actual fun openPlatformRaftSqlDriver(): SqlDriver =
-    JdbcSqliteDriver(
+    RaftDesktopSqliteDriver.open(
         url = "jdbc:sqlite:" + File(RaftDesktopPaths.databaseDir, RaftSqlDatabase.DatabaseName).absolutePath,
         properties = Properties(),
         schema = RaftSqlDatabase.Schema,
