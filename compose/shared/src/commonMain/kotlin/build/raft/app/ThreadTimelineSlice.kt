@@ -54,10 +54,12 @@ internal data class ThreadTimelineSlice(
      */
     val showForwardAction: Boolean = false,
     /** The viewer's role on this conversation's server is `guest` (web `currentUserServerRole`). */
-    val viewerIsGuest: Boolean = false
+    val viewerIsGuest: Boolean = false,
+    /** The conversation's channel kind (`task` for a task v2 conversation); see [showReplyActions]. */
+    val channelKind: String? = null
 ) {
-    /** Derived from [surfaceKind]; the menu's `reply` capability reads this single source. */
-    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind)
+    /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
+    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
 
     /** The page is a reply thread (its rows other than the origin are thread replies). */
     val replyThreadSurface: Boolean get() = surfaceKind == RaftThreadSurfaceKind.ReplyThread
@@ -99,6 +101,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         surfaceKind = surfaceKind,
+        channelKind = channelKind,
         showMessageSaveAction = showMessageSaveAction,
         showReactionActions = showReactionActions,
         showTaskOpenActions = showTaskOpenActions,

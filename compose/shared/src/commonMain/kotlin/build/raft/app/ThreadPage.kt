@@ -2367,8 +2367,8 @@ internal data class RaftThreadScreenPayload(
     val replySummariesAuthority: build.raft.app.data.ThreadReplySummariesAuthority =
         build.raft.app.data.ThreadReplySummariesAuthority.Unavailable,
 ) {
-    /** Derived from [surfaceKind]; never stored, so no constructor can forget it. */
-    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind)
+    /** Derived from [surfaceKind] and [channelKind]; never stored, so no constructor can forget it. */
+    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
 }
 
 internal data class ThreadMembersPageRoute(
@@ -12962,7 +12962,7 @@ private fun SharedThreadRouteContentContent(
                     }
                 }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
-                    if (threadMessageOpenIgnoredForSurface(renderedThread.surfaceKind)) {
+                    if (threadMessageOpenIgnoredForSurface(renderedThread.surfaceKind, renderedThread.channelKind)) {
                         bridge.log(
                             "thread_reply_open result=ignored_already_in_reply_thread " +
                                 "messageId=$itemId instance=${renderedThread.instanceId}"
@@ -30504,8 +30504,8 @@ internal fun threadMessageBodyTapEligible(
 ): Boolean =
     showReplyAction && !shareSelectionActive && !hasLocalSendState
 
-internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String): Boolean =
-    surfaceKind == RaftThreadSurfaceKind.ReplyThread
+internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String, channelKind: String? = null): Boolean =
+    !RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
 
 /**
  * A double tap on a message row shows its quick reaction bar (stdrc, 2026-10-29,

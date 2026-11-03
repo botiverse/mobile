@@ -133,6 +133,8 @@ class ThreadMessageLongPressSurfaceTest {
         assertTrue(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.ReplyThread))
         assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.Channel))
         assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.DirectMessage))
+        assertTrue(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.Channel, RaftTaskConversationChannelKind))
+        assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.Channel, "channel"))
     }
 
     @Test
