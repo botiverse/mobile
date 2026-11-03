@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -232,12 +233,13 @@ internal fun RaftComposerImageDesktopToolPopover(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val density = LocalDensity.current
-    var windowWidthPx by remember { mutableStateOf(0f) }
-    val widthPx = with(density) { width.toPx() }
-    val centre = (anchorLeft + anchorRight) / 2f
-    val x = (centre - widthPx / 2f).coerceIn(8f, (windowWidthPx - widthPx - 8f).coerceAtLeast(8f))
-    val y = with(density) { (RaftComposerImageDesktopBarHeight - 6.dp).toPx() }
-    Box(modifier = Modifier.fillMaxWidth().onGloballyPositioned { windowWidthPx = it.size.width.toFloat() }) {
+    // The window width is known while composing (no measure-then-move frame).
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val windowWidthPx = with(density) { maxWidth.toPx() }
+        val widthPx = with(density) { width.toPx() }
+        val centre = (anchorLeft + anchorRight) / 2f
+        val x = (centre - widthPx / 2f).coerceIn(8f, (windowWidthPx - widthPx - 8f).coerceAtLeast(8f))
+        val y = with(density) { (RaftComposerImageDesktopBarHeight - 6.dp).toPx() }
         RaftPopoverSurface(
             width = width,
             contentPadding = PaddingValues(12.dp),
