@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -447,6 +448,7 @@ fun RaftDropdownMenu(
     val nav = remember { RaftMenuNav() }
     // A right swipe must not pop the page underneath an open menu.
     RaftBlockBackSwipe()
+    RaftAutofocusGuard.HoldOpenSurface()
     // Android: unfocused until the window carries the host's bar icons (RaftPopupWindowPolicy).
     var focusable by remember { mutableStateOf(!RaftPopupDefersFocus) }
     Popup(popupPositionProvider = provider, onDismissRequest = { dismiss() }, properties = PopupProperties(focusable = focusable)) {

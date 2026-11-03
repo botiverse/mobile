@@ -2,6 +2,8 @@
 
 package build.raft.app
 
+import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
@@ -1737,6 +1739,12 @@ internal class RaftTextFieldNativeEditingStateReader {
  * contract is the editor-level `keyboardHeightChange` event. The default is deliberately a no-op
  * so ordinary page editors retain their existing layout behavior.
  */
+/**
+ * True around a conversation composer's editor: the field that takes focus when its conversation
+ * opens (ComposerAutofocusPolicy.kt), so its own focus never counts as another field's.
+ */
+internal val LocalRaftEditorIsConversationComposer = staticCompositionLocalOf { false }
+
 internal val LocalRaftDialogKeyboardHeightChange =
     compositionLocalOf<(KeyboardParams) -> Unit> { {} }
 
@@ -1774,6 +1782,12 @@ internal fun Modifier.raftAppEditorBehavior(
             }
         }
     }
+    // A conversation composer is what an automatic focus request is for; every other field
+    // (search, a rename dialog) keeps its focus from one (RaftAutofocusGuard).
+    val blocksComposerAutofocus = !LocalRaftEditorIsConversationComposer.current
+    DisposableEffect(focusOwner) {
+        onDispose { RaftAutofocusGuard.setFieldFocused(focusOwner, false) }
+    }
     return this
         .raftImeEnterAction(
             singleLine = singleLine,
@@ -1787,6 +1801,7 @@ internal fun Modifier.raftAppEditorBehavior(
         .focusRequester(focusRequester)
         .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
+            if (blocksComposerAutofocus) RaftAutofocusGuard.setFieldFocused(focusOwner, it.isFocused)
             if (it.isFocused) {
                 if (!lastFocus) {
                     if (participatesInGlobalFocusDismiss) {

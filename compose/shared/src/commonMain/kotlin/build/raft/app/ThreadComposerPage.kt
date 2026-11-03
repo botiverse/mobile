@@ -2275,6 +2275,8 @@ internal fun ThreadComposerContent(
      * and whether its editor is focused (the assistant's otter, [build.raft.app.assistant.ThreadAssistantOtterFrameEdge]).
      */
     frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    /** Take the focus when this conversation opens (ComposerAutofocusPolicy.kt); focus only, no soft keyboard. */
+    autofocusOnOpen: Boolean = false,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -2285,6 +2287,8 @@ internal fun ThreadComposerContent(
         owner = editorOwner,
         onEvent = onEvent,
     )
+    // The conversation composer's own focus never counts as another field's (RaftAutofocusGuard).
+    CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
     ThreadComposerContentLeaf(
         surface = surface,
         state = state,
@@ -2313,7 +2317,9 @@ internal fun ThreadComposerContent(
         initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
         externalNativeEditingStateReader = externalNativeEditingStateReader,
         frameEdge = frameEdge,
+        autofocusOnOpen = autofocusOnOpen,
     )
+    }
 }
 
 @Composable
@@ -2345,6 +2351,7 @@ internal fun ThreadComposerContentLeaf(
     initialMentionActionDetailsVisible: Boolean = false,
     externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
     frameEdge: (@Composable (composing: Boolean, focused: Boolean, covered: Boolean) -> Unit)? = null,
+    autofocusOnOpen: Boolean = false,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -2440,6 +2447,13 @@ internal fun ThreadComposerContentLeaf(
             }
         }
     }
+    // Desktop / hardware keyboard: opening the conversation puts the focus here (web MessageInput
+    // autoFocus). Focus only: no softwareKeyboardController.show(), unlike the explicit requests above.
+    ComposerAutofocusOnOpenEffect(
+        key = state.instanceId,
+        enabled = autofocusOnOpen,
+        focusRequester = composerFocusRequester,
+    )
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val suggestionTrigger =

@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.theme.RaftTheme
 
@@ -55,6 +56,8 @@ fun RaftWindowDialog(
 ) {
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
+    // A conversation opened underneath does not take focus from the dialog.
+    RaftAutofocusGuard.HoldOpenSurface()
     RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
     Dialog(
         onDismissRequest = onDismissRequest,
