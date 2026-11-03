@@ -1,5 +1,5 @@
 ---
-type: feature
+type: added
 area: thread
 platforms:
   - android
