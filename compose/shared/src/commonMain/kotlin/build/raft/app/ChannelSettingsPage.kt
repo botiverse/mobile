@@ -41,6 +41,7 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftSection
+import build.raft.designsystem.components.RaftFormSection
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonList
@@ -270,6 +271,47 @@ internal fun channelSettingsGuestPolicyApplies(channel: HomeChannelRow): Boolean
     return type == "channel" || (type == "private" && channelSettingsIsAllChannel(channel))
 }
 
+/**
+ * The settings store of one channel as the settings page and the conversation's settings drawer
+ * both use it: seeded from Home's snapshot and the members store (no blank first frame), then
+ * loading the channel's settings through the route's authority.
+ */
+internal fun createChannelSettingsStore(
+    route: ChannelSettingsRoute,
+    routeOwner: build.raft.app.data.AuthenticatedRouteOwner,
+    sharedStores: build.raft.app.data.RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    scope: kotlinx.coroutines.CoroutineScope,
+    logger: (String) -> Unit,
+): ChannelSettingsStore {
+    val homeStore = sharedStores.sharedHomeStore(storeScope)
+    val membersStore = sharedStores.serverMembersStore(storeScope)
+    val initialSharedHandoff =
+        channelSettingsSharedHandoffSnapshot(
+            owner = routeOwner,
+            route = route,
+            homeSnapshot = homeStore?.snapshotFor(route.serverId),
+            membersHandoff = membersStore.currentChannelMembersHandoff(routeOwner, route.channelId),
+        )
+    val dataSource =
+        RealChannelSettingsDataSource(
+            route = route,
+            authStore = sharedStores.authStore(storeScope),
+            owner = routeOwner,
+            gateway = sharedStores.authenticatedRouteAuthorityGateway(storeScope),
+            logger = logger,
+        )
+    return ChannelSettingsStore(
+        route = route,
+        owner = routeOwner,
+        dataSource = dataSource,
+        snapshotCache = sharedStores.channelSettingsSnapshotCache,
+        initialSharedHandoff = initialSharedHandoff,
+        initialAuthorityAccepted = sharedStores.currentAuthenticatedRouteOwner(storeScope) == routeOwner,
+        scope = scope,
+    )
+}
+
 @Page(CHANNEL_SETTINGS_PAGE, supportInLocal = true)
 internal class ComposeChannelSettingsPage : AuthenticatedProductPager(AuthenticatedProductRoute.ChannelSettings) {
     override fun willInit() {
@@ -310,49 +352,11 @@ private fun ChannelSettingsPageScreen() {
             sharedStores.authenticatedRouteOwnerFlow(storeScope)
         }.collectAsState(sharedStores.currentAuthenticatedRouteOwner(storeScope))
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val authorityGateway = remember(sharedStores, storeScope) {
-        sharedStores.authenticatedRouteAuthorityGateway(storeScope)
-    }
-    val snapshotCache = remember(sharedStores) { sharedStores.channelSettingsSnapshotCache }
     val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val membersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
-    val initialSharedHandoff = remember(route, routeOwner, homeStore, membersStore) {
-        channelSettingsSharedHandoffSnapshot(
-            owner = routeOwner,
-            route = route,
-            homeSnapshot = homeStore?.snapshotFor(route.serverId),
-            membersHandoff = membersStore.currentChannelMembersHandoff(routeOwner, route.channelId),
-        )
-    }
     val scope = rememberCoroutineScope()
-    val dataSource = remember(route, routeOwner, authStore, authorityGateway) {
-        RealChannelSettingsDataSource(
-            route = route,
-            authStore = authStore,
-            owner = routeOwner,
-            gateway = authorityGateway,
-            logger = { bridge.log("channel_settings_store $it") },
-        )
-    }
-    val settingsStore = remember(
-        route,
-        routeOwner,
-        dataSource,
-        snapshotCache,
-        sharedStores,
-        storeScope,
-        scope,
-    ) {
-        ChannelSettingsStore(
-            route = route,
-            owner = routeOwner,
-            dataSource = dataSource,
-            snapshotCache = snapshotCache,
-            initialSharedHandoff = initialSharedHandoff,
-            initialAuthorityAccepted =
-                sharedStores.currentAuthenticatedRouteOwner(storeScope) == routeOwner,
-            scope = scope,
-        )
+    val settingsStore = remember(route, routeOwner, sharedStores, storeScope, scope) {
+        createChannelSettingsStore(route, routeOwner, sharedStores, storeScope, scope) { bridge.log("channel_settings_store $it") }
     }
     val settingsState by settingsStore.state.collectAsState()
     val authorityAccepted = liveOwner == routeOwner
@@ -362,6 +366,24 @@ private fun ChannelSettingsPageScreen() {
     val pinned = settingsState.displayPinned(route.channelId.value)
     val muted = settingsState.displayMuted
     var confirm by remember(route) { mutableStateOf<ChannelSettingsConfirm?>(null) }
+    // Move to section reads and writes MY sidebar through Home's store, as the sidebar does.
+    val homeState by remember(homeStore) { homeStore?.state ?: kotlinx.coroutines.flow.MutableStateFlow(null) }.collectAsState()
+    val homeSidebarOrder = (homeState?.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
+    val sectionPin =
+        ThreadConversationPinUiState(
+            conversationId = route.channelId.value,
+            pinnedKind = "channel",
+            pinnedId = route.channelId.value,
+            pinned = pinned,
+            available = true,
+        )
+    val section =
+        channelSettingsSectionPlacement(
+            sidebarOrder = homeSidebarOrder ?: settingsState.sidebarOrder,
+            channelId = route.channelId.value,
+            pinned = homeSidebarOrder?.let { order -> channelSettingsSidebarPinned(order, route.channelId.value) } ?: pinned,
+            joint = channel?.let(::channelSettingsIsJoint) == true,
+        )
     val longMessageCollapseSetting =
         rememberRaftLongMessageCollapseConversationSetting(
             serverId = route.serverId.value,
@@ -456,6 +478,7 @@ private fun ChannelSettingsPageScreen() {
                                 profileStatus = settingsState.profileStatus,
                                 profileErrorCode = settingsState.profileErrorCode,
                                 slackBridge = settingsState.slackBridge,
+                                section = section,
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
@@ -513,6 +536,23 @@ private fun ChannelSettingsPageScreen() {
                                         storeScopeOverride = storeScope,
                                         authenticatedRouteAuthorityRequired = true,
                                     )
+                                },
+                                onMoveSection = { moves ->
+                                    if (settingsState.writeActionsEnabled && authorityAccepted) {
+                                        channelSectionHomeIntents(sectionPin, moves).forEach { homeStore?.dispatch(it) }
+                                    }
+                                },
+                                onCreateSection = { name, emoji ->
+                                    if (settingsState.writeActionsEnabled && authorityAccepted) {
+                                        homeStore?.dispatch(
+                                            SharedHomeIntent.CreateSidebarSection(
+                                                name = name,
+                                                emoji = emoji,
+                                                moveConversationId = route.channelId.value,
+                                                insertBeforeSectionId = section?.currentSectionKey,
+                                            )
+                                        )
+                                    }
                                 },
                             ),
                     )
@@ -587,6 +627,8 @@ internal data class ChannelSettingsUiModel(
     val profileErrorCode: String? = null,
     /** The Slack channel pick (web ChannelSlackBridgeField); null hides it. */
     val slackBridge: ChannelSlackBridgeState? = null,
+    /** Move to section (web ChannelSectionSelect, Pinned included); null keeps the Pin switch. */
+    val section: ChannelSectionPlacement? = null,
 )
 
 internal class ChannelSettingsCallbacks(
@@ -602,6 +644,8 @@ internal class ChannelSettingsCallbacks(
     val onUnarchive: () -> Unit = {},
     val onStopAllAgents: () -> Unit = {},
     val onOpenJointConnections: () -> Unit = {},
+    val onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
+    val onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
 )
 
 internal data class ChannelSettingsFailureLabels(
@@ -615,7 +659,7 @@ internal data class ChannelSettingsFailureLabels(
 )
 
 @Composable
-private fun channelSettingsFailureLabels(): ChannelSettingsFailureLabels =
+internal fun channelSettingsFailureLabels(): ChannelSettingsFailureLabels =
     ChannelSettingsFailureLabels(
         update = stringResource(Res.string.thread_settings_update_failed),
         visibility = stringResource(Res.string.channel_settings_visibility_failed),
@@ -754,7 +798,10 @@ internal fun ChannelSettingsContent(
                 longMessageCollapseSetting = longMessageCollapseSetting,
                 onToggleMute = callbacks.onToggleMute,
                 onTogglePin = callbacks.onTogglePin,
-                notificationLevelTargetInput = notificationLevelTarget
+                notificationLevelTargetInput = notificationLevelTarget,
+                section = model.section,
+                onMoveSection = callbacks.onMoveSection,
+                onCreateSection = callbacks.onCreateSection,
             )
         }
         val actions = channelSettingsActionRows(model)
@@ -1106,7 +1153,6 @@ internal fun ChannelInfoForm(
                     clearStatusOnEdit()
                 },
                 placeholder = stringResource(Res.string.thread_settings_description_placeholder),
-                limit = ChannelSettingsDescriptionLimit,
             )
         }
         if (slackBridge != null) {
@@ -1229,19 +1275,19 @@ private const val ChannelSettingsDescriptionLimit = 500
  * (`-1`) on every plan today, so it is not shown.
  */
 @Composable
-private fun ChannelGuestAccessSection(
+internal fun ChannelGuestAccessSection(
     channel: HomeChannelRow,
     enabled: Boolean,
     onSetVisible: (Boolean) -> Unit,
     onSetJoinable: (Boolean) -> Unit,
+    /** False inside the settings drawer, whose body already has the side padding. */
+    inset: Boolean = true,
 ) {
-    RaftSection(title = stringResource(Res.string.channel_settings_guest_title)) {
-        RaftText(
-            stringResource(Res.string.channel_settings_guest_detail),
-            modifier = Modifier.padding(bottom = 12.dp),
-            style = RaftTheme.typography.footnote,
-            color = RaftTheme.colors.foregroundHint,
-        )
+    ChannelSettingsSectionFrame(
+        title = stringResource(Res.string.channel_settings_guest_title),
+        description = stringResource(Res.string.channel_settings_guest_detail),
+        inset = inset,
+    ) {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             ChannelPreferenceRow(
                 title = stringResource(Res.string.channel_settings_guest_visible),
@@ -1280,7 +1326,10 @@ private fun ChannelPreferencesSection(
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit,
-    notificationLevelTargetInput: RaftNotificationLevelTarget? = null
+    notificationLevelTargetInput: RaftNotificationLevelTarget? = null,
+    section: ChannelSectionPlacement? = null,
+    onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
+    onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
 ) {
     // An older server without the unified API shows no Notifications row.
     val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
@@ -1293,15 +1342,21 @@ private fun ChannelPreferencesSection(
         )
     }
     RaftSection(title = stringResource(Res.string.channel_settings_preferences)) {
+        // web ChannelPreferencesSection: Move to section (Pinned is one of its choices) comes first.
+        if (section != null) {
+            ChannelSectionSelectRow(state = section, enabled = enabled, onMove = onMoveSection, onCreate = onCreateSection)
+        }
         RaftListRowGroup(Modifier.fillMaxWidth()) {
-            ChannelPreferenceRow(
-                title = stringResource(Res.string.channel_settings_pin),
-                detail = stringResource(Res.string.channel_settings_pin_detail),
-                checked = pinned,
-                enabled = enabled,
-                divider = false,
-                onToggle = onTogglePin
-            )
+            if (section == null) {
+                ChannelPreferenceRow(
+                    title = stringResource(Res.string.channel_settings_pin),
+                    detail = stringResource(Res.string.channel_settings_pin_detail),
+                    checked = pinned,
+                    enabled = enabled,
+                    divider = false,
+                    onToggle = onTogglePin
+                )
+            }
             if (notificationLevelTarget == null) {
                 ChannelPreferenceRow(
                     title = stringResource(Res.string.channel_settings_mute),
@@ -1324,7 +1379,7 @@ private fun ChannelPreferencesSection(
             // Device-local display preference: available without write permission on the channel.
             ChannelPreferenceRow(
                 title = stringResource(Res.string.conversation_long_message_collapse),
-                detail = longMessageCollapseSetting.preference.localizedDetail(),
+                detail = stringResource(Res.string.channel_settings_collapse_detail),
                 checked = longMessageCollapseSetting.effective,
                 enabled = longMessageCollapseSetting.available,
                 divider = true,
@@ -1363,13 +1418,15 @@ private fun ChannelPreferenceRow(
  * (web `confirmDialogs`), except Unarchive and Stop All Agents (its own dialog).
  */
 @Composable
-private fun ChannelActionsSection(
+internal fun ChannelActionsSection(
     actions: List<ChannelSettingsActionRow>,
     enabled: Boolean,
     actionInFlight: ChannelSettingsAction?,
     callbacks: ChannelSettingsCallbacks,
+    /** False inside the settings drawer, whose body already has the side padding. */
+    inset: Boolean = true,
 ) {
-    RaftSection(title = stringResource(Res.string.channel_settings_actions)) {
+    ChannelSettingsSectionFrame(title = stringResource(Res.string.channel_settings_actions), inset = inset) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             actions.forEach { row ->
                 val buttonEnabled = enabled && actionInFlight == null
@@ -1456,6 +1513,35 @@ internal fun ChannelActionButton(
     )
 }
 
+/**
+ * A settings section: on the page a [RaftSection] (its own rule and side padding; the
+ * description as a footnote under the title), in the drawer a [RaftFormSection] (the drawer
+ * draws the rule and the padding).
+ */
+@Composable
+private fun ChannelSettingsSectionFrame(
+    title: String,
+    inset: Boolean,
+    description: String? = null,
+    content: @Composable () -> Unit,
+) {
+    if (inset) {
+        RaftSection(title = title) {
+            if (description != null) {
+                RaftText(
+                    description,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundHint,
+                )
+            }
+            content()
+        }
+    } else {
+        RaftFormSection(title = title, description = description) { content() }
+    }
+}
+
 /** Joint channels: the entry to Connected servers (list, resend, invite another server). */
 @Composable
 private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
@@ -1482,7 +1568,7 @@ private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
  * the request runs; the dialog closes when it ends.
  */
 @Composable
-private fun ChannelSettingsConfirmDialog(
+internal fun ChannelSettingsConfirmDialog(
     confirm: ChannelSettingsConfirm,
     channelName: String,
     leaveVariant: LeaveChannelConfirmVariant,

@@ -196,7 +196,34 @@ internal data class ThreadChannelSettingsPanel(
     val onAddMember: () -> Unit = {},
     val onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
     val onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    /**
+     * The settings page's store for this channel (Info with the Slack pick, Guest access, every
+     * action and its confirm); null where the drawer has none (fixtures), which then shows the
+     * static parts below.
+     */
+    val storeFactory: ((kotlinx.coroutines.CoroutineScope) -> ChannelSettingsStore)? = null,
+    /** Web `joined && capabilities.stopAgents`. */
+    val canStopAllAgents: Boolean = false,
+    val agentControlsApi: build.raft.app.data.RaftAgentControlsApi? = null,
+    /** Web: #all hides its members from a member when the server hides people (ChatPanel `hideAllChannelMembersButton`). */
+    val hideMembersStrip: Boolean = false,
+    /** Without a store: Guest access and the Slack pick as the fixture shows them. */
+    val showGuestAccess: Boolean = false,
+    val slackBridge: build.raft.app.data.ChannelSlackBridgeState? = null,
+    val onProfileSaved: (name: String, description: String?) -> Unit = { _, _ -> },
+    val onChannelChanged: () -> Unit = {},
+    /** An action ended the drawer: [accessLost] after Leave / Delete / Disconnect. */
+    val onChannelClosed: (action: ChannelSettingsAction?, accessLost: Boolean) -> Unit = { _, _ -> },
+    val onActionFailed: (message: String) -> Unit = {},
 )
+
+/** Web ChatPanel `hideAllChannelMembersButton`: #all, a member's view, a server that hides people from members. */
+internal fun channelSettingsHidesMembersStrip(
+    channel: build.raft.app.data.HomeChannelRow?,
+    serverRole: String?,
+    hideHumansFromMembers: Boolean,
+): Boolean =
+    channel != null && channelSettingsIsAllChannel(channel) && serverRole == "member" && hideHumansFromMembers
 
 /** Web `showInfoSection`; without the channel's Home row, the form shows (the old drawer did). */
 internal fun ThreadChannelSettingsPanel.showsInfoForm(): Boolean {
@@ -240,15 +267,12 @@ internal fun rememberThreadChannelSettingsPanel(
     val sidebarOrder = snapshot?.sidebarOrder
     val section =
         pinState?.let { pin ->
-            ChannelSectionPlacement(
-                customSections = sidebarOrder?.customSections.orEmpty(),
+            channelSettingsSectionPlacement(
+                sidebarOrder = sidebarOrder,
+                channelId = pin.conversationId,
                 pinned = pin.pinned,
-                placementSectionId =
-                    sidebarOrder?.sectionPlacements
-                        ?.firstOrNull { it.kind == build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL && it.id == pin.conversationId }
-                        ?.sectionId,
-                canPin = pin.available,
                 joint = channel?.let(::channelSettingsIsJoint) == true,
+                canPin = pin.available,
             )
         }
     val muted = activityMuteState?.muted == true
@@ -320,23 +344,26 @@ internal fun channelSectionHomeIntents(
         }
     }
 
-/**
- * Whether the drawer offers a channel action ("visibility", "archive", "delete"), with the web's
- * gates (EditChannelDialog `visibilityActionRow` / `archiveActionRow` / `deleteActionRow`) once
- * the channel's Home row and permissions are known; before that, what the conversation offers.
- */
-internal fun ThreadChannelSettingsPanel.allowsChannelAction(actionId: String): Boolean {
-    if (actionId !in ThreadChannelSettingsActionIds) return false
-    val row = channel ?: return true
-    val granted = permissions ?: return true
-    return when (actionId) {
-        "visibility" -> channelSettingsShowsVisibilityAction(row, granted)
-        // The drawer has Archive only, so it shows while the channel is live.
-        "archive" -> channelSettingsShowsArchiveAction(row, granted) && !row.archived
-        "delete" -> channelSettingsShowsDeleteAction(row, granted) && channelSettingsCanDelete(row)
-        else -> false
-    }
-}
 
-/** The channel actions the drawer has (web Leave / Stop All Agents / Unarchive live on the settings page). */
-private val ThreadChannelSettingsActionIds = setOf("visibility", "archive", "delete")
+/** Whether my sidebar pins the channel (typed pins, and the legacy lists), as the conversation reads it. */
+internal fun channelSettingsSidebarPinned(order: build.raft.app.data.SettingsServerSidebarOrderSnapshot, channelId: String): Boolean =
+    ThreadConversationPinTarget(conversationId = channelId, kind = "channel", id = channelId).toUiState(order).pinned
+
+/** Move to section's state of a channel from my sidebar order (web useConversationSidebarSection). */
+internal fun channelSettingsSectionPlacement(
+    sidebarOrder: build.raft.app.data.SettingsServerSidebarOrderSnapshot?,
+    channelId: String,
+    pinned: Boolean,
+    joint: Boolean,
+    canPin: Boolean = true,
+): ChannelSectionPlacement =
+    ChannelSectionPlacement(
+        customSections = sidebarOrder?.customSections.orEmpty(),
+        pinned = pinned,
+        placementSectionId =
+            sidebarOrder?.sectionPlacements
+                ?.firstOrNull { it.kind == build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL && it.id == channelId }
+                ?.sectionId,
+        canPin = canPin,
+        joint = joint,
+    )

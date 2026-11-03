@@ -782,6 +782,7 @@
     <string name="channel_settings_section_detail">Choose where this channel appears in your sidebar.</string>
     <string name="channel_settings_section_create">Create section…</string>
     <string name="channel_settings_collapse_detail">Fold messages taller than the preview height behind a Show more toggle. Turn off to always show full messages in this channel.</string>
+    <string name="channel_settings_collapse_detail_dm">Fold messages taller than the preview height behind a Show more toggle. Turn off to always show full messages in this conversation.</string>
     <string name="channel_settings_actions">Actions</string>
     <string name="channel_settings_slack_title">Connect to Slack</string>
     <string name="channel_settings_slack_detail">Optionally pair this Raft channel with one available Slack channel.</string>
