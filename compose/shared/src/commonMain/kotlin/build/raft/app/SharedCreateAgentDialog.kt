@@ -555,7 +555,8 @@ internal fun SharedCreateAgentDialog(
     val inlineNameError = if (trimmedName.isNotEmpty()) validateAgentName(trimmedName) else null
     val localizedInlineNameError = inlineNameError?.let { localizedCreateAgentNameError(trimmedName, it) }
     val descriptionTooLong = description.text.length > CREATE_AGENT_DESCRIPTION_MAX_LENGTH
-    val atLimit = !external && maxAgents >= 0 && currentAgentCount >= maxAgents
+    // Web `CreateAgentDialog`: the agent limit holds for an external agent too (it takes a seat).
+    val atLimit = createAgentAtLimit(currentAgentCount, maxAgents)
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
     val selectedMachineRuntimeIds =
         normalizeCreateAgentRuntimeIds(
@@ -970,6 +971,10 @@ private fun PlanLimitBanner(
  * The action card's draft note above the form: web AddMembersDialog's context line (`border-l-2
  * border-line-seam pl-2.5 text-callout text-foreground-muted`), context rather than a warning.
  */
+/** One more agent would pass [maxAgents] (-1 is no cap): the banner shows and Create is disabled. */
+internal fun createAgentAtLimit(currentAgentCount: Int, maxAgents: Int): Boolean =
+    maxAgents >= 0 && currentAgentCount >= maxAgents
+
 /**
  * Web `create-agent-channel-context`: a plain line on the info wash, not a banner (it is context,
  * not a warning), saying the new agent joins the channel; it stays until the create is sent.

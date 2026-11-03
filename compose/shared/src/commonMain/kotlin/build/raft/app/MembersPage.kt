@@ -2364,7 +2364,10 @@ internal fun MembersPageContent(
             serverMembersStore = serverMembersStore
         )
     }
-    var maxAgents by remember { mutableStateOf(-1) }
+    // The plan's agent limit (web CreateAgentDialog `loadBilling`), read once per server; unread
+    // billing (a 403, offline) falls back to the plan's limits and the server's agents.
+    var createAgentBilling by remember { mutableStateOf<build.raft.app.data.CreateAgentBilling?>(null) }
+    var createAgentServerPlan by remember { mutableStateOf<String?>(null) }
     var optimisticMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
     // task #399 (Hands 3a56004f): the Members page is a *separate* create path from the thread
     // member panel. #3132/#3140 only fixed ChannelMembersCreateAgentDialog, so creating from here
@@ -2450,6 +2453,16 @@ internal fun MembersPageContent(
             merged.values.toList()
         }
     val currentAgentCount = localMembers.count { it.kind == MemberKind.Agent }
+    LaunchedEffect(networkClient, serverId) {
+        createAgentBilling = null
+        createAgentServerPlan = null
+        if (serverId.isBlank()) return@LaunchedEffect
+        createAgentServerPlan =
+            authStore.readSession()?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()?.plan
+        createAgentBilling = build.raft.app.data.loadCreateAgentBilling(networkClient)
+    }
+    val createAgentLimit =
+        build.raft.app.data.createAgentLimit(createAgentBilling, createAgentServerPlan, currentAgentCount)
     // Task #148: which agent rows reach the list without a computer id, and from where (store vs
     // the row added right after creating an agent), so a device run can locate where the id is lost.
     val agentsWithoutComputer =
@@ -2703,8 +2716,9 @@ internal fun MembersPageContent(
             createAgentMachines = computersSlice.machines,
             createAgentMachinesLoading = computersSlice.initialLoadInFlight,
             createAgentMachinesErrorMessage = computersSlice.initialLoadError?.userFacingMessage(errorStrings),
-            createAgentCurrentAgentCount = currentAgentCount,
-            createAgentMaxAgents = maxAgents,
+            createAgentCurrentAgentCount = createAgentLimit.usage,
+            createAgentMaxAgents = createAgentLimit.limit,
+            createAgentLimitPlanLabel = createAgentLimit.planLabel,
             createAgentLoadMachines = loadMachines,
             createAgentRetryMachines = retryMachines,
             createAgentFormStore = createAgentFormStore,
@@ -5592,6 +5606,8 @@ internal class MembersCreateAgentInputs(
     val createAgentMachinesErrorMessage: String? = null,
     val createAgentCurrentAgentCount: Int = 0,
     val createAgentMaxAgents: Int = -1,
+    /** The plan for the agent-limit banner ("… on Free plan"); null states the server's count. */
+    val createAgentLimitPlanLabel: String? = null,
     val createAgentLoadMachines: () -> Unit = {},
     val createAgentRetryMachines: () -> Unit = {},
     val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
@@ -5999,6 +6015,7 @@ internal fun MembersListContent(
             takenAgentNames = createAgentTakenAgentNames,
             currentAgentCount = createAgentCurrentAgentCount,
             maxAgents = createAgentMaxAgents,
+            limitPlanLabel = createAgent.createAgentLimitPlanLabel,
             onDismiss = {
                 if (!createAgentSubmitting) {
                     activeCreateAgentMode = null
