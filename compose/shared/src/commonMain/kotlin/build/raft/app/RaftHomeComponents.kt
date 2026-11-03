@@ -6615,7 +6615,7 @@ private fun ServerSwitcherRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     server.name,
-                    style = RaftType.Callout.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                    style = RaftType.Callout.withRaftFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium),
                     color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -6823,7 +6823,7 @@ private fun ServerSwitcherActionRow(
         RaftLucideIcon(iconName, Modifier.size(16.dp), color = raftArgbHex(RaftColor.ForegroundMuted))
         Text(
             label,
-            style = RaftType.Callout.copy(fontWeight = FontWeight.Medium),
+            style = RaftType.Callout.withRaftFontWeight(FontWeight.Medium),
             color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
