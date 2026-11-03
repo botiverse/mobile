@@ -34001,7 +34001,7 @@ private fun Modifier.threadSenderNameBaseline(): Modifier =
     layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
         val baseline = placeable[FirstBaseline]
-        val lines = if (baseline == AlignmentLine.Unspecified) emptyMap() else mapOf(ThreadSenderNameBaseline to baseline)
+        val lines: Map<AlignmentLine, Int> = if (baseline == AlignmentLine.Unspecified) emptyMap() else mapOf(ThreadSenderNameBaseline to baseline)
         layout(placeable.width, placeable.height, lines) { placeable.place(0, 0) }
     }
 
