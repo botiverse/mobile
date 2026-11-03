@@ -13,6 +13,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
 
 /**
  * The channel settings drawer opened from a conversation (web ChannelOverflowMenu settings
@@ -38,7 +39,7 @@ class ChannelSettingsDrawerScreenshotTest {
     fun channelSettingsDrawerPinnedLight() = capture("channel.settings.drawer.pinned", RaftAppAppearance.Light, pinned = true)
 
     private fun capture(name: String, appearance: RaftAppAppearance, pinned: Boolean = false) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities, root = { channelSettingsDrawerWindow() }) {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
@@ -67,7 +68,7 @@ class ChannelSettingsDrawerWideScreenshotTest {
     fun channelSettingsDrawerWideDark() = capture("channel.settings.drawer.wide.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities, root = { channelSettingsDrawerWindow() }) {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
@@ -76,4 +77,29 @@ class ChannelSettingsDrawerWideScreenshotTest {
                 RaftDesignSystemTheme { ChannelSettingsPanelVisualScreen() }
             }
         }
+}
+
+/**
+ * The drawer is its own window (Modal): capture that window, its content measured to it (as
+ * [RaftHomeSectionDialogScreenshotTest]).
+ */
+internal fun channelSettingsDrawerWindow(): android.view.View? {
+    val decor = ShadowDialog.getLatestDialog()?.window?.decorView ?: return null
+    val content = channelSettingsDrawerCompose(decor) ?: return decor
+    val parent = content.parent as? android.view.View ?: return decor
+    val exactly = android.view.View.MeasureSpec.EXACTLY
+    content.measure(
+        android.view.View.MeasureSpec.makeMeasureSpec(parent.width, exactly),
+        android.view.View.MeasureSpec.makeMeasureSpec(parent.height, exactly),
+    )
+    content.layout(0, 0, parent.width, parent.height)
+    return decor
+}
+
+private fun channelSettingsDrawerCompose(view: android.view.View): android.view.View? {
+    if (view is androidx.compose.ui.platform.ViewRootForTest) return view
+    if (view is android.view.ViewGroup) {
+        for (index in 0 until view.childCount) channelSettingsDrawerCompose(view.getChildAt(index))?.let { return it }
+    }
+    return null
 }
