@@ -24,7 +24,7 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
  * (RaftIosSceneDelegate; the status bar style through RaftCmpRoot's onSystemBarsResolved).
  */
 @Composable
-internal actual fun RaftDialogWindowPolicy(isDark: Boolean) = Unit
+internal actual fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: Boolean) = Unit
 
 @Composable
 internal actual fun RaftPrepareDialogWindow(isDark: Boolean) = Unit

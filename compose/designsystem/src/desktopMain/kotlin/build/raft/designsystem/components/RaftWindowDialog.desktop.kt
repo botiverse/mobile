@@ -22,7 +22,7 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
  * Nothing to do: the desktop target only renders components for the screenshot tests.
  */
 @Composable
-internal actual fun RaftDialogWindowPolicy(isDark: Boolean) = Unit
+internal actual fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: Boolean) = Unit
 
 @Composable
 internal actual fun RaftPrepareDialogWindow(isDark: Boolean) = Unit

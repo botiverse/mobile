@@ -95,9 +95,11 @@ internal fun RaftModalAnchoredPopover(
     horizontalPlacement: RaftFloatingHorizontalPlacement = RaftFloatingHorizontalPlacement.Anchor,
     horizontalAutoFlip: Boolean = false,
     dismissActivationDelayMillis: Long = RaftFloatingOverlayDismissActivationDelayMillis,
+    // A menu with no text field, opened over a focused composer: the keyboard stays up.
+    keepsHostKeyboard: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    Modal(onWillDismiss = { onDismiss() }) {
+    Modal(onWillDismiss = { onDismiss() }, keepsHostKeyboard = keepsHostKeyboard) {
         RaftAnchoredPopover(
             anchor = anchor,
             contentSize = contentSize,

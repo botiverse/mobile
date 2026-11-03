@@ -30,12 +30,18 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
     )
 
 @Composable
-internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
+internal actual fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: Boolean) {
     val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
     DisposableEffect(window) {
         // RaftWindowDialog draws RaftTheme.scrim; the theme's dim would double it.
         window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         window.applyRaftTransparentSystemBars()
+        onDispose {}
+    }
+    // Composed while the window is being attached, before it gains focus: the system would
+    // otherwise hide the keyboard for a focused window with no editor.
+    DisposableEffect(window, keepsHostKeyboard) {
+        if (keepsHostKeyboard) window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         onDispose {}
     }
     // The host activity's bar icons, not a guess from isDark: the page sets them from what it
