@@ -604,11 +604,11 @@ class RaftHomeComponentsTest {
         assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 2))
         assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 6))
         assertEquals(
-            312.dp,
+            288.dp,
             homeServerSwitcherServerListMaxHeight(serverCount = 7)
         )
         assertEquals(
-            312.dp,
+            288.dp,
             homeServerSwitcherServerListMaxHeight(serverCount = 30)
         )
     }

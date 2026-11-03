@@ -267,6 +267,11 @@ private val HomeLoadingSkeletonLineWidth = 128.dp
 private val HomeLoadingSkeletonLineHeight = 12.dp
 private val HomeServerSwitcherTopGap = 4.dp
 private val HomeServerSwitcherRowMinHeight = 52.dp
+// web ServerSwitcherMenu `SortableServerRow`: `h-12`.
+private val HomeServerSwitcherMenuRowHeight = 48.dp
+private val HomeServerSwitcherMenuInset = 8.dp
+// The full-width phone menu stops growing on a large window.
+private val HomeServerSwitcherMenuMaxWidth = 480.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = RaftLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
@@ -1171,7 +1176,11 @@ internal val HomeTitlebarVisualStates: List<HomeTitlebarVisualState> =
 private const val HomeTitlebarVisualServerId = "visual-server"
 private const val HomeTitlebarVisualServerSlug = "visual"
 private const val HomeTitlebarVisualOtherServerId = "visual-other-server"
-private const val HomeTitlebarVisualAvatar = "pixel:robot"
+// slock VisualTestingCases `VISUAL_SERVER_AVATAR_URL`: web server avatars are uploaded images, so
+// the case uses one fixed inline 8x8 picture (ink ground, two cyan eyes, a white mouth); the
+// same data URI here, not the agents' pixel robot.
+private const val HomeTitlebarVisualAvatar =
+    "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%208%208%22%20shape-rendering%3D%22crispEdges%22%3E%3Crect%20width%3D%228%22%20height%3D%228%22%20fill%3D%22%23141111%22%2F%3E%3Crect%20x%3D%221%22%20y%3D%221%22%20width%3D%222%22%20height%3D%222%22%20fill%3D%22%2327C6F0%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%221%22%20width%3D%222%22%20height%3D%222%22%20fill%3D%22%2327C6F0%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%225%22%20width%3D%224%22%20height%3D%222%22%20fill%3D%22%23FFFFFF%22%2F%3E%3C%2Fsvg%3E"
 
 /**
  * The servers a [HomeTitlebarVisualState] puts in the switcher (web primeHomeTitlebarState): the
@@ -3341,7 +3350,8 @@ private fun RaftStructuralHomeShellContent(
                                 Modifier
                                     .padding(
                                         top = homeServerSwitcherPanelTopOffset(topSafeArea, bellInColumn),
-                                        start = RaftAppSpacing.Lg
+                                        start = HomeServerSwitcherMenuInset,
+                                        end = HomeServerSwitcherMenuInset
                                     )
                                     .clickable(onClick = {})
                         )
@@ -4417,7 +4427,7 @@ internal fun homeShellTopSafeArea(
 
 internal fun homeServerSwitcherServerListMaxHeight(serverCount: Int): Dp? {
     if (serverCount <= HomeServerSwitcherMaxVisibleRows) return null
-    return (HomeServerSwitcherRowMinHeight.value * HomeServerSwitcherMaxVisibleRows).dp
+    return (HomeServerSwitcherMenuRowHeight.value * HomeServerSwitcherMaxVisibleRows).dp
 }
 
 internal data class RaftHomeSidebarSelection(
@@ -6327,7 +6337,7 @@ internal fun ServerSwitcherPanel(
     val serversById = remember(servers) { servers.associateBy { it.id } }
     val listState = rememberLazyListState()
     val density = LocalDensity.current
-    val rowStepPx = with(density) { HomeServerSwitcherRowMinHeight.toPx().coerceAtLeast(1f) }
+    val rowStepPx = with(density) { HomeServerSwitcherMenuRowHeight.toPx().coerceAtLeast(1f) }
     val edgeScrollZonePx = with(density) { RaftSortEdgeScrollZone.toPx() }
     val edgeScrollStepPx = with(density) { RaftSortEdgeScrollStep.toPx() }
     var draggedId by remember { mutableStateOf<String?>(null) }
@@ -6383,7 +6393,14 @@ internal fun ServerSwitcherPanel(
         }
     }
 
-    HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
+    // web: the switcher hangs under the whole bar, 8dp in from each side
+    // (`w-[calc(var(--anchor-width)-16px)]`), raft-ui PopoverContent `p-1`.
+    HardShadowPanel(
+        modifier = modifier.fillMaxWidth(),
+        minWidth = 276.dp,
+        maxWidth = HomeServerSwitcherMenuMaxWidth,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+    ) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = RaftType.Caption, color = RaftColor.TextMutedGray, modifier = Modifier.padding(RaftAppSpacing.Md))
         } else {
@@ -6415,7 +6432,7 @@ internal fun ServerSwitcherPanel(
                     items(order.size, key = { index -> "server-${order[index]}" }) { index ->
                         val server = serversById[order[index]] ?: return@items
                         if (draggedId == server.id) {
-                            Spacer(Modifier.fillMaxWidth().height(HomeServerSwitcherRowMinHeight))
+                            Spacer(Modifier.fillMaxWidth().height(HomeServerSwitcherMenuRowHeight))
                         } else {
                             ServerSwitcherRow(
                                 server,
@@ -6548,13 +6565,14 @@ private fun HardShadowPanel(
     modifier: Modifier = Modifier,
     minWidth: Dp,
     maxWidth: Dp,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(0.dp),
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     // raft-ui PopoverPopup without positioning; the rows bring their own padding.
     build.raft.designsystem.components.RaftPopoverSurface(
         modifier = modifier.widthIn(min = minWidth, max = maxWidth),
         width = null,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+        contentPadding = contentPadding,
         content = content
     )
 }
@@ -6569,39 +6587,36 @@ private fun ServerSwitcherRow(
     modifier: Modifier = Modifier
 ) {
     val clickModifier = onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier
+    // web ServerSwitcherMenu `SortableServerRow`: `h-12`, `rounded-chip`, `pl-2.5 pr-1 gap-2.5`;
+    // the avatar, the name (callout medium, bold for the current server) over the `/slug`
+    // (mono meta, hint ink), then the 16dp check on the current one, the unread count, the grip.
+    // The current row wears the `brand-soft` highlight the web shows on the row that has focus
+    // when the menu opens.
     androidx.compose.foundation.layout.Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = HomeServerSwitcherRowMinHeight)
+                .height(HomeServerSwitcherMenuRowHeight)
                 .background(
                     when {
-                        selected -> RaftColor.Selected
                         pressed -> RaftColor.FillPressed
+                        selected -> RaftColor.BrandSoft
                         else -> Color.Transparent
                     },
-                    RoundedCornerShape(RaftAppRadius.Control)
+                    RoundedCornerShape(RaftAppRadius.Chip)
                 )
                 .then(clickModifier)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(start = 10.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
-            // No "..." while a switch is pending (web ServerSwitcherMenu): the whole list dims.
-            if (selected) {
-                RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(14.dp), color = raftArgbHex(RaftColor.StickerInk))
-            } else {
-                Spacer(Modifier.size(14.dp))
-            }
-        }
         ServerSwitcherAvatarTile(server)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     server.name,
-                    style = RaftType.Button,
-                    color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack,
+                    style = RaftType.Callout.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     // A long press copies the name / the slug as shown ("/slug"); a tap still switches.
@@ -6617,10 +6632,14 @@ private fun ServerSwitcherRow(
                 shownSlug,
                 modifier = Modifier.raftCopyable(shownSlug),
                 style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
-                color = (if (selected) RaftColor.StickerInk else RaftColor.TextBlack).copy(alpha = 0.4f),
+                color = RaftColor.ForegroundHint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        // No "..." while a switch is pending (web ServerSwitcherMenu): the whole list dims.
+        if (selected) {
+            RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextBlack))
         }
         ServerSwitcherUnreadIndicator(server)
         if (dragHandleVisible) {
@@ -6789,18 +6808,26 @@ private fun ServerSwitcherActionRow(
     iconName: RaftLucideIconName = RaftLucideIconName.Plus
 ) {
     androidx.compose.foundation.layout.Row(
+        // web ServerSwitcherMenu `SWITCHER_ACTION_CLASS`: `min-h-9 px-2.5 py-1.5 gap-2.5
+        // rounded-chip`, callout medium, a 16dp muted icon.
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 42.dp)
-                .background(RaftColor.SurfaceWhite)
+                .heightIn(min = 36.dp)
+                .clip(RoundedCornerShape(RaftAppRadius.Chip))
                 .clickable(onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        RaftLucideIcon(iconName, Modifier.size(14.dp))
-        Text(label, style = RaftType.ButtonBold, color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        RaftLucideIcon(iconName, Modifier.size(16.dp), color = raftArgbHex(RaftColor.ForegroundMuted))
+        Text(
+            label,
+            style = RaftType.Callout.copy(fontWeight = FontWeight.Medium),
+            color = RaftColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
