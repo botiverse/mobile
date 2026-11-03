@@ -10,6 +10,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -98,5 +99,17 @@ class RaftDesktopCrashReportingTest {
 
     private companion object {
         val logDir: File by lazy { Files.createTempDirectory("raft-crash-log").toFile().apply { deleteOnExit() } }
+    }
+
+    @Test
+    fun aLateEventOnADisposedSceneIsRecoverable() {
+        assertTrue(RaftDesktopCrashReporting.isRecoverableDisposedSceneError(IllegalStateException("RootNodeOwner is already disposed")))
+        assertTrue(
+            RaftDesktopCrashReporting.isRecoverableDisposedSceneError(
+                RuntimeException("wrapped", IllegalStateException("RootNodeOwner is already disposed"))
+            )
+        )
+        assertFalse(RaftDesktopCrashReporting.isRecoverableDisposedSceneError(IllegalStateException("something else")))
+        assertFalse(RaftDesktopCrashReporting.isRecoverableDisposedSceneError(OutOfMemoryError()))
     }
 }

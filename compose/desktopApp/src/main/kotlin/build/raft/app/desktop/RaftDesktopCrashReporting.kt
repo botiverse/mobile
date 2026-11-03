@@ -63,9 +63,31 @@ object RaftDesktopCrashReporting {
     @OptIn(ExperimentalComposeUiApi::class)
     fun wrapWindowExceptionHandler(previous: WindowExceptionHandler?): WindowExceptionHandler =
         WindowExceptionHandler { throwable ->
+            if (isRecoverableDisposedSceneError(throwable)) {
+                // An event or frame reached a popup / hover card / layer whose Compose scene was
+                // already torn down (CMP desktop, "RootNodeOwner is already disposed"). The owner
+                // is gone, so there is nothing left to update: log it and keep the window open
+                // instead of the default error dialog that quits the app (artin 11-03).
+                logRecovered("compose_window", Thread.currentThread(), throwable)
+                return@WindowExceptionHandler
+            }
             logFatal("compose_window", Thread.currentThread(), throwable)
             if (previous != null) previous.onException(throwable) else throw throwable
         }
+
+    /** A late event on a disposed Compose scene owner; safe to drop (see [wrapWindowExceptionHandler]). */
+    internal fun isRecoverableDisposedSceneError(throwable: Throwable): Boolean =
+        generateSequence(throwable) { it.cause }.take(5).any { cause ->
+            cause is IllegalStateException && cause.message?.contains("RootNodeOwner is already disposed") == true
+        }
+
+    private fun logRecovered(source: String, thread: Thread, throwable: Throwable) {
+        RaftDesktopFileLog.writeNow(
+            "W",
+            TAG,
+            listOf("recovered_disposed_scene source=$source thread=${thread.name}") + raftDesktopThrowableLines(throwable),
+        )
+    }
 
     internal fun installUncaughtHandler() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
