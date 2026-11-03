@@ -256,7 +256,8 @@ private val hoverServers =
 
 @Composable
 internal fun HoverServerTileContent(open: Boolean = false) {
-    RaftAppRailServerTile(RaftServerMenuModel(servers = hoverServers, currentServer = hoverServers.first()), open = open, onClick = {})
+    // No tooltip: a mouse hover here would open its popup, which Robolectric's paused looper never settles.
+    RaftAppRailServerTile(RaftServerMenuModel(servers = hoverServers, currentServer = hoverServers.first()), open = open, onClick = {}, tooltip = false)
 }
 
 @Composable

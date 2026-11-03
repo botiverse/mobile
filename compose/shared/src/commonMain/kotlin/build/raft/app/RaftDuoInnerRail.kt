@@ -59,13 +59,15 @@ internal fun raftAppRailWithoutTopBar(navRailActive: Boolean): Boolean =
  * a press, and under a mouse or trackpad (never a finger), it lays `sticker-ink-medium` (6% paper)
  * over its whole face, image avatars too (raft-design #875, States "Medium on an ink sticker";
  * Kirby 10-28). A mouse over it, or a touch long press, shows the server's name in a tooltip
- * beside the rail.
+ * beside the rail ([tooltip] = false leaves it out: Robolectric captures, whose paused looper
+ * never settles a tooltip popup opened by their mouse hover).
  */
 @Composable
 internal fun RaftAppRailServerTile(
     model: RaftServerMenuModel,
     open: Boolean,
     onClick: () -> Unit,
+    tooltip: Boolean = true,
 ) {
     val source = remember { MutableInteractionSource() }
     // `sticker-ink-medium` under a mouse or trackpad (never a finger), a press, or while open.
@@ -79,7 +81,7 @@ internal fun RaftAppRailServerTile(
     val itemSize = RaftAppRailDefaults.metrics.itemSize
     // The server's name beside the rail under a mouse, or on a touch long press (which then doesn't
     // open the panel), as the web strip's avatars name theirs (WorkspaceStripButton).
-    RaftTooltip(text = server.name) {
+    val tile: @Composable () -> Unit = {
         RaftAvatarBadgeBox(
             size = RaftAvatarSize.Md,
             modifier =
@@ -107,6 +109,7 @@ internal fun RaftAppRailServerTile(
             Box(Modifier.matchParentSize().raftStateOverlay(overlay, RaftRadius.Sticker))
         }
     }
+    if (tooltip) RaftTooltip(text = server.name) { tile() } else tile()
 }
 
 /**
