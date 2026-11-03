@@ -42,6 +42,14 @@ import build.raft.app.raftSpanStyleForWeight
 internal val LocalRaftMarkdownTaskStatuses = compositionLocalOf<Map<Int, TaskStatus>?> { null }
 
 /**
+ * Status of every task the surface knows by its conversation, keyed by [raftMarkdownTaskRefStatusKey]
+ * (`#proj:#7`, `dm:@peer:#7`), for conversation-qualified task refs. A qualified ref never reads the
+ * by-number map: task numbers are unique only inside their conversation. Read only where
+ * [LocalRaftMarkdownTaskStatuses] is non-null (a surface with a task source).
+ */
+internal val LocalRaftMarkdownTaskRefStatuses = compositionLocalOf<Map<String, TaskStatus>> { emptyMap() }
+
+/**
  * The status map with a message's own linked task layered on top (web: "the message's own linked
  * task is always the freshest source for a ref in that message's body"). A `null` base stays
  * `null`: the surface has no (loaded) task source, so refs keep the legacy chip.
@@ -270,14 +278,15 @@ internal fun raftMarkdownTaskChipRevision(
     actions: List<RaftRichTextAction>,
     taskStatuses: Map<Int, TaskStatus>,
     dark: Boolean,
+    taskRefStatuses: Map<String, TaskStatus> = emptyMap(),
 ): List<String> {
     val taskActions = actions.filter { action -> action.refKind == RaftRichTextRefKind.Task }
     if (taskActions.isEmpty()) return emptyList()
     return buildList {
         add("taskTheme:${if (dark) "dark" else "light"}")
         taskActions.forEach { action ->
-            val number = taskNumberFromRefLabel(action.label)
-            add("task:${action.label}=${number?.let(taskStatuses::get)?.toWireValue() ?: "unknown"}")
+            val status = raftMarkdownTaskChipStatus(action, taskStatuses, taskRefStatuses)
+            add("task:${action.label}=${status?.toWireValue() ?: "unknown"}")
         }
     }
 }

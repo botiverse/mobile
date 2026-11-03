@@ -9,6 +9,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.markdown.raftMarkdownTaskRefStatusKey
 
 internal data class ThreadLinkedTasksProjection(
     val authoritative: Boolean,
@@ -392,6 +393,34 @@ internal fun threadMarkdownTaskStatusesByNumber(
     val statuses = LinkedHashMap<Int, TaskStatus>()
     serverTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
     channelTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
+    return statuses
+}
+
+/**
+ * Task status by conversation for `#proj:#7` / `dm:@peer:#7` chips ([raftMarkdownTaskRefStatusKey]),
+ * Web `taskRefKey(channelId, number)`: a qualified ref only ever shows its own conversation's task.
+ * Channels are keyed by the task's channel name. A DM task's channel name is not the peer, so DM
+ * tasks are keyed only for the DM being read ([currentDirectMessagePeerName], its channel tasks).
+ */
+internal fun threadMarkdownTaskRefStatuses(
+    channelTasks: List<TaskSummary>,
+    serverTasks: List<TaskSummary>,
+    currentDirectMessagePeerName: String? = null,
+): Map<String, TaskStatus> {
+    val statuses = LinkedHashMap<String, TaskStatus>()
+    (serverTasks + channelTasks).forEach { task ->
+        val number = task.taskNumber?.takeIf { it > 0 } ?: return@forEach
+        if (task.channelType == "dm") return@forEach
+        val name = task.channelName?.trim()?.removePrefix("#")?.takeIf { it.isNotEmpty() } ?: return@forEach
+        raftMarkdownTaskRefStatusKey(number, channelName = name)?.let { statuses[it] = task.status }
+    }
+    val peer = currentDirectMessagePeerName?.trim()?.removePrefix("@")?.takeIf { it.isNotEmpty() }
+    if (peer != null) {
+        channelTasks.forEach { task ->
+            val number = task.taskNumber?.takeIf { it > 0 } ?: return@forEach
+            raftMarkdownTaskRefStatusKey(number, directMessagePeerName = peer)?.let { statuses[it] = task.status }
+        }
+    }
     return statuses
 }
 

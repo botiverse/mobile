@@ -5153,6 +5153,34 @@ internal class SharedThreadDataSource(
         )
     }
 
+    /**
+     * The local channel a conversation-qualified task ref (`#proj:#7`, `dm:@peer:#7`) names, the
+     * scope its task number resolves in (Web `findTaskRefChannel`). Null: the reader has no such
+     * conversation.
+     */
+    suspend fun markdownTaskRefChannelId(
+        currentPayload: RaftThreadScreenPayload,
+        conversationLabel: String,
+        requiredKind: ConversationKind? = null
+    ): ChannelId? {
+        val session = readSession() ?: return null
+        val home = currentHomeSnapshot(session) ?: return null
+        val conversation =
+            resolveMarkdownChannelConversation(
+                home = home,
+                channelLabel = conversationLabel,
+                requiredKind = requiredKind,
+                knownMemberProfilesById =
+                    if (requiredKind == ConversationKind.DirectMessage) {
+                        currentKnownMarkdownMemberProfilesById(home)
+                    } else {
+                        emptyMap()
+                    },
+                currentPayload = currentPayload
+            ) ?: return null
+        return conversation.markdownTaskRefChannelId()
+    }
+
     suspend fun markdownThreadRefLaunchPayload(
         provenance: ReplyCacheProvenance,
         currentPayload: RaftThreadScreenPayload,
@@ -13015,6 +13043,11 @@ internal fun buildMarkdownThreadRefLaunchPayload(
         instanceIdOverride = instanceId
     )?.toInitialPayloadOrNull(instanceId)
 }
+
+/** The channel id tasks of [this] conversation carry (`TaskSummary.channelId`). */
+internal fun ConversationSummary.markdownTaskRefChannelId(): ChannelId? =
+    resolveThreadRouteIdentity().timelineChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+        ?: messageStreamChannelId().takeIf { it.value.isNotBlank() }
 
 internal fun resolveMarkdownChannelConversation(
     home: HomeSnapshot,
