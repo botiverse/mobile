@@ -2791,13 +2791,13 @@ private fun RaftFilePreviewStandalonePageContent() {
                     }
                 }
                 if (!exportPrivateDownload) activeDownloadId = null
-                // Compose 版: the folder the save panel put it in ("Saved to Downloads").
+                // Compose 版: the window's download bar says "Saved to Downloads · Show in Finder"
+                // (RaftDesktopDownloadBar), wherever the user is by then; no second toast here.
                 val savedToFolder =
                     result?.optString("uri")?.takeIf { it.isNotBlank() && !toPhotos }
                         ?.let { uri -> savedFileHost?.folderName(uri) }
-                        ?.let { folder -> raftFilePreviewSavedToFolderMessage(folder, savedFileTerms) }
-                bridge.toast(
-                    savedToFolder ?: raftFilePreviewSavedMessage(
+                if (savedToFolder == null) bridge.toast(
+                    raftFilePreviewSavedMessage(
                         exportPrivateDownload = exportPrivateDownload,
                         toPhotos = toPhotos,
                         supportsPublicDownloadReadback = supportsPublicDownloadReadback,
