@@ -788,8 +788,6 @@ internal fun TaskHeadStatusMenuRows(bar: TaskConversationHeaderBarModel, onPick:
 private fun TaskHeadLinkValue(
     contentDescription: String,
     onClick: (() -> Unit)?,
-    /** False: a person (opens their profile card), not a place, so no arrow. */
-    arrow: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -820,7 +818,7 @@ private fun TaskHeadLinkValue(
             content()
         }
         // Only a fact that leads somewhere carries the arrow.
-        if (onClick != null && arrow) RaftGlyphIcon(RaftGlyph.ArrowRight, size = 14.dp, color = colors.foregroundHint)
+        if (onClick != null) RaftGlyphIcon(RaftGlyph.ArrowRight, size = 14.dp, color = colors.foregroundHint)
     }
 }
 
@@ -862,11 +860,20 @@ private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serve
         RaftDescriptionValue(name, copyable = false)
         return
     }
-    // The face and name open the creator's profile card, as a message author's avatar does (artin, task #35).
-    TaskHeadLinkValue(
-        contentDescription = name.removePrefix("@"),
-        onClick = onOpenCreator?.let { open -> { open(creator) } },
-        arrow = false,
+    // The face and name open the creator's profile, as a message author's avatar does (artin,
+    // task #35). The row keeps its size: the platform widens a small target's touch area.
+    val open = onOpenCreator?.let { { it(creator) } }
+    Row(
+        if (open != null) {
+            Modifier
+                .clip(RoundedCornerShape(RaftRadius.Control))
+                .clickable(role = Role.Button, onClick = open)
+                .semantics(mergeDescendants = true) {}
+        } else {
+            Modifier
+        },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         RaftMemberAvatar(
             identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
