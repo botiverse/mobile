@@ -182,6 +182,11 @@ class SharedActivityStore internal constructor(
     staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
         { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
+    /**
+     * The process is in the foreground ([RaftStaleReadRecoverySignals.foreground]). The realtime
+     * background reconcile never reads while it is false; it owes one read for the return.
+     */
+    private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
@@ -292,6 +297,40 @@ class SharedActivityStore internal constructor(
     // (slock #10982) can deliver a message twice — live, then in a `sync:resume` batch — and the
     // summary path never patches rows, so the rows alone cannot tell. Seqs are server-global.
     private val realtimeCountedUnreadSeqs = linkedSetOf<Long>()
+    /** Reset loads started so far (guarded by realtimeOwnerLock). */
+    private var resetLoadsStarted = 0L
+    /** A reconcile was asked for while the app was in the background: one read is owed for the return. */
+    private var realtimeReconcileOwedOnForeground = false
+    /**
+     * After a return to the foreground: [resetLoadsStarted] then, and the earliest the owed read may
+     * run. Until it runs, every reconcile asked for folds into it, and any reset load started since
+     * the return (the page's own resume refresh) answers it: one read per return.
+     */
+    private var resumeFoldLoads: Long? = null
+    private var resumeNotBeforeMillis: Long? = null
+
+    init {
+        scope.launch {
+            var previous = appForeground.value
+            appForeground.collect { foreground ->
+                val returned = foreground && !previous
+                previous = foreground
+                if (returned) onAppForegroundReturned()
+            }
+        }
+    }
+
+    private fun onAppForegroundReturned() {
+        val job =
+            synchronized(realtimeOwnerLock) {
+                if (!realtimeReconcileOwedOnForeground) return@synchronized null
+                realtimeReconcileOwedOnForeground = false
+                resumeFoldLoads = resetLoadsStarted
+                resumeNotBeforeMillis = nowMillis() + realtimeBackgroundRefreshIntervalMillis
+                scheduleRealtimeBackgroundReconcileLocked()
+            }
+        job?.start()
+    }
 
     internal fun updateRuntimeIntegrations(
         authStore: RaftAuthSessionStore = this.authStore,
@@ -579,6 +618,9 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
+            realtimeReconcileOwedOnForeground = false
+            resumeFoldLoads = null
+            resumeNotBeforeMillis = null
             staleRecovery.reset()
             channelAccessChecks.values.forEach(Job::cancel)
             channelAccessChecks.clear()
@@ -1425,6 +1467,11 @@ class SharedActivityStore internal constructor(
     }
 
     private fun scheduleRealtimeBackgroundReconcileLocked(): Job {
+        if (!appForeground.value) {
+            // In the background nothing reads: the return reads once (onAppForegroundReturned).
+            realtimeReconcileOwedOnForeground = true
+            return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
+        }
         realtimeBackgroundReconcileDirty = true
         realtimeBackgroundReconcileJob?.let { return it }
         // Leading + trailing throttle (web requestInboxBackgroundRefresh): the
@@ -1435,7 +1482,11 @@ class SharedActivityStore internal constructor(
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 while (true) {
-                    val waitMillis = synchronized(realtimeOwnerLock) { realtimeBackgroundRefreshWaitMillisLocked() }
+                    val waitMillis =
+                        synchronized(realtimeOwnerLock) {
+                            val resumeWait = resumeNotBeforeMillis?.let { it - nowMillis() } ?: 0L
+                            maxOf(realtimeBackgroundRefreshWaitMillisLocked(), resumeWait)
+                        }
                     if (waitMillis > 0L) delay(waitMillis)
                     val shouldReconcile =
                         synchronized(realtimeOwnerLock) {
@@ -1449,17 +1500,38 @@ class SharedActivityStore internal constructor(
                         }
                     if (!shouldReconcile) return@launch
                     awaitCurrentLoadIdle()
-                    val restartedWindow =
+                    val next =
                         synchronized(realtimeOwnerLock) {
-                            if (realtimeBackgroundRefreshWaitMillisLocked() > 0L) {
-                                // A load started while we waited; fetch on that window's trailing edge.
-                                realtimeBackgroundReconcileDirty = true
-                                true
-                            } else {
-                                false
+                            val foldBase = resumeFoldLoads
+                            resumeFoldLoads = null
+                            resumeNotBeforeMillis = null
+                            when {
+                                !appForeground.value -> {
+                                    // Went to the background while waiting: no read now, one on the return.
+                                    realtimeReconcileOwedOnForeground = true
+                                    realtimeBackgroundReconcileDirty = false
+                                    realtimeBackgroundReconcileJob = null
+                                    ReconcileStep.Stop
+                                }
+                                // The return's one read: a reset load started since the return (the
+                                // visible page's resume refresh) already was it; asks folded into it.
+                                foldBase != null ->
+                                    if (resetLoadsStarted > foldBase) {
+                                        realtimeBackgroundReconcileDirty = false
+                                        ReconcileStep.Again
+                                    } else {
+                                        ReconcileStep.Load
+                                    }
+                                realtimeBackgroundRefreshWaitMillisLocked() > 0L -> {
+                                    // A load started while we waited; fetch on that window's trailing edge.
+                                    realtimeBackgroundReconcileDirty = true
+                                    ReconcileStep.Again
+                                }
+                                else -> ReconcileStep.Load
                             }
                         }
-                    if (restartedWindow) continue
+                    if (next == ReconcileStep.Stop) return@launch
+                    if (next == ReconcileStep.Again) continue
                     load(
                         refresh = true,
                         pullRefresh = false,
@@ -1472,6 +1544,8 @@ class SharedActivityStore internal constructor(
         realtimeBackgroundReconcileJob = job
         return job
     }
+
+    private enum class ReconcileStep { Load, Again, Stop }
 
     private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
         val lastStartedAt = lastResetLoadStartedAtMillis ?: return 0L
@@ -1831,7 +1905,10 @@ class SharedActivityStore internal constructor(
                 }
                 val generation = ++loadGeneration
                 val startedAtMillis = nowMillis()
-                if (refresh) lastResetLoadStartedAtMillis = startedAtMillis
+                if (refresh) {
+                    lastResetLoadStartedAtMillis = startedAtMillis
+                    resetLoadsStarted += 1
+                }
                 foregroundResetLoadStartedAtMillis = startedAtMillis.takeIf { refresh && !backgroundRefresh }
                 loadJob?.cancel()
                 // This load owns the background flag now: a superseded background load's own

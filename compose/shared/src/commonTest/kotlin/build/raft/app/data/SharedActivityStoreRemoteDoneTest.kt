@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -21,7 +22,10 @@ class SharedActivityStoreRemoteDoneTest {
 
     private class Fixture(val store: SharedActivityStore, val inbox: FakeInboxRepository, val facts: List<ActivityUnreadSummaryFact>)
 
-    private fun TestScope.fixture(vararg snapshots: InboxSnapshot): Fixture {
+    private fun TestScope.fixture(
+        vararg snapshots: InboxSnapshot,
+        appForeground: MutableStateFlow<Boolean> = MutableStateFlow(true)
+    ): Fixture {
         val inbox = FakeInboxRepository(initialSnapshots = snapshots.toList())
         val facts = mutableListOf<ActivityUnreadSummaryFact>()
         val store =
@@ -30,7 +34,8 @@ class SharedActivityStoreRemoteDoneTest {
                 inboxRepository = inbox,
                 onSummaryFact = { facts += it },
                 realtimeBackgroundRefreshIntervalMillis = 2_500L,
-                nowMillis = { testScheduler.currentTime }
+                nowMillis = { testScheduler.currentTime },
+                appForeground = appForeground
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
@@ -129,5 +134,52 @@ class SharedActivityStoreRemoteDoneTest {
         advanceTimeBy(10_000L)
         runCurrent()
         assertEquals(2, f.inbox.initialLoadCount)
+    }
+
+    @Test
+    fun inTheBackgroundNothingReadsAndTheReturnReadsOnce() = runTest {
+        val foreground = MutableStateFlow(true)
+        val f = fixture(snapshot(listOf(row("channel-1", "5"))), appForeground = foreground)
+        val changed = SharedActivityIntent.ApplyRealtimeEvent(ActivityChanged(ServerId("server-1"), "sync_changes"))
+
+        // A reconcile already waiting when the app leaves reads nothing; nor do events after it.
+        f.store.dispatch(changed)
+        foreground.value = false
+        runCurrent()
+        repeat(3) {
+            f.store.dispatch(changed)
+            f.store.dispatch(SharedActivityIntent.ApplyRemoteDone("channel-unknown", "9"))
+            advanceTimeBy(60_000L)
+            runCurrent()
+        }
+        assertEquals(1, f.inbox.initialLoadCount, "no Activity read while in the background")
+
+        // Back: the sync pull's refetch right after folds into the one owed read.
+        foreground.value = true
+        runCurrent()
+        f.store.dispatch(changed)
+        advanceTimeBy(60_000L)
+        runCurrent()
+        assertEquals(2, f.inbox.initialLoadCount, "exactly one read for the return")
+    }
+
+    @Test
+    fun theResumeRefreshOfAVisibleActivityAnswersTheOwedRead() = runTest {
+        val foreground = MutableStateFlow(true)
+        val f = fixture(snapshot(listOf(row("channel-1", "5"))), appForeground = foreground)
+        foreground.value = false
+        runCurrent()
+        f.store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(ActivityChanged(ServerId("server-1"), "sync_changes")))
+        advanceTimeBy(60_000L)
+        runCurrent()
+
+        foreground.value = true
+        runCurrent()
+        // The visible page refreshes on resume, then the sync pull's refetch arrives during that read.
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        f.store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(ActivityChanged(ServerId("server-1"), "sync_changes")))
+        advanceTimeBy(60_000L)
+        runCurrent()
+        assertEquals(2, f.inbox.initialLoadCount, "the resume refresh is the one read")
     }
 }
