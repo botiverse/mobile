@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T20:04:53.134Z",
+  "generatedAt": "2026-11-03T20:28:44.700Z",
   "runId": "cd8e52ea-20261103200309",
   "commit": "cd8e52ea-20261103200309",
   "commitSubject": "People in Add Member show the person icon, as on the web (#4244)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 93,
-        "ready": 24,
-        "pending": 69
+        "ready": 33,
+        "pending": 60
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 93,
-    "ready": 24,
-    "pending": 69
+    "ready": 33,
+    "pending": 60
   },
   "componentMatrixSummary": {
     "total": 122,

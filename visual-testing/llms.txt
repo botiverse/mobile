@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 20:04:53 UTC
+Generated: 2026-11-03 20:28:44 UTC
 Latest run: cd8e52ea-20261103200309
 Latest commit: cd8e52ea-20261103200309
 Commit subject: People in Add Member show the person icon, as on the web (#4244)
 Providers: react vs android
 Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 24 / total 93, pending 69
+AI analysis: ready 33 / total 93, pending 60
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
