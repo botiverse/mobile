@@ -273,6 +273,8 @@ internal fun RaftFilePreviewFileDownloadCard(
     onCancel: (() -> Unit)?,
     modifier: Modifier = Modifier,
     onShare: (() -> Unit)? = null,
+    /** A second action right under the primary one (Compose 版: Open next to Show in Finder). */
+    companionAction: RaftFilePreviewCardAction? = null,
     animated: Boolean = true
 ) {
     RaftDesignSystemTheme {
@@ -361,6 +363,16 @@ internal fun RaftFilePreviewFileDownloadCard(
                             (if (failed) RaftLucideIconName.RotateCcw else actionIcon)?.let { icon -> { RaftDownloadIcon(icon) } }
                     )
                 }
+                if (companionAction != null && !view.inProgress && view.phase != RaftFilePreviewDownloadPhase.Failed) {
+                    RaftButton(
+                        text = companionAction.label,
+                        onClick = companionAction.onClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        size = RaftButtonSize.Lg,
+                        enabled = actionEnabled,
+                        leadingIcon = companionAction.icon?.let { icon -> { RaftDownloadIcon(icon) } }
+                    )
+                }
                 // Once the file is on the device: Share next to Open / Install (task #75).
                 if (onShare != null && !view.inProgress) {
                     RaftButton(
@@ -386,6 +398,13 @@ internal fun RaftFilePreviewFileDownloadCard(
         }
     }
 }
+
+/** One extra button of the file page ([RaftFilePreviewFileDownloadCard]'s companion action). */
+internal data class RaftFilePreviewCardAction(
+    val label: String,
+    val icon: RaftLucideIconName?,
+    val onClick: () -> Unit,
+)
 
 /** A Lucide icon in the enclosing design-system slot's ink. */
 @Composable

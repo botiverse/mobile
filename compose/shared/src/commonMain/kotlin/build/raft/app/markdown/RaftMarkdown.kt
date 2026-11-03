@@ -1520,6 +1520,9 @@ private object RaftMarkdownTextProvider : TextProvider {
         val mentionCards = rememberRaftMarkdownMentionPreviewCards(resolvedText)
         // An App link card chip's item card under a mouse or trackpad pointer (web AppLinkHoverCard).
         val appLinkCards = rememberRaftMarkdownAppLinkHoverCards(resolvedText)
+        // The hovered link's destination in the page's link status (a browser's status bar).
+        val linkHoverStatus = rememberRaftMarkdownLinkHoverStatus(resolvedText)
+        val linkHoverStatusModifier = linkHoverStatus?.let { Modifier.raftMarkdownLinkHoverStatus(it) } ?: Modifier
         // In a selectable message body, a mouse drag from a link selects (RaftMarkdownLinkDragSelect.kt).
         val linkDrag = rememberRaftMarkdownLinkDragText()
         val linkDragModifier =
@@ -1532,6 +1535,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                 modifier =
                     textModifier
                         .then(hoverModifier)
+                        .then(linkHoverStatusModifier)
                         .then(linkDragModifier)
                         .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
                 color = color,
@@ -1552,6 +1556,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                     if (!inlineDecorations.isEmpty) decorationLayout = result
                     mentionCards?.layout = result
                     appLinkCards?.layout = result
+                    linkHoverStatus?.layout = result
                     linkDrag?.second?.layout = result
                     resolvedOnTextLayout(result)
                 },
