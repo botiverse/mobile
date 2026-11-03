@@ -2182,48 +2182,11 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
             )
         )
     ),
+    // The web case (react-provider.spec.ts) answers `GET /integrations/agents/:id` with `[]`, so
+    // the Apps tab shows its empty state; the fixture agent has no app logins either.
     appLogins = AgentAppLoginSnapshot(
         agentId = membersAgentDetailVisualMember.id,
-        items = listOf(
-            AgentAppLoginItem(
-                id = "grant-raft-actions-product-ux",
-                type = AgentAppLoginType.Active,
-                clientId = "raft-actions",
-                clientKey = "raft-actions",
-                clientName = "Raft Actions",
-                clientDescription = "Executes approved action cards and task updates through Raft Agent Login.",
-                clientHomepageUrl = "https://raft.local/actions",
-                clientAgentManifestUrl = "https://raft.local/.well-known/agent.json",
-                scopes = listOf("messages:read", "tasks:write"),
-                remember = true,
-                createdAt = "2026-06-19T12:20:00Z",
-                resolvedAt = "2026-06-19T12:21:00Z",
-                resolvedByUserId = "artin"
-            ),
-            AgentAppLoginItem(
-                id = "grant-calendar-product-ux",
-                type = AgentAppLoginType.Active,
-                clientId = "calendar",
-                clientKey = "calendar",
-                clientName = "Calendar",
-                clientDescription = "Reads launch review reminders and scheduled UX follow-ups.",
-                clientHomepageUrl = "https://calendar.local",
-                scopes = listOf("calendar:read"),
-                remember = false,
-                createdAt = "2026-06-18T09:00:00Z",
-                resolvedAt = "2026-06-18T09:01:00Z",
-                resolvedByUserId = "artin"
-            ),
-            AgentAppLoginItem(
-                id = "request-drafts-product-ux",
-                type = AgentAppLoginType.Pending,
-                clientId = "drafts",
-                clientName = "Drafts",
-                clientDescription = "Pending request hidden to match React active-only Apps tab.",
-                scopes = listOf("documents:read"),
-                createdAt = "2026-06-20T09:00:00Z"
-            )
-        )
+        items = emptyList()
     )
 )
 
@@ -6933,11 +6896,24 @@ private fun MembersDetailContent(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                         ) {
-                            if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                            // Web AgentWorkspace's path bar sits right under the tabs: no spacer.
+                            if (
+                                initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement &&
+                                pageTab != MembersAgentDetailTab.Workspace
+                            ) {
                                 item(key = "member-detail-${member.id.value}-top-spacer") {
                                     // Web AgentDetailPanel's hero sits 20dp under the tabs
-                                    // (`py-5`): this slot's 16dp gap plus the hero's 4dp.
-                                    Spacer(Modifier.height(if (pageTab == MembersAgentDetailTab.Profile) 0.dp else RaftAppSpacing.Sm))
+                                    // (`py-5`): this slot's 16dp gap plus the hero's 4dp. Web
+                                    // AgentAppAccessTab's `py-4` is the slot's 16dp gap alone.
+                                    Spacer(
+                                        Modifier.height(
+                                            when (pageTab) {
+                                                MembersAgentDetailTab.Profile,
+                                                MembersAgentDetailTab.Apps -> 0.dp
+                                                else -> RaftAppSpacing.Sm
+                                            }
+                                        )
+                                    )
                                 }
                             }
                             if (
@@ -7067,17 +7043,19 @@ private fun MembersDetailContent(
                                             loadedDirs = loadedWorkspaceDirs,
                                             loadingDirs = loadingWorkspaceDirs,
                                             dirErrors = workspaceDirErrors,
+                                            workspacePath = membersAgentWorkspacePath(member.id.value, detail?.summary),
+                                            onCopyPath = onCopyAgentIssueReference,
                                             onRefresh = { loadWorkspaceRoot() },
                                             onToggleDirectory = { toggleWorkspaceDirectory(it) },
-                                            onSelectFile = { selectWorkspaceFile(it) },
-                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                            onSelectFile = { selectWorkspaceFile(it) }
                                         )
                                     MembersAgentDetailTab.Apps ->
                                         MembersAgentAppsTab(
                                             detail = detail,
                                             timeContext = timeContext,
                                             onOpenUrl = onOpenUrl,
-                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                            // Web AgentAppAccessTab: `px-5`.
+                                            modifier = Modifier.padding(horizontal = MembersAgentProfileInset)
                                         )
                                         MembersAgentDetailTab.Activity -> Unit
                                     }
@@ -12000,6 +11978,11 @@ private fun MembersAgentReminderCard(
     }
 }
 
+/**
+ * Web `AgentWorkspace` on a phone: the workspace path bar (copy), the tree header (Workspace +
+ * refresh) and the tree, each bar full width over a `line-seam` rule, the rows in Space Mono.
+ * The web's hidden-files toggle is not here: the app does not list hidden files.
+ */
 @Composable
 private fun MembersAgentWorkspaceTab(
     treeState: MembersAgentWorkspaceTreeState,
@@ -12007,65 +11990,142 @@ private fun MembersAgentWorkspaceTab(
     loadedDirs: Map<String, List<RaftWorkspaceNode>>,
     loadingDirs: Set<String>,
     dirErrors: Map<String, String>,
+    /** The path bar's text; null hides the bar (an external agent has no local path to copy). */
+    workspacePath: String?,
+    onCopyPath: (String) -> Unit,
     onRefresh: () -> Unit,
     onToggleDirectory: (String) -> Unit,
     onSelectFile: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    MembersDetailSection(
-        title = stringResource(Res.string.member_section_workspace),
-        modifier = modifier,
-        framed = false,
-        trailingContent = {
-            // Ghost Lg: the 18dp glyph is unchanged, the touch target is 44dp.
+    val colors = RaftTheme.colors
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (workspacePath != null) {
+            MembersWorkspaceBar {
+                RaftText(
+                    text = workspacePath,
+                    style = RaftTheme.typography.monoMeta,
+                    color = colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                // Web CopyIconButton: a check in foreground ink for 1.5s once copied.
+                var copied by remember(workspacePath) { mutableStateOf(false) }
+                LaunchedEffect(copied) {
+                    if (copied) {
+                        delay(1_500)
+                        copied = false
+                    }
+                }
+                RaftIconButton(
+                    onClick = {
+                        onCopyPath(workspacePath)
+                        copied = true
+                    },
+                    tooltip =
+                        stringResource(
+                            if (copied) Res.string.member_action_copied_workspace_path else Res.string.member_action_copy_workspace_path
+                        ),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Md
+                ) {
+                    RaftLucideIcon(
+                        if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
+                        Modifier.size(18.dp),
+                        color = raftArgbHex(if (copied) colors.foreground else colors.foregroundHint)
+                    )
+                }
+            }
+        }
+        MembersWorkspaceBar(horizontalArrangement = Arrangement.SpaceBetween) {
+            RaftSectionEyebrow(text = stringResource(Res.string.member_section_workspace))
+            // icon-md, pulled out by its icon inset so the glyph ends on the 12dp line (web headEdges).
             RaftIconButton(
                 onClick = onRefresh,
                 tooltip = stringResource(Res.string.member_action_refresh),
                 variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg
+                size = RaftIconButtonSize.Md,
+                modifier = Modifier.offset(x = 7.dp)
             ) {
-                RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp)
+                RaftLucideIcon(RaftLucideIconName.RefreshCw, Modifier.size(18.dp), color = raftArgbHex(colors.foregroundMuted))
             }
         }
-    ) {
-        when (treeState) {
-            MembersAgentWorkspaceTreeState.Idle,
-            MembersAgentWorkspaceTreeState.Loading ->
-                MembersDetailField(
-                    stringResource(Res.string.member_label_status),
-                    stringResource(Res.string.member_state_workspace_loading)
-                )
-            MembersAgentWorkspaceTreeState.Empty ->
-                MembersWorkspaceEmptyState(stringResource(Res.string.member_state_no_files), onRefresh)
-            is MembersAgentWorkspaceTreeState.Error ->
-                MembersWorkspaceErrorState(
-                    stringResource(
-                        Res.string.member_error_workspace_load,
-                        treeState.error.userFacingMessage(errorStrings)
-                    ),
-                    onRefresh
-                )
-            is MembersAgentWorkspaceTreeState.NoPermission ->
-                MembersWorkspaceErrorState(
-                    stringResource(
-                        Res.string.member_error_workspace_hidden,
-                        treeState.blocker.userFacingMessage(errorStrings)
-                    ),
-                    onRefresh
-                )
-            is MembersAgentWorkspaceTreeState.Content ->
-                MembersWorkspaceTreeView(
-                    root = treeState.snapshot.root,
-                    expandedDirs = expandedDirs,
-                    loadedDirs = loadedDirs,
-                    loadingDirs = loadingDirs,
-                    dirErrors = dirErrors,
-                    onToggleDirectory = onToggleDirectory,
-                    onSelectFile = onSelectFile
-                )
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            when (treeState) {
+                MembersAgentWorkspaceTreeState.Idle,
+                MembersAgentWorkspaceTreeState.Loading ->
+                    MembersWorkspaceCenteredHint(stringResource(Res.string.member_state_workspace_loading))
+                MembersAgentWorkspaceTreeState.Empty ->
+                    MembersWorkspaceEmptyState(stringResource(Res.string.member_state_no_files), onRefresh)
+                is MembersAgentWorkspaceTreeState.Error ->
+                    MembersWorkspaceErrorState(
+                        stringResource(
+                            Res.string.member_error_workspace_load,
+                            treeState.error.userFacingMessage(errorStrings)
+                        ),
+                        onRefresh
+                    )
+                is MembersAgentWorkspaceTreeState.NoPermission ->
+                    MembersWorkspaceErrorState(
+                        stringResource(
+                            Res.string.member_error_workspace_hidden,
+                            treeState.blocker.userFacingMessage(errorStrings)
+                        ),
+                        onRefresh
+                    )
+                is MembersAgentWorkspaceTreeState.Content ->
+                    MembersWorkspaceTreeView(
+                        root = treeState.snapshot.root,
+                        expandedDirs = expandedDirs,
+                        loadedDirs = loadedDirs,
+                        loadingDirs = loadingDirs,
+                        dirErrors = dirErrors,
+                        onToggleDirectory = onToggleDirectory,
+                        onSelectFile = onSelectFile
+                    )
+            }
         }
     }
+}
+
+/**
+ * Web AgentWorkspace's path bar: the path the runtime reported, else `~/.slock/agents/<id>/`;
+ * none for an external agent (web `hosted`), which has no local path to copy.
+ */
+internal fun membersAgentWorkspacePath(agentId: String, summary: AgentDetailSummary?): String? {
+    if (summary?.isExternal == true) return null
+    return summary?.workspacePath?.trim()?.takeIf { it.isNotEmpty() } ?: "~/.slock/agents/$agentId/"
+}
+
+/** Web workspace bars: `px-3 py-1.5`, a `line-seam` rule below, full width. */
+@Composable
+private fun MembersWorkspaceBar(
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp),
+    content: @Composable RowScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = horizontalArrangement,
+            content = content
+        )
+        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(RaftTheme.colors.lineSeam))
+    }
+}
+
+/** Web `px-3 py-4 text-center text-callout text-foreground-hint`. */
+@Composable
+private fun MembersWorkspaceCenteredHint(text: String) {
+    RaftText(
+        text = text,
+        style = RaftTheme.typography.callout,
+        color = RaftTheme.colors.foregroundHint,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp)
+    )
 }
 
 @Composable
@@ -12082,28 +12142,22 @@ private fun MembersWorkspaceTreeView(
         membersWorkspaceRows(root.children, expandedDirs, loadedDirs)
     }
     if (rows.isEmpty()) {
-        MembersDetailField(stringResource(Res.string.member_section_workspace), stringResource(Res.string.member_state_no_files))
+        MembersWorkspaceCenteredHint(stringResource(Res.string.member_state_no_files))
         return
     }
-    // The tree sits in one raft-ui Card, its rows flush inside it.
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 280.dp, max = 560.dp)
-            .membersRaftCard(),
-        contentPadding = PaddingValues(vertical = RaftAppSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
-    ) {
-        items(rows.size, key = { "workspace-${rows[it].node.path}" }) { index ->
-            val row = rows[index]
-            MembersWorkspaceNodeRow(
-                row = row,
-                expanded = row.node.path in expandedDirs,
-                loading = row.node.path in loadingDirs,
-                errorMessage = dirErrors[row.node.path],
-                onToggleDirectory = onToggleDirectory,
-                onSelectFile = onSelectFile
-            )
+    // The tab's list scrolls; the rows are plain children of its item.
+    Column(modifier = Modifier.fillMaxWidth()) {
+        rows.forEach { row ->
+            key("workspace-${row.node.path}") {
+                MembersWorkspaceNodeRow(
+                    row = row,
+                    expanded = row.node.path in expandedDirs,
+                    loading = row.node.path in loadingDirs,
+                    errorMessage = dirErrors[row.node.path],
+                    onToggleDirectory = onToggleDirectory,
+                    onSelectFile = onSelectFile
+                )
+            }
         }
     }
 }
@@ -12121,33 +12175,25 @@ private fun MembersWorkspaceNodeRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val muted = raftArgbHex(colors.foregroundMuted)
-    // A tree row: 32dp, 12dp sides, 16dp per level; chevron in hint ink, the type icon in
-    // muted ink, the name in callout, sizes in Space Mono hint (raft-ui files row type).
+    val folder = node.kind == RaftWorkspaceFileKind.Folder
+    // Web TreeNode: `py-1 pr-2 gap-1`, Space Mono code text; a folder starts 8dp + 16dp per level
+    // (chevron, then the folder), a file 22dp + 16dp per level so its icon lines up with the
+    // folder's. 14dp glyphs; no sizes.
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 32.dp)
                 .clickable {
-                    if (node.kind == RaftWorkspaceFileKind.Folder) {
-                        onToggleDirectory(node.path)
-                    } else {
-                        onSelectFile(node.path)
-                    }
+                    if (folder) onToggleDirectory(node.path) else onSelectFile(node.path)
                 }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(start = (row.depth * 16 + if (folder) 8 else 22).dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Spacer(Modifier.width((row.depth * 16).dp))
-            if (node.kind == RaftWorkspaceFileKind.Folder) {
+            if (folder) {
                 if (loading) {
-                    // #70: replace the chevron with a RaftSpinner
-                    // while the directory contents are being fetched. Mirrors
-                    // React's `AgentWorkspace.tsx` spinner pattern (but KMP
-                    // per @artin's 06-23 20:51 directive shows the spinner
-                    // inline as the chevron substitute instead of alongside
-                    // a "Loading..." text label).
+                    // #70 (@artin 06-23): the spinner stands in for the chevron while the
+                    // directory loads.
                     RaftIconSpinner(size = 14.dp, color = RaftColor.TextBlack)
                 } else {
                     RaftLucideIcon(
@@ -12156,28 +12202,23 @@ private fun MembersWorkspaceNodeRow(
                         color = raftArgbHex(colors.foregroundHint)
                     )
                 }
-            } else {
-                Spacer(Modifier.width(14.dp))
             }
-            RaftLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(16.dp), color = muted)
+            RaftLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(14.dp), color = muted)
             RaftText(
                 text = node.name.ifBlank { node.path },
-                style = typography.callout.copy(
-                    fontWeight = if (node.name == "memory.md") FontWeight.SemiBold else FontWeight.Normal
+                style = typography.monoCode.copy(
+                    fontWeight =
+                        when {
+                            folder -> FontWeight.Medium
+                            node.name == "memory.md" -> FontWeight.Bold
+                            else -> FontWeight.Normal
+                        }
                 ),
                 color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f, fill = false)
             )
-            node.meta?.takeIf { it.isNotBlank() }?.let { meta ->
-                RaftText(
-                    text = meta,
-                    style = typography.monoMeta,
-                    color = colors.foregroundHint,
-                    maxLines = 1
-                )
-            }
             if (loading) {
                 RaftText(
                     text = stringResource(Res.string.common_loading),
@@ -12188,7 +12229,7 @@ private fun MembersWorkspaceNodeRow(
             }
         }
         errorMessage?.let {
-            Box(Modifier.padding(start = (12 + (row.depth + 1) * 16).dp, end = 12.dp, bottom = 6.dp)) {
+            Box(Modifier.padding(start = ((row.depth + 1) * 16 + 22).dp, end = 12.dp, bottom = 6.dp)) {
                 RaftText(
                     text = stringResource(Res.string.member_error_workspace_child_load, it),
                     style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
@@ -12201,26 +12242,38 @@ private fun MembersWorkspaceNodeRow(
 
 @Composable
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
-    MembersDetailField(stringResource(Res.string.member_label_files), message)
-    RaftButton(
-        text = stringResource(Res.string.common_retry),
-        onClick = onRefresh,
-        modifier = Modifier.fillMaxWidth(),
-        size = RaftButtonSize.Lg,
-        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp) }
-    )
+    // The tree is full width; its own messages keep the bars' 12dp sides.
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+    ) {
+        MembersDetailField(stringResource(Res.string.member_label_files), message)
+        RaftButton(
+            text = stringResource(Res.string.common_retry),
+            onClick = onRefresh,
+            modifier = Modifier.fillMaxWidth(),
+            size = RaftButtonSize.Lg,
+            leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp) }
+        )
+    }
 }
 
 @Composable
 private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
-    MembersDetailField(stringResource(Res.string.member_label_state), message)
-    RaftButton(
-        text = stringResource(Res.string.common_retry),
-        onClick = onRefresh,
-        modifier = Modifier.fillMaxWidth(),
-        size = RaftButtonSize.Lg,
-        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp) }
-    )
+    // The tree is full width; its own messages keep the bars' 12dp sides.
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+    ) {
+        MembersDetailField(stringResource(Res.string.member_label_state), message)
+        RaftButton(
+            text = stringResource(Res.string.common_retry),
+            onClick = onRefresh,
+            modifier = Modifier.fillMaxWidth(),
+            size = RaftButtonSize.Lg,
+            leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp) }
+        )
+    }
 }
 
 @Composable
@@ -12231,12 +12284,17 @@ private fun MembersAgentAppsTab(
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    MembersDetailSection(title = stringResource(Res.string.member_section_connected_apps), modifier = modifier) {
-        RaftText(
-            text = stringResource(Res.string.member_hint_connected_apps),
-            style = RaftTheme.typography.callout,
-            color = RaftTheme.colors.foregroundMuted
-        )
+    // Web AgentAppAccessTab's Apps section (`stack-y-3`): the eyebrow, its description, then the
+    // apps or the hint. The web's Grant Access form and App events list are not in the app.
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            MembersDetailSectionTitle(stringResource(Res.string.member_section_connected_apps))
+            RaftText(
+                text = stringResource(Res.string.member_hint_connected_apps),
+                style = RaftTheme.typography.callout,
+                color = RaftTheme.colors.foregroundMuted
+            )
+        }
         val appLogins = detail?.appLogins
         when (appLogins?.loadState) {
             AgentAppLoginLoadState.NoPermission ->
@@ -12259,9 +12317,10 @@ private fun MembersAgentAppsTab(
                 val activeItems = appLogins?.items.orEmpty()
                     .filter { it.type == AgentAppLoginType.Active && it.revokedAt.isNullOrBlank() }
                 if (activeItems.isEmpty()) {
-                    MembersDetailField(
-                        stringResource(Res.string.member_tab_apps),
-                        stringResource(Res.string.member_state_no_connected_apps)
+                    RaftText(
+                        text = stringResource(Res.string.member_state_no_connected_apps),
+                        style = RaftTheme.typography.callout,
+                        color = RaftTheme.colors.foregroundHint
                     )
                 } else {
                     activeItems.forEach { item ->

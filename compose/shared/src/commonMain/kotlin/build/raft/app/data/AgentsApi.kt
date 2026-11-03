@@ -611,6 +611,8 @@ internal data class AgentSummary(
     val machineId: String?,
     val machineName: String?,
     val daemonVersion: String?,
+    /** The workspace path the agent's runtime reported (`runtimeProfile.current.workspacePathRef`). */
+    val workspacePath: String? = null,
     val avatarUrl: String?,
     val creatorId: String?,
     val creatorType: String?,
@@ -652,6 +654,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         machineId = machineId,
         machineName = machineName,
         daemonVersion = daemonVersion,
+        workspacePath = workspacePath,
         avatarUrl = avatarUrl,
         creatorId = creatorId,
         creatorType = creatorType,
@@ -920,6 +923,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         machineId = machineId ?: currentProfile?.machineId,
         machineName = currentProfile?.machineName,
         daemonVersion = daemonVersion ?: currentProfile?.daemonVersion,
+        workspacePath = currentProfile?.workspacePathRef.runtimeProfileRefPath(),
         avatarUrl = avatarUrl,
         creatorId = creatorId,
         creatorType = creatorType,
@@ -1074,8 +1078,22 @@ private data class AgentRuntimeProfileCurrentDto(
     val model: String? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
-    val daemonVersion: String? = null
+    val daemonVersion: String? = null,
+    /** Shared `AgentRuntimeProfileReport.workspacePathRef`: `AgentRuntimeProfileRef | string | null`. */
+    val workspacePathRef: JsonElement? = null
 )
+
+/** Web `runtimeProfileRefPath`: the ref's `path` (or the ref itself when it is a string), trimmed. */
+private fun JsonElement?.runtimeProfileRefPath(): String? {
+    val ref = this ?: return null
+    val raw =
+        when (ref) {
+            is JsonPrimitive -> ref.contentOrNull
+            is kotlinx.serialization.json.JsonObject -> (ref["path"] as? JsonPrimitive)?.contentOrNull
+            else -> null
+        }
+    return raw?.trim()?.takeIf { it.isNotEmpty() }
+}
 
 @Serializable
 private data class AgentCommandResponseDto(val ok: Boolean)
