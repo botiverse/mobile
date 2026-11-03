@@ -216,7 +216,7 @@ class SyncChangesStoreRouterTest {
     }
 
     @Test
-    fun `a Done with a null frontier still reaches the store, which can't tell`() = runTest {
+    fun `a Done with a null frontier still reaches the store which cannot tell`() = runTest {
         apply(syncStaleWithState(1, "ch-1", done = """{"done":true,"doneFrontierSeq":null}"""))
         assertEquals(listOf("remote_done:ch-1:null", "home", "activity"), targets.calls)
     }
