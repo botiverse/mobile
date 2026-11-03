@@ -2191,7 +2191,7 @@
     <string name="search_entity_channel">频道</string>
     <string name="search_entity_dm">私信</string>
     <string name="search_entity_agent">Agent</string>
-    <string name="search_entity_person">人类</string>
+    <string name="search_entity_person">人类成员</string>
     <string name="search_entity_members">成员</string>
     <string name="search_entity_computer">计算机</string>
     <string name="search_meta_thread">消息列</string>
