@@ -76,6 +76,8 @@ internal fun SettingsWebViewSurface.productPageView(): RaftProductPageView? =
         // Settings > Connected apps: the web's Integrations section.
         SettingsWebViewSurface.Marketplace -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Integrations)
         SettingsWebViewSurface.Feedback -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)
+        // The web's Account > Delete Account page.
+        SettingsWebViewSurface.AccountDeletion -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Account)
         SettingsWebViewSurface.Computers -> RaftProductPageView(RaftPageRoute.Computers)
         SettingsWebViewSurface.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
         SettingsWebViewSurface.Onboarding,

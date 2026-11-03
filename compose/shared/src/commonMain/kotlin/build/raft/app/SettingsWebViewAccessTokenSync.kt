@@ -25,6 +25,8 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     ImBridges("im-bridges"),
     ReleaseNotes("release-notes"),
     Feedback("feedback"),
+    /** Settings > Account > Delete account: the web deletion page (also its pending state). */
+    AccountDeletion("account-deletion"),
     /** The in-app Artifact viewer's web page (not a Settings route; shares the token sync). */
     ArtifactViewer("artifact-viewer"),
 }

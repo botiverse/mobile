@@ -80,10 +80,15 @@ internal fun raftDecodeWebViewHostMessage(raw: String): Pair<String, JSONObject>
             "feedback:integration-unavailable" -> "integration-unavailable"
             FeedbackDiagnosticsBridge.START_KIND -> FeedbackDiagnosticsBridge.START_KIND
             FeedbackDiagnosticsBridge.CANCEL_KIND -> FeedbackDiagnosticsBridge.CANCEL_KIND
+            // botiverse/slock `packages/web/src/embed/hostBridge.ts`: the user signed out on the page.
+            RAFT_HOST_EVENT_SESSION_LOGOUT -> RAFT_HOST_EVENT_SESSION_LOGOUT
             else -> null
         } ?: return null
     return acceptedKind to payload
 }
+
+/** Web `emitHostEvent("session:logout")`: an explicit sign-out completed on the page (payload `{}`). */
+internal const val RAFT_HOST_EVENT_SESSION_LOGOUT = "session:logout"
 
 /** `window.RaftHost` bridge installed at document start when host events are enabled. */
 internal const val RaftWebViewHostPortName = "raftHostPort"

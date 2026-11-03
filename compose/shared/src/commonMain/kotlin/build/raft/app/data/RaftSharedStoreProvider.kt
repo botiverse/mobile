@@ -2853,7 +2853,8 @@ internal class RaftSharedStoreProvider private constructor(
                             runCatchingPreservingCancellation {
                                 avatarMountedBinding.prewarmOwner(authStore.readSession()?.currentServerId)
                             }
-                        is AuthSessionEvent.Cleared,
+                        // A later sign-in may open the account deletion page again.
+                        is AuthSessionEvent.Cleared -> RaftAccountDeletionPendingSignal.Process.reset()
                         is AuthSessionEvent.TokensRotated -> Unit
                     }
                 }
