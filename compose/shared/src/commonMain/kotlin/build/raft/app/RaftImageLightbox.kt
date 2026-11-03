@@ -50,11 +50,14 @@ import androidx.compose.ui.unit.toSize
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.LocalRaftFrameInsets
+import build.raft.designsystem.components.LocalRaftWindowTitleBar
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftFrameInsets
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftWindowTitleBar
+import build.raft.designsystem.components.raftTopBarRowTopInset
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import coil3.compose.AsyncImagePainter
@@ -76,9 +79,13 @@ import net.engawapg.lib.zoomable.zoomable
  *   anywhere outside the image.
  * - The top bar shows who sent it and when (as the message header shows the time), "3 of 12",
  *   and the actions the conversation already has for an attachment: Download and Open with.
- * - The lightbox covers the whole window, so its top bar starts below the window's top safe area
- *   and inside the host's frame insets ([LocalRaftFrameInsets]: a desktop window's own controls,
- *   the macOS traffic lights), never under them ([raftImageLightboxBarPadding]).
+ * - The lightbox covers the whole window, so its top bar is the window's top bar while it is open
+ *   (the web's overlay title bar): under a window title bar laid over the app
+ *   ([LocalRaftWindowTitleBar], the macOS window) it covers the title bar's band as `RaftTopBar`
+ *   does, its items start after the traffic lights, and it is the title bar's hit-test area (its
+ *   buttons take their clicks, the rest drags the window). Otherwise it starts below the window's
+ *   top safe area and the host's frame insets ([LocalRaftFrameInsets]); see
+ *   [raftImageLightboxBarPadding].
  */
 internal data class RaftImageLightboxItem(
     val attachment: RaftThreadAttachmentItem,
@@ -172,14 +179,21 @@ private const val RaftImageLightboxMaxScale = 5f
 private const val RaftImageLightboxDoubleClickScale = 2.5f
 
 /**
- * Where the lightbox's top bar sits: below the window's top safe area and the host's top frame
- * inset (whichever reaches further), and its own 16dp in from each side plus the host's left /
- * right frame inset (physical sides). The pages start under the bar.
+ * Where the lightbox's top bar sits. Top: below the window's top safe area and the host's top
+ * frame inset (whichever reaches further), less a window title bar's band, which the bar covers
+ * itself as `RaftTopBar` does (`raftTopBarRowTopInset`). Sides: its own 16dp, plus the host's
+ * left / right frame inset (physical sides); on the left, at least the window controls' corner
+ * ([RaftWindowTitleBar.startInset], the traffic lights). The pages start under the bar.
  */
-internal fun raftImageLightboxBarPadding(topSafeArea: Dp, frameInsets: RaftFrameInsets): PaddingValues =
+internal fun raftImageLightboxBarPadding(
+    topSafeArea: Dp,
+    frameInsets: RaftFrameInsets,
+    titleBar: RaftWindowTitleBar = RaftWindowTitleBar.None
+): PaddingValues =
     PaddingValues.Absolute(
-        left = RaftImageLightboxBarSidePadding + frameInsets.left.coerceAtLeast(0.dp),
-        top = maxOf(topSafeArea, frameInsets.top, 0.dp),
+        left = RaftImageLightboxBarSidePadding +
+            maxOf(frameInsets.left, titleBar.startInset, 0.dp),
+        top = raftTopBarRowTopInset(maxOf(topSafeArea, frameInsets.top, 0.dp), titleBar.height),
         right = RaftImageLightboxBarSidePadding + frameInsets.right.coerceAtLeast(0.dp),
         bottom = 0.dp
     )
@@ -250,7 +264,8 @@ internal fun RaftImageLightboxContent(
         if (target != pagerState.currentPage) scope.launch { pagerState.animateScrollToPage(target) }
     }
     val current = items[pagerState.currentPage.coerceIn(0, items.lastIndex)]
-    val barPadding = raftImageLightboxBarPadding(topSafeArea, LocalRaftFrameInsets.current)
+    val titleBar = LocalRaftWindowTitleBar.current
+    val barPadding = raftImageLightboxBarPadding(topSafeArea, LocalRaftFrameInsets.current, titleBar)
     val barTop = barPadding.calculateTopPadding()
     RaftDesignSystemTheme(forceDark = true) {
         Box(
@@ -304,7 +319,8 @@ internal fun RaftImageLightboxContent(
                 onOpenWith = onOpenWith?.let { open -> { open(current.attachment) } },
                 onClose = { currentOnDismiss() },
                 padding = barPadding,
-                modifier = Modifier.align(Alignment.TopCenter)
+                // The window title bar's hit test sees the bar's events after its buttons.
+                modifier = Modifier.align(Alignment.TopCenter).then(titleBar.modifier)
             )
             if (pagerState.currentPage > 0) {
                 RaftIconButton(

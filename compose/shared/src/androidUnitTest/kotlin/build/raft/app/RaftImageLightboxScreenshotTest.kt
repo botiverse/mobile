@@ -4,7 +4,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
+import build.raft.designsystem.components.LocalRaftWindowTitleBar
 import build.raft.designsystem.components.RaftFrameInsets
+import build.raft.designsystem.components.RaftWindowTitleBar
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -31,22 +33,37 @@ class RaftImageLightboxScreenshotTest {
     fun lightboxDark() = capture("image.lightbox.dark", RaftAppAppearance.Dark)
 
     /**
-     * artin 11-03: a Mac window whose controls are drawn over the top-left corner (the host's
-     * frame insets): the sender starts after them instead of under the traffic lights.
+     * artin 11-03: the macOS window's title bar laid over the app (#4193): the bar is its row and
+     * the sender starts after the traffic lights' corner instead of under them.
      */
     @Test
-    fun lightboxFrameInsets() =
-        capture("image.lightbox.frame-insets", RaftAppAppearance.Dark, RaftFrameInsets(left = 80.dp))
+    fun lightboxWindowTitleBar() =
+        capture(
+            "image.lightbox.window-title-bar",
+            RaftAppAppearance.Dark,
+            frameInsets = RaftFrameInsets(top = 48.dp),
+            titleBar = RaftWindowTitleBar(height = 48.dp, startInset = 70.dp)
+        )
 
-    private fun capture(name: String, appearance: RaftAppAppearance, frameInsets: RaftFrameInsets = RaftFrameInsets.Zero) =
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        frameInsets: RaftFrameInsets = RaftFrameInsets.Zero,
+        titleBar: RaftWindowTitleBar = RaftWindowTitleBar.None
+    ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0, LocalRaftFrameInsets provides frameInsets) {
+            CompositionLocalProvider(
+                LocalRaftSpinnerStillStep provides 0,
+                LocalRaftFrameInsets provides frameInsets,
+                LocalRaftWindowTitleBar provides titleBar
+            ) {
                 RaftImageLightboxContent(
                     request = RaftImageLightboxRequest(lightboxFixtureItems, index = 1),
                     resolveFullUrl = { null },
                     onDismiss = {},
                     onDownload = {},
                     onOpenWith = {},
+                    topSafeArea = frameInsets.top,
                     pageImage = { item, _, onContentSize -> LightboxFixtureImage(item, onContentSize) }
                 )
             }

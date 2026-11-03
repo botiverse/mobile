@@ -24,7 +24,9 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.components.LocalRaftFrameInsets
+import build.raft.designsystem.components.LocalRaftWindowTitleBar
 import build.raft.designsystem.components.RaftFrameInsets
+import build.raft.designsystem.components.RaftWindowTitleBar
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
@@ -62,13 +64,15 @@ class RaftImageLightboxUiTest {
         items: List<RaftImageLightboxItem> = lightboxFixtureItems,
         frameInsets: RaftFrameInsets = RaftFrameInsets.Zero,
         topSafeArea: Dp = 0.dp,
-        timeContext: RaftTimeContext? = null
+        timeContext: RaftTimeContext? = null,
+        titleBar: RaftWindowTitleBar = RaftWindowTitleBar.None
     ) {
         // Compose string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         setContent {
             CompositionLocalProvider(
                 LocalRaftFrameInsets provides frameInsets,
+                LocalRaftWindowTitleBar provides titleBar,
                 LocalRaftTimeContextProvider provides timeContext?.let { RaftTimeContextProvider(it) }
             ) {
                 RaftImageLightboxContent(
@@ -198,6 +202,26 @@ class RaftImageLightboxUiTest {
             // The pages start under the bar.
             val page = onNodeWithTag(raftImageLightboxPageTag("img-1")).getBoundsInRoot()
             assertTrue(page.top >= bar.bottom, "page under the bar: ${page.top} < ${bar.bottom}")
+        }
+
+    /** The macOS window title bar (#4193): the bar is the title bar's row, its items after the lights. */
+    @Test
+    fun underAWindowTitleBarTheBarIsItsRowAndCloseStillCloses() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            showLightbox(
+                calls,
+                frameInsets = RaftFrameInsets(top = 48.dp),
+                topSafeArea = 48.dp,
+                titleBar = RaftWindowTitleBar(height = 48.dp, startInset = 70.dp)
+            )
+            val bar = onNodeWithTag(RaftImageLightboxTopBarTag).getBoundsInRoot()
+            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
+            assertEquals(56.dp, bar.bottom, "one row with the title bar, not under it")
+            assertTrue(sender.left >= 70.dp + 16.dp, "sender after the traffic lights: ${sender.left}")
+            onNodeWithTagContentDescription("Close").performMouseInput { click(center) }
+            mainClock.advanceTimeBy(500)
+            assertEquals(1, calls.dismissed)
         }
 
     @Test
