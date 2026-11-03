@@ -1,62 +1,62 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-02T19:04:26.032Z",
-  "latestRunId": "4f79b778-20261102183226",
+  "generatedAt": "2026-11-03T04:17:50.647Z",
+  "latestRunId": "da544d25-20261103041702",
   "latest": {
-    "runId": "4f79b778-20261102183226",
-    "commit": "4f79b778-20261102183226",
-    "commitSubject": "feat(nav): Navigation 3 step 2 batch 3 — chat, file pages and Search on the Android stack (flag off)",
-    "generatedAt": "2026-11-02T19:04:26.032Z",
+    "runId": "da544d25-20261103041702",
+    "commit": "da544d25-20261103041702",
+    "commitSubject": "test(vt): the search pin-menu cases long-press the entity row below the wrapped filter chips",
+    "generatedAt": "2026-11-03T04:17:50.647Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 101,
+      "total": 95,
       "same": 0,
-      "pass": 1,
-      "basic-pass": 16,
-      "different": 81,
-      "missing": 3
+      "pass": 2,
+      "basic-pass": 14,
+      "different": 77,
+      "missing": 2
     },
     "analysisSummary": {
-      "total": 101,
-      "ready": 19,
-      "pending": 82
+      "total": 95,
+      "ready": 10,
+      "pending": 85
     },
     "comparisons": [
       "react__android"
     ],
     "componentMatrixSummary": {
-      "total": 130,
-      "active": 110,
+      "total": 124,
+      "active": 104,
       "pending": 17,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 95,
-          "active": 90,
+          "total": 90,
+          "active": 85,
           "pending": 3,
           "skipped": 2
         },
         "real-screen": {
-          "total": 35,
-          "active": 20,
+          "total": 34,
+          "active": 19,
           "pending": 14,
           "skipped": 1
         }
       },
       "providers": {
         "react": {
-          "active": 99,
+          "active": 93,
           "pending": 13,
           "unsupported": 0,
-          "total": 112
+          "total": 106
         },
         "android": {
-          "active": 91,
+          "active": 86,
           "pending": 18,
           "unsupported": 0,
-          "total": 109
+          "total": 104
         },
         "harmony": {
           "active": 0,
@@ -72,41 +72,41 @@
         }
       }
     },
-    "href": "runs/4f79b778-20261102183226/",
-    "componentMatrix": "runs/4f79b778-20261102183226/component-matrix.json",
-    "llms": "runs/4f79b778-20261102183226/metadata.json"
+    "href": "runs/da544d25-20261103041702/",
+    "componentMatrix": "runs/da544d25-20261103041702/component-matrix.json",
+    "llms": "runs/da544d25-20261103041702/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 130,
-    "active": 110,
+    "total": 124,
+    "active": 104,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 95,
-        "active": 90,
+        "total": 90,
+        "active": 85,
         "pending": 3,
         "skipped": 2
       },
       "real-screen": {
-        "total": 35,
-        "active": 20,
+        "total": 34,
+        "active": 19,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 99,
+        "active": 93,
         "pending": 13,
         "unsupported": 0,
-        "total": 112
+        "total": 106
       },
       "android": {
-        "active": 91,
+        "active": 86,
         "pending": 18,
         "unsupported": 0,
-        "total": 109
+        "total": 104
       },
       "harmony": {
         "active": 0,
@@ -123,6 +123,79 @@
     }
   },
   "runs": [
+    {
+      "runId": "da544d25-20261103041702",
+      "commit": "da544d25-20261103041702",
+      "commitSubject": "test(vt): the search pin-menu cases long-press the entity row below the wrapped filter chips",
+      "generatedAt": "2026-11-03T04:17:50.647Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 95,
+        "same": 0,
+        "pass": 2,
+        "basic-pass": 14,
+        "different": 77,
+        "missing": 2
+      },
+      "analysisSummary": {
+        "total": 95,
+        "ready": 10,
+        "pending": 85
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 124,
+        "active": 104,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 90,
+            "active": 85,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 34,
+            "active": 19,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 93,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 106
+          },
+          "android": {
+            "active": 86,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 104
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 81,
+            "unsupported": 0,
+            "total": 81
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/da544d25-20261103041702/",
+      "componentMatrix": "runs/da544d25-20261103041702/component-matrix.json",
+      "llms": "runs/da544d25-20261103041702/metadata.json"
+    },
     {
       "runId": "4f79b778-20261102183226",
       "commit": "4f79b778-20261102183226",

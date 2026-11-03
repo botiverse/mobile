@@ -1,28 +1,28 @@
 # Raft Visual Testing
 
-Generated: 2026-11-02 19:04:26 UTC
-Latest run: 4f79b778-20261102183226
-Latest commit: 4f79b778-20261102183226
-Commit subject: feat(nav): Navigation 3 step 2 batch 3 — chat, file pages and Search on the Android stack (flag off)
+Generated: 2026-11-03 04:17:50 UTC
+Latest run: da544d25-20261103041702
+Latest commit: da544d25-20261103041702
+Commit subject: test(vt): the search pin-menu cases long-press the entity row below the wrapped filter chips
 Providers: react vs android
-Summary: total 101, same 0, pass 1, basic-pass 16, different 81, missing 3
-AI analysis: ready 19 / total 101, pending 82
-Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
+Summary: total 95, same 0, pass 2, basic-pass 14, different 77, missing 2
+AI analysis: ready 10 / total 95, pending 85
+Visual coverage matrix: active 104 / total 124, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 101, same 0, pass 1, basic-pass 16, different 81, missing 3
+- react__android: total 95, same 0, pass 2, basic-pass 14, different 77, missing 2
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 90, pending 3, total 95
-- Screens Parity (real-screen): active 20, pending 14, total 35
+- Components Parity (component-fixture): active 85, pending 3, total 90
+- Screens Parity (real-screen): active 19, pending 14, total 34
 
 ## Provider Coverage
 
-- react: active 99, pending 13, unsupported 0
-- android: active 91, pending 18, unsupported 0
+- react: active 93, pending 13, unsupported 0
+- android: active 86, pending 18, unsupported 0
 - harmony: active 0, pending 81, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
@@ -89,7 +89,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.header.states: React now captures the real ChatPanel PanelHeader with the visual channel fixture. The previous hand-built PanelHeader wrapper was removed from the provider path. Harmony remains pending real-device/provider capture.
 - screens.auth.forgot-password: Missing forgot-password route parity for the auth recovery flow.
 - screens.auth.login: Missing true login route parity; old auth.login inputs are not active in the canonical manifest.
-- screens.auth.login.signing: React-only. In-flight sign-in state: email + password filled and Sign In clicked, auth request still pending, so the button reads 'Signing in…' at disabled:opacity-50 while the inputs stay enabled with normal white styling. The mobile apps have no native login since botiverse/mobile #3384, so no Android/iOS/Harmony capture is owed (the task #372 Android target is retired).
 - screens.home.activity: Existing components.home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture.
 - screens.home.channel-list: Whole phone Home root (top bar, Saved, Pinned / Joint Channels / Channels / Direct Messages, tab bar) from shared/fixtureData.json homeChannelList, light mode.
 - screens.home.channel-list.dark: Whole phone Home root (top bar, Saved, Pinned / Joint Channels / Channels / Direct Messages, tab bar) from shared/fixtureData.json homeChannelList, dark mode.
@@ -116,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- da544d25-20261103041702: react vs android, total 95, pass 2, basic-pass 14, different 77, matrix runs/da544d25-20261103041702/component-matrix.json, page runs/da544d25-20261103041702/
 - 4f79b778-20261102183226: react vs android, total 101, pass 1, basic-pass 16, different 81, matrix runs/4f79b778-20261102183226/component-matrix.json, page runs/4f79b778-20261102183226/
 - 2d44f513-20261102125634: react vs android, total 102, pass 2, basic-pass 9, different 86, matrix runs/2d44f513-20261102125634/component-matrix.json, page runs/2d44f513-20261102125634/
 - 8a04b1cc-20261102055356: react vs android, total 101, pass 2, basic-pass 9, different 86, matrix runs/8a04b1cc-20261102055356/component-matrix.json, page runs/8a04b1cc-20261102055356/
