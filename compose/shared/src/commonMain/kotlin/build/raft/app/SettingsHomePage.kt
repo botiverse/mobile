@@ -90,6 +90,7 @@ import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.isAppUpdateHomeNotificationId
+import build.raft.app.data.homeComputerVersionGateTargetOrNull
 import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.data.AppLocale
@@ -8156,6 +8157,16 @@ private fun RaftAppShellReadyContent(
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
                                     openComputersPage()
                                 },
+                                onOpenComputer = { machineId ->
+                                    selectAppShellTab("settings")
+                                    retainedAppShellTabs = retainedAppShellTabs + "settings"
+                                    val identity = settingsComputerRouteIdentity(readyServerId, machineId)
+                                    if (identity == null) {
+                                        openComputersPage()
+                                    } else {
+                                        pager.openSettingsComputerPage(storeScope, identity)
+                                    }
+                                },
                                 onOpenUrl = settingsCapabilities::openUrl,
                                 onOpenServerSelection = {
                                     pager.openAuthChooseServerPage(
@@ -10979,6 +10990,8 @@ private fun SharedHomeScreen(
     draftsSource: RaftDraftsSource? = null,
     onOpenDrafts: () -> Unit = {},
     onOpenComputers: () -> Unit = {},
+    /** One Computer's page (a version-gate notice's View); falls back to the Computers list. */
+    onOpenComputer: (machineId: String) -> Unit = { onOpenComputers() },
     onOpenUrl: (String) -> Unit = bridge::openUrl,
     onOpenServerSelection: () -> Unit,
     /** Server switcher "Invite Human" for the given server; null hides the entry. */
@@ -11462,6 +11475,7 @@ private fun SharedHomeScreen(
                 },
                 onNotificationView = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
+                    val versionGateComputerId = homeComputerVersionGateTargetOrNull(notification.id, notification.targetId)
                     when {
                         notification.id == SECOND_FACTOR_RECOVERY_HOME_NOTIFICATION_ID ->
                             secondFactorRecovery.cancel()
@@ -11469,6 +11483,8 @@ private fun SharedHomeScreen(
                             jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Accept(jointInviteId))
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
                             onAppUpdateOpen()
+                        versionGateComputerId != null ->
+                            onOpenComputer(versionGateComputerId)
                         notification.id.isMachineHomeNotificationId() ->
                             onOpenComputers()
                         notification.targetId?.startsWith("http://") == true ||

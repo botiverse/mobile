@@ -2036,6 +2036,15 @@
     <string name="home_notification_machine_outdated_title_one">%1$s 正在运行旧版守护进程</string>
     <string name="home_notification_machine_outdated_title_many">%1$s 正在运行旧版守护进程</string>
     <string name="home_notification_machine_outdated_body">请停止守护进程并重新连接以更新。</string>
+    <string name="home_notification_computer_upgrade_deadline_title_one">%1$s 需要在 %2$s 前升级</string>
+    <string name="home_notification_computer_upgrade_deadline_title_many">%1$d 台 Computer 需要在 %2$s 前升级</string>
+    <string name="home_notification_computer_reinstall_deadline_title_one">%1$s 需要重新安装，请在 %2$s 前完成</string>
+    <string name="home_notification_computer_reinstall_deadline_title_many">%1$d 台 Computer 需要重新安装，请在 %2$s 前完成</string>
+    <string name="home_notification_computer_version_deadline_body_one">到期后，这台计算机上的 Agent 将停止运行。</string>
+    <string name="home_notification_computer_version_deadline_body_many">到期后，这些计算机上的 Agent 将停止运行。</string>
+    <string name="home_notification_computer_reinstall_deadline_body_one">到期后，这台计算机上的 Agent 将停止运行。你的 Agent 和文件都会保留在原处。</string>
+    <string name="home_notification_computer_reinstall_deadline_body_many">到期后，这些计算机上的 Agent 将停止运行。你的 Agent 和文件都会保留在原处。</string>
+    <string name="home_notification_computer_version_deadline_date">%3$d年%1$s%2$d日</string>
     <string name="home_nav_search">搜索</string>
     <string name="home_nav_activity">动态</string>
     <string name="home_nav_followed_threads">已关注的消息列</string>
