@@ -293,7 +293,7 @@
     <string name="host_feedback_prompt_message">メッセージとデバイスの診断情報が Hands に送信されます。コミュニティで共有できるコピー可能な参照が発行されます。</string>
     <string name="host_feedback_prompt_placeholder">フィードバックを入力</string>
     <string name="host_feedback_sent_title">フィードバックを送信しました</string>
-    <string name="host_feedback_copied_message">コピーしました — コミュニティに貼り付けてください。</string>
+    <string name="host_feedback_copied_message">送信しました。</string>
     <string name="host_feedback_failed_message">フィードバックの送信に失敗しました: %1$s</string>
     <string name="host_feedback_error_unknown">不明なエラー</string>
     <string name="settings_feedback_submission_failed_title">フィードバックの送信に失敗しました</string>
