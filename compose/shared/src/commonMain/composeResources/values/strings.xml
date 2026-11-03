@@ -1374,7 +1374,7 @@
     <string name="member_section_info">Info</string>
     <string name="member_section_actions">Actions</string>
     <string name="member_section_created_agents">Created Agents</string>
-    <string name="member_section_runtime_config">Runtime Config</string>
+    <string name="member_section_runtime_config">Runtime config</string>
     <string name="member_section_skills_count">Skills (%1$s)</string>
     <string name="member_section_agent_channels_dms">Agent Channels and DMs</string>
     <string name="member_section_channels">Channels</string>
@@ -1414,6 +1414,8 @@
     <string name="member_state_workspace_loading_short">Loading</string>
     <string name="member_state_activity_start_agent">Start the agent to see its activity log.</string>
     <string name="member_label_computer">Computer</string>
+    <string name="member_label_computer_status">Computer status</string>
+    <string name="member_action_edit_display_name">Edit display name</string>
     <string name="member_daemon_version_suffix">&#160;· daemon v%1$s</string>
     <string name="member_machine_run_computer_version">computer v%1$s</string>
     <string name="member_machine_run_daemon_version">daemon v%1$s</string>

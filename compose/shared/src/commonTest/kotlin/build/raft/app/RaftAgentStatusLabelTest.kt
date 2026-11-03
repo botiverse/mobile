@@ -45,6 +45,37 @@ class RaftAgentStatusLabelTest {
     }
 
     @Test
+    fun profileHeroChipCarriesTheActivityTextForAPrivateViewer() {
+        // Web AgentStatusBadge showDetail: the live activity text ("Capturing …"), not "Working".
+        val live =
+            raftAgentStatusIndicatorState(
+                AgentStatus.Working,
+                Presence.Active,
+                statusLabel = "Capturing deterministic profile state",
+                external = false
+            )
+        assertEquals(
+            "Capturing deterministic profile state",
+            membersHeroAgentStatusLabel(live, "active", "working", "Older summary detail", showActivityDetail = true)
+        )
+        // No live detail: the summary's detail while it agrees with the live status.
+        val coarse = raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
+        assertEquals(
+            "Summary detail",
+            membersHeroAgentStatusLabel(coarse, "active", "working", "Summary detail", showActivityDetail = true)
+        )
+        // A viewer without private surfaces sees the coarse status words only.
+        assertEquals(
+            "Working",
+            membersHeroAgentStatusLabel(live, "active", "working", "Summary detail", showActivityDetail = false)
+        )
+        // A bare status word on the live state is not an activity text.
+        val idleWord =
+            raftAgentStatusIndicatorState(AgentStatus.Idle, Presence.Active, statusLabel = "online", external = false)
+        assertEquals("online", membersHeroAgentStatusLabel(idleWord, null, null, null, showActivityDetail = true))
+    }
+
+    @Test
     fun staleSummaryDetailCannotCaptionALiveDotWithADifferentState() {
         // Live store says Online (green, no pulse); stale summary still says
         // Working with free-text detail. The label must follow the live dot.
