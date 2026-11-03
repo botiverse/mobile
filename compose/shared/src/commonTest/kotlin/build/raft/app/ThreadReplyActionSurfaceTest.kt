@@ -58,6 +58,25 @@ class ThreadReplyActionSurfaceTest {
     }
 
     @Test
+    fun taskConversationHidesReply() {
+        // artin feedback 11-03: tapping a row in a task conversation built a nested reply thread
+        // whose parent is the task conversation; it cannot route and toasted "Unable to open thread"
+        // on every tap. Web renders task conversations in ThreadPanel with hideThreadActions.
+        val task = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = RaftTaskConversationChannelKind)
+        assertReply(false, task)
+        assertReply(false, task.copy(channelKind = " Task "))
+        assertEquals(
+            false,
+            threadMessageTapOpensThread(
+                showReplyAction = task.showReplyActions,
+                shareSelectionActive = false,
+                hasLocalSendState = false
+            ),
+            "a row tap in a task conversation opens no thread"
+        )
+    }
+
+    @Test
     fun channelAndDirectMessagePayloadsOfferReply() {
         assertReply(true, RaftThreadScreenPayload())
         assertReply(true, RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage))

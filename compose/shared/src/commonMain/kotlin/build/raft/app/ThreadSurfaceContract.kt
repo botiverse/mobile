@@ -11,10 +11,15 @@ internal object RaftThreadSurfaceKind {
     /**
      * Whether "Reply in Thread" (and the thread-opening affordances behind it) is offered on rows of
      * this surface. Threads cannot be nested, so a reply thread never offers it (web hides it with
-     * `hideThreadActions` in ThreadPanel). This is the single source: payloads and slices derive
-     * from it instead of storing a flag every constructor must remember to set.
+     * `hideThreadActions` in ThreadPanel). A task v2 conversation is a sub-conversation rendered by
+     * the same ThreadPanel, so it never offers it either: a tap on one of its rows used to try a
+     * nested thread that cannot route and toasted "Unable to open thread" (artin feedback 11-03).
+     * This is the single source: payloads and slices derive from it instead of storing a flag
+     * every constructor must remember to set.
      */
-    fun allowsReplyInThread(surfaceKind: String): Boolean = surfaceKind != ReplyThread
+    fun allowsReplyInThread(surfaceKind: String, channelKind: String? = null): Boolean =
+        surfaceKind != ReplyThread &&
+            channelKind.normalizedThreadChannelKind() != RaftTaskConversationChannelKind
 }
 
 /** Wire value for a joint channel's kind (not a surface — joints render on the channel surface). */
