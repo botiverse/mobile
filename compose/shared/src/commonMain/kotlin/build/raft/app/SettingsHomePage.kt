@@ -7141,7 +7141,11 @@ private fun RaftAppShellReadyContent(
         val density = LocalDensity.current
         val fieldBounds = appShellTopBar.searchFieldBounds.takeIf { appShellTopBar.drawn }
         val visited = remember(wideNavHistory) { wideNavHistory.visitedThreadIds() }
-        val closeOverlay = { searchOverlayOpen = false }
+        val closeOverlay = {
+            searchOverlayOpen = false
+            // A reopened panel focuses as a new one, not as a ⌘K refocus.
+            searchOverlayFocusRequest = 0
+        }
         RaftWindowDialog(
             onDismissRequest = {
                 bridge.log("app_shell_search_overlay_close")
