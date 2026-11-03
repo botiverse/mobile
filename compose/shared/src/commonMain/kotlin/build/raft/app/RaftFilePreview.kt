@@ -4248,6 +4248,23 @@ private fun RaftFilePreviewStandalonePageContent() {
                             imageGalleryResolutionState.resolvedPayloadByAttachmentId
                         )
                 )
+                if (payload.offersViewerImageEdit()) {
+                    // ⋯ > Edit (artin, task #32): the conversation that shows this image opens
+                    // the editor; the edited copy goes into its composer (RaftViewerImageEdit.kt).
+                    RaftViewerImageMoreButton(
+                        onSelect = { id ->
+                            if (id == RaftViewerImageMenuEditId &&
+                                raftPostViewerImageEditRequest(payload.viewerShownAttachmentId())
+                            ) {
+                                closePreviewPage()
+                            }
+                        },
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = RaftAppSpacing.Md, bottom = RaftAppSpacing.Md + raftBottomSafeAreaPadding()),
+                    )
+                }
             }
             RaftFilePreviewComposerImageActionBar(
                 payload = payload,
@@ -4462,8 +4479,8 @@ private enum class RaftComposerImagePencilMode {
     Eraser,
 }
 
-private val RaftComposerImageEditorDefaultPenColor = Color(0xFFFF3B30) // raft-color: image-editor pen palette
-private val RaftComposerImageEditorPenColors =
+internal val RaftComposerImageEditorDefaultPenColor = Color(0xFFFF3B30) // raft-color: image-editor pen palette
+internal val RaftComposerImageEditorPenColors =
     listOf(
         Color(0xFFFFFFFF), // raft-color: image-editor pen palette
         Color(0xFF111111), // raft-color: image-editor pen palette
@@ -5749,7 +5766,7 @@ private fun RaftFilePreviewPencilOptions(
 }
 
 @Composable
-private fun RaftFilePreviewPenWidthChoice(
+internal fun RaftFilePreviewPenWidthChoice(
     dotSize: androidx.compose.ui.unit.Dp,
     selected: Boolean,
     enabled: Boolean,
@@ -5791,7 +5808,7 @@ private fun RaftFilePreviewPenWidthChoice(
 }
 
 @Composable
-private fun RaftFilePreviewColorSwatch(
+internal fun RaftFilePreviewColorSwatch(
     color: Color,
     selected: Boolean,
     enabled: Boolean,
