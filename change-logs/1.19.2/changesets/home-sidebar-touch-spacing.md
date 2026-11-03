@@ -4,7 +4,7 @@ area: home
 platforms:
   - android
   - ios
-pull_request: https://github.com/botiverse/mobile/pull/PR_NUMBER
+pull_request: https://github.com/botiverse/mobile/pull/
 rollout: full
 ---
 
