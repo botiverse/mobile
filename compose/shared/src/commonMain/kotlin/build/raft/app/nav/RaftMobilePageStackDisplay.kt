@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalFocusManager
@@ -81,9 +82,13 @@ fun RaftMobilePageStackDisplay(
             NavEntry(page, contentKey = page.contentKey, metadata = raftMobileStackEntryMetadata(page)) {
                 RaftStackPageViewModels {
                     val top = stack.pages.lastOrNull() === page
+                    val settled = motion.settledTop == page.contentKey
                     // On top: resumed at once (its content renders through the slide), active (back
                     // handlers, viewDidAppear: read state, realtime interest, loads) once settled.
-                    RaftStackPageActivity(resumed = top, active = top && motion.settledTop == page.contentKey) { pageContent(page) }
+                    // Until then it is in motion (LocalRaftStackPageInMotion): heavy first builds wait.
+                    CompositionLocalProvider(LocalRaftStackPageInMotion provides (top && !settled)) {
+                        RaftStackPageActivity(resumed = top, active = top && settled) { pageContent(page) }
+                    }
                 }
             }
         },
@@ -91,6 +96,15 @@ fun RaftMobilePageStackDisplay(
 }
 
 private const val RaftMobileStackSettleFallbackMillis = 1_000L
+
+/**
+ * True while the enclosing stack page is the top page and its motion (the push slide, a pop landing
+ * on it) has not settled yet; false once settled, under the top page, and on every host without a
+ * mobile page stack (iOS, Compose desktop, the Android stack flag off), so reading it changes nothing
+ * there. A page whose first content build is heavy (the chat's message list) keeps a light stand-in
+ * while this is true, so that build lands after the slide instead of on its frames.
+ */
+val LocalRaftStackPageInMotion = compositionLocalOf { false }
 
 /**
  * A stack page's lifecycle cap and page activity: on top it is resumed at once (its content renders

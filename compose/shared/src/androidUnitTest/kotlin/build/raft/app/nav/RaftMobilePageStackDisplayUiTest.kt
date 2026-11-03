@@ -339,6 +339,35 @@ class RaftMobilePageStackDisplayUiTest {
         }
 
     @Test
+    fun aPushedPageIsInMotionUntilItsSlideSettledAndTheCoveredPageNever() =
+        runRobolectricComposeUiTest {
+            val stack = RaftPageStack()
+            val motion = mutableMapOf<String, MutableList<Boolean>>()
+            setContent {
+                RaftMobilePageStackDisplay(stack) { page ->
+                    val inMotion = LocalRaftStackPageInMotion.current
+                    val seen = motion.getOrPut(page.contentKey) { mutableListOf() }
+                    if (seen.lastOrNull() != inMotion) seen += inMotion
+                    Box(Modifier.fillMaxSize().testTag(page.contentKey))
+                }
+            }
+            waitForIdle()
+            val shell = stack.pages.first().contentKey
+            assertEquals<List<Boolean>?>(listOf(false), motion[shell], "the root page opens settled")
+
+            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
+            waitForIdle()
+            val chat = stack.pages.last().contentKey
+            // The chat's heavy first build waits on this: true through the slide, false once settled.
+            assertEquals<List<Boolean>?>(listOf(true, false), motion[chat])
+            assertEquals<List<Boolean>?>(listOf(false), motion[shell], "the covered shell is never in motion")
+
+            runOnIdle { stack.back() }
+            waitForIdle()
+            assertEquals(false, motion.getValue(shell).last(), "settled again on top after the pop")
+        }
+
+    @Test
     fun entryMetadataMarksTheChatAndAnOpenWithoutThePush() {
         val stack = RaftPageStack()
         stack.open(CHAT, JsonObject(mapOf("slockOpenWithoutAnimation" to JsonPrimitive(true))), from = stack.pages.first())
