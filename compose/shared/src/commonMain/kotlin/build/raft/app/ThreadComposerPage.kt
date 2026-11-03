@@ -29,6 +29,7 @@ import build.raft.designsystem.components.RaftComposerAttachmentRemoveOverhang
 import build.raft.designsystem.components.RaftComposerAttachmentOverlay
 import build.raft.designsystem.components.RaftComposerAttachmentPhase
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
@@ -53,11 +54,13 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -132,6 +135,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -602,7 +606,64 @@ internal data class ThreadComposerEditorCommand(
     val asTask: Boolean = false,
     val expectedText: String? = null,
     val expectedAsTask: Boolean? = null,
+    /**
+     * The edit a [ThreadComposerEditorCommandKind.Replace] stands for, when it is an edit of the
+     * draft (a mention, a quote) rather than a whole new draft. A command held back during an IME
+     * composition re-applies this edit to the text the composition committed; a whole-draft
+     * Replace (null here) is instead re-checked against [expectedText] and dropped if the user
+     * typed.
+     */
+    val edit: ThreadComposerDraftEdit? = null,
 )
+
+internal sealed interface ThreadComposerDraftEdit {
+    val logKind: ThreadComposerProgrammaticEditKind
+
+    fun applyTo(text: String): String
+
+    data class InsertMention(val handle: String) : ThreadComposerDraftEdit {
+        override val logKind: ThreadComposerProgrammaticEditKind get() = ThreadComposerProgrammaticEditKind.Mention
+
+        override fun applyTo(text: String): String = text.withInsertedThreadMention(handle)
+    }
+
+    data class AppendQuote(val quote: String) : ThreadComposerDraftEdit {
+        override val logKind: ThreadComposerProgrammaticEditKind get() = ThreadComposerProgrammaticEditKind.Quote
+
+        override fun applyTo(text: String): String = appendThreadQuoteToComposer(text, quote)
+    }
+}
+
+/** The `kind=` of a `composer_programmatic_edit` diagnostics line. */
+internal enum class ThreadComposerProgrammaticEditKind(val wire: String) {
+    Replace("replace"),
+    Clear("clear"),
+    Mention("mention"),
+    Quote("quote"),
+    Suggestion("suggestion"),
+    Token("token"),
+    SendSnapshot("sendSnapshot"),
+}
+
+/**
+ * Always-on diagnostics for edits the app (not the IME) makes to the composer text: which kind,
+ * whether an IME composition (marked text) was open, and whether the edit was held back until it
+ * ended. Never the text. Goes to the same bridge-free channel as `bridge.log`.
+ */
+internal object ThreadComposerProgrammaticEditLog {
+    var sink: (String) -> Unit = { raftLogInfo(BridgeModule.BRIDGE_LOG_TAG, it) }
+
+    fun record(kind: ThreadComposerProgrammaticEditKind, composing: Boolean, deferred: Boolean) {
+        sink("composer_programmatic_edit kind=${kind.wire} composing=$composing deferred=$deferred")
+    }
+}
+
+private val ThreadComposerEditorCommand.logKind: ThreadComposerProgrammaticEditKind
+    get() =
+        when {
+            kind == ThreadComposerEditorCommandKind.Clear -> ThreadComposerProgrammaticEditKind.Clear
+            else -> edit?.logKind ?: ThreadComposerProgrammaticEditKind.Replace
+        }
 
 internal fun shouldApplyThreadComposerEditorCommand(
     localText: String,
@@ -616,6 +677,8 @@ internal enum class ThreadComposerEditorCommandOutcome {
     Applied,
     Stale,
     AlreadyHandled,
+    /** Held back while an IME composition is open; see [ThreadComposerControlledEditorOwner.applyDeferredCommands]. */
+    Deferred,
 }
 
 internal fun acceptThreadComposerEditorSessionUiEvent(
@@ -742,20 +805,99 @@ internal class ThreadComposerControlledEditorOwner(
         return true
     }
 
+    /**
+     * Store commands that arrived while an IME composition was open, in arrival order. Writing a
+     * whole new value then would end the composition and commit the raw marked text (Pinyin
+     * letters instead of the chosen characters), so they wait for [applyDeferredCommands].
+     */
+    private val deferredCommands = mutableStateListOf<ThreadComposerEditorCommand>()
+
+    /** True when held commands can be applied now: some are held and no composition is open. */
+    val hasDeferredCommandsReady: Boolean
+        get() = deferredCommands.isNotEmpty() && value.composition == null
+
     fun apply(command: ThreadComposerEditorCommand): ThreadComposerEditorCommandOutcome {
         if (command.id <= handledCommandId) return ThreadComposerEditorCommandOutcome.AlreadyHandled
+        handledCommandId = command.id
         if (!shouldApplyThreadComposerEditorCommand(value.text, asTask, command)) {
-            handledCommandId = command.id
             return ThreadComposerEditorCommandOutcome.Stale
         }
-        val nextText = if (command.kind == ThreadComposerEditorCommandKind.Clear) "" else command.text
+        val composing = value.composition != null
+        // Clear (Send) is immediate: the send already took the committed and composing text.
+        if (composing && command.kind != ThreadComposerEditorCommandKind.Clear) {
+            deferredCommands += command
+            ThreadComposerProgrammaticEditLog.record(command.logKind, composing = true, deferred = true)
+            return ThreadComposerEditorCommandOutcome.Deferred
+        }
+        ThreadComposerProgrammaticEditLog.record(command.logKind, composing = composing, deferred = false)
         if (command.kind == ThreadComposerEditorCommandKind.Clear) {
+            // The draft these were edits of has been sent.
+            deferredCommands.clear()
             editorSessionId += 1
         }
+        writeCommandText(command, if (command.kind == ThreadComposerEditorCommandKind.Clear) "" else command.text)
+        return ThreadComposerEditorCommandOutcome.Applied
+    }
+
+    /**
+     * Applies the commands [apply] held back, once the composition has ended, against the text it
+     * committed: a mention or quote is re-applied to that text; a whole-draft Replace still needs
+     * the text it expected and is dropped if the user typed. Returns null when nothing was
+     * applied or dropped (nothing held, or a composition is still open), else whether any held
+     * command was applied.
+     */
+    fun applyDeferredCommands(): Boolean? {
+        if (!hasDeferredCommandsReady) return null
+        val held = deferredCommands.toList()
+        deferredCommands.clear()
+        var applied = false
+        for (command in held) {
+            val edit = command.edit
+            val nextText =
+                when {
+                    command.expectedAsTask != null && command.expectedAsTask != asTask -> null
+                    edit != null -> edit.applyTo(value.text)
+                    shouldApplyThreadComposerEditorCommand(value.text, asTask, command) -> command.text
+                    else -> null
+                } ?: continue
+            writeCommandText(command, nextText)
+            applied = true
+        }
+        return applied
+    }
+
+    private fun writeCommandText(command: ThreadComposerEditorCommand, nextText: String) {
         value = TextFieldValue(nextText, selection = TextRange(nextText.length))
         asTask = if (command.kind == ThreadComposerEditorCommandKind.Clear) false else command.asTask
-        handledCommandId = command.id
-        return ThreadComposerEditorCommandOutcome.Applied
+    }
+}
+
+/**
+ * Runs the store's [ThreadComposerEditorCommand]s against [owner]: each new command once, and the
+ * commands the owner held back during an IME composition as soon as it ends. A held command that
+ * changes the text reports it as a `change` (the store's draft must follow the editor); one that
+ * was dropped reports `staleEditorCommandIgnored`, as a stale command does.
+ */
+@Composable
+internal fun ThreadComposerEditorCommandEffects(
+    instanceId: String,
+    command: ThreadComposerEditorCommand?,
+    owner: ThreadComposerControlledEditorOwner,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+) {
+    val currentOnEvent by rememberUpdatedState(onEvent)
+    LaunchedEffect(instanceId, command?.id) {
+        command ?: return@LaunchedEffect
+        if (owner.apply(command) == ThreadComposerEditorCommandOutcome.Stale) {
+            currentOnEvent("staleEditorCommandIgnored", owner.value.text, owner.asTask, null)
+        }
+    }
+    LaunchedEffect(instanceId, owner) {
+        snapshotFlow { owner.hasDeferredCommandsReady }.collect { ready ->
+            if (!ready) return@collect
+            val applied = owner.applyDeferredCommands() ?: return@collect
+            currentOnEvent(if (applied) "change" else "staleEditorCommandIgnored", owner.value.text, owner.asTask, null)
+        }
     }
 }
 
@@ -2085,12 +2227,12 @@ internal fun ThreadComposerContent(
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
     }
-    LaunchedEffect(state.instanceId, state.editorCommand?.id) {
-        val command = state.editorCommand ?: return@LaunchedEffect
-        if (editorOwner.apply(command) == ThreadComposerEditorCommandOutcome.Stale) {
-            onEvent("staleEditorCommandIgnored", editorOwner.value.text, editorOwner.asTask, null)
-        }
-    }
+    ThreadComposerEditorCommandEffects(
+        instanceId = state.instanceId,
+        command = state.editorCommand,
+        owner = editorOwner,
+        onEvent = onEvent,
+    )
     ThreadComposerContentLeaf(
         surface = surface,
         state = state,
@@ -2489,9 +2631,22 @@ internal fun ThreadComposerContentLeaf(
         return true
     }
 
+    // Read by the mention effect after it waited out a composition: the field's latest value and
+    // an insert that works on it.
+    val latestFieldValue by rememberUpdatedState(fieldValue)
+    val latestInsertMentionAtCursor by rememberUpdatedState<(String) -> Boolean> { handle -> insertMentionAtCursor(handle) }
     LaunchedEffect(insertMentionRequest?.nonce) {
         val request = insertMentionRequest ?: return@LaunchedEffect
-        if (insertMentionAtCursor(request.handle)) {
+        // An avatar mention mid-composition would end it and commit the raw marked text; insert
+        // at the caret of the text the composition commits instead.
+        val composing = latestFieldValue.composition != null
+        ThreadComposerProgrammaticEditLog.record(
+            ThreadComposerProgrammaticEditKind.Mention,
+            composing = composing,
+            deferred = composing,
+        )
+        if (composing) snapshotFlow { latestFieldValue.composition }.first { it == null }
+        if (latestInsertMentionAtCursor(request.handle)) {
             // The avatar long-press starts outside the composer, so the shared root may already
             // have armed an outside-focus dismissal for this pointer sequence. Mention insertion
             // is a newer explicit editing intent; invalidate that old token before refocusing so
@@ -2534,6 +2689,12 @@ internal fun ThreadComposerContentLeaf(
             selectionEnd = selectionEnd,
             triggerStart = triggerStart
         )?.let { edit ->
+            // Enter / Space on an open trigger commits the typed token now, composition included.
+            ThreadComposerProgrammaticEditLog.record(
+                ThreadComposerProgrammaticEditKind.Token,
+                composing = fieldValue.composition != null,
+                deferred = false,
+            )
             val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
             if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@let
             suggestionSelectionDispatcher.updateDraft(
@@ -2567,6 +2728,11 @@ internal fun ThreadComposerContentLeaf(
                         return@readCurrentValue
                     }
                 }
+            ThreadComposerProgrammaticEditLog.record(
+                ThreadComposerProgrammaticEditKind.SendSnapshot,
+                composing = nativeValue.composition != null,
+                deferred = false,
+            )
             if (!onEditorValueChange(sourceSessionId, nativeValue)) return@readCurrentValue
             suggestionSelectionDispatcher.updateDraft(
                 text = nativeValue.text,
@@ -2713,6 +2879,13 @@ internal fun ThreadComposerContentLeaf(
             memberSuggestions = filteredMemberSuggestions,
             channelSuggestions = filteredChannelSuggestions,
             onCommit = onCommit@ { edit ->
+                // A tapped suggestion replaces the typed query, composition included: the tap is
+                // the commit, so it is not held back.
+                ThreadComposerProgrammaticEditLog.record(
+                    ThreadComposerProgrammaticEditKind.Suggestion,
+                    composing = latestFieldValue.composition != null,
+                    deferred = false,
+                )
                 val nextFieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
                 if (!onEditorValueChange(editorSessionId, nextFieldValue)) return@onCommit
                 suggestionSelectionDispatcher.updateDraft(

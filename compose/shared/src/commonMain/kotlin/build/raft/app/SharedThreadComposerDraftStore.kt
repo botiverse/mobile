@@ -2594,6 +2594,7 @@ internal class SharedThreadComposerDraftStore(
                             asTask = current.seedAsTask,
                             expectedText = current.seedText,
                             expectedAsTask = current.seedAsTask,
+                            edit = ThreadComposerDraftEdit.InsertMention(intent.handle),
                         ),
                     focusRequestNonce = current.focusRequestNonce + 1,
                     focusRequestShowsKeyboard = true,
@@ -2617,6 +2618,7 @@ internal class SharedThreadComposerDraftStore(
                                 asTask = current.seedAsTask,
                                 expectedText = current.seedText,
                                 expectedAsTask = current.seedAsTask,
+                                edit = ThreadComposerDraftEdit.AppendQuote(intent.quote),
                             ),
                         // Select Text > Quote: the reader goes on typing under the quote.
                         focusRequestNonce = current.focusRequestNonce + 1,
