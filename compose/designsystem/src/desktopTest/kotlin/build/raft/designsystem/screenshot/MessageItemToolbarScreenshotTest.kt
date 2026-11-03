@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftHoveredPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMessageItemDefaults
@@ -38,9 +40,11 @@ import kotlin.test.Test
 /**
  * raft-ui MessageItem hover toolbar and TextSelectionToolbar (raft-design message-item.recipe.ts
  * `toolbar` / `toolbarButton`, text-selection-toolbar.recipe.ts):
- *  - `message_item_toolbar`: the toolbar at rest, one button hovered, pressed, focused, Save
- *    active, ⋯ open (its menu showing); then over a hovered row (`fill-subtle`), 18dp above the
- *    highlight's top and 12dp in from its end, and over a row whose menu is open.
+ *  - `message_item_toolbar`: the web's buttons in its order (Add Reaction, Reply in Thread,
+ *    Forward, Save, More Actions) at rest, one button hovered, pressed, focused, Save active
+ *    (saved: `bookmark-minus`), ⋯ open (its menu showing), and inside a thread (no Reply in
+ *    Thread); then over a hovered row (`fill-subtle`), 18dp above the highlight's top and 12dp in
+ *    from its end, and over a row whose menu is open.
  *  - `text_selection_toolbar`: Quote | Copy at rest, Quote hovered and pressed, Copy focused,
  *    and on the desktop scale (`text-control` 14/22).
  */
@@ -58,10 +62,12 @@ class MessageItemToolbarScreenshotTest {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Caption("Rest")
                 HoverToolbar()
-                Caption("React hovered, Forward pressed, Save focused")
-                HoverToolbar(hovered = 0, pressed = 1, focused = 2)
+                Caption("React hovered, Reply pressed, Save focused")
+                HoverToolbar(hovered = 0, pressed = 1, focused = 3)
                 Caption("Save active (saved), More open (its menu showing)")
                 HoverToolbar(saved = true, moreOpen = true)
+                Caption("Inside a thread: no Reply in Thread")
+                HoverToolbar(inThread = true)
                 Caption("Over a hovered row")
                 MessageRow(hovered = true, popupOpen = false)
                 Caption("Over a row whose menu is open")
@@ -93,22 +99,30 @@ class MessageItemToolbarScreenshotTest {
         focused: Int = -1,
         saved: Boolean = false,
         moreOpen: Boolean = false,
+        inThread: Boolean = false,
         modifier: Modifier = Modifier,
     ) {
         RaftMessageItemToolbar(modifier = modifier, label = "Message Actions") {
             State(0, hovered, pressed, focused) {
-                RaftMessageItemToolbarButton(onClick = {}, tooltip = "Add Reaction") { Icon(AppIcon.SmilePlus) }
+                RaftMessageItemToolbarButton(onClick = {}, label = "Add Reaction") { Icon(AppIcon.SmilePlus) }
             }
-            State(1, hovered, pressed, focused) {
-                RaftMessageItemToolbarButton(onClick = {}, tooltip = "Forward") { RaftGlyphIcon(RaftGlyph.Forward) }
-            }
-            State(2, hovered, pressed, focused) {
-                RaftMessageItemToolbarButton(onClick = {}, tooltip = if (saved) "Remove from Saved" else "Save", active = saved) {
-                    RaftGlyphIcon(RaftGlyph.Bookmark)
+            if (!inThread) {
+                State(1, hovered, pressed, focused) {
+                    RaftMessageItemToolbarButton(onClick = {}, label = "Reply in Thread") {
+                        RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = 16.dp)
+                    }
                 }
             }
+            State(2, hovered, pressed, focused) {
+                RaftMessageItemToolbarButton(onClick = {}, label = "Forward") { RaftGlyphIcon(RaftGlyph.Forward) }
+            }
             State(3, hovered, pressed, focused) {
-                RaftMessageItemToolbarButton(onClick = {}, tooltip = "More Actions", open = moreOpen) { RaftGlyphIcon(RaftGlyph.Ellipsis) }
+                RaftMessageItemToolbarButton(onClick = {}, label = if (saved) "Remove from Saved" else "Save", active = saved) {
+                    if (saved) Icon(AppIcon.BookmarkMinus) else RaftGlyphIcon(RaftGlyph.Bookmark)
+                }
+            }
+            State(4, hovered, pressed, focused) {
+                RaftMessageItemToolbarButton(onClick = {}, label = "More Actions", open = moreOpen) { RaftGlyphIcon(RaftGlyph.Ellipsis) }
             }
         }
     }
