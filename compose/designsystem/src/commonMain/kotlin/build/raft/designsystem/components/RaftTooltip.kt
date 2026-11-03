@@ -213,34 +213,26 @@ fun RaftTooltip(
         val placed =
             when (placement) {
                 RaftTooltipPlacement.Above -> TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing)
-                // Material's own Below provider: its caret follows the side it picks.
+                // Material's own Below provider (above without room): our caret follows the side it picks.
                 RaftTooltipPlacement.Below ->
                     TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below, RaftTooltipMetrics.AnchorSpacing)
             }
-        // The host's frame insets: Material's placement, then moved out of them (none: as it is).
-        val framed = remember(placed, spacing, frame) { if (frame.isZero) placed else RaftTooltipFrameProvider(placed, spacing, frame) }
+        // Material's placement, then moved out of the host's frame insets (none: as it is). It also
+        // keeps where it put the bubble, for our caret.
+        val framed = remember(placed, spacing, frame) { RaftTooltipFrameProvider(placed, spacing, frame) }
         TooltipBox(
             positionProvider = sideProvider ?: framed,
             tooltip = {
-                if (sideProvider == null && framed is RaftTooltipFrameProvider) {
-                    // Moved out of the frame insets: Material's caret does not see where it went, so
-                    // no caret of its own here; ours points at the anchor from the side it ended on.
+                if (sideProvider == null) {
+                    // Our caret, not Material's `caretShape`: Material places its caret from an
+                    // `onLayoutRectChanged` callback that runs after the bubble's first frame is
+                    // drawn, so its caret showed up a frame late. Ours reads what the position
+                    // provider worked out while laying the popup out, before that first draw.
                     PlainTooltip(
                         modifier =
                             Modifier
                                 .raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip)
                                 .raftFramedCaret(framed, colors.layerHud),
-                        shape = RoundedCornerShape(RaftRadius.Chip),
-                        contentColor = colors.foregroundOnHud,
-                        containerColor = colors.layerHud,
-                        content = label,
-                    )
-                } else if (sideProvider == null) {
-                    PlainTooltip(
-                        modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip),
-                        // Material3 1.4 (CMP 1.11+) replaced `caretSize` with a caret Shape;
-                        // TooltipDefaults.caretShape(size) draws the same triangle.
-                        caretShape = TooltipDefaults.caretShape(RaftTooltipMetrics.CaretSize),
                         shape = RoundedCornerShape(RaftRadius.Chip),
                         contentColor = colors.foregroundOnHud,
                         containerColor = colors.layerHud,
@@ -358,7 +350,11 @@ internal fun RaftFrameInsets.toPx(density: Density): RaftFramePx =
         }
     }
 
-/** Material's placement ([inner]), then moved out of the host's [frame] insets ([raftTooltipClearOfFrame]). */
+/**
+ * Material's placement ([inner]), then moved out of the host's [frame] insets
+ * ([raftTooltipClearOfFrame]). Keeps the side and the anchor's centre it ended on for
+ * [raftFramedCaret]: written while the popup is laid out, so read by the bubble's first draw.
+ */
 private class RaftTooltipFrameProvider(
     private val inner: PopupPositionProvider,
     private val spacing: Int,
@@ -396,7 +392,7 @@ private class RaftTooltipFrameProvider(
 }
 
 /**
- * The caret of a tooltip moved out of the frame insets ([RaftTooltipFrameProvider]): Material's
+ * The caret of a tooltip above or below its anchor ([RaftTooltipFrameProvider]): Material's
  * triangle, on the edge facing the anchor and under its centre, kept on the bubble's straight edge.
  */
 private fun Modifier.raftFramedCaret(provider: RaftTooltipFrameProvider, color: Color): Modifier =
