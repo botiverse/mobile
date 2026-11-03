@@ -60,6 +60,12 @@ object RaftReorderDefaults {
     /** `TOUCH_DRAG_TOLERANCE_PX`: a finger that moves further during the hold is scrolling. */
     val HoldSlop: Dp = 10.dp
 
+    /**
+     * dnd-kit's `activationConstraint: { distance: 6 }` (web SortableRailTabs): in a list that
+     * doesn't scroll, a pointer that moves this far drags the row at once, no hold needed.
+     */
+    val DragDistance: Dp = 6.dp
+
     /** A lifted row this close to the list's top or bottom edge scrolls the list… */
     val EdgeScrollZone: Dp = 40.dp
 
@@ -127,10 +133,16 @@ private suspend fun AwaitPointerEventScope.awaitTouchDragHold(down: PointerInput
 /**
  * The order of a reorderable list and its lifted row. The rows are keyed by the app's ids; the
  * app owns the order ([sync] it with what the app shows) and gets a changed order back from
- * [drop] or [moveBy] to commit. All positions are pixels.
+ * [drop] or [moveBy] to commit. All positions are pixels. [gap] is the space between rows (a
+ * `spacedBy` column); [clampToEnds] keeps the lifted row between the first and last slots (web
+ * dnd-kit `restrictToParentElement`).
  */
 @Stable
-class RaftReorderState(initialOrder: List<String> = emptyList()) {
+class RaftReorderState(
+    initialOrder: List<String> = emptyList(),
+    var gap: Float = 0f,
+    private val clampToEnds: Boolean = false,
+) {
     /** The rows in the order they show, the lifted row in the slot it would drop into. */
     var order: List<String> by mutableStateOf(initialOrder)
         private set
@@ -204,14 +216,14 @@ class RaftReorderState(initialOrder: List<String> = emptyList()) {
         while (true) {
             val index = order.indexOf(key)
             val next = order.getOrNull(index + 1)
-            val nextHeight = next?.let { heights[it] }?.takeIf { it > 0 }
+            val nextHeight = next?.let { heights[it] }?.takeIf { it > 0 }?.plus(gap)
             if (next != null && nextHeight != null && liftedOffset > nextHeight / 2f) {
                 order = order.swapped(index, index + 1)
                 liftedOffset -= nextHeight
                 continue
             }
             val previous = order.getOrNull(index - 1)
-            val previousHeight = previous?.let { heights[it] }?.takeIf { it > 0 }
+            val previousHeight = previous?.let { heights[it] }?.takeIf { it > 0 }?.plus(gap)
             if (previous != null && previousHeight != null && liftedOffset < -previousHeight / 2f) {
                 order = order.swapped(index, index - 1)
                 liftedOffset += previousHeight
@@ -219,6 +231,25 @@ class RaftReorderState(initialOrder: List<String> = emptyList()) {
             }
             break
         }
+        if (clampToEnds) {
+            val index = order.indexOf(key)
+            if (index == 0 && liftedOffset < 0f) liftedOffset = 0f
+            if (index == order.lastIndex && liftedOffset > 0f) liftedOffset = 0f
+        }
+    }
+
+    /**
+     * The keyboard's arrow: the lifted row takes the slot [by] places away (the row there moves
+     * into the one it left). False when it can't go that way.
+     */
+    fun stepLifted(by: Int): Boolean {
+        val key = liftedKey ?: return false
+        val from = order.indexOf(key)
+        val to = from + by
+        if (by == 0 || to !in order.indices) return false
+        order = order.toMutableList().apply { add(to, removeAt(from)) }
+        liftedOffset = 0f
+        return true
     }
 
     /** The finger let go: the new order to commit, or null when nothing moved. */
@@ -297,9 +328,17 @@ fun raftReorderAutoScrollDelta(
 }
 
 @Composable
-fun rememberRaftReorderState(order: List<String>): RaftReorderState {
-    val state = remember { RaftReorderState(order) }
-    SideEffect { state.sync(order) }
+fun rememberRaftReorderState(
+    order: List<String>,
+    gap: Dp = 0.dp,
+    clampToEnds: Boolean = false,
+): RaftReorderState {
+    val gapPx = with(LocalDensity.current) { gap.toPx() }
+    val state = remember(clampToEnds) { RaftReorderState(order, gapPx, clampToEnds) }
+    SideEffect {
+        state.gap = gapPx
+        state.sync(order)
+    }
     return state
 }
 
@@ -347,6 +386,11 @@ fun Modifier.raftReorderableViewport(state: RaftReorderState, scrollState: Scrol
  * through [onOrderChange]. A tap stays the row's own click; a hold let go without moving
  * clicks nothing. Screen readers get [moveUpLabel] / [moveDownLabel] actions. Put it first on
  * the row's modifier, before its click.
+ *
+ * [dragDistance], for a column that doesn't scroll (the app rail): a pointer (finger or mouse)
+ * that moves that far lifts the row at once, as web dnd-kit's distance constraint, and the hold
+ * still lifts it too; events another handler consumed (a long-press tooltip) don't end it.
+ * Without it a move past [RaftReorderDefaults.HoldSlop] is a scroll and lifts nothing.
  */
 @Composable
 fun Modifier.raftReorderableItem(
@@ -356,6 +400,7 @@ fun Modifier.raftReorderableItem(
     moveUpLabel: String? = null,
     moveDownLabel: String? = null,
     enabled: Boolean = true,
+    dragDistance: Dp? = null,
 ): Modifier {
     if (!enabled) return this
     val haptics = rememberRaftHaptics()
@@ -390,8 +435,9 @@ fun Modifier.raftReorderableItem(
             if (actions.isNotEmpty()) customActions = actions
         }
         .onGloballyPositioned { coordinates[0] = it }
-        .pointerInput(state, key) {
+        .pointerInput(state, key, dragDistance) {
             val slop = RaftReorderDefaults.HoldSlop.toPx()
+            val liftDistance = dragDistance?.toPx()
             fun root(local: Offset): Offset? = coordinates[0]?.takeIf { it.isAttached }?.localToRoot(local)
 
             fun rootY(local: Offset): Float? = root(local)?.y
@@ -411,9 +457,14 @@ fun Modifier.raftReorderableItem(
                             val event = awaitPointerEvent()
                             if (event.changes.count { it.pressed } > 1) break
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (change.isConsumed || !change.pressed) break
+                            if (!change.pressed || (change.isConsumed && liftDistance == null)) break
                             val at = root(change.position) ?: change.position
-                            if ((at - downRoot).getDistance() > slop) break
+                            val moved = (at - downRoot).getDistance()
+                            if (liftDistance != null && moved > liftDistance) {
+                                held = true
+                                break
+                            }
+                            if (liftDistance == null && moved > slop) break
                         }
                     }
                 } catch (_: PointerEventTimeoutCancellationException) {

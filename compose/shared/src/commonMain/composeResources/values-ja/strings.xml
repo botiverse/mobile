@@ -3708,4 +3708,12 @@
     <string name="settings_notifications_mobile_delay_minute_1">パソコンの操作が 1 分止まったら通知</string>
     <string name="settings_notifications_mobile_delay_minutes">パソコンの操作が %1$d 分止まったら通知</string>
     <string name="message_mention_sender">@%1$s をメンション</string>
+    <string name="rail_tab_move_up">上へ移動</string>
+    <string name="rail_tab_move_down">下へ移動</string>
+    <string name="rail_tab_drag_picked_up">%1$sをつかみました。</string>
+    <string name="rail_tab_drag_over">%1$sは%2$sの上にあります。</string>
+    <string name="rail_tab_drag_dropped_at">%1$sを%2$sの位置に配置しました。</string>
+    <string name="rail_tab_drag_dropped">%1$sを配置しました。</string>
+    <string name="rail_tab_drag_cancelled">%1$sの移動をキャンセルしました。</string>
+    <string name="rail_tab_order_save_failed">タブの順序を保存できませんでした</string>
 </resources>

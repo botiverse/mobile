@@ -3708,4 +3708,12 @@
     <string name="settings_notifications_mobile_delay_minute_1">电脑上停手 1 分钟后</string>
     <string name="settings_notifications_mobile_delay_minutes">电脑上停手 %1$d 分钟后</string>
     <string name="message_mention_sender">提及 @%1$s</string>
+    <string name="rail_tab_move_up">上移</string>
+    <string name="rail_tab_move_down">下移</string>
+    <string name="rail_tab_drag_picked_up">已拿起 %1$s。</string>
+    <string name="rail_tab_drag_over">%1$s 位于 %2$s 上方。</string>
+    <string name="rail_tab_drag_dropped_at">%1$s 已放到 %2$s 的位置。</string>
+    <string name="rail_tab_drag_dropped">%1$s 已放下。</string>
+    <string name="rail_tab_drag_cancelled">已取消移动 %1$s。</string>
+    <string name="rail_tab_order_save_failed">标签顺序保存失败</string>
 </resources>

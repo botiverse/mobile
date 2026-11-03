@@ -23,10 +23,12 @@ private val settingsRepositoryJson = Json {
 
 private const val PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH = 5_000
 
-private suspend fun RaftNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
+/** `GET /api/auth/me`: the signed-in account (settings, appearance, the rail tab order). */
+internal suspend fun RaftNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "auth/me")
 
-private suspend fun RaftNetworkClient.updateSettingsAccount(
+/** `PATCH /api/auth/me`: a partial update, only the fields in [bodyText]. */
+internal suspend fun RaftNetworkClient.updateSettingsAccount(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =

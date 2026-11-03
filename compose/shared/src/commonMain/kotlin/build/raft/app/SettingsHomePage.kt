@@ -6545,6 +6545,41 @@ private fun RaftAppShellReadyContent(
             labelFor = { key -> railNavLabels[key] ?: key },
         )
     }
+    // The rail's tabs in the person's own order, saved on the account (web SortableRailTabs,
+    // slock #10279): the session's `auth/me` seeds it, a drop saves it.
+    val railTabOrderStore = sharedStores.railTabOrderStore
+    val railTabOrderState by railTabOrderStore.state.collectAsState()
+    val railTabOrderUser = readySession?.user
+    LaunchedEffect(railTabOrderStore, railTabOrderUser?.id, railTabOrderUser?.railTabOrder) {
+        if (railTabOrderUser != null) {
+            railTabOrderStore.dispatch(
+                build.raft.app.data.SharedRailTabOrderIntent.SessionLoaded(railTabOrderUser.id, railTabOrderUser.railTabOrder)
+            )
+        }
+    }
+    LaunchedEffect(railTabOrderStore, navRailActive) {
+        railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.RailShown(navRailActive))
+    }
+    val railTabOrderSaveFailed = stringResource(Res.string.rail_tab_order_save_failed)
+    LaunchedEffect(railTabOrderState.effect) {
+        if (railTabOrderState.effect == build.raft.app.data.SharedRailTabOrderEffect.SaveFailed) {
+            bridge.toast(railTabOrderSaveFailed)
+            railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.ConsumeEffect)
+        }
+    }
+    val railTabReorder =
+        remember(railTabOrderStore) {
+            RaftRailTabReorder { keys ->
+                railTabOrderStore.dispatch(
+                    build.raft.app.data.SharedRailTabOrderIntent.Reorder(
+                        build.raft.app.data.raftRailTabOrderWithVisibleOrder(
+                            fullOrder = railTabOrderStore.state.value.order,
+                            visibleOrder = keys.mapNotNull(::raftRailTabIdForKey),
+                        )
+                    )
+                )
+            }
+        }
     // The rail's Help menu (web LeftRail HelpMenu), beside the rail.
     var railHelpOpen by remember { mutableStateOf(false) }
     // It belongs to the rail: it closes when the window leaves the wide layout, and when the
@@ -7182,7 +7217,7 @@ private fun RaftAppShellReadyContent(
                                 } else {
                                     items
                                 }
-                            }
+                            }.orderedLikeRailTabOrder(railTabOrderState.order)
                         if (railWithoutTopBar) {
                             // Without the top bar the system's side column holds the history's Back.
                             raftSideColumnFallbackBack(
@@ -7253,6 +7288,7 @@ private fun RaftAppShellReadyContent(
                                 onAppShellTabSelected(key)
                             },
                             modifier = Modifier.fillMaxHeight(),
+                            reorder = railTabReorder,
                             // The server tab at the foot is the phone's; the top bar holds the server.
                             bottomItems =
                                 if (railWithoutTopBar && railInlineSecondaryDestination == AppShellRailSearchKey) {

@@ -533,7 +533,13 @@ data class StoredAuthUser(
     val profileSetupSuggestedHandle: String? = null,
     val profileSetupProvider: String? = null,
     val preferredTimeFormat: String? = null,
-    val timeFormat: String? = null
+    val timeFormat: String? = null,
+    /**
+     * The wide rail's tab order saved on the account, as `GET /api/auth/me` sends it (null: the
+     * default; botiverse/slock 4ca2f2e6cb packages/server/src/services/userService.ts
+     * `toPublicUser`). Read through [normalizeRaftRailTabOrder] ([SharedRailTabOrderStore]).
+     */
+    val railTabOrder: List<String>? = null
 ) {
     val requiresProfileSetup: Boolean
         get() = profileSetupCompletedAt.isNullOrBlank()

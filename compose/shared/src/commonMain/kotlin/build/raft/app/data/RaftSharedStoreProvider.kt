@@ -1220,6 +1220,18 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /**
+     * The wide rail's tab order saved on the account (slock #10279): seeded by the session's
+     * `GET auth/me`, read again on a return to the foreground while the rail shows, saved by a drop.
+     */
+    val railTabOrderStore: SharedRailTabOrderStore by lazy {
+        SharedRailTabOrderStore(
+            dataSource = NetworkRailTabOrderDataSource(networkClient),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+            logger = sharedInfoLogger("SlockRailTabOrder", "rail_tab_order"),
+        )
+    }
+
     /** The current API environment's id: the feature-flag evaluation context. */
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()
@@ -1319,6 +1331,8 @@ internal class RaftSharedStoreProvider private constructor(
         serverAppearanceCatchUp.followAppLifecycle(RaftStaleReadRecoverySignals.foreground) {
             authStore.readSession()?.currentServerId
         }
+        // Another device may have reordered the rail's tabs while backgrounded: read them again.
+        railTabOrderStore.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
         // App start: read this environment's client config (and again on each environment change).
         clientConfigStore.start()
         // Attach canonical/reaction shadow mutation to the dedicated process

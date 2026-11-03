@@ -147,4 +147,34 @@ class RaftReorderStateTest {
         assertEquals(0f, delta(120f, back = false), "already at the top")
         assertEquals(0f, delta(480f, forward = false), "already at the bottom")
     }
+
+    @Test
+    fun aGapBetweenRowsCountsInEachSlotAndTheEndsClampTheLiftedRow() {
+        // The app rail: 40dp items 6dp apart, the lifted tab kept within the rail.
+        val s = RaftReorderState(listOf("a", "b", "c"), gap = 6f, clampToEnds = true).apply { listOf("a", "b", "c").forEach { setHeight(it, 40) } }
+        s.lift("a")
+        s.dragBy(22f)
+        assertEquals(listOf("a", "b", "c"), s.order, "not past b's slot middle (46 / 2) yet")
+        s.dragBy(2f)
+        assertEquals(listOf("b", "a", "c"), s.order)
+        assertEquals(-22f, s.liftedOffset, "the slot is the row and its gap")
+        s.dragBy(400f)
+        assertEquals(listOf("b", "c", "a"), s.order)
+        assertEquals(0f, s.liftedOffset, "the last slot holds the row: it doesn't leave the list")
+    }
+
+    @Test
+    fun theKeyboardStepsTheLiftedRowOneSlotAtATime() {
+        val s = state("a", "b", "c")
+        assertFalse(s.stepLifted(1), "nothing lifted")
+        s.lift("a")
+        assertTrue(s.stepLifted(1))
+        assertTrue(s.stepLifted(1))
+        assertFalse(s.stepLifted(1), "already last")
+        assertEquals(listOf("b", "c", "a"), s.drop())
+        s.lift("a")
+        s.stepLifted(-1)
+        s.cancel()
+        assertEquals(listOf("b", "c", "a"), s.order, "a cancel puts it back")
+    }
 }
