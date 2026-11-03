@@ -1,6 +1,7 @@
 package build.raft.app
 
 import android.os.Looper
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
@@ -10,6 +11,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -33,6 +35,8 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.compat.pager.RaftPagerHost
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
+import build.raft.app.nav.RaftMobilePageStackDisplay
+import build.raft.app.nav.RaftPageStack
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_APP_LOGIN_MMKV_NAMESPACE
@@ -49,6 +53,7 @@ import java.time.Duration
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
@@ -66,6 +71,8 @@ import org.robolectric.annotation.GraphicsMode
  * head, the messages, the composer) gets a real finger: a down and an up at the chip's centre,
  * injected at the page's root, so every layer over the head takes part in the hit test.
  */
+private const val ShellTag = "task-tap-shell"
+
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
@@ -75,6 +82,9 @@ class TaskConversationHeadRealTapTest {
     val activities = RobolectricComposeActivityRule()
 
     private var previousLocale = StringDesc.localeType
+
+    /** Taps the covered shell took (Navigation 3): a finger meant for the task page must never land there. */
+    private var shellTaps = 0
 
     /** Every pointer event the page's root saw last, and whether a layer under it consumed it. */
     private val trace = mutableListOf<String>()
@@ -147,7 +157,63 @@ class TaskConversationHeadRealTapTest {
             assertOpened("Todo", TaskHeadStatusTestTag)
         }
 
-    private fun ComposeUiTest.openTaskPage(messages: Int) {
+    @Test
+    fun aFingerOnTheCreatorOpensTheirProfile() =
+        runRobolectricComposeUiTest {
+            openTaskPage(messages = 3)
+            tapAtCentreOf(TaskHeadCreatorTestTag)
+            assertTrue(
+                TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" },
+                "a finger on Created by did not open AppFather's profile (opened ${TaskTapFixture.openedProfiles}); trace:\n" +
+                    trace.joinToString("\n"),
+            )
+        }
+
+    @Test
+    fun aFingerOnTheTopBarRefOpensTheTaskChannel() =
+        runRobolectricComposeUiTest {
+            openTaskPage(messages = 3)
+            tapAtCentreOf(TaskBarRefTestTag)
+            assertTrue(
+                TaskTapFixture.openedConversations.contains(TaskTapParentChannelId),
+                "a finger on the bar's #proj-apps:#35 did not open #proj-apps (opened ${TaskTapFixture.openedConversations}); trace:\n" +
+                    trace.joinToString("\n"),
+            )
+        }
+
+    @Test
+    fun withNavigation3AFingerOnTheAssigneeOpensTheAssigneePicker() =
+        runRobolectricComposeUiTest {
+            openTaskPage(messages = 60, nav3 = true)
+            tapAtCentreOf(TaskHeadAssigneeTestTag)
+            assertOpened("Search assignees", TaskHeadAssigneeTestTag)
+        }
+
+    @Test
+    fun withNavigation3AFingerOnTheStatusOpensTheStatusMenu() =
+        runRobolectricComposeUiTest {
+            openTaskPage(messages = 3, nav3 = true)
+            tapAtCentreOf(TaskHeadStatusTestTag)
+            assertOpened("Todo", TaskHeadStatusTestTag)
+        }
+
+    @Test
+    fun withNavigation3AFingerOnTheCreatorOpensTheirProfile() =
+        runRobolectricComposeUiTest {
+            openTaskPage(messages = 3, nav3 = true)
+            tapAtCentreOf(TaskHeadCreatorTestTag)
+            assertTrue(TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" }, trace.joinToString("\n"))
+        }
+
+    @Test
+    fun withNavigation3AFingerOnTheTopBarRefOpensTheTaskChannel() =
+        runRobolectricComposeUiTest {
+            openTaskPage(messages = 3, nav3 = true)
+            tapAtCentreOf(TaskBarRefTestTag)
+            assertTrue(TaskTapFixture.openedConversations.contains(TaskTapParentChannelId), trace.joinToString("\n"))
+        }
+
+    private fun ComposeUiTest.openTaskPage(messages: Int, nav3: Boolean = false) {
         TaskTapFixture.reset(messages)
         val pager = object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
         val transport = HostBridgeTransport { _, _, _ -> }
@@ -158,6 +224,8 @@ class TaskConversationHeadRealTapTest {
                 override fun closePage() = Unit
             }
         val host = RaftCmpHost(BridgeWireHostCapabilities(transport), navigator, bridgeTransport = transport)
+        val stack = RaftPageStack()
+        shellTaps = 0
         setContent {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftHost provides host) {
                 RaftDesignSystemTheme {
@@ -175,10 +243,26 @@ class TaskConversationHeadRealTapTest {
                             }
                         }
                     ) {
-                        RaftPagerHost(factory = { TaskTapFixturePage() }, args = remember { taskTapFixturePageArgs() })
+                        if (nav3) {
+                            // Navigation 3 (RaftAndroidNav3Stack): the task page pushed over the
+                            // shell in RaftMobilePageStackDisplay, the shell still under it.
+                            RaftMobilePageStackDisplay(stack) { page ->
+                                if (page === stack.pages.first()) {
+                                    Box(Modifier.fillMaxSize().testTag(ShellTag).clickable { shellTaps++ })
+                                } else {
+                                    RaftPagerHost(factory = { TaskTapFixturePage() }, args = page.args)
+                                }
+                            }
+                        } else {
+                            RaftPagerHost(factory = { TaskTapFixturePage() }, args = remember { taskTapFixturePageArgs() })
+                        }
                     }
                 }
             }
+        }
+        if (nav3) {
+            waitForIdle()
+            runOnIdle { stack.open(taskTapFixturePageArgs().pageName, taskTapFixturePageArgs().pageData, from = stack.pages.first()) }
         }
         // The page loads off the main thread: real time as well as the main looper's.
         repeat(400) {
@@ -221,6 +305,7 @@ class TaskConversationHeadRealTapTest {
         }
         settle()
         println("task-tap: $tag at $bounds\n" + trace.joinToString("\n"))
+        assertEquals(0, shellTaps, "the finger on $tag reached the shell under the task page")
     }
 
     private fun ComposeUiTest.assertOpened(text: String, tag: String) {

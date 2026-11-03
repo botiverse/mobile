@@ -40,7 +40,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 private const val TapServerId = "task-tap-server"
 internal const val TaskTapConversationId = "task-tap-conv-35"
-private const val TapParentChannelId = "task-tap-proj-apps"
+internal const val TaskTapParentChannelId = "task-tap-proj-apps"
 private const val TapEnvironmentId = "https://task-tap.fixture.example.test"
 private const val TapOwnerId = "user-artin"
 private const val TapTaskId = "task-tap-35"
@@ -60,10 +60,16 @@ internal object TaskTapFixture {
     @Volatile
     var taskServed: Boolean = false
 
+    /** What the page asked its host to open: conversations (by their channel) and member profiles. */
+    val openedConversations: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
+    val openedProfiles: MutableList<MemberDetailIdentity> = java.util.concurrent.CopyOnWriteArrayList()
+
     fun reset(messages: Int) {
         messageCount = messages
         threadServed = false
         taskServed = false
+        openedConversations.clear()
+        openedProfiles.clear()
     }
 }
 
@@ -149,6 +155,8 @@ private fun TaskTapFixtureContent() {
         composerDraftPersistSlice = provider.composerDraftPersistSlice,
         eventBus = provider.eventBus,
         onBack = {},
+        onOpenThreadPayload = { payload -> TaskTapFixture.openedConversations += payload.sourceThreadId.orEmpty() },
+        onOpenMemberProfile = { _, _, identity -> TaskTapFixture.openedProfiles += identity },
     )
 }
 
@@ -191,14 +199,14 @@ private fun taskTapConversationRepository(messageCount: Int): ConversationReposi
             fake.getThread(threadId, includeFollowedSummaries, limit).also { TaskTapFixture.threadServed = true }
 
         override suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> =
-            DataResult.Content(TaskConversationChannelRef(conversationChannelId, ChannelId(TapParentChannelId), TaskId(TapTaskId)))
+            DataResult.Content(TaskConversationChannelRef(conversationChannelId, ChannelId(TaskTapParentChannelId), TaskId(TapTaskId)))
     }
 }
 
 /** botiverse/slock `GET /tasks/channel/:id`: task #35, In Review, assigned to artin, created by AppFather. */
 private val TaskTapTaskRow =
     """{"id":"$TapTaskId","messageId":"$TapTaskId","hostMessageId":null,"sourceMessageId":null,"conversationReplyCount":3,""" +
-        """"conversationChannelId":"$TaskTapConversationId","conversationAnchored":true,"channelId":"$TapParentChannelId",""" +
+        """"conversationChannelId":"$TaskTapConversationId","conversationAnchored":true,"channelId":"$TaskTapParentChannelId",""" +
         """"channelName":"proj-apps","channelType":"channel","taskNumber":35,"title":"Task header controls do nothing when tapped",""" +
         """"description":null,"status":"in_review","createdByType":"agent","createdById":"agent-appfather","createdByName":"AppFather",""" +
         """"claimedByType":"user","claimedById":"$TapOwnerId","claimedByName":"artin","claimedAt":"2026-11-03T10:00:00.000Z",""" +
