@@ -49,6 +49,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.markdown.LocalRaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftMarkdownLinkDragSelection
+import build.raft.app.markdown.raftWithoutInlineCodeBreakMarks
 import build.raft.designsystem.components.RaftTextSelectionToolbar
 import build.raft.designsystem.components.RaftTextSelectionToolbarButton
 import build.raft.designsystem.components.RaftTextSelectionToolbarDefaults
@@ -368,7 +369,8 @@ internal fun threadInPlaceSelectionCopyText(
     if (!fullMessageText.isNullOrBlank() && threadInPlaceSelectionCoversAll(selectedTexts, selectableTexts)) {
         return fullMessageText
     }
-    return selected.joinToString(separator = "\n")
+    // Rendered text carries layout-only break marks (inline code, chip glue); a copy has none.
+    return selected.joinToString(separator = "\n").raftWithoutInlineCodeBreakMarks()
 }
 
 /**

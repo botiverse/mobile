@@ -83,6 +83,34 @@ internal fun String.withRaftInlineCodeCharWrapBreaks(threshold: Int): String {
     return result.toString()
 }
 
+// Slock: inline code wraps where the web's does (raft-ui InlineCode, Chrome line breaking): after
+// a hyphen inside a word (`thread-route`), never after a slash (`reply/channel`). The native
+// breaker does the opposite, so a zero-width space marks each hyphen break and a word joiner
+// glues each slash to what follows. A run still longer than the line breaks anywhere, as the
+// web's `overflow-wrap: anywhere` does.
+internal fun String.withRaftInlineCodeWebBreaks(): String {
+    if (indexOf('-') < 0 && indexOf('/') < 0) return this
+    val result = StringBuilder(length + 8)
+    forEachIndexed { index, char ->
+        result.append(char)
+        val next = getOrNull(index + 1) ?: return@forEachIndexed
+        when (char) {
+            '/' -> if (!next.isWhitespace()) result.append(RAFT_INLINE_CODE_WORD_JOINER)
+            '-' -> {
+                val previous = getOrNull(index - 1)
+                if (previous != null && previous.isLetterOrDigit() && next.isLetter()) {
+                    result.append(RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK)
+                } else if (!next.isWhitespace()) {
+                    result.append(RAFT_INLINE_CODE_WORD_JOINER)
+                }
+            }
+        }
+    }
+    return result.toString()
+}
+
+private const val RAFT_INLINE_CODE_WORD_JOINER = '\u2060'
+
 /**
  * Extension function to build an `AnnotatedString` from a Markdown string.
  * This function will parse the Markdown content and apply the given styles to the text.
@@ -512,7 +540,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                                         annotatorSettings,
                                         insideCodeSpan = true
                                     )
-                                }.toAnnotatedString().text
+                                }.toAnnotatedString().text.withRaftInlineCodeWebBreaks()
                             }
                         if (usesEdgePaddingBridge) {
                             appendRaftInlineCodeWithEdgeBoxes(codeText)

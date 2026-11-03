@@ -2261,7 +2261,7 @@ class RaftMarkdownTest {
         return renderRaftMarkdownListItemAnnotatedStrings(
             content = content,
             annotator = raftMarkdownAnnotator(content)
-        ).map { it.text }
+        ).map { it.raftTextWithoutInlineGaps() }
     }
 
     private fun renderRaftMarkdownListItemAnnotatedStrings(
