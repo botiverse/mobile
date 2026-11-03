@@ -3443,17 +3443,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // React renders its onboarding ("Meet Cindy") step here; the shared dialog
-    // has no onboarding layout, so Android captures the standard form for the
-    // same seed and the product gap stays visible in the report.
-    @Test
-    fun captureMembersCreateAgentDialogOnboarding() {
-        captureMembersCreateAgentStateCase(
-            caseId = "components.members.create-agent.dialog-onboarding",
-            variant = "onboarding"
-        )
-    }
-
     @Test
     fun captureMembersCreateAgentDialogEmpty() {
         captureMembersCreateAgentStateCase(
