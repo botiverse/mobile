@@ -863,13 +863,14 @@ private fun channelSettingsStatusLabel(channel: HomeChannelRow): String =
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChannelMembersSection(
+internal fun ChannelMembersSection(
     slice: SharedServerChannelMembersSlice,
     fallbackCount: Int?,
     canAdd: Boolean,
     agentStatusResolver: RaftAgentStatusResolver,
     onOpen: () -> Unit,
     onAdd: () -> Unit,
+    separator: Boolean = true,
 ) {
     val members = slice.members.distinctBy { it.id }
     val loading = slice.status == SharedServerMembersLoadStatus.InFlight && members.isEmpty()
@@ -877,6 +878,7 @@ private fun ChannelMembersSection(
     RaftSection(
         title = stringResource(Res.string.channel_settings_members),
         modifier = Modifier.clickable(onClick = onOpen),
+        separator = separator,
         action = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(summary, style = RaftTheme.typography.caption, color = RaftTheme.colors.foregroundHint)
@@ -1016,6 +1018,35 @@ private fun ChannelInfoSection(
     onSave: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit,
     onClearStatus: () -> Unit,
 ) {
+    RaftSection(title = stringResource(Res.string.channel_settings_info)) {
+        RaftText(
+            stringResource(Res.string.channel_settings_info_detail),
+            modifier = Modifier.padding(bottom = 12.dp),
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foregroundHint,
+        )
+        ChannelInfoForm(channel, nameEditable, enabled, status, errorCode, slackBridge, onSave, onClearStatus)
+    }
+}
+
+/**
+ * The Info form itself (web EditChannelDialog panel form): Name and Description, the Slack pick
+ * when given, the failure banner, then Cancel and Save on the right ("Changes saved" beside them
+ * after a save). Shared by the settings page and the settings drawer.
+ */
+@Composable
+internal fun ChannelInfoForm(
+    channel: HomeChannelRow,
+    nameEditable: Boolean,
+    enabled: Boolean,
+    status: ChannelProfileUpdateStatus,
+    errorCode: String?,
+    slackBridge: ChannelSlackBridgeState?,
+    onSave: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit,
+    onClearStatus: () -> Unit,
+    /** Unsaved edits (the drawer keeps them on a tap beside it). */
+    onDirtyChange: (Boolean) -> Unit = {},
+) {
     val savedSlack = slackBridge?.pairedSlackChannelId
     var slackPick by remember(channel.channelId, savedSlack) { mutableStateOf(savedSlack) }
     val slackDirty = slackBridge != null && slackPick != savedSlack
@@ -1036,6 +1067,7 @@ private fun ChannelInfoSection(
     val trimmedName = name.trim()
     val trimmedDescription = description.trim()
     val dirty = trimmedName != savedName.trim() || trimmedDescription != savedDescription.trim() || slackDirty
+    LaunchedEffect(dirty) { onDirtyChange(dirty) }
     val nameInvalid = trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()
     val nameError =
         when {
@@ -1045,109 +1077,101 @@ private fun ChannelInfoSection(
             else -> null
         }
     val clearStatusOnEdit: () -> Unit = { if (status != ChannelProfileUpdateStatus.Idle && !saving) onClearStatus() }
-    RaftSection(title = stringResource(Res.string.channel_settings_info)) {
-        RaftText(
-            stringResource(Res.string.channel_settings_info_detail),
-            modifier = Modifier.padding(bottom = 12.dp),
-            style = RaftTheme.typography.footnote,
-            color = RaftTheme.colors.foregroundHint,
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftField(
-                label = stringResource(Res.string.thread_settings_name),
-                required = true,
-                error = nameError,
-                enabled = enabled && nameEditable && !saving,
-            ) {
-                RaftTextField(
-                    value = name,
-                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                    onValueChange = {
-                        name = it
-                        clearStatusOnEdit()
-                    },
-                    placeholder = stringResource(Res.string.thread_settings_name_placeholder),
-                )
-            }
-            RaftField(
-                label = stringResource(Res.string.thread_settings_description),
-                optional = true,
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        RaftField(
+            label = stringResource(Res.string.thread_settings_name),
+            required = true,
+            error = nameError,
+            enabled = enabled && nameEditable && !saving,
+        ) {
+            RaftTextField(
+                value = name,
+                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                onValueChange = {
+                    name = it
+                    clearStatusOnEdit()
+                },
+                placeholder = stringResource(Res.string.thread_settings_name_placeholder),
+            )
+        }
+        RaftField(
+            label = stringResource(Res.string.thread_settings_description),
+            optional = true,
+            enabled = enabled && !saving,
+        ) {
+            RaftTextarea(
+                value = description,
+                onValueChange = {
+                    description = it
+                    clearStatusOnEdit()
+                },
+                placeholder = stringResource(Res.string.thread_settings_description_placeholder),
+                limit = ChannelSettingsDescriptionLimit,
+            )
+        }
+        if (slackBridge != null) {
+            ChannelSlackBridgeField(
+                state = slackBridge,
+                selected = slackPick,
                 enabled = enabled && !saving,
-            ) {
-                RaftTextarea(
-                    value = description,
-                    onValueChange = {
-                        description = it
-                        clearStatusOnEdit()
-                    },
-                    placeholder = stringResource(Res.string.thread_settings_description_placeholder),
-                    limit = ChannelSettingsDescriptionLimit,
+                onSelect = {
+                    slackPick = it
+                    clearStatusOnEdit()
+                },
+            )
+        }
+        if (status == ChannelProfileUpdateStatus.Failed && errorCode != "channel_name_invalid") {
+            RaftBanner(
+                description =
+                    stringResource(
+                        if (errorCode == CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE) {
+                            Res.string.channel_settings_slack_partial_failure
+                        } else {
+                            Res.string.thread_settings_update_failed
+                        }
+                    ),
+                status = RaftBannerStatus.Warning,
+                size = RaftBannerSize.Sm,
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (status == ChannelProfileUpdateStatus.Succeeded && !dirty) {
+                RaftText(
+                    stringResource(Res.string.channel_settings_save_success),
+                    modifier = Modifier.weight(1f),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundHint,
                 )
             }
-            if (slackBridge != null) {
-                ChannelSlackBridgeField(
-                    state = slackBridge,
-                    selected = slackPick,
-                    enabled = enabled && !saving,
-                    onSelect = {
-                        slackPick = it
-                        clearStatusOnEdit()
-                    },
-                )
-            }
-            if (status == ChannelProfileUpdateStatus.Failed && errorCode != "channel_name_invalid") {
-                RaftBanner(
-                    description =
-                        stringResource(
-                            if (errorCode == CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE) {
-                                Res.string.channel_settings_slack_partial_failure
-                            } else {
-                                Res.string.thread_settings_update_failed
-                            }
-                        ),
-                    status = RaftBannerStatus.Warning,
-                    size = RaftBannerSize.Sm,
-                )
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (status == ChannelProfileUpdateStatus.Succeeded && !dirty) {
-                    RaftText(
-                        stringResource(Res.string.channel_settings_save_success),
-                        modifier = Modifier.weight(1f),
-                        style = RaftTheme.typography.footnote,
-                        color = RaftTheme.colors.foregroundHint,
-                    )
-                }
-                RaftButton(
-                    text = stringResource(Res.string.common_cancel),
-                    onClick = {
-                        name = savedName
-                        description = savedDescription
-                        slackPick = savedSlack
-                        clearStatusOnEdit()
-                    },
-                    variant = RaftButtonVariant.Ghost,
-                    enabled = dirty && !saving,
-                )
-                RaftButton(
-                    text = stringResource(Res.string.common_save),
-                    onClick = {
-                        onSave(trimmedName, trimmedDescription, if (slackDirty) ChannelSlackBridgeSelection(slackPick) else null)
-                    },
-                    variant = RaftButtonVariant.Primary,
-                    enabled =
-                        enabled &&
-                            dirty &&
-                            trimmedName.isSubmittableChannelName() &&
-                            trimmedDescription.length <= ChannelSettingsDescriptionLimit,
-                    loading = saving,
-                    loadingLabel = stringResource(Res.string.thread_settings_saving),
-                )
-            }
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = {
+                    name = savedName
+                    description = savedDescription
+                    slackPick = savedSlack
+                    clearStatusOnEdit()
+                },
+                variant = RaftButtonVariant.Ghost,
+                enabled = dirty && !saving,
+            )
+            RaftButton(
+                text = stringResource(Res.string.common_save),
+                onClick = {
+                    onSave(trimmedName, trimmedDescription, if (slackDirty) ChannelSlackBridgeSelection(slackPick) else null)
+                },
+                variant = RaftButtonVariant.Primary,
+                enabled =
+                    enabled &&
+                        dirty &&
+                        trimmedName.isSubmittableChannelName() &&
+                        trimmedDescription.length <= ChannelSettingsDescriptionLimit,
+                loading = saving,
+                loadingLabel = stringResource(Res.string.thread_settings_saving),
+            )
         }
     }
 }
@@ -1410,7 +1434,7 @@ private fun ChannelActionsSection(
 }
 
 @Composable
-private fun ChannelActionButton(
+internal fun ChannelActionButton(
     text: String,
     icon: RaftLucideIconName,
     variant: RaftButtonVariant = RaftButtonVariant.Default,
