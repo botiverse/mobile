@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-03T21:20:43.566Z",
-  "latestRunId": "515ed2a6-20261103205636",
+  "generatedAt": "2026-11-03T22:06:43.373Z",
+  "latestRunId": "33a0350d-20261103220336",
   "latest": {
-    "runId": "515ed2a6-20261103205636",
-    "commit": "515ed2a6-20261103205636",
-    "commitSubject": "refactor(thread): one threadPageServerId for flags and the member directory",
-    "generatedAt": "2026-11-03T21:20:43.566Z",
+    "runId": "33a0350d-20261103220336",
+    "commit": "33a0350d-20261103220336",
+    "commitSubject": "fix(members): profile Reasoning shows web effort labels and the saved effort (#4255)",
+    "generatedAt": "2026-11-03T22:06:43.373Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -24,7 +24,9 @@
       "pending": 59
     },
     "comparisons": [
-      "react__android"
+      "react__android",
+      "react__ios",
+      "android__ios"
     ],
     "componentMatrixSummary": {
       "total": 122,
@@ -72,9 +74,9 @@
         }
       }
     },
-    "href": "runs/515ed2a6-20261103205636/",
-    "componentMatrix": "runs/515ed2a6-20261103205636/component-matrix.json",
-    "llms": "runs/515ed2a6-20261103205636/metadata.json"
+    "href": "runs/33a0350d-20261103220336/",
+    "componentMatrix": "runs/33a0350d-20261103220336/component-matrix.json",
+    "llms": "runs/33a0350d-20261103220336/metadata.json"
   },
   "componentMatrixSummary": {
     "total": 122,
@@ -123,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "33a0350d-20261103220336",
+      "commit": "33a0350d-20261103220336",
+      "commitSubject": "fix(members): profile Reasoning shows web effort labels and the saved effort (#4255)",
+      "generatedAt": "2026-11-03T22:06:43.373Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 93,
+        "same": 0,
+        "pass": 2,
+        "basic-pass": 12,
+        "different": 77,
+        "missing": 2
+      },
+      "analysisSummary": {
+        "total": 93,
+        "ready": 34,
+        "pending": 59
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 122,
+        "active": 102,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 89,
+            "active": 84,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 92,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 105
+          },
+          "android": {
+            "active": 85,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 103
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 80,
+            "unsupported": 0,
+            "total": 80
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/33a0350d-20261103220336/",
+      "componentMatrix": "runs/33a0350d-20261103220336/component-matrix.json",
+      "llms": "runs/33a0350d-20261103220336/metadata.json"
+    },
     {
       "runId": "515ed2a6-20261103205636",
       "commit": "515ed2a6-20261103205636",

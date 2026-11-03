@@ -1,0 +1,53 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "screens.members.agent-detail.profile.no-computer",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_member_detail","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.members.agent-detail.profile.no-computer.png",
+              "viewport": { "width": 1170, "height": 5019, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 1673 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-viewport-density-resize-full-length",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 630,
+                  "dominantRatio": 0.889604
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 4829,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 5019,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4713,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "269731d593043e879e196187a0bbef9b",
+                "bootId": "7c415721-6959-4be2-93c8-bbc0f471f1fe",
+                "capturedAtEpochMs": 1793742295285,
+                "capturedAtMonotonicNs": 191501148749
+              },
+              "clampedToShortWindow": false,
+              "fullLength": {"requested":true,"baseViewportHeight":844,"expandedViewportHeight":1673,"initialOverflowDp":829,"residualOverflowDp":0,"iterations":1,"capped":false,"maxHeight":2700,"scroller":"lazy#2450@315..2532"},
+              "capturedAt": "1793742295285"
+            }
