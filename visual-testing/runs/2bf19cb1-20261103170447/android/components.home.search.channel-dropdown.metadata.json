@@ -1,0 +1,53 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.home.search.channel-dropdown",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_home_search_channel_dropdown_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.home.search.channel-dropdown.png",
+              "viewport": { "width": 1170, "height": 2532, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-viewport-density-resize+app-dialog-windows",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 577,
+                  "dominantRatio": 0.872366
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2342,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2532,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4438,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "4088c11a177c1fad51cba266123a09c1",
+                "bootId": "31415881-e877-445d-a13f-2027d314a048",
+                "capturedAtEpochMs": 1793725174108,
+                "capturedAtMonotonicNs": 83718580629
+              },
+              "clampedToShortWindow": false,
+              "fullLength": null,
+              "capturedAt": "1793725174108"
+            }

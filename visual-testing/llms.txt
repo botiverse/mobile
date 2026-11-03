@@ -1,18 +1,18 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 10:29:00 UTC
-Latest run: fcf6ae60-20261103094938
-Latest commit: fcf6ae60-20261103094938
-Commit subject: feat(visual): full-length capture on Android for flagged cases (#4192)
+Generated: 2026-11-03 17:05:58 UTC
+Latest run: 2bf19cb1-20261103170447
+Latest commit: 2bf19cb1-20261103170447
+Commit subject: test(visual): the create-agent empty case waits for its own window before clearing the name
 Providers: react vs android
-Summary: total 93, same 0, pass 1, basic-pass 12, different 78, missing 2
-AI analysis: ready 27 / total 93, pending 66
+Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
+AI analysis: ready 23 / total 93, pending 70
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 93, same 0, pass 1, basic-pass 12, different 78, missing 2
+- react__android: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
 
 ## Capture Type Coverage
 
@@ -58,7 +58,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.message.row: Real React MessageItem vs Android rendering of shared ThreadMessageCard with matching fixture text, reply count, and task metadata.
 - tasks.card.states: Task Card States
 - components.channel.members.add-panel: Phone-width add-member view: real React ChannelMembers presentation="page" (the channel overflow drawer's members page, 390x844) after tapping the bottom-pinned Add Member entry. Android/KMP provider is the shared ChannelAddMemberPanel.
-- components.channel.settings.panel: Real React EditChannelDialog for the channel settings panel. Android/KMP provider uses the shared thread settings modal route; Harmony capture remains pending.
+- components.channel.settings.panel: Real React channel drawer (ChatPanel settings trigger -> ChannelOverflowMenu with EditChannelDialog as its body); query params channel=design|private|joint|dm, view=members, role=member pick the variant. Android/KMP provider uses the shared thread settings modal route; Harmony capture remains pending.
 - components.home.activity.results: Real React ThreadsInbox activity page vs Android rendering of shared Home Activity panel. Covers PanelHeader/back affordance, segmented filters, mark-all-read action, ConversationPreviewCard-like rows, unread/mention/task footer badges, and scroll body spacing.
 - components.home.create-channel.dialog: Real React CreateChannelDialog vs Android rendering of the shared SharedCreateChannelDialog/SlockUnifiedDialog route.
 - components.home.notification-center.states: React and Android now render the same two-notification fixture: warning agent disconnect plus info release-gate review. Harmony remains pending real-device/provider capture.
@@ -114,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 2bf19cb1-20261103170447: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/2bf19cb1-20261103170447/component-matrix.json, page runs/2bf19cb1-20261103170447/
 - fcf6ae60-20261103094938: react vs android, total 93, pass 1, basic-pass 12, different 78, matrix runs/fcf6ae60-20261103094938/component-matrix.json, page runs/fcf6ae60-20261103094938/
 - 5468c13a-20261103070304: react vs android, total 94, pass 2, basic-pass 14, different 76, matrix runs/5468c13a-20261103070304/component-matrix.json, page runs/5468c13a-20261103070304/
 - da544d25-20261103041702: react vs android, total 95, pass 2, basic-pass 14, different 77, matrix runs/da544d25-20261103041702/component-matrix.json, page runs/da544d25-20261103041702/

@@ -2,19 +2,19 @@
   "baselineWidth": 1170,
   "baselineHeight": 1881,
   "currentWidth": 1170,
-  "currentHeight": 1401,
+  "currentHeight": 1869,
   "comparisonWidth": 1170,
   "comparisonHeight": 1881,
-  "rgbSimilarity": 0.6975562207415644,
-  "pixelPerfectSimilarity": 0.5376222867450937,
-  "pixelMismatchRatio": 0.4623777132549063,
+  "rgbSimilarity": 0.9661202857074931,
+  "pixelPerfectSimilarity": 0.9230678353485371,
+  "pixelMismatchRatio": 0.07693216465146291,
   "compositor": "sharp",
   "displayMode": "preserve-provider-raw-size",
   "metricMode": "full-length-marker-pad-no-rescale",
   "fullLength": {
-    "heightDelta": -480,
-    "paddedPixels": 561600,
-    "paddedRatio": 0.2551834130781499,
+    "heightDelta": -12,
+    "paddedPixels": 14040,
+    "paddedRatio": 0.006379585326953748,
     "padMarker": "#ff00ff"
   }
 }

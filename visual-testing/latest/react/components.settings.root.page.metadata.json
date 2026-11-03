@@ -42,5 +42,5 @@
     "maxHeight": 2700,
     "scroller": "div[data-testid=sidebar-scroll-surface].scrollbar-list.flex-1.overflow-x-hidden.overflow-y-auto"
   },
-  "capturedAt": "2026-11-03T09:39:51.973Z"
+  "capturedAt": "2026-11-03T16:54:44.571Z"
 }
