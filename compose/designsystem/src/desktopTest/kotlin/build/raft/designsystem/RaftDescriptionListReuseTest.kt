@@ -1,6 +1,8 @@
 package build.raft.designsystem
 
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -42,6 +44,10 @@ class RaftDescriptionListReuseTest {
                             RaftDescriptionList(Modifier.height(itemDp), direction = RaftDescriptionListDirection.Horizontal) {
                                 Item("OS", "macOS $index")
                                 Item("Runtimes") {
+                                    // Each item's first line is a little taller, so its chips' baseline
+                                    // differs from the item whose slot it reuses (androidx gives each
+                                    // item the baseline `index`).
+                                    Spacer(Modifier.size(width = 1.dp, height = (20 + 2 * index).dp))
                                     RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
                                     RaftBadge("Codex $index", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
                                 }
