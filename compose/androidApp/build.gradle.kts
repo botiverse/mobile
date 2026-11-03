@@ -634,8 +634,9 @@ android {
         buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "false")
         buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "true")
         buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
-        // RaftNav3StackFlag's build default: the Navigation 3 page stack, on for Alpha testers only.
-        buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "false")
+        // RaftNav3StackFlag's build default: the Navigation 3 page stack, on for everyone from 1.19.1
+        // (artin 11-03). The developer switch can still turn it off on a device.
+        buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "true")
         buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
         buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
         buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"raft\"")
