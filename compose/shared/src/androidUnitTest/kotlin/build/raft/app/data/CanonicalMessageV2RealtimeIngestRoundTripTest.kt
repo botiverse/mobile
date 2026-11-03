@@ -305,7 +305,9 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
 
     @Test
     fun aThrowingLogSinkNeverStopsStorageNorDelaysDisplay() = withFile { file ->
-        file.rig().session { rig ->
+        // A wall-clock budget no healthy commit reaches even on a loaded CI runner (the 300 ms default
+        // flaked there): a display_only here means the throwing sink broke or stalled the commit.
+        file.rig(commitTimeoutMs = 10_000L).session { rig ->
             rig.connect(1L)
             rig.throwingLogger = true
             listOf(5L, 6L, 7L).forEach { seq -> assertTrue(rig.deliver(rig.messageNew(other, "m$seq", seq), epoch = 1L)) }
@@ -531,13 +533,14 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             partitionRetentionEvery: Int = CANONICAL_MESSAGE_V2_REALTIME_PARTITION_RETENTION_EVERY,
             retention: CanonicalMessageV2RetentionPolicy = CanonicalMessageV2RetentionPolicy(),
             t4: Boolean = false,
+            commitTimeoutMs: Long = 300L,
         ): Rig {
             val driver = JdbcSqliteDriver(url)
             if (!created) {
                 RaftSqlDatabase.Schema.create(driver).value
                 created = true
             }
-            return Rig(driver, queueCapacity, partitionRetentionEvery, retention, t4)
+            return Rig(driver, queueCapacity, partitionRetentionEvery, retention, t4, commitTimeoutMs)
         }
     }
 
@@ -547,6 +550,7 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         partitionRetentionEvery: Int,
         retention: CanonicalMessageV2RetentionPolicy,
         t4: Boolean,
+        commitTimeoutMs: Long,
     ) : AutoCloseable {
         /** The `sync_core_messages` flag for the server (canary and ingest read it). */
         @Volatile var enabled = true
@@ -672,7 +676,7 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
                 }
                 true
             },
-            canonicalMessageV2CommitTimeoutMs = 300L,
+            canonicalMessageV2CommitTimeoutMs = commitTimeoutMs,
         ).also { owner ->
             owner.installCanonicalMessageV2OwnerGateway(RealtimeIngestCanonicalMessageV2OwnerGateway(ingest, canary))
             owner.registerGuardedSinks(
