@@ -23,6 +23,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -180,7 +181,10 @@ internal fun TasksPanelVisualContent(fixture: String = "") {
         modifier =
             Modifier
                 .width(390.dp)
-                .height(844.dp)
+                // Fill the window (844dp on the pinned display) instead of a
+                // fixed 844dp, so a full-length capture that grows the display
+                // grows the panel and its list with it.
+                .fillMaxHeight()
                 .background(RaftColor.SurfaceWhite)
     ) {
         SharedTasksPanel(

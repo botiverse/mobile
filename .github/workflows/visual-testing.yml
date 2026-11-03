@@ -153,9 +153,32 @@ jobs:
     timeout-minutes: 60
     outputs:
       method_filter: ${{ steps.methods.outputs.filter }}
+      full_length_cases: ${{ steps.full_length.outputs.cases }}
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v7
+
+      # Full-length ("long screenshot") cases are declared once, in slock's
+      # sharedCases.json (capture.fullLength), and read by both providers: the
+      # React spec reads the manifest directly, Android gets the ids as the
+      # visualFullLengthCases instrumentation argument. Same slock ref as the
+      # React capture and report jobs.
+      - name: Checkout slock shared case manifest
+        uses: actions/checkout@v7
+        with:
+          repository: botiverse/slock
+          ref: ${{ inputs.slock_source_ref }}
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+          path: slock-shared
+          sparse-checkout: packages/visual-testing/shared/sharedCases.json
+          sparse-checkout-cone-mode: false
+
+      - name: Derive full-length cases
+        id: full_length
+        run: |
+          cases="$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(",".join(c["id"] for c in m.get("cases", []) if (c.get("capture") or {}).get("fullLength")))' slock-shared/packages/visual-testing/shared/sharedCases.json)"
+          echo "full-length cases: ${cases:-<none>}"
+          echo "cases=$cases" >> "$GITHUB_OUTPUT"
 
       # Map requested case ids to KmpVisualScreenshotCaptureTest methods so a
       # case_filter round only captures those cases on Android too.
@@ -391,7 +414,7 @@ jobs:
           # The runner executes each script line as a separate command;
           # backslash line continuations break ("Task '\' not found").
           script: |
-            bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --capture-locale "${{ inputs.capture_locale }}" --output-dir visual-testing-results --defer-verdict
+            bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --capture-locale "${{ inputs.capture_locale }}" --full-length-cases "${{ needs.android-build.outputs.full_length_cases }}" --output-dir visual-testing-results --defer-verdict
 
       - name: Upload android results
         if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}

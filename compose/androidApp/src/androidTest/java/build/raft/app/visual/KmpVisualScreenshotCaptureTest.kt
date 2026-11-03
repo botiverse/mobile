@@ -80,6 +80,7 @@ class KmpVisualScreenshotCaptureTest {
             override fun starting(description: Description) {
                 startUptimeMs = SystemClock.uptimeMillis()
                 currentCaseId = null
+                lastFullLength = null
                 activeCaptureLocale =
                     parseVisualCaptureLocale(
                         InstrumentationRegistry.getArguments().getString("capture_locale")
@@ -4372,6 +4373,8 @@ class KmpVisualScreenshotCaptureTest {
         cropOverride: (() -> VisualCrop)? = null
     ) {
         currentCaseId = caseId
+        lastFullLength = null
+        var fullLengthBaseDisplay: Pair<Int, Int>? = null
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
             Intent(context, RaftCmpActivity::class.java)
@@ -4412,7 +4415,16 @@ class KmpVisualScreenshotCaptureTest {
                     "$caseId host error surface was rendered; refusing to capture CALL_KOTLIN fallback"
                 }
             }
-            val effectiveCrop = cropOverride?.invoke() ?: crop
+            val baseCrop = cropOverride?.invoke() ?: crop
+            val fullLength =
+                if (caseId in fullLengthCases) {
+                    fullLengthBaseDisplay = currentDisplaySizePx()
+                    expandToFullLength(caseId, requireNotNull(fullLengthBaseDisplay))
+                } else {
+                    null
+                }
+            lastFullLength = fullLength
+            val effectiveCrop = fullLength?.extend(baseCrop) ?: baseCrop
             val normalized =
                 if (capturedBitmapAfterBeforeScreenshot != null) {
                     val screenshot = capturedBitmapAfterBeforeScreenshot.invoke()
@@ -4476,6 +4488,7 @@ class KmpVisualScreenshotCaptureTest {
                 Log.w(VISUAL_LOG_TAG, "after-screenshot teardown failed: ${t.message}")
             }
             closeScenarioBounded(scenario)
+            fullLengthBaseDisplay?.let { restoreDisplaySize(caseId, it) }
         }
     }
 
@@ -5666,68 +5679,198 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    /**
-     * Full-height Settings capture (task #388, approach 1). The window is pinned
-     * to the display, so a long route can never lay out taller than the screen —
-     * instead we grow the emulator display itself (wm size) so the existing
-     * LazyColumn's viewport covers the whole route and every item composes, then
-     * crop the single frame to the content bottom the render-side sentinel
-     * reports (#250: `settings_route_visual_fullheight contentBottomPx=N` on the
-     * bridge tag). Crop height = true content bottom (includes the route's own
-     * trailing padding), matching the React fullPage document-height contract —
-     * the grown display's excess white is cropped away, never baselined.
-     * The display is restored in finally; a wm-size failure surfaces as a crop
-     * bounds/validation failure, never a silent short baseline (#135 history).
-     */
-    private fun captureKmpFullHeightSettingsCase(caseId: String, destination: String) {
-        runShellCommand("wm size ${FULL_HEIGHT_DISPLAY_WIDTH_PX}x$FULL_HEIGHT_DISPLAY_HEIGHT_PX")
-        try {
-            captureKmpComponentCase(
-                caseId = caseId,
-                pageName = "compose_settings_route_visual",
-                pageData =
-                    JSONObject()
-                        .put("destination", destination)
-                        .put("fixtureKey", "canonical")
-                        .put("slockVisualFullHeight", true),
-                crop = FULL_VIEWPORT_CROP,
-                settleMs = 2_500,
-                cropOverride = { awaitFullHeightCrop(caseId) }
+    /** Case ids flagged `capture.fullLength` in slock sharedCases.json (instrumentation arg). */
+    private val fullLengthCases: Set<String> by lazy {
+        VisualFullLength.requestedCases(
+            InstrumentationRegistry.getArguments().getString(VisualFullLength.ARG_CASES)
+        )
+    }
+
+    private var lastFullLength: FullLengthResult? = null
+
+    private data class FullLengthResult(
+        val baseHeightPx: Int,
+        val expandedHeightPx: Int,
+        val density: Float,
+        val initialOverflowPx: Int,
+        val residualOverflowPx: Int,
+        val iterations: Int,
+        val capped: Boolean,
+        val maxHeightDp: Int,
+        val scroller: String?
+    ) {
+        val addedDp: Int get() = ((expandedHeightPx - baseHeightPx) / density).roundToInt()
+
+        /**
+         * A crop that reached the bottom of the base viewport (FULL_VIEWPORT_CROP
+         * and other bottom-anchored crops) grows with the display; a component
+         * crop above the fold is left alone.
+         */
+        fun extend(crop: VisualCrop): VisualCrop {
+            if (addedDp <= 0) return crop
+            val baseHeightDp = (baseHeightPx / density).roundToInt()
+            if (crop.topDp + crop.heightDp < baseHeightDp) return crop
+            return crop.copy(
+                heightDp = crop.heightDp + addedDp,
+                captureMethod = crop.captureMethod + "-full-length"
             )
-        } finally {
-            runShellCommand("wm size reset")
         }
+
+        fun toJson(): String =
+            JSONObject()
+                .put("requested", true)
+                .put("baseViewportHeight", (baseHeightPx / density).roundToInt())
+                .put("expandedViewportHeight", (expandedHeightPx / density).roundToInt())
+                .put("initialOverflowDp", kotlin.math.ceil(initialOverflowPx / density).toInt())
+                .put("residualOverflowDp", kotlin.math.ceil(residualOverflowPx / density).toInt())
+                .put("iterations", iterations)
+                .put("capped", capped)
+                .put("maxHeight", maxHeightDp)
+                .put("scroller", scroller ?: JSONObject.NULL)
+                .toString()
+    }
+
+    private fun currentDisplaySizePx(): Pair<Int, Int> {
+        var size = 0 to 0
+        onActivityNoIdle { activity ->
+            val root = activity.window.decorView.rootView
+            size = root.width to root.height
+        }
+        // The run script pins 1170x2532 @ 480dpi; fall back to it if the window
+        // has not reported a size.
+        return if (size.first > 0 && size.second > 0) size else 1170 to 2532
+    }
+
+    private fun windowRoots(activity: Activity): List<View> =
+        listOf(activity.window.decorView.rootView) + fixtureOwnedWindowViews(activity)
+
+    private fun mainScroller(): VisualFullLength.Scroller? {
+        var scroller: VisualFullLength.Scroller? = null
+        onActivityNoIdle { scroller = VisualFullLength.mainScroller(windowRoots(it)) }
+        return scroller
+    }
+
+    private fun scrollerAnchors(scrollerId: Int): Map<Int, Float> {
+        var anchors: Map<Int, Float> = emptyMap()
+        onActivityNoIdle { anchors = VisualFullLength.anchorTops(windowRoots(it), scrollerId) }
+        return anchors
     }
 
     /**
-     * Block until the render-side full-height sentinel reports the content
-     * bottom, then build the dynamic crop. Fails loud on timeout: a viewport
-     * fallback here would silently publish a short baseline that looks green.
+     * Pixels of content outside the viewport of [scroller] (below the fold, or
+     * above it for a bottom-anchored reversed list). `verticalScroll` reports
+     * them exactly; a lazy list is scrolled forward in half-viewport steps and
+     * the travelled distance is read from how far its composed descendants move
+     * (in either direction), then scrolled back to its start.
      */
-    private fun awaitFullHeightCrop(caseId: String): VisualCrop {
-        val deadline = SystemClock.uptimeMillis() + FULL_HEIGHT_TOKEN_TIMEOUT_MS
-        while (SystemClock.uptimeMillis() < deadline) {
-            val line = logcatLastTokenLine(FULL_HEIGHT_TOKEN)
-            val bottomPx = line?.substringAfter("contentBottomPx=", "")?.trim()?.takeWhile { it.isDigit() }?.toIntOrNull()
-            if (bottomPx != null && bottomPx > 0) {
-                val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-                val heightDp = kotlin.math.ceil(bottomPx / density).toInt()
-                Log.i(VISUAL_LOG_TAG, "$caseId full-height content bottom ${bottomPx}px -> ${heightDp}dp crop")
-                return VisualCrop(
-                    leftDp = 0,
-                    topDp = 0,
-                    widthDp = 390,
-                    heightDp = heightDp,
-                    contract = "full-height",
-                    captureMethod = "app-window-root-draw-full-height-density-resize"
-                )
+    private fun measureOverflowPx(caseId: String, scroller: VisualFullLength.Scroller, limitPx: Int): Int {
+        if (!scroller.lazy) return kotlin.math.ceil(scroller.maxValue).toInt()
+        val stepPx = (scroller.heightPx * 0.5f).coerceAtLeast(48f)
+        var travelled = 0f
+        for (step in 0 until FULL_LENGTH_MAX_SCROLL_STEPS) {
+            val before = scrollerAnchors(scroller.nodeId)
+            if (before.isEmpty()) {
+                throw AssertionError("$caseId full-length: scroller ${scroller.label} has no composed descendants to track")
             }
+            onActivityNoIdle { VisualFullLength.scrollBy(windowRoots(it), scroller.nodeId, stepPx) }
+            waitForIdleBounded()
+            Thread.sleep(FULL_LENGTH_SCROLL_SETTLE_MS)
+            val moved =
+                VisualFullLength.displacement(before, scrollerAnchors(scroller.nodeId))
+                    ?: throw AssertionError("$caseId full-length: lost every anchor of ${scroller.label} after a ${stepPx}px step")
+            val magnitude = kotlin.math.abs(moved)
+            if (magnitude < 0.5f) break
+            travelled += magnitude
+            if (travelled >= limitPx) break
+        }
+        onActivityNoIdle { VisualFullLength.scrollToTop(windowRoots(it), scroller.nodeId) }
+        waitForIdleBounded()
+        Thread.sleep(FULL_LENGTH_SCROLL_SETTLE_MS)
+        return kotlin.math.ceil(travelled).toInt()
+    }
+
+    private fun resizeDisplay(caseId: String, widthPx: Int, heightPx: Int) {
+        runShellCommand("wm size ${widthPx}x$heightPx")
+        val deadline = SystemClock.uptimeMillis() + FULL_LENGTH_RESIZE_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (currentDisplaySizePx().second == heightPx) break
             Thread.sleep(FULL_HEIGHT_POLL_MS)
         }
-        throw AssertionError(
-            "$caseId full-height sentinel token '$FULL_HEIGHT_TOKEN' not seen within " +
-                "${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms — render hook missing or route never rendered"
+        val actual = currentDisplaySizePx()
+        if (actual.second != heightPx) {
+            throw AssertionError("$caseId full-length: window is ${actual.first}x${actual.second} after wm size ${widthPx}x$heightPx")
+        }
+        waitForIdleBounded()
+        Thread.sleep(FULL_LENGTH_RESIZE_SETTLE_MS)
+    }
+
+    private fun restoreDisplaySize(caseId: String, base: Pair<Int, Int>) {
+        // Restore the run script's pinned size, never `wm size reset` (that is
+        // the emulator's physical 1440x3120 and would break every later case).
+        runShellCommand("wm size ${base.first}x${base.second}")
+        Thread.sleep(FULL_LENGTH_RESIZE_SETTLE_MS)
+        Log.i(VISUAL_LOG_TAG, "$caseId full-length display restored to ${base.first}x${base.second}")
+    }
+
+    /**
+     * Grow the display until the main scroller has nothing below the fold (see
+     * [VisualFullLength]). Fails loud when a flagged case cannot be measured: a
+     * silent one-screen fallback would publish a short image that looks green.
+     */
+    private fun expandToFullLength(caseId: String, base: Pair<Int, Int>): FullLengthResult {
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        val maxHeightPx = (VisualFullLength.DEFAULT_MAX_HEIGHT_DP * density).roundToInt()
+        var heightPx = base.second
+        var initialOverflow = 0
+        var residual = 0
+        var capped = false
+        var iterations = 0
+        var label: String? = null
+        while (iterations < VisualFullLength.MAX_ITERATIONS) {
+            val scroller = mainScroller()
+            if (scroller == null) {
+                residual = 0
+                break
+            }
+            label = label ?: scroller.label
+            val overflowPx = measureOverflowPx(caseId, scroller, maxHeightPx)
+            if (iterations == 0) initialOverflow = overflowPx
+            residual = overflowPx
+            if (overflowPx <= 0) break
+            // Grow in whole dp so the image height is a dp multiple, like React.
+            val growPx = (kotlin.math.ceil(overflowPx / density) * density).roundToInt()
+            val next = minOf(maxHeightPx, heightPx + growPx)
+            if (next <= heightPx) {
+                capped = true
+                break
+            }
+            onActivityNoIdle { VisualFullLength.scrollToTop(windowRoots(it), scroller.nodeId) }
+            resizeDisplay(caseId, base.first, next)
+            heightPx = next
+            iterations += 1
+        }
+        if (heightPx != base.second) {
+            mainScroller()?.let { scroller -> onActivityNoIdle { VisualFullLength.scrollToTop(windowRoots(it), scroller.nodeId) } }
+            waitForIdleBounded()
+        }
+        val result =
+            FullLengthResult(
+                baseHeightPx = base.second,
+                expandedHeightPx = heightPx,
+                density = density,
+                initialOverflowPx = initialOverflow,
+                residualOverflowPx = residual,
+                iterations = iterations,
+                capped = capped,
+                maxHeightDp = VisualFullLength.DEFAULT_MAX_HEIGHT_DP,
+                scroller = label
+            )
+        Log.i(
+            VISUAL_LOG_TAG,
+            "full-length case=$caseId base=${base.first}x${base.second} expanded=$heightPx " +
+                "initialOverflowPx=$initialOverflow residualPx=$residual iterations=$iterations capped=$capped scroller=$label"
         )
+        return result
     }
 
     /**
@@ -6192,6 +6335,7 @@ class KmpVisualScreenshotCaptureTest {
                 "capturedAtMonotonicNs": $capturedAtMonotonicNs
               },
               "clampedToShortWindow": $lastCaptureClampedToShortWindow,
+              "fullLength": ${lastFullLength?.toJson() ?: "null"},
               "capturedAt": "$capturedAtEpochMs"
             }
             """.trimIndent() + "\n"
@@ -7165,11 +7309,13 @@ class KmpVisualScreenshotCaptureTest {
         // Full-height Settings captures (task #388): display grown so the whole
         // route composes in one frame; crop height comes from the render-side
         // sentinel token. 7500px ≈ 3 viewports, under common GL texture limits.
-        private const val FULL_HEIGHT_DISPLAY_WIDTH_PX = 1170
-        private const val FULL_HEIGHT_DISPLAY_HEIGHT_PX = 7500
-        private const val FULL_HEIGHT_TOKEN = "settings_route_visual_fullheight"
         private const val FULL_HEIGHT_TOKEN_TIMEOUT_MS = 20_000L
         private const val FULL_HEIGHT_POLL_MS = 250L
+        // Full-length capture (sharedCases.json capture.fullLength).
+        private const val FULL_LENGTH_MAX_SCROLL_STEPS = 40
+        private const val FULL_LENGTH_SCROLL_SETTLE_MS = 350L
+        private const val FULL_LENGTH_RESIZE_TIMEOUT_MS = 8_000L
+        private const val FULL_LENGTH_RESIZE_SETTLE_MS = 800L
 
         // Logcat tag for per-case timing (CASE_START/CASE_END) and idle-wait
         // warnings — grep this out of the uploaded logcat artifact (task #362).
