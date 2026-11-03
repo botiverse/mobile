@@ -45,11 +45,11 @@ class ThreadOpenFirstFrameLayoutTest {
     }
 
     @Test
-    fun flagsReadTheShellServerUntilTheSessionIsCaptured() {
-        assertEquals("srv-shell", threadFeatureFlagServerId(sessionServerId = null, shellServerId = "srv-shell"))
-        assertEquals("srv-session", threadFeatureFlagServerId(sessionServerId = " srv-session ", shellServerId = "srv-shell"))
-        assertEquals("srv-shell", threadFeatureFlagServerId(sessionServerId = " ", shellServerId = "srv-shell"))
-        assertNull(threadFeatureFlagServerId(sessionServerId = null, shellServerId = null))
+    fun flagsAndMembersReadTheShellServerUntilTheSessionIsCaptured() {
+        assertEquals("srv-shell", threadPageServerId(sessionServerId = null, shellServerId = " srv-shell "))
+        assertEquals("srv-session", threadPageServerId(sessionServerId = " srv-session ", shellServerId = "srv-shell"))
+        assertEquals("srv-shell", threadPageServerId(sessionServerId = " ", shellServerId = "srv-shell"))
+        assertNull(threadPageServerId(sessionServerId = null, shellServerId = null))
     }
 
     private fun reserves(
