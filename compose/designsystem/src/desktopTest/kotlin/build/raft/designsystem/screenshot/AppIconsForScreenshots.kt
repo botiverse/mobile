@@ -98,6 +98,11 @@ internal enum class AppIcon(vararg val paths: String) {
         "M19 2v6",
     ),
     TextQuote("M17 6H3", "M21 12H8", "M21 18H8", "M3 12v6"),
+    // Lucide bookmark-minus: the hover toolbar's Save on a saved message (web MessageHoverToolbar).
+    BookmarkMinus(
+        "M15 10H9",
+        "M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z",
+    ),
     ;
 
     val parsed by lazy { paths.map { PathParser().parsePathString(it).toPath() } }

@@ -15,15 +15,21 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftMisuse
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
@@ -76,7 +82,44 @@ object RaftMessageItemToolbarDefaults {
 
     /** Five buttons' width, which the web fades by until the toolbar has measured itself. */
     val FallbackWidth: Dp = 164.dp
+
+    /** The toolbar's width with [buttons] buttons: 4dp frame each side, 28dp buttons 4dp apart. */
+    fun width(buttons: Int): Dp =
+        if (buttons <= 0) 0.dp else Padding * 2 + ButtonSize * buttons + Gap * (buttons - 1)
 }
+
+/**
+ * raft-ui MessageItemHeader under the hover toolbar (message-item.recipe.ts `header`:
+ * `mask-image: linear-gradient(to left, transparent calc(var(--mi-toolbar-width) + 8px), black
+ * calc(var(--mi-toolbar-width) + 20px))`): while the toolbar shows ([toolbarWidth] not null), the
+ * header fades out its end under it, so the sender line never runs into the card. Transparent
+ * for the toolbar's width plus [RaftMessageItemToolbarDefaults.HeaderMaskGap] from the header's
+ * end, then opaque over [RaftMessageItemToolbarDefaults.HeaderMaskFade]. Nothing moves.
+ */
+fun Modifier.raftMessageItemToolbarHeaderMask(toolbarWidth: Dp?): Modifier =
+    if (toolbarWidth == null) {
+        this
+    } else {
+        // Offscreen, so DstIn masks only the header, not the row fill under it.
+        graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val clear = (toolbarWidth + RaftMessageItemToolbarDefaults.HeaderMaskGap).toPx()
+                val opaque = clear + RaftMessageItemToolbarDefaults.HeaderMaskFade.toPx()
+                val rtl = layoutDirection == LayoutDirection.Rtl
+                // Distances from the header's end, in x.
+                val clearX = if (rtl) clear else size.width - clear
+                val opaqueX = if (rtl) opaque else size.width - opaque
+                drawRect(
+                    Brush.horizontalGradient(
+                        listOf(Color.Black, Color.Transparent),
+                        startX = opaqueX,
+                        endX = clearX,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+    }
 
 /**
  * raft-ui MessageItem row fill (message-item.recipe.ts `root`, `--mi-row-fill`; message-item.md
@@ -162,16 +205,18 @@ internal fun RaftFloatingToolbarFrame(
 }
 
 /**
- * raft-ui `MessageItemToolbar`: the hover toolbar of a message on a wide screen. A 36dp card
- * (`layer-popover`, the container radius, a `line-seam` hairline inside its edge,
+ * raft-ui `MessageItemToolbar`: the hover toolbar of a message under a mouse or trackpad. A 36dp
+ * card (`layer-popover`, the container radius, a `line-seam` hairline inside its edge,
  * `shadow-float`) holding [content], its [RaftMessageItemToolbarButton]s 4dp from the frame
- * and 4dp apart, such as Add Reaction, Reply in Thread, Forward, Save and ⋯.
+ * and 4dp apart. The web (slock MessageHoverToolbar) puts them in the order of the message menu:
+ * Add Reaction, Reply in Thread (not inside a thread), Forward (where the message can be
+ * forwarded), Save, then More Actions (⋯), which opens the message menu under itself.
  *
- * It only draws the card. The caller shows it while a mouse or trackpad hovers the row, while
- * focus is inside the row and while one of its popups is open, and places it over the row's
- * top right corner ([RaftMessageItemToolbarDefaults.TopOffset], `EndInset`) without making
- * room for it: hover never moves the message. The row's fill is [RaftMessageItemDefaults].
- * Touch screens show no hover toolbar.
+ * It only draws the card. The caller shows it while a mouse or trackpad hovers the row (or the
+ * card itself, where it rides above the row) and while one of the row's popups is open, and
+ * places it over the row's top right corner ([RaftMessageItemToolbarDefaults.TopOffset],
+ * `EndInset`) without making room for it: hover never moves the message. The row's fill is
+ * [RaftMessageItemDefaults]. Touch screens show no hover toolbar: a press and hold opens the menu.
  *
  * [label] names the group for screen readers ("Message Actions").
  */
@@ -193,14 +238,15 @@ fun RaftMessageItemToolbar(
  * showing, so the button stays marked as the one it came from. Keyboard focus draws the focus
  * ring. 28dp everywhere: the toolbar keeps its size on the desktop scale.
  *
- * [tooltip] names the action in Title Case ("Add Reaction", "Forward", "Save", "More
- * Actions"): the [RaftTooltip] under a mouse hover and the button's screen-reader name.
+ * [label] names the action in Title Case ("Add Reaction", "Reply in Thread", "Forward", "Save",
+ * "More Actions") for screen readers. Like the web's, the button shows no tooltip: the hover
+ * already lays its fill, and a tooltip would cover the message under the toolbar.
  * Disabled, the icon greys and nothing hovers.
  */
 @Composable
 fun RaftMessageItemToolbarButton(
     onClick: () -> Unit,
-    tooltip: String,
+    label: String,
     modifier: Modifier = Modifier,
     active: Boolean = false,
     open: Boolean = false,
@@ -210,7 +256,7 @@ fun RaftMessageItemToolbarButton(
 ) {
     val colors = RaftTheme.colors
     val misuse = LocalRaftMisuse.current
-    if (tooltip.isBlank()) misuse("RaftMessageItemToolbarButton needs a tooltip")
+    if (label.isBlank()) misuse("RaftMessageItemToolbarButton needs a label")
     val look =
         RaftButtonLook(
             fill = Color.Transparent,
@@ -224,24 +270,22 @@ fun RaftMessageItemToolbarButton(
             outerRing = Color.Transparent,
             pressOverlay = if (enabled) colors.fillMedium else Color.Transparent,
         )
-    RaftTooltip(text = tooltip, modifier = modifier) {
-        // `rounded-chip`: RaftButtonBox takes the chip radius inside a frame.
-        CompositionLocalProvider(LocalRaftEmbeddedControl provides true) {
-            RaftButtonBox(
-                look = look,
-                onClick = onClick,
-                modifier =
-                    Modifier
-                        .size(RaftMessageItemToolbarDefaults.ButtonSize)
-                        .semantics { contentDescription = tooltip },
-                enabled = enabled,
-                loading = false,
-                loadingLabel = "",
-                interactionSource = interactionSource,
-                open = open && enabled,
-            ) {
-                Box(Modifier.size(RaftMessageItemToolbarDefaults.IconSize), contentAlignment = Alignment.Center) { icon() }
-            }
+    // `rounded-chip`: RaftButtonBox takes the chip radius inside a frame.
+    CompositionLocalProvider(LocalRaftEmbeddedControl provides true) {
+        RaftButtonBox(
+            look = look,
+            onClick = onClick,
+            modifier =
+                modifier
+                    .size(RaftMessageItemToolbarDefaults.ButtonSize)
+                    .semantics { contentDescription = label },
+            enabled = enabled,
+            loading = false,
+            loadingLabel = "",
+            interactionSource = interactionSource,
+            open = open && enabled,
+        ) {
+            Box(Modifier.size(RaftMessageItemToolbarDefaults.IconSize), contentAlignment = Alignment.Center) { icon() }
         }
     }
 }

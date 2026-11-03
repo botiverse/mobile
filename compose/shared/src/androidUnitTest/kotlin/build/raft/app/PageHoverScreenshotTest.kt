@@ -39,6 +39,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -51,6 +52,8 @@ import org.robolectric.annotation.GraphicsMode
  * rest and then under a real mouse pointer (an Android hover event from a mouse, which Compose
  * reads as [androidx.compose.ui.input.pointer.PointerType.Mouse]):
  *  - a message row: `fill-subtle` across the row (MessageItem `hover:[--mi-row-fill:var(--fill-subtle)]`);
+ *  - a message row with a mouse in use: its hover toolbar over the top right corner (web
+ *    MessageHoverToolbar: Add Reaction, Reply in Thread, Forward, Save, More Actions);
  *  - an Activity row: the list cell's `fill-cell-hover` (steps up in dark);
  *  - the rail's server tile: `sticker-ink-medium` over the ink tile;
  *  - a markdown link: the text deepens toward the ink and its underline takes the full colour.
@@ -69,6 +72,14 @@ class PageHoverScreenshotTest {
 
     @Test
     fun messageRowDark() = capture("hover.message-row.dark", RaftAppAppearance.Dark) { HoverMessageRow(it) }
+
+    @Test
+    fun messageRowToolbarLight() =
+        capture("hover.message-row-toolbar", RaftAppAppearance.Light) { HoverMessageRowWithToolbar(it, RaftAppAppearance.Light) }
+
+    @Test
+    fun messageRowToolbarDark() =
+        capture("hover.message-row-toolbar.dark", RaftAppAppearance.Dark) { HoverMessageRowWithToolbar(it, RaftAppAppearance.Dark) }
 
     @Test
     fun activityRowLight() = capture("hover.activity-row", RaftAppAppearance.Light) { HoverActivityRow(it) }
@@ -201,6 +212,47 @@ internal fun HoverMessageCard(modifier: Modifier = Modifier) {
             onOpenMarkdownTag = { _, _ -> },
             onOpenMarkdownUrl = {},
         )
+    }
+}
+
+/** The row as the timeline wires it under a mouse: its hover toolbar shows while hovered. */
+@Composable
+private fun HoverMessageRowWithToolbar(target: HoverTarget, appearance: RaftAppAppearance) {
+    RaftTheme(
+        appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light,
+        pointerInput = RaftPointerInput.Fine,
+    ) {
+        RestAndHovered(target, at = Offset(0.5f, 0.6f)) { modifier ->
+            Box(modifier.fillMaxWidth().padding(top = 8.dp)) {
+                ThreadMessageCard(
+                    // A sender line long enough to run under the toolbar, whose end it fades out.
+                    message = hoverMessage.copy(authorName = "Alexandra Montgomery"),
+                    messageBodyTextStyle = raftMessageBodyTextStyle("md"),
+                    timestampLabel = "4:40 PM",
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = { _, _ -> },
+                    onOpenMarkdownUrl = {},
+                    hoverToolbar =
+                        ThreadMessageHoverToolbarActions(
+                            reaction = true,
+                            reply = true,
+                            forward = true,
+                            save = true,
+                            saved = false,
+                            more = true,
+                            onShowReactions = {},
+                            onForward = {},
+                            onToggleSave = {},
+                        ),
+                )
+            }
+        }
     }
 }
 
