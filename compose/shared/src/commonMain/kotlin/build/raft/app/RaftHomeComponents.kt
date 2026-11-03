@@ -2537,13 +2537,16 @@ private fun RaftStructuralHomeShellContent(
             topSafeAreaOverride = topSafeAreaOverride,
         )
     val bottomSafeArea = if (showBottomBar) raftBottomSafeAreaPadding() else 0.dp
+    val bottomBarOverlaysContent = showBottomBar && raftAppBottomTabBarOverlaysContent()
+    // Only a bar that floats over the list (the native host bar) needs its band reserved at the
+    // list's end. The Compose edge bar sits in its own band below the list, so reserving it too
+    // left that band again as blank space under the last row.
     val effectiveBottomContentPadding =
-        if (showBottomBar) {
+        if (bottomBarOverlaysContent) {
             bottomContentPadding.max(raftAppBottomTabBarContentInset(bottomSafeArea))
         } else {
             bottomContentPadding
         }
-    val bottomBarOverlaysContent = showBottomBar && raftAppBottomTabBarOverlaysContent()
     // iPhone Duo (raft-design #859): beside the system's side column the bell is Home's page
     // action in the column, and the head is the server switcher line on paper.
     val sideColumnPosture = LocalRaftSideColumnPosture.current
