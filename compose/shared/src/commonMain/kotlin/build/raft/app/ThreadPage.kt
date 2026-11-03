@@ -55,6 +55,7 @@ import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftToast
@@ -119,7 +120,6 @@ import build.raft.app.components.RaftUiMenuSurface
 import build.raft.app.components.raftMenuWidth
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
@@ -6077,18 +6077,18 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
-                    RaftToolbarChip(
-                        label = "Todo",
-                        iconName = RaftLucideIconName.CircleDashed,
-                        trailingIconName = RaftLucideIconName.ChevronDown,
-                        onClick = {}
-                    )
-                    RaftToolbarChip(
-                        label = "In progress",
-                        iconName = RaftLucideIconName.CircleCheck,
-                        trailingIconName = RaftLucideIconName.ChevronDown,
-                        onClick = {}
-                    )
+                    RaftDesignSystemTheme {
+                        RaftPickerTriggerButton(
+                            text = "Todo",
+                            onClick = {},
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.CircleDashed) }
+                        )
+                        RaftPickerTriggerButton(
+                            text = "In progress",
+                            onClick = {},
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.CircleCheck) }
+                        )
+                    }
                 }
             }
             ThreadReactionVisualSection("Fallback") {
