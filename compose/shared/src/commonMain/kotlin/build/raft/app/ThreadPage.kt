@@ -419,6 +419,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -496,6 +497,7 @@ import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -37016,8 +37018,11 @@ private fun ThreadDirectMessagePreferenceRow(
 
 /**
  * The channel settings: the web's channel Settings sheet (EditChannelDialog in a
- * ChannelSettingsSheet, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer]. Head:
- * "Settings" over "Channel #name" with × at the end. Body: Name and Description, a rule, the
+ * ChannelSettingsSheet, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer]. Head: ONE
+ * line (stdrc 2026-11-03; the body edits the description, so the head never shows it): on a
+ * phone "Settings · #name" (web EditChannelDialog sheet), on a wide window, where the drawer is
+ * a panel beside the page, the channel's own "#name" (web channel overflow sheet; the thread
+ * surface carries no visibility, so no badge), with × at the end. Body: Name and Description, a rule, the
  * Preferences section (Pin, and Mute where the caller offers it, as switches), then Channel
  * actions (Make Private, Archive, Delete). Footer: ghost Cancel and pink Save.
  *
@@ -37081,9 +37086,17 @@ internal fun ThreadSettingsModal(
     val showPin = conversationPinState != null && onTogglePin != null
     val showMute = activityMuteState != null && onToggleActivityMute != null
     val showPreferences = showPin || showMute
+    // The drawer fills a phone; past its max width it is a panel beside the page.
+    val wideWindow =
+        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } > RaftSideDrawerDefaults.MaxWidth
     RaftUnifiedSideDrawer(
-        title = stringResource(Res.string.thread_settings_panel_title),
-        subtitle = { ThreadSettingsPanelSubtitle(channelName) },
+        title =
+            if (wideWindow) {
+                "#$channelName"
+            } else {
+                stringResource(Res.string.thread_settings_panel_title)
+            },
+        titleTrailing = if (wideWindow) null else { { ThreadSettingsPanelChannelRef(channelName) } },
         closeLabel = stringResource(Res.string.thread_settings_panel_close),
         // web ChannelSettingsSheet: a tap beside the drawer keeps unsaved edits.
         dismissOnOutsideTap = !profileChanged,
@@ -37244,30 +37257,32 @@ internal fun ThreadSettingsModal(
     }
 }
 
-/** The drawer head's second line: "Channel" in caption, then the `#name` in mono (web DrawerDescription). */
+/**
+ * The phone drawer head's same-line secondary item after "Settings": a muted `·`, then the
+ * `#name` in mono, ellipsized (web DrawerDescription). Assistive tech hears "Channel #name".
+ */
 @Composable
-private fun ThreadSettingsPanelSubtitle(channelName: String) {
+private fun RowScope.ThreadSettingsPanelChannelRef(channelName: String) {
     val colors = RaftTheme.colors
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftText(
-            stringResource(Res.string.thread_settings_panel_eyebrow),
-            style = RaftTheme.typography.caption,
-            color = colors.foregroundHint,
-            maxLines = 1
-        )
-        RaftText(
-            "#$channelName",
-            Modifier.weight(1f, fill = false),
-            style = RaftTheme.typography.monoMeta,
-            color = colors.foregroundHint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    val channelLabel = stringResource(Res.string.thread_settings_panel_eyebrow)
+    RaftText(
+        "·",
+        Modifier.alignByBaseline().clearAndSetSemantics {},
+        style = RaftTheme.typography.monoMeta,
+        color = colors.foregroundHint,
+        maxLines = 1
+    )
+    RaftText(
+        "#$channelName",
+        Modifier
+            .alignByBaseline()
+            .weight(1f, fill = false)
+            .semantics { contentDescription = "$channelLabel #$channelName" },
+        style = RaftTheme.typography.monoMeta,
+        color = colors.foregroundHint,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 /**
