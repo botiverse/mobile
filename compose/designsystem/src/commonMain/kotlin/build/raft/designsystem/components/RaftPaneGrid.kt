@@ -42,6 +42,8 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -472,14 +474,19 @@ private fun RaftPaneGridCellHost(cell: RaftPaneGridCell, canFold: Boolean, folde
     cell.content(scope)
 }
 
+/** The resize pointer a mouse shows over a splitter: left-right for a [vertical] seam, else up-down. */
+internal expect fun raftSplitterPointerIcon(vertical: Boolean): PointerIcon
+
 /**
  * The grid's splitter on a seam (web DS Resizable: ColumnResizeHandle, StackSeam): nothing at
  * rest but the seam the layout draws; a 1dp `foreground-muted` line while hovered or dragged, 2dp
  * `foreground` with keyboard focus. The hit area is 12dp across the seam, 24dp by touch.
  * [vertical]: a vertical seam dragged sideways; else a horizontal one dragged up and down.
  * [onDrag] gets the distance from the drag's start (right / down positive); arrows step 16dp
- * (Shift: 64), Home / End go to the ends, a double click or tap restores the default. For screen
- * readers it is an adjustable value over [range]. It keeps the iOS back swipe off its drag.
+ * (Shift: 64), Home / End go to the ends, a double click or tap restores the default, and
+ * [onEnter] (web `snap`: the sidebar's collapse) takes Enter. A mouse over it shows the resize
+ * pointer (web `cursor-col-resize`). For screen readers it is an adjustable value over [range].
+ * It keeps the iOS back swipe off its drag.
  */
 @Composable
 fun RaftPaneSplitter(
@@ -496,6 +503,7 @@ fun RaftPaneSplitter(
     onEnd: () -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier,
+    onEnter: (() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -518,6 +526,7 @@ fun RaftPaneSplitter(
             .then(if (vertical) Modifier.width(hit).fillMaxHeight() else Modifier.height(hit).fillMaxWidth())
             .then(LocalRaftPaneGridPlatform.current.splitterModifier)
             .raftKeepsBackSwipe()
+            .pointerHoverIcon(raftSplitterPointerIcon(vertical))
             .hoverable(interaction)
             .focusable(interactionSource = interaction)
             .semantics {
@@ -537,6 +546,7 @@ fun RaftPaneSplitter(
                     // Web: Home / End go to the minimum / maximum (a column's width, the upper cell's height).
                     Key.MoveHome -> onHome()
                     Key.MoveEnd -> onEnd()
+                    Key.Enter, Key.NumPadEnter -> onEnter?.invoke() ?: return@onKeyEvent false
                     else -> return@onKeyEvent false
                 }
                 true

@@ -8001,6 +8001,14 @@ private fun RaftAppShellReadyContent(
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
                                 collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
+                                // web `snap` "collapse": only where the rail's toggle can bring it back.
+                                onCollapsedChange =
+                                    collapseColumn?.takeIf { it == collapsibleColumn }?.let { column ->
+                                        { hidden ->
+                                            sidebarCollapse.setHidden(column, hidden)
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                        }
+                                    },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
                             )
@@ -8472,6 +8480,13 @@ private fun RaftAppShellReadyContent(
                                 detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
                                 bottomContentPadding = appShellBottomContentInset,
                                 collapsed = sidebarCollapse.isHidden(RaftCollapsibleColumn.Sidebar),
+                                onCollapsedChange =
+                                    RaftCollapsibleColumn.Sidebar.takeIf { it == collapsibleColumn }?.let { column ->
+                                        { hidden ->
+                                            sidebarCollapse.setHidden(column, hidden)
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
+                                        }
+                                    },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 detailPane = { key, modifier ->
                                     val detailPage =

@@ -96,6 +96,24 @@ fun raftListPaneDraggedWidthDp(
     rowWidthDp: Float?,
 ): Float = raftListPaneWidthDp(kind, startWidthDp + dragDeltaDp, rowWidthDp)
 
+/**
+ * Web `SNAP_PAST_END` (ColumnResizeHandle, DS Resizable "Dragging past the end"): a drag this far
+ * under the list's minimum collapses it, as the rail's Collapse Sidebar does; far enough that a
+ * drag which only reaches the minimum does not collapse by accident.
+ */
+@RaftCoreInternalApi
+const val RAFT_LIST_PANE_SNAP_PAST_END_DP = 40f
+
+/**
+ * Whether a drag that started at [startWidthDp] and moved [dragDeltaDp] (right = wider) has gone
+ * more than [RAFT_LIST_PANE_SNAP_PAST_END_DP] under [kind]'s minimum, where the list collapses.
+ * Taken before any clamp (web `reach < min - SNAP_PAST_END`), so dragging back across the line
+ * while still held brings the list back.
+ */
+@RaftCoreInternalApi
+fun raftListPaneDragCollapses(kind: RaftListPaneKind, startWidthDp: Float, dragDeltaDp: Float): Boolean =
+    startWidthDp + dragDeltaDp < kind.minDp - RAFT_LIST_PANE_SNAP_PAST_END_DP
+
 /** What a finished drag saves: whole dp, so the stored value is stable across densities. */
 @RaftCoreInternalApi
 fun raftListPaneStoredWidth(kind: RaftListPaneKind, widthDp: Float): String =

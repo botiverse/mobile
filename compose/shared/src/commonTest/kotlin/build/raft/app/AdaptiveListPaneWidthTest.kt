@@ -171,4 +171,35 @@ class AdaptiveListPaneWidthTest {
         // A non-positive density is ignored rather than dividing by zero.
         assertNull(session.moveTo(20f, 0f))
     }
+
+    @Test fun aDragMoreThanFortyUnderTheMinimumCollapses() {
+        // web ColumnResizeHandle SNAP_PAST_END: `reach < min - 40`, before any clamp.
+        assertEquals(40f, RAFT_LIST_PANE_SNAP_PAST_END_DP)
+        // Sidebar 200 minimum: from 240, a drag to 160 stops at the minimum; past 160 it collapses.
+        assertFalse(raftListPaneDragCollapses(sidebar, 240f, -80f))
+        assertTrue(raftListPaneDragCollapses(sidebar, 240f, -81f))
+        // List 240 minimum: the line is at 200.
+        assertFalse(raftListPaneDragCollapses(list, 380f, -180f))
+        assertTrue(raftListPaneDragCollapses(list, 380f, -181f))
+        // Back across the line while still held: no longer collapsed.
+        assertFalse(raftListPaneDragCollapses(sidebar, 240f, -20f))
+    }
+
+    @Test fun aCommittedWidthIsSavedPerDeviceAndAPreviewIsNot() {
+        val values = InMemoryRaftKeyValueStore()
+        val widths = RaftListPaneWidths(KeyValueChatLayoutPreferenceStore(values))
+        // A drag in flight shows its width and saves nothing.
+        widths.preview(sidebar, 300f)
+        assertEquals(300f, widths.preferredDp(sidebar))
+        assertNull(values.getString(sidebar.storageKey))
+        // A key, a double click or a drag's end saves it, within the kind's range.
+        widths.commit(sidebar, 512.4f)
+        assertEquals("400", values.getString(sidebar.storageKey))
+        widths.commit(sidebar, 287.6f)
+        assertEquals("287", values.getString(sidebar.storageKey))
+        // The next launch reads it back; the other kind keeps its own default.
+        val relaunched = RaftListPaneWidths(KeyValueChatLayoutPreferenceStore(values))
+        assertEquals(287f, relaunched.preferredDp(sidebar))
+        assertEquals(list.defaultDp, relaunched.preferredDp(list))
+    }
 }
