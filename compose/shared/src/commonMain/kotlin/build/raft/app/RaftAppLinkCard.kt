@@ -44,7 +44,8 @@ import build.raft.designsystem.theme.RaftTheme
  * - Body: [eyebrow] (the App's id for the item, when it sends one), the App's title
  *   ([RaftPreviewCardItemTitle]: up to 2 lines, the whole title in a tooltip when cut), [details]
  *   (the state chip, then the details on one line separated by "·": [RaftPreviewCardMeta]), then
- *   [RaftAppLinkCardBody] for the App's v1 tree, when [card] has one.
+ *   [RaftAppLinkCardBody] for the App's v1 tree, when [card] has one, or [RaftAppLinkCardV2Body] for
+ *   its v2 tree (the batched read).
  * - [buttons]: the App's buttons in its order, then Raft's own (Open Link), laid out by
  *   [RaftPreviewCardItemActions]: at most two on one row at the card's end (the App's first two
  *   actions, else the first link; frameless first, the bordered one last), everything else in the
@@ -74,6 +75,7 @@ internal fun RaftAppLinkCardView(
                 RaftPreviewCardItemTitle(card.title)
                 RaftPreviewCardMeta(details)
                 card.card?.let { RaftAppLinkCardBody(it, onAction) }
+                card.cardV2?.let { RaftAppLinkCardV2Body(it) }
             }
             RaftPreviewCardItemActions(buttons)
         }

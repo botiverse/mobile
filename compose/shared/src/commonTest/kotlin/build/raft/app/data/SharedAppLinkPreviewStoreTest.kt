@@ -37,7 +37,7 @@ private const val StatusCardBody =
         """"state":{"type":"Badge","props":{"text":"Approved"}},"detail":{"type":"Text","props":{"text":"Ready for review","tone":"muted"}}}}}],""" +
         """"prompts":[],"appIcons":{"https://alpha.example.test/pr/1":null}}"""
 
-private class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
+internal class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
     val reads = mutableListOf<String>()
     val readResponses = ArrayDeque<HomeNetworkResponse>()
     var allowResponse = HomeNetworkResponse(200, "{}")
@@ -50,6 +50,16 @@ private class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
         reads += messageId
         readGate?.await()
         return readResponses.removeFirstOrNull() ?: HomeNetworkResponse(200, """{"previews":[],"prompts":[]}""")
+    }
+
+    /** The batched reads' bodies, in order. */
+    val cardReads = mutableListOf<AppLinkCardReadRequestBody>()
+    val cardReadResponses = ArrayDeque<HomeNetworkResponse>()
+
+    override suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse {
+        cardReads += body
+        readGate?.await()
+        return cardReadResponses.removeFirstOrNull() ?: HomeNetworkResponse(200, """{"items":[],"prompts":[]}""")
     }
 
     override suspend fun allow(appId: String, serverId: String): HomeNetworkResponse {
