@@ -138,6 +138,14 @@ internal fun RuntimeFormV2Fields(
 }
 
 /**
+ * The combobox value for a select whose stored value is [current]. "" means "nothing chosen" unless the
+ * list offers a "" option (the runtime default, e.g. reasoning "Default"): then that option is the
+ * selection, so the trigger shows its label and its row is checked, as v1.19.0 did.
+ */
+internal fun runtimeFormV2ComboboxValue(current: String, options: List<RaftComboboxOption<String>>): String? =
+    current.takeIf { it.isNotEmpty() || options.any { option -> option.value.isEmpty() } }
+
+/**
  * Errors to show: those of fields the user touched or the server pointed at, plus the ones that block
  * the save before the field itself is touched: an unavailable saved connection (`provider.saved_connection`)
  * and a blank secret whose bound fields changed (`writeOnlyKeepRequiresUnchanged`; slock web shows it
@@ -355,7 +363,7 @@ private fun RuntimeFormV2FieldRow(
                             // with search, and typed text that is not a choice offered as "Use “…”".
                             // A stored value the list does not offer shows as itself.
                             RaftCombobox(
-                                value = current.takeIf { it.isNotEmpty() || choices.allowEmpty },
+                                value = runtimeFormV2ComboboxValue(current, options),
                                 options = options,
                                 onValueChange = { next ->
                                     clearFocus()
@@ -378,7 +386,7 @@ private fun RuntimeFormV2FieldRow(
                             // ten options, a searchable sheet above (the picker-count rule). A stored value
                             // the server no longer offers stays visible, but cannot be re-picked.
                             RaftCombobox(
-                                value = current.takeIf { it.isNotEmpty() || choices.allowEmpty },
+                                value = runtimeFormV2ComboboxValue(current, options),
                                 options =
                                     if (unlisted) {
                                         options + RaftComboboxOption(current, current, enabled = false)
