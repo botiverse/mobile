@@ -325,7 +325,9 @@ private class InlineScope(private val row: FlowRowScope) : RaftDescriptionListSc
                     DescriptionTerm(term, termAccessory, lines = lines)
                     DescriptionDetails(0.dp, details, lines = lines)
                 },
-                modifier = Modifier.alignByBaseline().semantics(mergeDescendants = true) {},
+                // On its line's first baseline, read from what the fact measured (not by querying
+                // its alignment lines, which would lay out its value while the row measures).
+                modifier = Modifier.alignBy { lines.factBaseline.intValue }.semantics(mergeDescendants = true) {},
             ) { measurables, constraints ->
                 val (termMeasurable, detailsMeasurable) = measurables
                 val gapX = 12.dp.roundToPx()
@@ -346,6 +348,7 @@ private class InlineScope(private val row: FlowRowScope) : RaftDescriptionListSc
                 if (stacked) {
                     val gapY = 2.dp.roundToPx()
                     val v = detailsMeasurable.measure(Constraints(maxWidth = maxW))
+                    lines.factBaseline.intValue = tb
                     layout(max(t.width, v.width), t.height + gapY + v.height, mapOf(FirstBaseline to tb)) {
                         t.place(0, 0)
                         v.place(0, t.height + gapY)
@@ -367,6 +370,7 @@ private class InlineScope(private val row: FlowRowScope) : RaftDescriptionListSc
                         }
                     val baseline = max(tb, vb)
                     val vTop = baseline - vb
+                    lines.factBaseline.intValue = baseline
                     layout(t.width + gapX + v.width, max(baseline - tb + t.height, vTop + v.height), mapOf(FirstBaseline to baseline)) {
                         // The value goes first, so its baseline can be read once it and its content
                         // are placed (safe, unlike while measuring); zIndex keeps the label first for
@@ -513,6 +517,9 @@ private class HorizontalFactLines {
 
     /** A value that isn't one text: its first baseline as read when it was last placed. */
     val placedValueBaseline: MutableIntState = mutableIntStateOf(AlignmentLine.Unspecified)
+
+    /** An inline fact's own first baseline, for the row that lines facts up on it. */
+    val factBaseline: MutableIntState = mutableIntStateOf(0)
 
     /** The value's first line: its top in the value and its height. */
     val valueLineTop: MutableIntState = mutableIntStateOf(0)
