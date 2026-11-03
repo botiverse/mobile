@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 07:03:48 UTC
+Generated: 2026-11-03 07:45:22 UTC
 Latest run: 5468c13a-20261103070304
 Latest commit: 5468c13a-20261103070304
 Commit subject: fix(ui): thread header title uses the headline token; bottom bar height is 60 (#4181)
 Providers: react vs android
 Summary: total 94, same 0, pass 2, basic-pass 14, different 76, missing 2
-AI analysis: ready 20 / total 94, pending 74
+AI analysis: ready 27 / total 94, pending 67
 Visual coverage matrix: active 103 / total 123, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

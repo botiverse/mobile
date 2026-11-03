@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T07:03:48.555Z",
+  "generatedAt": "2026-11-03T07:45:22.731Z",
   "runId": "5468c13a-20261103070304",
   "commit": "5468c13a-20261103070304",
   "commitSubject": "fix(ui): thread header title uses the headline token; bottom bar height is 60 (#4181)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 94,
-        "ready": 20,
-        "pending": 74
+        "ready": 27,
+        "pending": 67
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 94,
-    "ready": 20,
-    "pending": 74
+    "ready": 27,
+    "pending": 67
   },
   "componentMatrixSummary": {
     "total": 123,

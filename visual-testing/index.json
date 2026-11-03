@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-03T07:03:48.555Z",
+  "generatedAt": "2026-11-03T07:45:22.731Z",
   "latestRunId": "5468c13a-20261103070304",
   "latest": {
     "runId": "5468c13a-20261103070304",
     "commit": "5468c13a-20261103070304",
     "commitSubject": "fix(ui): thread header title uses the headline token; bottom bar height is 60 (#4181)",
-    "generatedAt": "2026-11-03T07:03:48.555Z",
+    "generatedAt": "2026-11-03T07:45:22.731Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 94,
-      "ready": 20,
-      "pending": 74
+      "ready": 27,
+      "pending": 67
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "5468c13a-20261103070304",
       "commit": "5468c13a-20261103070304",
       "commitSubject": "fix(ui): thread header title uses the headline token; bottom bar height is 60 (#4181)",
-      "generatedAt": "2026-11-03T07:03:48.555Z",
+      "generatedAt": "2026-11-03T07:45:22.731Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 94,
-        "ready": 20,
-        "pending": 74
+        "ready": 27,
+        "pending": 67
       },
       "comparisons": [
         "react__android"
