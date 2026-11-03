@@ -4,6 +4,7 @@
 - Notifications on Home tells you when a Computer you manage must be upgraded or reinstalled before a deadline, after which its agents stop running; View opens that Computer
 - raft:// links in messages are tappable and open the channel, DM, thread or message right in the app
 - On iPad in the wide layout, tapping the search field in the top bar (or ⌘K / Ctrl+K with a keyboard) opens a search panel over the page, as on the web: recent conversations first, then matching channels, people and messages as you type
+- Edit an image from a conversation: in the image viewer tap ⋯ at the bottom right and choose Edit on iPhone, or tap Edit at the top right on iPad in the wide layout. Use Pen, Text, Mosaic, Crop and Rotate; the edited copy goes into the message box as a new image and the original message stays as it was
 
 🔧 Improved
 - When a server request fails, the error shows its Trace ID: tap Copy on the toast and send it to us so we can find the request. When a thread can't be opened for a reason inside the app, the message says why and what to do
@@ -12,6 +13,7 @@
 - On iPad with a mouse or trackpad, resting the pointer on a link in a message shows where it goes at the bottom-left of the window
 - App link cards match the web: up to two title lines, details such as author and duration, and a short name for the link (rolling out by server)
 - Scrolling chats with long messages is smoother
+- Settings › Appearance matches the web: a row at the top opens the current server's theme, Message font size shows a message preview, and there are two new switches, Show agent model and Hide empty sidebar sections
 
 🐛 Fixed
 - Fixed a crash that could happen when you kept typing just as a slow message finished sending
@@ -23,3 +25,4 @@
 - Long-pressing a message while the keyboard is up no longer closes the keyboard, so you can keep typing after closing the menu
 - Tapping a message in a task's conversation no longer shows "Unable to open thread"; as on the web, messages there no longer offer Reply in Thread
 - In the image viewer on iPad, the time at the top now shows your local time instead of a raw date code
+- The status and assignee at the top of a task page work as on the web: tap the status to move the task to any status, or tap the assignee to pick someone else or unassign it; on done or read-only tasks they are plain text without a dropdown arrow
