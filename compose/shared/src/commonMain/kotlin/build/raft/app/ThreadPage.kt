@@ -12555,6 +12555,14 @@ private fun SharedThreadRouteContentContent(
                         onOpenSource = {
                             openTaskInChannel(taskConversationTask, taskConversationTask.taskHeadSourceMessageId(), "source")
                         },
+                        // The creator's face and name: their profile, as a message author's avatar opens it.
+                        onOpenCreator = { person ->
+                            onOpenMemberProfile(
+                                renderedThread,
+                                renderedTimelineSlice,
+                                MemberDetailIdentity(MemberId(person.id), person.kind, currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)),
+                            )
+                        },
                         onOpenEarlierDiscussion = {
                             val earlier = taskConversationDetailsState.earlierDiscussion.valueOrNull
                             openTaskConversationTarget(

@@ -508,6 +508,8 @@ internal fun TaskConversationHead(
     /** Null (also [onOpenEarlierDiscussion]): a plain fact, as on the pending task page. */
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
+    /** Null: the creator is a plain fact. */
+    onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     modifier: Modifier = Modifier,
     scrollState: TaskHeadScrollState = remember { TaskHeadScrollState() },
     keyboardUp: Boolean = false,
@@ -524,6 +526,7 @@ internal fun TaskConversationHead(
             onOpenAssignee = onOpenAssignee,
             onOpenSource = onOpenSource,
             onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+            onOpenCreator = onOpenCreator,
             initiallyHistoryOpen = initiallyHistoryOpen,
             initiallyDescriptionExpanded = initiallyDescriptionExpanded,
             onRetryHistory = onRetryHistory,
@@ -600,6 +603,7 @@ internal fun TaskHeadContent(
     onOpenAssignee: () -> Unit = {},
     onOpenSource: (() -> Unit)? = null,
     onOpenEarlierDiscussion: (() -> Unit)? = null,
+    onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     initiallyHistoryOpen: Boolean = false,
     initiallyDescriptionExpanded: Boolean = false,
     /** Null: no Retry after a failed History read. */
@@ -609,7 +613,7 @@ internal fun TaskHeadContent(
         TaskHeadTitleRow(model)
         Column {
             model.description?.let { TaskHeadDescription(it, initiallyDescriptionExpanded) }
-            TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion)
+            TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion, onOpenCreator)
             TaskHeadHistorySection(model.history, initiallyHistoryOpen, onRetryHistory)
         }
     }
@@ -666,6 +670,7 @@ private fun TaskHeadFacts(
     onOpenAssignee: () -> Unit,
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
+    onOpenCreator: ((TaskHeadPerson) -> Unit)?,
 ) {
     val bar = model.bar
     val statusLabel = bar.status.localizedLabel()
@@ -724,7 +729,7 @@ private fun TaskHeadFacts(
             }
         }
         Item(stringResource(Res.string.task_head_created_by)) {
-            TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId)
+            TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, onOpenCreator)
         }
         model.createdAt?.let { Item(stringResource(Res.string.task_head_created_at), it.localized(), mono = true, copyable = false) }
         // Where it cannot open (the pending task page) it is a plain count, and hidden while unknown.
@@ -850,12 +855,26 @@ private val TaskHeadFactAvatarSize = 18.dp
 
 /** Created by: the creator's face (as on the Source row) and name; just the name without a creator. */
 @Composable
-private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serverId: String?) {
+private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serverId: String?, onOpenCreator: ((TaskHeadPerson) -> Unit)?) {
     if (creator == null) {
         RaftDescriptionValue(name, copyable = false)
         return
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    // The face and name open the creator's profile, as a message author's avatar does (artin,
+    // task #35). The row keeps its size: the platform widens a small target's touch area.
+    val open = onOpenCreator?.let { { it(creator) } }
+    Row(
+        if (open != null) {
+            Modifier
+                .clip(RoundedCornerShape(RaftRadius.Control))
+                .clickable(role = Role.Button, onClick = open)
+                .semantics(mergeDescendants = true) {}
+        } else {
+            Modifier
+        },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         RaftMemberAvatar(
             identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
             label = name.removePrefix("@"),
@@ -1024,6 +1043,8 @@ internal fun TaskConversationHeadRoute(
     /** Null (also [onOpenEarlierDiscussion]): a plain fact (the pending task page). */
     onOpenSource: (() -> Unit)?,
     onOpenEarlierDiscussion: (() -> Unit)?,
+    /** Null: the creator is a plain fact. */
+    onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     scrollState: TaskHeadScrollState,
     /** The keyboard is up: on a phone the head folds away. */
     keyboardUp: Boolean = false,
@@ -1054,6 +1075,7 @@ internal fun TaskConversationHeadRoute(
                     onOpenAssignee = onOpenAssignee,
                     onOpenSource = onOpenSource,
                     onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                    onOpenCreator = onOpenCreator,
                     onRetryHistory = onRetryHistory,
                 )
             }
@@ -1064,6 +1086,7 @@ internal fun TaskConversationHeadRoute(
                 onOpenAssignee = onOpenAssignee,
                 onOpenSource = onOpenSource,
                 onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                onOpenCreator = onOpenCreator,
                 scrollState = scrollState,
                 keyboardUp = keyboardUp,
                 onRetryHistory = onRetryHistory,
@@ -1260,7 +1283,16 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         }
     Column(modifier.then(toggle), verticalArrangement = Arrangement.Top) {
         if (refLine) {
-            RaftText(chrome.ref, style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // The ref names the task's channel: a tap goes there, to the task (artin, task #35).
+            val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
+            RaftText(
+                chrome.ref,
+                Modifier.clickable(onClickLabel = viewInChannel, role = Role.Button, onClick = chrome.onViewInChannel),
+                style = typography.monoMeta,
+                color = colors.foregroundMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         if (chrome.summarized) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
