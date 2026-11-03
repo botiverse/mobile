@@ -37,6 +37,29 @@ object RaftDesktopPaths {
     val databaseDir: File get() = File(dataDir, "databases").apply { mkdirs() }
 
     val cacheDir: File get() = File(dataDir, "cache").apply { mkdirs() }
+
+    /**
+     * The app's log files ([build.raft.app.RaftDesktopFileLog]): `~/Library/Logs/Raft` on macOS
+     * (where Console.app and "Reveal logs" look), `%LOCALAPPDATA%\Raft\Logs` on Windows,
+     * `$XDG_STATE_HOME/raft/logs` (or `~/.local/state/raft/logs`) elsewhere, and `<dataDir>/logs`
+     * under a `-Draft.desktop.dataDir` override (tests, a second profile).
+     */
+    val logDir: File by lazy {
+        val override = System.getProperty("raft.desktop.dataDir")?.takeIf { it.isNotBlank() }
+        val home = System.getProperty("user.home").orEmpty()
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        val dir =
+            when {
+                override != null -> File(override, "logs")
+                "mac" in os -> File(home, "Library/Logs/Raft")
+                "win" in os -> File(System.getenv("LOCALAPPDATA") ?: System.getenv("APPDATA") ?: home, "Raft/Logs")
+                else -> File(System.getenv("XDG_STATE_HOME")?.takeIf { it.isNotBlank() } ?: "$home/.local/state", "raft/logs")
+            }
+        dir.apply {
+            mkdirs()
+            RaftDesktopPrivateFiles.restrictToOwner(toPath(), directory = true)
+        }
+    }
 }
 
 /** Owner-only files for the desktop app's private data (POSIX file systems; no-op elsewhere). */

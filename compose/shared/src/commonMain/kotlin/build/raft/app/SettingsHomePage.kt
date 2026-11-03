@@ -7586,8 +7586,12 @@ private fun RaftAppShellReadyContent(
                     // the active host reports its measured width for the column decision.
                     val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean, Boolean) -> Unit = { paneModifier, active, detailAccepted, allowSideColumn ->
                         val density = LocalDensity.current
+                        // Only the selected tab's pane hosts the reply-thread column: every kept-alive tab
+                        // (Home, Activity, ...) composes this pane, and each composed its own thread page
+                        // for the same side thread (desktop freeze on opening a reply, 11-03).
+                        val tabSelected = LocalRaftAppShellTabSelected.current
                         val sideThread: AdaptiveSideThread? =
-                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted }
+                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted && tabSelected }
                         val showSideColumn =
                             sideThread != null &&
                                 (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||

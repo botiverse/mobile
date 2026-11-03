@@ -1,5 +1,6 @@
 package build.raft.app.desktop
 
+import build.raft.app.RaftDesktopFileLog
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.isAllowedAppLoginUrl
 import build.raft.app.toRaftJsonString
@@ -18,8 +19,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * `settingsCapability`: the action-multiplexed settings host. M1 serves the browser sign-in
  * (`appLoginPrepare` / `appLoginOpen`, the Android host's contract); the callback comes back as
  * [APP_LOGIN_RETURN_URI] (see [RaftDesktopLoginCallbacks]); `loadStorage` measures the app's data
- * directory ([storagePayload]; clearing is not offered yet). TODO(desktop): every other action
- * (about, developer environment, diagnostics, notifications, account linking) answers
+ * directory ([storagePayload]; clearing is not offered yet); `loadDiagnostics` / `shareDiagnostics`
+ * read and reveal the log file ([RaftDesktopFileLog]). TODO(desktop): every other action
+ * (about, developer environment, notifications, account linking) answers
  * "not implemented" and the shared pages fall back as for an unsupported host action.
  */
 object RaftDesktopSettingsCapability {
@@ -35,6 +37,20 @@ object RaftDesktopSettingsCapability {
         val action = command.string("action")
         if (action == "loadStorage") {
             callback?.invoke(storagePayload(RaftDesktopPaths.databaseDir, RaftDesktopPaths.cacheDir, RaftDesktopPaths.dataDir).toRaftJsonString())
+            return
+        }
+        // Settings > About > Diagnostics: the log file's newest lines, and Export logs shows the
+        // log folder (~/Library/Logs/Raft) in Finder so the files can be attached to a report.
+        if (action == "loadDiagnostics" || action == "shareDiagnostics") {
+            Thread({
+                val payload =
+                    if (action == "loadDiagnostics") {
+                        diagnosticsPayload(RaftDesktopFileLog.recentLines(DIAGNOSTICS_LINES))
+                    } else {
+                        revealLogFolder()
+                    }
+                callback?.invoke(payload.toRaftJsonString())
+            }, "RaftDesktopDiagnostics").apply { isDaemon = true }.start()
             return
         }
         val result =
@@ -77,6 +93,48 @@ object RaftDesktopSettingsCapability {
                             row("cache", "Cache", "Image previews, snapshots and pasted files kept for faster viewing.", cacheDir),
                         ),
                     ),
+            ),
+        )
+    }
+
+    private const val DIAGNOSTICS_LINES = 300
+
+    /** `loadDiagnostics`: log lines (`<time> <level> [thread] <tag>: <message>`) as entries, newest first. */
+    internal fun diagnosticsPayload(lines: List<String>): JsonObject {
+        val entries =
+            lines.asReversed().map { line ->
+                val match = LOG_LINE.matchEntire(line)
+                JsonObject(
+                    mapOf(
+                        "timestampLabel" to JsonPrimitive(match?.groupValues?.get(1)?.substringAfter('T')?.take(12).orEmpty()),
+                        "tag" to JsonPrimitive(match?.let { "${it.groupValues[2]} ${it.groupValues[3]}" }.orEmpty()),
+                        "message" to JsonPrimitive(match?.groupValues?.get(4) ?: line),
+                    ),
+                )
+            }
+        return JsonObject(mapOf("status" to JsonPrimitive("ok"), "entries" to JsonArray(entries)))
+    }
+
+    private val LOG_LINE = Regex("""(\S+) ([DIWEF]) \[[^\]]*] ([^:]+): (.*)""")
+
+    private fun revealLogFolder(): JsonObject {
+        val dir = RaftDesktopFileLog.directory ?: RaftDesktopPaths.logDir
+        RaftDesktopFileLog.flush()
+        val current = File(dir, "raft.log")
+        val shown =
+            runCatching {
+                val desktop = Desktop.getDesktop()
+                if (current.isFile && desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
+                    desktop.browseFileDirectory(current)
+                } else {
+                    desktop.open(dir)
+                }
+            }
+        log("diagnostics: reveal log folder result=${if (shown.isSuccess) "ok" else shown.exceptionOrNull()?.javaClass?.simpleName}")
+        return JsonObject(
+            mapOf(
+                "status" to JsonPrimitive(if (shown.isSuccess) "ok" else "error"),
+                "path" to JsonPrimitive(dir.absolutePath),
             ),
         )
     }
