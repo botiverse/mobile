@@ -234,7 +234,8 @@ sealed interface RaftAppRailFooterItem {
  * `[@media(max-height:600px)]`). [compact] forces it either way (tests, previews); null decides
  * from the window's height ([raftAppRailCompact]). Items read the size from the rail.
  *
- * Each item names itself in a tooltip on the side away from the rail's edge (right; left in RTL).
+ * Each item names itself in a tooltip on the side away from the rail's edge (right; left in RTL);
+ * a [RaftTooltip] in [header] opens on that side too.
  */
 @Composable
 fun RaftAppRail(
@@ -273,7 +274,13 @@ fun RaftAppRail(
                             .padding(top = topInset)
                             .height(metrics.headerHeight - RaftStroke.Hairline),
                         contentAlignment = Alignment.Center,
-                    ) { header() }
+                    ) {
+                        // A tooltip on the header's tile (the app's server tile) opens beside the
+                        // rail, as the items' do.
+                        CompositionLocalProvider(LocalRaftTooltipSide provides raftAppRailTooltipSide(LocalLayoutDirection.current)) {
+                            header()
+                        }
+                    }
                     Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
                 }
                 Column(

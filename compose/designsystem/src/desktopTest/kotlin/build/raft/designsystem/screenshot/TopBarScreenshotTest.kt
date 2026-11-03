@@ -51,7 +51,8 @@ import kotlin.test.Test
  * workspace strip (the current mark, another server's unread) and the search trigger centred;
  * a narrower bar where the current server is beyond what fits (last slot, after the hairline)
  * and one too narrow for the strip; [RaftSearchTrigger] at rest, pressed, focused and with a
- * shortcut; [RaftWorkspaceStripItem] at rest, current, unread and pressed.
+ * shortcut; [RaftWorkspaceStripItem] at rest, current, unread and pressed, and hovered with
+ * its tooltip.
  */
 class TopBarScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -175,6 +176,40 @@ class TopBarScreenshotTest {
                             },
                         )
                     }
+                }
+            }
+        }
+
+    /**
+     * The strip's tooltip (web WorkspaceStripButton's `AppTooltip`): the server under the pointer
+     * wears the on-frame hover fill and names itself below, centred, caret up (the top bar's
+     * placement). Opened through [LocalRaftTooltipPreview] and [LocalRaftPressedPreview] (no
+     * pointer offscreen) on that one avatar.
+     */
+    @Test
+    fun workspaceStripTooltip() =
+        appearances.forEach { appearance ->
+            RaftScreenshot.capture("workspace_strip_tooltip_${appearance.name.lowercase()}", appearance, settleFrames = 2) {
+                Column(Modifier.height(120.dp)) {
+                    RaftTopBar(
+                        modifier = Modifier.width(1000.dp),
+                        leading = {
+                            Row(
+                                Modifier.padding(start = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Item(servers[0], current = true, attention = false)
+                                Item(servers[1], current = false, attention = true)
+                                CompositionLocalProvider(LocalRaftTooltipPreview provides true, LocalRaftPressedPreview provides true) {
+                                    Item(RaftWorkspaceStripEntry("p", "Bearproof"), current = false, attention = false)
+                                }
+                                Item(servers[2], current = false, attention = false)
+                                Item(servers[3], current = false, attention = false)
+                            }
+                        },
+                        center = { RaftSearchTrigger(label = "Search", onClick = {}, windowWidth = 1000.dp) },
+                    )
                 }
             }
         }
