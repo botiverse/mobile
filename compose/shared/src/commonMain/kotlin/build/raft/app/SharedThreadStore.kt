@@ -6962,10 +6962,7 @@ internal class SharedThreadDataSource(
     private fun RaftThreadScreenPayload.withKnownMarkdownChannelNames(
         home: HomeSnapshot
     ): RaftThreadScreenPayload {
-        val channelNames =
-            home.channels
-                .mapNotNull { conversation -> conversation.name.trim().takeIf { it.isNotBlank() } }
-                .distinctBy { it.lowercase() }
+        val channelNames = home.knownMarkdownChannelNames()
         val knownMemberProfilesById = currentKnownMarkdownMemberProfilesById(home)
         val directMessagePeerNames =
             home.knownMarkdownDirectMessagePeerNames(knownMemberProfilesById)
@@ -13199,6 +13196,12 @@ private fun ConversationSummary.markdownDirectMessagePeerAliases(
  * the first matching DM (Web `findDmByPeer`); any other bare alias that maps
  * to more than one DM is left out so the ref stays plain text.
  */
+/** The channel names a body's `#name` refs become chips for (web: a channel the reader cannot resolve stays text). */
+internal fun HomeSnapshot.knownMarkdownChannelNames(): List<String> =
+    channels
+        .mapNotNull { conversation -> conversation.name.trim().takeIf { it.isNotBlank() } }
+        .distinctBy { it.lowercase() }
+
 internal fun HomeSnapshot.knownMarkdownDirectMessagePeerNames(
     knownMemberProfilesById: Map<String, MemberProfile>
 ): List<String> {
