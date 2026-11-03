@@ -27,6 +27,7 @@ import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftPressSurface
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.raftStateOverlay
 import build.raft.designsystem.components.rememberRaftStateOverlay
@@ -57,7 +58,8 @@ internal fun raftAppRailWithoutTopBar(navRailActive: Boolean): Boolean =
  * ([appShellServerTabShowsAttention]). The tile is an ink sticker: while the panel is [open], under
  * a press, and under a mouse or trackpad (never a finger), it lays `sticker-ink-medium` (6% paper)
  * over its whole face, image avatars too (raft-design #875, States "Medium on an ink sticker";
- * Kirby 10-28).
+ * Kirby 10-28). A mouse over it, or a touch long press, shows the server's name in a tooltip
+ * beside the rail.
  */
 @Composable
 internal fun RaftAppRailServerTile(
@@ -75,31 +77,35 @@ internal fun RaftAppRailServerTile(
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
     // The rail's item square: 40dp, 36dp in a compact (short-window) rail.
     val itemSize = RaftAppRailDefaults.metrics.itemSize
-    RaftAvatarBadgeBox(
-        size = RaftAvatarSize.Md,
-        modifier =
-            Modifier
-                .size(itemSize)
-                .raftPointerHover(source)
-                .clickable(
-                    interactionSource = source,
-                    indication = null,
-                    role = Role.Button,
-                    onClickLabel = actionLabel,
-                    onClick = onClick,
-                )
-                .semantics {
-                    contentDescription = label
-                    if (attention) stateDescription = otherUnreadDescription
-                },
-        badge = {
-            if (attention) {
-                RaftAvatarAttentionLight(RaftAvatarSize.Md, cutout = RaftTheme.colors.layerFrame)
-            }
-        },
-    ) {
-        ServerSwitcherAvatarTile(server, size = itemSize)
-        Box(Modifier.matchParentSize().raftStateOverlay(overlay, RaftRadius.Sticker))
+    // The server's name beside the rail under a mouse, or on a touch long press (which then doesn't
+    // open the panel), as the web strip's avatars name theirs (WorkspaceStripButton).
+    RaftTooltip(text = server.name) {
+        RaftAvatarBadgeBox(
+            size = RaftAvatarSize.Md,
+            modifier =
+                Modifier
+                    .size(itemSize)
+                    .raftPointerHover(source)
+                    .clickable(
+                        interactionSource = source,
+                        indication = null,
+                        role = Role.Button,
+                        onClickLabel = actionLabel,
+                        onClick = onClick,
+                    )
+                    .semantics {
+                        contentDescription = label
+                        if (attention) stateDescription = otherUnreadDescription
+                    },
+            badge = {
+                if (attention) {
+                    RaftAvatarAttentionLight(RaftAvatarSize.Md, cutout = RaftTheme.colors.layerFrame)
+                }
+            },
+        ) {
+            ServerSwitcherAvatarTile(server, size = itemSize)
+            Box(Modifier.matchParentSize().raftStateOverlay(overlay, RaftRadius.Sticker))
+        }
     }
 }
 
