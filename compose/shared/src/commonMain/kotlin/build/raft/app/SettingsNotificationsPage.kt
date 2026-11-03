@@ -387,6 +387,7 @@ private fun SettingsNotificationSwitchRow(
     RaftListRow(
         title = title,
         variant = RaftListRowVariant.Plain,
+        titleMaxLines = 2,
         description = detail,
         wrapDescription = true,
         divider = divider,
@@ -564,6 +565,7 @@ private fun SettingsNotificationActionRow(
     RaftListRow(
         title = title,
         variant = RaftListRowVariant.Plain,
+        titleMaxLines = 2,
         description = detail,
         wrapDescription = true,
         divider = true,

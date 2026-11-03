@@ -226,6 +226,7 @@ internal fun SettingsNotificationPauseSection(
                     RaftListRow(
                         title = quietTitle,
                         variant = RaftListRowVariant.Plain,
+                        titleMaxLines = 2,
                         description = stringResource(Res.string.settings_notifications_quiet_hours_detail, timeZoneId),
                         wrapDescription = true,
                         trailing = {
@@ -405,6 +406,7 @@ internal fun SettingsNotificationContentSection(
                     RaftListRow(
                         title = soundTitle,
                         variant = RaftListRowVariant.Plain,
+                        titleMaxLines = 2,
                         description = stringResource(Res.string.settings_notifications_sound_detail),
                         wrapDescription = true,
                         trailing = {

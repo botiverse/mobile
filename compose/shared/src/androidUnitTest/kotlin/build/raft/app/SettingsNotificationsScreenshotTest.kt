@@ -63,6 +63,38 @@ class SettingsNotificationsScreenshotTest {
         captureNotifications("settings.notifications.dark", RaftAppAppearance.Dark, activities) { NotificationsFixture() }
 }
 
+/** The longer zh-CN titles: each setting's title wraps to a second line instead of truncating. */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h2000dp-xxhdpi")
+class SettingsNotificationsChineseScreenshotTest {
+    @get:org.junit.Rule
+    val activities = RobolectricComposeActivityRule()
+
+    @AfterTest
+    fun clearLevels() = RaftNotificationLevelStore.clear()
+
+    @Test
+    fun notificationsPageChinese() =
+        captureNotifications("settings.notifications.zh-CN", RaftAppAppearance.Light, activities) { NotificationsFixture() }
+}
+
+/** The longer ja titles: each setting's title wraps to a second line instead of truncating. */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "ja-w390dp-h2000dp-xxhdpi")
+class SettingsNotificationsJapaneseScreenshotTest {
+    @get:org.junit.Rule
+    val activities = RobolectricComposeActivityRule()
+
+    @AfterTest
+    fun clearLevels() = RaftNotificationLevelStore.clear()
+
+    @Test
+    fun notificationsPageJapanese() =
+        captureNotifications("settings.notifications.ja", RaftAppAppearance.Light, activities) { NotificationsFixture() }
+}
+
 /**
  * The same page in a desktop window's detail pane (720dp beside the settings list), paused: the
  * pause row shows until when and Resume; server names and their level selects share a line.
