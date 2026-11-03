@@ -161,7 +161,7 @@ class TaskConversationHeadRealTapTest {
     fun aFingerOnTheCreatorOpensTheirProfile() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 3)
-            tapAtCentreOf(TaskHeadCreatorTestTag)
+            tapAtCentreOfText("AppFather")
             assertTrue(
                 TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" },
                 "a finger on Created by did not open AppFather's profile (opened ${TaskTapFixture.openedProfiles}); trace:\n" +
@@ -173,7 +173,7 @@ class TaskConversationHeadRealTapTest {
     fun aFingerOnTheTopBarRefOpensTheTaskChannel() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 3)
-            tapAtCentreOf(TaskBarRefTestTag)
+            tapAtCentreOfText("#proj-apps:#35")
             assertTrue(
                 TaskTapFixture.openedConversations.contains(TaskTapParentChannelId),
                 "a finger on the bar's #proj-apps:#35 did not open #proj-apps (opened ${TaskTapFixture.openedConversations}); trace:\n" +
@@ -201,7 +201,7 @@ class TaskConversationHeadRealTapTest {
     fun withNavigation3AFingerOnTheCreatorOpensTheirProfile() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 3, nav3 = true)
-            tapAtCentreOf(TaskHeadCreatorTestTag)
+            tapAtCentreOfText("AppFather")
             assertTrue(TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" }, trace.joinToString("\n"))
         }
 
@@ -209,7 +209,7 @@ class TaskConversationHeadRealTapTest {
     fun withNavigation3AFingerOnTheTopBarRefOpensTheTaskChannel() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 3, nav3 = true)
-            tapAtCentreOf(TaskBarRefTestTag)
+            tapAtCentreOfText("#proj-apps:#35")
             assertTrue(TaskTapFixture.openedConversations.contains(TaskTapParentChannelId), trace.joinToString("\n"))
         }
 
@@ -295,9 +295,14 @@ class TaskConversationHeadRealTapTest {
 
     private fun ComposeUiTest.chipBounds(tag: String): Rect = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
+    /** [tapAtCentreOf] for a fact found by its text (the creator's name, the bar's ref). */
+    private fun ComposeUiTest.tapAtCentreOfText(text: String) =
+        tapAt(text, onAllNodesWithText(text, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot)
+
     /** A real finger: down and up at the chip's centre, injected at the page's root, not at the chip. */
-    private fun ComposeUiTest.tapAtCentreOf(tag: String) {
-        val bounds = chipBounds(tag)
+    private fun ComposeUiTest.tapAtCentreOf(tag: String) = tapAt(tag, chipBounds(tag))
+
+    private fun ComposeUiTest.tapAt(tag: String, bounds: Rect) {
         trace.clear()
         root().performTouchInput {
             down(bounds.center)

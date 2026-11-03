@@ -122,7 +122,7 @@ private fun TaskTapFixtureContent() {
         remember {
             RaftThreadScreenPayload(
                 instanceId = "task-tap-fixture",
-                title = "#proj-apps:#35 Task header controls do nothing when tapped",
+                title = "Task header controls do nothing when tapped",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = RaftTaskConversationChannelKind,
                 sourceThreadId = TaskTapConversationId,
