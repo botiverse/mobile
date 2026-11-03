@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -42,7 +43,9 @@ class ChannelSettingsDrawerScreenshotTest {
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ChannelSettingsPanelVisualScreen(pinned = pinned) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                RaftDesignSystemTheme { ChannelSettingsPanelVisualScreen(pinned = pinned) }
+            }
         }
 }
 
@@ -69,6 +72,8 @@ class ChannelSettingsDrawerWideScreenshotTest {
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ChannelSettingsPanelVisualScreen() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                RaftDesignSystemTheme { ChannelSettingsPanelVisualScreen() }
+            }
         }
 }

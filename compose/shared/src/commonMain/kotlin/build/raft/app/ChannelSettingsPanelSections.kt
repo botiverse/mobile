@@ -326,6 +326,7 @@ internal fun channelSectionHomeIntents(
  * the channel's Home row and permissions are known; before that, what the conversation offers.
  */
 internal fun ThreadChannelSettingsPanel.allowsChannelAction(actionId: String): Boolean {
+    if (actionId !in ThreadChannelSettingsActionIds) return false
     val row = channel ?: return true
     val granted = permissions ?: return true
     return when (actionId) {
@@ -336,3 +337,6 @@ internal fun ThreadChannelSettingsPanel.allowsChannelAction(actionId: String): B
         else -> false
     }
 }
+
+/** The channel actions the drawer has (web Leave / Stop All Agents / Unarchive live on the settings page). */
+private val ThreadChannelSettingsActionIds = setOf("visibility", "archive", "delete")
