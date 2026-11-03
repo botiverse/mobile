@@ -397,7 +397,18 @@ internal fun threadVisualFixtureTaskStatuses(fixture: String): Map<Int, TaskStat
                 34 to TaskStatus.InProgress,
                 56 to TaskStatus.Closed,
             )
-        else -> null
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS_LEGACY -> null
+        // Every other row has a loaded task source, as on the web (MessageItem `taskByNumber`):
+        // the fixture's tasks, with each message's own linked task layered on by the row.
+        else ->
+            threadVisualFixture(fixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = "")
+                .tasks
+                .mapNotNull { task ->
+                    val number = task.taskNumber?.takeIf { it > 0 } ?: return@mapNotNull null
+                    val status = TaskStatus.fromWireValue(task.status) ?: return@mapNotNull null
+                    number to status
+                }
+                .toMap()
     }
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_release"
