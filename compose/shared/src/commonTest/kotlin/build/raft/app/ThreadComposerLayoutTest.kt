@@ -1154,42 +1154,6 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun composerAttachmentRowsUseReactImageAndFileWidths() {
-        val rows =
-            composerAttachmentRows(
-                listOf(
-                    RaftPendingAttachmentItem(
-                        id = "image",
-                        fileName = "composer-preview.png",
-                        mimeType = "image/png",
-                        previewUri = "data:image/png;base64,"
-                    ),
-                    RaftPendingAttachmentItem(
-                        id = "report",
-                        fileName = "release-notes.pdf",
-                        mimeType = "application/pdf"
-                    ),
-                    RaftPendingAttachmentItem(
-                        id = "logs",
-                        fileName = "android-smoke-log.zip",
-                        mimeType = "application/zip"
-                    ),
-                    RaftPendingAttachmentItem(
-                        id = "trace",
-                        fileName = "oversized-trace.jsonl",
-                        mimeType = "application/json"
-                    )
-                )
-            )
-
-        // raft-ui ComposerAttachment: 64dp image tiles, 176dp file tiles, 8dp apart, in the
-        // composer's 315dp tray; two file tiles (360dp) never share a row.
-        assertEquals(listOf(listOf("image", "report"), listOf("logs"), listOf("trace")), rows.map { row -> row.map { it.id } })
-        assertEquals(64, rows.first().first().composerAttachmentPreviewWidthDp())
-        assertEquals(176, rows.first()[1].composerAttachmentPreviewWidthDp())
-    }
-
-    @Test
     fun diagnosticsFeedbackComposerMessageDoesNotInlineDiagnosticsText() {
         val draft =
             SettingsDiagnosticsFeedbackDraft(

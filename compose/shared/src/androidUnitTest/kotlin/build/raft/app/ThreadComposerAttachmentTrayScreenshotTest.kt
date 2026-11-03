@@ -28,9 +28,10 @@ import org.robolectric.annotation.GraphicsMode
  * The composer's attachment tray (web MessageInput on raft-ui ComposerAttachment), light and
  * dark, at the composer's 321dp: an image with no preview yet, a ready file, a file uploading at
  * 42% and one before its first byte, an image waiting for its first byte, and a file and an image
- * whose upload failed, under the web's overlays. Each has its remove sticker. Fixed fixture data;
- * spinners held still. Reports land in `build/reports/home-screenshots/`; verify /
- * record as [RaftRobolectricScreenshot].
+ * whose upload failed, under the web's overlays. Each has its remove sticker. The tiles sit in one
+ * row that scrolls sideways; eight files (#4067) keep the tray one row high. Fixed fixture data;
+ * spinners held still. Reports land in `build/reports/home-screenshots/`; verify / record as
+ * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -44,6 +45,10 @@ class ThreadComposerAttachmentTrayScreenshotTest {
 
     @Test
     fun attachmentTrayDark() = capture("thread.composer-attachments.dark", RaftAppAppearance.Dark)
+
+    @Test
+    fun manyFilesStayInOneRow() =
+        captureComposerTray(activities, "thread.composer-attachments.many-files", RaftAppAppearance.Light, manyFiles)
 
     private fun capture(name: String, appearance: RaftAppAppearance) = captureComposerTray(activities, name, appearance, trayAttachments)
 }
@@ -110,3 +115,13 @@ private val trayAttachments =
         ),
         RaftPendingAttachmentItem(id = "shot", fileName = "crash-screenshot.png", mimeType = "image/png", status = "failed"),
     )
+
+private val manyFiles =
+    (1..8).map { index ->
+        RaftPendingAttachmentItem(
+            id = "report-$index",
+            fileName = "quarterly-report-$index.pdf",
+            mimeType = "application/pdf",
+            sizeBytes = 120_000L * index,
+        )
+    }
