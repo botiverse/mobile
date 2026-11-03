@@ -87,15 +87,17 @@ internal fun String.withRaftInlineCodeCharWrapBreaks(threshold: Int): String {
 // Slock: inline code wraps where the web's does (raft-ui InlineCode, Chrome line breaking): after
 // a hyphen inside a word (`thread-route`), never after a slash (`reply/channel`). The native
 // breaker does the opposite, so a zero-width space marks each hyphen break and a word joiner
-// glues each slash to what follows. A run still longer than the line breaks anywhere, as the
-// web's `overflow-wrap: anywhere` does.
+// glues each slash to what follows. A space always lets the line break, as in CSS, also before
+// punctuation the native breaker would keep it with (`./gradlew :shared`, UAX #14 LB13). A run
+// still longer than the line breaks anywhere, as the web's `overflow-wrap: anywhere` does.
 internal fun String.withRaftInlineCodeWebBreaks(): String {
-    if (indexOf('-') < 0 && indexOf('/') < 0) return this
+    if (indexOf('-') < 0 && indexOf('/') < 0 && indexOf(' ') < 0) return this
     val result = StringBuilder(length + 8)
     forEachIndexed { index, char ->
         result.append(char)
         val next = getOrNull(index + 1) ?: return@forEachIndexed
         when (char) {
+            ' ' -> if (next in RAFT_INLINE_CODE_NO_BREAK_BEFORE) result.append(RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK)
             '/' -> if (!next.isWhitespace()) result.append(RAFT_INLINE_CODE_WORD_JOINER)
             '-' -> {
                 val previous = getOrNull(index - 1)
@@ -111,6 +113,10 @@ internal fun String.withRaftInlineCodeWebBreaks(): String {
 }
 
 private const val RAFT_INLINE_CODE_WORD_JOINER = '\u2060'
+
+// UAX #14 LB13 closing punctuation, exclamation / question, infix separators and the slash: the
+// native breaker never breaks before them, even after a space.
+private const val RAFT_INLINE_CODE_NO_BREAK_BEFORE = ")]},.:;!?/"
 
 /**
  * Extension function to build an `AnnotatedString` from a Markdown string.
