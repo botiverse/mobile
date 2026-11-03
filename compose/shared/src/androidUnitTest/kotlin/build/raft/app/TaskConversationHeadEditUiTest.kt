@@ -133,7 +133,8 @@ class TaskConversationHeadEditUiTest {
     @Test
     fun onThePendingTaskPageTheStatusChipAndTheAssigneeWorkTheSameWay() =
         runRobolectricComposeUiTest {
-            setContent { Host { PendingPage(task) } }
+            // As the app shows it: full screen in its own dialog window over the host page.
+            setContent { Host { TaskPendingConversationWindow(onBack = {}, sending = false) { PendingPage(task) } } }
 
             onNodeWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).performClick()
             waitForIdle()
