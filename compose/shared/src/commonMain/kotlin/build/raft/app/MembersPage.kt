@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
+import build.raft.app.components.RaftSurfaceListItem
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.model.RUNTIMES
@@ -415,7 +416,7 @@ internal enum class MembersAgentDetailTab(
     Profile("Profile", RaftLucideIconName.Bot, privateSurface = false),
     Activity("Activity", RaftLucideIconName.Activity),
     Chat("Chat", RaftLucideIconName.MessageSquare),
-    Reminders("Reminders", RaftLucideIconName.BellRing),
+    Reminders("Reminders", RaftLucideIconName.AlarmClock),
     Workspace("Workspace", RaftLucideIconName.FolderOpen),
     Apps("Apps", RaftLucideIconName.Link2)
 }
@@ -11864,7 +11865,7 @@ private fun MembersAgentRemindersTab(
             RaftEmptyState(
                 title = stringResource(Res.string.member_state_no_reminders),
                 detail = stringResource(Res.string.member_hint_no_scheduled_reminders),
-                iconName = RaftLucideIconName.BellRing,
+                iconName = RaftLucideIconName.AlarmClock,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 220.dp, max = 520.dp)
@@ -11885,92 +11886,92 @@ private fun MembersAgentReminderCard(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    // raft-ui Card (default): the card title, when it fires (relative, then the date in
-    // Space Mono), then its recurrence and the message it points at as badges.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .membersRaftCard()
-            .padding(RaftAppSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        RaftText(
-            text = reminder.title,
-            style = typography.cardTitle,
-            color = colors.foreground,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
-        )
-        Row(
+    // web AgentRemindersSection `ReminderCard`: a non-interactive raft-ui SurfaceListItem with the
+    // title (`text-subhead font-semibold`), then `mt-1` when it fires (`text-caption` muted,
+    // relative, then the date in Space Mono), then its recurrence and the message it points at.
+    RaftSurfaceListItem(interactive = false) {
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RaftLucideIcon(
-                    RaftLucideIconName.Clock3,
-                    modifier = Modifier.size(14.dp),
-                    color = raftArgbHex(colors.foregroundMuted)
-                )
-                RaftText(
-                    text = reminder.fireAt.membersReminderRelativeTime(timeContext),
-                    style = typography.footnote.copy(fontWeight = FontWeight.Medium),
-                    color = colors.foregroundMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
             RaftText(
-                text = reminder.fireAt.membersReminderShortDateTime(timeContext),
-                style = typography.monoMeta,
-                color = colors.foregroundHint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                text = reminder.title,
+                style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.foreground,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
             )
-        }
-        val recurrence = reminder.recurrenceDescription?.takeIf { it.isNotBlank() }
-        val messageRef = reminder.messageRef?.takeIf { it.isNotBlank() }
-        if (recurrence != null || messageRef != null) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (recurrence != null) {
-                    RaftBadge(
-                        text = recurrence,
-                        appearance = RaftBadgeAppearance.Soft,
-                        variant = RaftBadgeVariant.Information,
-                        modifier = Modifier.weight(1f, fill = false),
-                        icon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 13.dp) }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RaftLucideIcon(
+                        RaftLucideIconName.Clock3,
+                        modifier = Modifier.size(14.dp),
+                        color = raftArgbHex(colors.foregroundMuted)
+                    )
+                    RaftText(
+                        text = reminder.fireAt.membersReminderRelativeTime(timeContext),
+                        style = typography.caption,
+                        color = colors.foregroundMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (messageRef != null) {
-                    val permalink = reminder.messagePermalink?.takeIf { it.isNotBlank() }
-                    // The 22dp badge sits in a 44dp-tall target when it opens the message; a
-                    // reference with nothing to open is dimmed (alpha 0.7).
-                    Box(
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .then(
-                                if (permalink != null) {
-                                    Modifier
-                                        .heightIn(min = 44.dp)
-                                        .clickable(role = Role.Button) { onOpenMessageRef(permalink) }
-                                } else {
-                                    Modifier.alpha(0.7f)
-                                }
-                            ),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
+                RaftText(
+                    text = reminder.fireAt.membersReminderShortDateTime(timeContext),
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            val recurrence = reminder.recurrenceDescription?.takeIf { it.isNotBlank() }
+            val messageRef = reminder.messageRef?.takeIf { it.isNotBlank() }
+            if (recurrence != null || messageRef != null) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (recurrence != null) {
+                        // web: `<Badge appearance="outline">` with Lucide `Repeat`.
                         RaftBadge(
-                            text = messageRef,
+                            text = recurrence,
                             appearance = RaftBadgeAppearance.Outline,
-                            icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) }
+                            modifier = Modifier.weight(1f, fill = false),
+                            icon = { RaftContentLucideIcon(RaftLucideIconName.Repeat, size = 14.dp) }
                         )
+                    }
+                    if (messageRef != null) {
+                        val permalink = reminder.messagePermalink?.takeIf { it.isNotBlank() }
+                        // The 22dp badge sits in a 44dp-tall target when it opens the message; a
+                        // reference with nothing to open is dimmed (alpha 0.7).
+                        Box(
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .then(
+                                    if (permalink != null) {
+                                        Modifier
+                                            .heightIn(min = 44.dp)
+                                            .clickable(role = Role.Button) { onOpenMessageRef(permalink) }
+                                    } else {
+                                        Modifier.alpha(0.7f)
+                                    }
+                                ),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            RaftBadge(
+                                text = messageRef,
+                                appearance = RaftBadgeAppearance.Outline,
+                                icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) }
+                            )
+                        }
                     }
                 }
             }

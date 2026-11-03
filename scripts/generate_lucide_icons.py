@@ -58,6 +58,7 @@ PATH_COMMAND_ARITY = {
 
 LUCIDE_ICONS = [
     "activity",
+    "alarm-clock",
     "align-horizontal-space-around",
     "app-window",
     "archive",
@@ -246,6 +247,7 @@ LUCIDE_ICONS = [
     "reopen-task",
     "artifact",
     "redo-2",
+    "repeat",
     "rotate-ccw",
     "rotate-cw",
     "route",
