@@ -23,6 +23,11 @@ import build.raft.designsystem.theme.RaftTheme
  * - [contentHandlesKeyboard]: the content pads for the keyboard itself, so iOS must not shrink
  *   the window for it (the app's `Modal` pages). Android always hands the keyboard to the content
  *   as `WindowInsets.ime` (the window is edge to edge).
+ * - [keepsHostKeyboard]: the window has no text field of its own and leaves the page's keyboard
+ *   up (a message's long-press menu over a focused composer, artin 2026-11-03). On Android a
+ *   focused dialog window without an editor hides the keyboard; this window does not take part
+ *   in input (`FLAG_ALT_FOCUSABLE_IM`), so it sits over the keyboard instead. iOS: a layer in the
+ *   host's window, nothing to do.
  *
  * A tap on the scrim is the content's to handle: the content fills the window, so nothing is
  * ever "outside" it.
@@ -32,6 +37,7 @@ data class RaftWindowDialogProperties(
     val dismissOnBackPress: Boolean = true,
     val drawScrim: Boolean = true,
     val contentHandlesKeyboard: Boolean = false,
+    val keepsHostKeyboard: Boolean = false,
 )
 
 /**
@@ -63,7 +69,7 @@ fun RaftWindowDialog(
         onDismissRequest = onDismissRequest,
         properties = raftWindowDialogPlatformProperties(properties),
     ) {
-        RaftDialogWindowPolicy(isDark = RaftTheme.isDark)
+        RaftDialogWindowPolicy(isDark = RaftTheme.isDark, keepsHostKeyboard = properties.keepsHostKeyboard)
         Box(
             Modifier
                 .fillMaxSize()
@@ -85,11 +91,12 @@ internal expect fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
 /**
  * Applies the window part of [RaftWindowDialog]'s policy from inside the dialog content: on
  * Android, no window dim, transparent system bars without contrast scrims, and bar icons for
- * [isDark] ([raftSystemBarsAppearance]). iOS dialogs are layers in the host's window, which
+ * [isDark] ([raftSystemBarsAppearance]); with [keepsHostKeyboard], a window that leaves the
+ * keyboard alone (`FLAG_ALT_FOCUSABLE_IM`). iOS dialogs are layers in the host's window, which
  * already follows the theme, so there is nothing to do there.
  */
 @Composable
-internal expect fun RaftDialogWindowPolicy(isDark: Boolean)
+internal expect fun RaftDialogWindowPolicy(isDark: Boolean, keepsHostKeyboard: Boolean)
 
 /**
  * Composed just before the platform `Dialog`: on Android the dialog builds its window while it

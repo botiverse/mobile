@@ -24742,6 +24742,7 @@ private fun ThreadMessagesListContent(
             val resolvedActionAnchor =
                 actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
                     ?: return@let
+            ThreadMessageMenuKeepsComposerFocus(messageId)
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 val capabilities =
@@ -28964,6 +28965,21 @@ private fun ThreadMessageCardContent(
     }
 }
 
+/**
+ * artin 2026-11-03: a message's menu opened with the keyboard up keeps the keyboard (WeChat,
+ * Telegram). The press that opened it started outside the composer, so the page's outside-gesture
+ * dismissal ([RaftInputFocusDismissHost]) armed on its down and would clear the composer's focus at
+ * its release; opening the menu cancels that pending dismissal. Composed in the page, where the
+ * composer's registry is, not in the menu's own window.
+ */
+@Composable
+internal fun ThreadMessageMenuKeepsComposerFocus(messageId: String) {
+    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
+    LaunchedEffect(focusOwnerRegistry, messageId) {
+        focusOwnerRegistry?.cancelPendingFocusDismissalForExplicitInputIntent()
+    }
+}
+
 @Composable
 internal fun ThreadNewMessageMenu(
     anchor: RaftPopoverAnchor,
@@ -29012,7 +29028,8 @@ internal fun ThreadNewMessageMenu(
         horizontalOffset = -horizontalNudgePx,
         verticalOffset = anchorGapPx,
         horizontalAutoFlip = true,
-        verticalPlacement = RaftFloatingVerticalPlacement.Auto
+        verticalPlacement = RaftFloatingVerticalPlacement.Auto,
+        keepsHostKeyboard = true
     ) {
         ThreadNewMessageMenuChrome(
             availability = availability,
@@ -32999,6 +33016,7 @@ private fun ThreadMessageActionMenu(
         },
         shellItems = shellItems,
         shellContentKey = showReactionActions to showAddReaction,
+        keepsHostKeyboard = true,
         shellContent = { onSelected ->
             // The shell host composes this in its own page. Decode the reaction atlas
             // there instead of capturing this page's `reactionAtlasImage`: the atlas
@@ -33075,6 +33093,8 @@ private fun ThreadShellAwareAnchoredPopover(
     shellContent: @Composable (onSelected: (String) -> Unit) -> Unit,
     onShellSelected: (String) -> Unit,
     onShellRequested: (requestId: String, pageWindowAnchor: Offset) -> Unit,
+    // A menu with no text field: the composer's keyboard stays up (RaftModalAnchoredPopover).
+    keepsHostKeyboard: Boolean = false,
     inPageContent: @Composable (inShellFallback: Boolean) -> Unit
 ) {
     // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to
@@ -33110,7 +33130,8 @@ private fun ThreadShellAwareAnchoredPopover(
             verticalOffset = 0f,
             verticalOffsetAbove = 0f,
             verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
-            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
+            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu,
+            keepsHostKeyboard = keepsHostKeyboard
         ) {
             inPageContent(false)
         }
@@ -33163,7 +33184,8 @@ private fun ThreadShellAwareAnchoredPopover(
             verticalOffset = 0f,
             verticalOffsetAbove = 0f,
             verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
-            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
+            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu,
+            keepsHostKeyboard = keepsHostKeyboard
         ) {
             inPageContent(true)
         }
