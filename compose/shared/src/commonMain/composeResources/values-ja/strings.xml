@@ -503,6 +503,7 @@
     <string name="thread_inline_reply_count_many">%1$d 件の返信</string>
     <string name="thread_inline_new_replies">新着 %1$d 件</string>
     <string name="thread_inline_draft">下書き</string>
+    <string name="thread_replies_badge_new_count">新着 %1$d 件</string>
     <string name="thread_state_no_messages">まだメッセージはありません</string>
     <string name="thread_state_no_messages_detail">この会話にはまだメッセージがありません。</string>
     <string name="thread_parent_authority_resolving">権限を確認しているため、現在は送信できません</string>

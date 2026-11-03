@@ -501,6 +501,7 @@
     <string name="thread_inline_reply_count_many">%1$d replies</string>
     <string name="thread_inline_new_replies">%1$d new</string>
     <string name="thread_inline_draft">Draft</string>
+    <string name="thread_replies_badge_new_count">%1$d new</string>
     <string name="thread_state_no_messages">No messages yet</string>
     <string name="thread_state_no_messages_detail">This conversation has no messages yet.</string>
     <string name="thread_parent_authority_resolving">Checking permissions - sending is temporarily unavailable</string>

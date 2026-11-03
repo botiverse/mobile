@@ -519,6 +519,9 @@ internal fun threadVisualFixture(
         THREAD_MESSAGE_VISUAL_FIXTURE_MESSAGE_ROW -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             base.copy(
+                // The app's default "my messages" alignment is Left (no 82% cap on others'
+                // messages), which is what the web row shows.
+                alignOwnMessagesRight = false,
                 messages =
                     base.messages.mapIndexed { index, message ->
                         if (index == 0) {

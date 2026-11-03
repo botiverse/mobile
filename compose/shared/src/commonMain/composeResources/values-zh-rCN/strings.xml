@@ -501,6 +501,7 @@
     <string name="thread_inline_reply_count_many">%1$d 条回复</string>
     <string name="thread_inline_new_replies">%1$d 条新回复</string>
     <string name="thread_inline_draft">草稿</string>
+    <string name="thread_replies_badge_new_count">%1$d 条新回复</string>
     <string name="thread_state_no_messages">暂无消息</string>
     <string name="thread_state_no_messages_detail">当前对话还没有消息。</string>
     <string name="thread_parent_authority_resolving">正在确认权限，暂时无法发送</string>
