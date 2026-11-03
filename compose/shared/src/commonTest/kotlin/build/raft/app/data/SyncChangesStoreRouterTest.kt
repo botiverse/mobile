@@ -130,7 +130,7 @@ class SyncChangesStoreRouterTest {
     }
 
     @Test
-    fun `message rows replace the message where it is held, and nothing else reloads`() = runTest {
+    fun `message rows replace the message where it is held and nothing else reloads`() = runTest {
         apply(
             syncUpsert(1, "message", "m1", messageCardRowJson(state = "Testing", revision = 2)),
             syncUpsert(2, "message", "m1", messageCardRowJson(state = "Ready for testing", revision = 3)),
