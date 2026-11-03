@@ -225,7 +225,8 @@ private fun HoverMessageRowWithToolbar(target: HoverTarget, appearance: RaftAppA
         RestAndHovered(target, at = Offset(0.5f, 0.6f)) { modifier ->
             Box(modifier.fillMaxWidth().padding(top = 8.dp)) {
                 ThreadMessageCard(
-                    message = hoverMessage,
+                    // A sender line long enough to run under the toolbar, whose end it fades out.
+                    message = hoverMessage.copy(authorName = "Alexandra Montgomery"),
                     messageBodyTextStyle = raftMessageBodyTextStyle("md"),
                     timestampLabel = "4:40 PM",
                     onShowActions = {},

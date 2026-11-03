@@ -470,6 +470,7 @@ import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMessageItemToolbar
 import build.raft.designsystem.components.RaftMessageItemToolbarButton
 import build.raft.designsystem.components.RaftMessageItemToolbarDefaults
+import build.raft.designsystem.components.raftMessageItemToolbarHeaderMask
 import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.components.raftStateOverlay
@@ -27957,6 +27958,10 @@ private fun ThreadMessageCardContent(
     val hoverToolbar = data.hoverToolbar?.takeIf { !shareSelectionActive }
     // A mouse or trackpad over the row, open menu or not (the row's hover fill pauses under one).
     var rowPointerOver by remember { mutableStateOf(false) }
+    // Whether the hover toolbar shows: the header fades its end under it (raft-ui MessageItemHeader).
+    var hoverToolbarShown by remember { mutableStateOf(false) }
+    val headerMaskWidth =
+        hoverToolbar?.takeIf { hoverToolbarShown }?.let { RaftMessageItemToolbarDefaults.width(it.buttonCount) }
     Box(
         modifier =
             Modifier
@@ -28163,7 +28168,7 @@ private fun ThreadMessageCardContent(
                                         .background(Color.Transparent)
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().raftMessageItemToolbarHeaderMask(headerMaskWidth),
                                     verticalAlignment = Alignment.CenterVertically,
                                     // raft-ui `MessageItemHeader`: gap-1.5.
                                     horizontalArrangement =
@@ -28726,6 +28731,7 @@ private fun ThreadMessageCardContent(
                 popupOpen = popupOpen,
                 onShowActions = onShowActions,
                 onReplyInThread = { onOpenThread(message.id) },
+                onShownChange = { hoverToolbarShown = it },
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
@@ -33047,7 +33053,10 @@ internal class ThreadMessageHoverToolbarActions(
     val onShownChange: (Boolean) -> Unit = {},
 ) {
     val isEmpty: Boolean
-        get() = !reaction && !reply && !forward && !save && !more
+        get() = buttonCount == 0
+
+    val buttonCount: Int
+        get() = listOf(reaction, reply, forward, save, more).count { it }
 }
 
 internal fun threadMessageHoverToolbarActions(
@@ -33097,15 +33106,26 @@ private fun ThreadMessageHoverToolbar(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onReplyInThread: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Whether it shows, for the row (its header fades under it). */
+    onShownChange: (Boolean) -> Unit = {},
 ) {
     var toolbarHovered by remember { mutableStateOf(false) }
     var opener by remember { mutableStateOf<ThreadMessageHoverToolbarOpener?>(null) }
     LaunchedEffect(popupOpen) { if (!popupOpen) opener = null }
     val shown = RaftTheme.pointerInput == RaftPointerInput.Fine && (rowHovered || toolbarHovered || popupOpen)
     val currentOnShownChange by rememberUpdatedState(actions.onShownChange)
+    val currentOnRowShownChange by rememberUpdatedState(onShownChange)
     DisposableEffect(shown) {
-        if (shown) currentOnShownChange(true)
-        onDispose { if (shown) currentOnShownChange(false) }
+        if (shown) {
+            currentOnShownChange(true)
+            currentOnRowShownChange(true)
+        }
+        onDispose {
+            if (shown) {
+                currentOnShownChange(false)
+                currentOnRowShownChange(false)
+            }
+        }
     }
     if (!shown) return
     val density = LocalDensity.current

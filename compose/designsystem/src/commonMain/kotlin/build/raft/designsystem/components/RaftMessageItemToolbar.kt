@@ -15,15 +15,21 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftMisuse
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
@@ -76,7 +82,44 @@ object RaftMessageItemToolbarDefaults {
 
     /** Five buttons' width, which the web fades by until the toolbar has measured itself. */
     val FallbackWidth: Dp = 164.dp
+
+    /** The toolbar's width with [buttons] buttons: 4dp frame each side, 28dp buttons 4dp apart. */
+    fun width(buttons: Int): Dp =
+        if (buttons <= 0) 0.dp else Padding * 2 + ButtonSize * buttons + Gap * (buttons - 1)
 }
+
+/**
+ * raft-ui MessageItemHeader under the hover toolbar (message-item.recipe.ts `header`:
+ * `mask-image: linear-gradient(to left, transparent calc(var(--mi-toolbar-width) + 8px), black
+ * calc(var(--mi-toolbar-width) + 20px))`): while the toolbar shows ([toolbarWidth] not null), the
+ * header fades out its end under it, so the sender line never runs into the card. Transparent
+ * for the toolbar's width plus [RaftMessageItemToolbarDefaults.HeaderMaskGap] from the header's
+ * end, then opaque over [RaftMessageItemToolbarDefaults.HeaderMaskFade]. Nothing moves.
+ */
+fun Modifier.raftMessageItemToolbarHeaderMask(toolbarWidth: Dp?): Modifier =
+    if (toolbarWidth == null) {
+        this
+    } else {
+        // Offscreen, so DstIn masks only the header, not the row fill under it.
+        graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val clear = (toolbarWidth + RaftMessageItemToolbarDefaults.HeaderMaskGap).toPx()
+                val opaque = clear + RaftMessageItemToolbarDefaults.HeaderMaskFade.toPx()
+                val rtl = layoutDirection == LayoutDirection.Rtl
+                // Distances from the header's end, in x.
+                val clearX = if (rtl) clear else size.width - clear
+                val opaqueX = if (rtl) opaque else size.width - opaque
+                drawRect(
+                    Brush.horizontalGradient(
+                        listOf(Color.Black, Color.Transparent),
+                        startX = opaqueX,
+                        endX = clearX,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+    }
 
 /**
  * raft-ui MessageItem row fill (message-item.recipe.ts `root`, `--mi-row-fill`; message-item.md

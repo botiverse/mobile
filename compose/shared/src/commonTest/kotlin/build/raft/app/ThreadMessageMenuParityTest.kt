@@ -93,6 +93,11 @@ class ThreadMessageMenuParityTest {
         val system = assertNotNull(toolbar(message(messageType = "System")))
         assertFalse(system.reaction)
         assertFalse(system.more)
+        // The header fades under the toolbar's own width (raft-ui --mi-toolbar-width): 164 for
+        // five buttons, 132 for four.
+        assertEquals(5, ordinary.buttonCount)
+        assertEquals(164f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(ordinary.buttonCount).value)
+        assertEquals(132f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(guest.buttonCount).value)
     }
 
     @Test
