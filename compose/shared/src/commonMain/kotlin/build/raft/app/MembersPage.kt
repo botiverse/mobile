@@ -62,7 +62,6 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.raftProGateDecision
 import build.raft.app.data.AgentTurnStopFeedback
 import build.raft.app.data.AgentTurnStopIntent
-import build.raft.app.data.AgentTurnStopOutcome
 import build.raft.app.data.AgentTurnStopState
 import build.raft.app.data.AgentTurnStopStore
 import build.raft.app.data.RaftAgentControlsApi
@@ -434,13 +433,6 @@ private fun MembersAgentDetailTab.localizedLabel(): String =
 
 internal fun membersHeaderMessageUsesIconOnly(kind: MemberKind): Boolean =
     kind == MemberKind.Agent || kind == MemberKind.Human
-
-/**
- * Web AgentDetailHeader on a phone: the agent head has only the More (⋯) button, and Direct
- * Message is the first item of that menu (AgentProfileOverflowMenu, `agent-profile-overflow-message`).
- */
-internal fun membersHeaderMessageInOverflowMenu(kind: MemberKind): Boolean =
-    kind == MemberKind.Agent
 
 internal enum class MembersAgentServerRole(
     val wireValue: String,
@@ -5037,22 +5029,6 @@ private const val MembersAgentDetailVisualLiveActivityDetail = "Capturing determ
 private fun RaftAgentStatusIndicatorState.withMembersAgentDetailVisualLiveActivity(): RaftAgentStatusIndicatorState =
     if (status == AgentStatus.Working && !external) copy(label = MembersAgentDetailVisualLiveActivityDetail) else this
 
-/**
- * The viewer's controls in the agent-detail visual fixtures: the web fixture's viewer is the
- * server owner, so the More menu offers Stop Current Turn while the agent works. The stop
- * itself is inert.
- */
-@Composable
-private fun rememberMembersAgentDetailVisualRemoteControls(): MembersAgentRemoteControls {
-    val scope = rememberCoroutineScope()
-    return remember(scope) {
-        MembersAgentRemoteControls(
-            serverRole = "owner",
-            turnStopStore = AgentTurnStopStore({ DataResult.Content(AgentTurnStopOutcome.Interrupted) }, scope)
-        )
-    }
-}
-
 /** Default agent-detail visual seed (fixture agent agent-product-ux). */
 private fun membersAgentDetailDefaultVisualSeed(): MemberDetailVisualSeed =
     MemberDetailVisualSeed(
@@ -5148,7 +5124,6 @@ private fun MemberDetailVisualSeedContent(
                 serverId = ServerId("visual-fixture"),
                 profileGeneration = 0L
             ),
-        remoteControls = rememberMembersAgentDetailVisualRemoteControls(),
         machineStatusRow = machineStatusRow,
         actions = MembersDetailActions(
             onBack = {},
@@ -5314,8 +5289,7 @@ internal fun MembersAgentDetailVisualContent() {
         presentation = MembersAgentDetailPresentation(
             initialVisualMode = visualMode,
             stableVisualCapture = true
-        ),
-        remoteControls = rememberMembersAgentDetailVisualRemoteControls()
+        )
     )
 }
 
@@ -7178,33 +7152,12 @@ private fun MembersDetailContent(
                     deleted = deleted,
                     hasResolvedPresence = true
                 )
-            val canStopTurn =
-                member.kind == MemberKind.Agent &&
-                    turnStopStore != null &&
-                    canStopAgentTurn(
-                        serverRole = remoteControls.serverRole,
-                        isCreator = currentUserId != null && detail?.summary?.creatorId == currentUserId,
-                        isExternalAgent = isExternalAgent,
-                        deleted = deleted,
-                        online = menuPrimary == MembersAgentLifecycleAction.Stop
-                    )
             val menuItems =
                 buildMembersManagementMenuItems(
                     primaryAction = menuPrimary,
                     canManage = canManage,
                     deleted = deleted,
-                    inProgress = lifecycleInFlight != null,
-                    canStopTurn = canStopTurn,
-                    stopTurnInProgress = turnStopState.inFlightAgentId != null,
-                    canMessage =
-                        !membersAgentProfileIsRemote(accessMode) &&
-                            membersDirectMessageEligibility(
-                                member = member,
-                                currentUserId = currentUserId,
-                                currentServerId = currentServerId,
-                                deleted = deleted
-                            ) != MembersDirectMessageEligibility.Unavailable,
-                    directMessageOpening = actions.directMessageOpening
+                    inProgress = lifecycleInFlight != null
                 ).map { item ->
                     RaftUiMenuItem(
                         id = item.id,
@@ -7223,9 +7176,7 @@ private fun MembersDetailContent(
                         id = id,
                         primaryAction = menuPrimary,
                         openRestartResetDialog = { openRestartResetDialog() },
-                        runLifecycleAction = { runLifecycleAction(it) },
-                        stopTurn = { turnStopStore?.dispatch(AgentTurnStopIntent.Stop(member.id)) },
-                        openDirectMessage = onOpenDirectMessage
+                        runLifecycleAction = { runLifecycleAction(it) }
                     )
                 },
                 onDismiss = {
@@ -7415,33 +7366,12 @@ internal fun buildMembersManagementMenuItems(
     primaryAction: MembersAgentLifecycleAction?,
     canManage: Boolean,
     deleted: Boolean,
-    inProgress: Boolean,
-    canStopTurn: Boolean = false,
-    stopTurnInProgress: Boolean = false,
-    /** Web `canMessageAgent`: Direct Message leads the menu (the head has no message button). */
-    canMessage: Boolean = false,
-    directMessageOpening: Boolean = false
+    inProgress: Boolean
 ): List<MembersManagementMenuItemSpec> {
-    if (deleted) return emptyList()
-    val messageItem =
-        MembersManagementMenuItemSpec(
-            id = MEMBERS_DIRECT_MESSAGE_MENU_ID,
-            label = Res.string.member_action_direct_message.desc(),
-            icon = RaftLucideIconName.MessageSquare,
-            enabled = !directMessageOpening
-        ).takeIf { canMessage }
-    // Web AgentProfileOverflowMenu: Stop Current Turn sits under the runtime
-    // controls and is offered on its own to people who may only stop turns.
-    val stopTurnItem =
-        MembersManagementMenuItemSpec(
-            id = MEMBERS_STOP_TURN_MENU_ID,
-            label = Res.string.agent_stop_turn.desc(),
-            icon = RaftLucideIconName.Square,
-            enabled = !stopTurnInProgress
-        ).takeIf { canStopTurn }
-    if (!canManage) return listOfNotNull(messageItem, stopTurnItem)
+    // The agent More menu holds the runtime controls only (artin): Direct Message is the head's
+    // own button and there is no Stop Current Turn item.
+    if (deleted || !canManage) return emptyList()
     val items = mutableListOf<MembersManagementMenuItemSpec>()
-    if (messageItem != null) items += messageItem
     if (primaryAction != null) {
         items += MembersManagementMenuItemSpec(
             id = primaryAction.actionKey,
@@ -7460,29 +7390,15 @@ internal fun buildMembersManagementMenuItems(
         icon = RaftLucideIconName.RotateCcw,
         enabled = !inProgress
     )
-    if (stopTurnItem != null) items += stopTurnItem
     return items
 }
-
-internal const val MEMBERS_STOP_TURN_MENU_ID = "stop_turn"
-internal const val MEMBERS_DIRECT_MESSAGE_MENU_ID = "direct_message"
 
 private fun handleMembersManagementMenuSelection(
     id: String,
     primaryAction: MembersAgentLifecycleAction?,
     openRestartResetDialog: () -> Unit,
-    runLifecycleAction: (MembersAgentLifecycleAction) -> Unit,
-    stopTurn: () -> Unit = {},
-    openDirectMessage: () -> Unit = {}
+    runLifecycleAction: (MembersAgentLifecycleAction) -> Unit
 ) {
-    if (id == MEMBERS_DIRECT_MESSAGE_MENU_ID) {
-        openDirectMessage()
-        return
-    }
-    if (id == MEMBERS_STOP_TURN_MENU_ID) {
-        stopTurn()
-        return
-    }
     if (id == MembersAgentLifecycleAction.Restart.actionKey) {
         openRestartResetDialog()
         return
@@ -7677,10 +7593,7 @@ internal fun MembersDetailHeader(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (membersHeaderMessageInOverflowMenu(member.kind)) {
-                    // Web AgentProfileOverflowMenu at phone width: Direct Message is the first item
-                    // of the More menu, not a head button of its own.
-                } else if (
+                if (
                     directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
                     membersHeaderMessageUsesIconOnly(member.kind)
                 ) {
@@ -7703,7 +7616,9 @@ internal fun MembersDetailHeader(
                         leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare) }
                     )
                 }
-                if (member.kind == MemberKind.Agent) {
+                // The More menu holds only Start/Stop and Restart / Reset: nothing to show without
+                // manage rights or once the agent is archived.
+                if (member.kind == MemberKind.Agent && canManage && !deleted) {
                     RaftIconButton(
                         onClick = {
                             onRequestManagementMenu(

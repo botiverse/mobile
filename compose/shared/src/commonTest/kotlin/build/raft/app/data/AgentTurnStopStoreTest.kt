@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.MEMBERS_STOP_TURN_MENU_ID
 import build.raft.app.MembersAgentLifecycleAction
 import build.raft.app.buildMembersManagementMenuItems
 import build.raft.app.membersRouteCanManageAgent
@@ -151,38 +150,35 @@ class AgentTurnStopStoreTest {
                 primaryAction = MembersAgentLifecycleAction.Stop,
                 canManage = canManage,
                 deleted = false,
-                inProgress = false,
-                canStopTurn = canStopAgentTurn("member", isCreator = false, isExternalAgent = false, deleted = false, online = true)
+                inProgress = false
             )
 
-        // Someone else's agent: only Stop Current Turn.
-        assertEquals(listOf(MEMBERS_STOP_TURN_MENU_ID), menu(memberCanManage("owner-1")).map { it.id })
+        // Someone else's agent: no More menu at all (Stop Current Turn is not offered there).
+        assertEquals(emptyList(), menu(memberCanManage("owner-1")).map { it.id })
         // Their own agent: Stop Agent is back.
         assertEquals(MembersAgentLifecycleAction.Stop.actionKey, menu(memberCanManage("member-1")).first().id)
     }
 
     @Test
-    fun menuOffersStopTurnAloneToRuntimeControllersAndLastToManagers() {
-        val controllerOnly =
+    fun moreMenuHoldsOnlyTheRuntimeControls() {
+        // artin: the agent More menu is Stop/Start Agent and Restart / Reset; no Stop Current Turn.
+        assertEquals(
+            emptyList(),
             buildMembersManagementMenuItems(
                 primaryAction = MembersAgentLifecycleAction.Stop,
                 canManage = false,
                 deleted = false,
-                inProgress = false,
-                canStopTurn = true
+                inProgress = false
             )
-        assertEquals(listOf(MEMBERS_STOP_TURN_MENU_ID), controllerOnly.map { it.id })
-
-        val manager =
+        )
+        assertEquals(
+            listOf(MembersAgentLifecycleAction.Stop.actionKey, MembersAgentLifecycleAction.Restart.actionKey),
             buildMembersManagementMenuItems(
                 primaryAction = MembersAgentLifecycleAction.Stop,
                 canManage = true,
                 deleted = false,
-                inProgress = false,
-                canStopTurn = true,
-                stopTurnInProgress = true
-            )
-        assertEquals(MEMBERS_STOP_TURN_MENU_ID, manager.last().id)
-        assertFalse(manager.last().enabled)
+                inProgress = false
+            ).map { it.id }
+        )
     }
 }
