@@ -1,17 +1,22 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasParent
 import androidx.compose.ui.test.hasTestTag
@@ -140,7 +145,21 @@ class RaftLinkHoverStatusUiTest {
             textNode().performTouchInput { cancel() }
         }
 
+    /** A page smaller than the window keeps its own size at the top-left; the layer does not stretch it. */
+    @Test
+    fun aPageSmallerThanTheWindowKeepsItsSize() =
+        runRobolectricComposeUiTest {
+            setContent {
+                RaftLinkHoverStatusHost {
+                    Box(Modifier.size(390.dp, 84.dp).testTag(SMALL_PAGE))
+                }
+            }
+            waitForIdle()
+            onNodeWithTag(SMALL_PAGE).assertHeightIsEqualTo(84.dp).assertTopPositionInRootIsEqualTo(0.dp)
+        }
+
     private companion object {
+        const val SMALL_PAGE = "small-page"
         const val LINK = "https://example.com/docs"
         const val BODY = "Read [the docs]($LINK) before the launch review tomorrow"
     }
