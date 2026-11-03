@@ -108,3 +108,42 @@ fun RaftSection(
         }
     }
 }
+
+/**
+ * raft-ui FormSection: one part of a bigger form (a wide dialog, a side drawer's settings):
+ * a small heading ([title] in `text-footnote` bold `foreground-muted`), an optional line on
+ * what it is for ([description], `text-footnote` `foreground-hint`, 2dp under it), then
+ * [content] 12dp below (`flex flex-col gap-3`), `py-4`. Consecutive sections are divided by a
+ * hairline: pass [separator] true on every section after the first.
+ */
+@Composable
+fun RaftFormSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    separator: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    Column(modifier.fillMaxWidth()) {
+        if (separator) RaftSeparator()
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                RaftText(
+                    title,
+                    Modifier.semantics { heading() },
+                    style = typography.footnote.copy(fontWeight = FontWeight.Bold),
+                    color = colors.foregroundMuted,
+                )
+                if (description != null) {
+                    RaftText(description, style = typography.footnote, color = colors.foregroundHint)
+                }
+            }
+            content()
+        }
+    }
+}

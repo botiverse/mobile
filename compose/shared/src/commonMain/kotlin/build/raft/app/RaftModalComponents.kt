@@ -68,6 +68,11 @@ import kotlin.math.floor
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import build.raft.designsystem.components.RaftSideDrawerDefaults
+import build.raft.designsystem.components.RaftSideDrawerSurface
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftDialogSheetDefaults
 import build.raft.designsystem.components.RaftDialogSheetSurface
@@ -960,6 +965,144 @@ private fun RaftUnifiedDialogPhoneSheet(
                 ) {
                     content()
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The web's side drawer (raft-ui Drawer `swipeDirection="right"`, web ChannelSettingsSheet) in
+ * the app's dialog window ([Modal], through the shell's dialog host as [RaftUnifiedDialog]):
+ * the design system's [RaftSideDrawerSurface] on the window's end, its full height. On a phone
+ * it fills the window; a wide window gets a [RaftSideDrawerDefaults.MaxWidth] panel on the end
+ * with the page dimmed beside it.
+ *
+ * It slides in from the end in 240ms as the scrim fades in. ×, Back and (unless
+ * [dismissOnOutsideTap] is false) a tap on the scrim call [onDismiss]; [dismissEnabled] false
+ * ignores all three (a save in flight). The surface clears the status bar and the home
+ * indicator, and sits its footer on the keyboard while it is up.
+ */
+@Composable
+internal fun RaftUnifiedSideDrawer(
+    title: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: (@Composable () -> Unit)? = null,
+    closeLabel: String = stringResource(Res.string.common_close),
+    dismissEnabled: Boolean = true,
+    dismissOnOutsideTap: Boolean = true,
+    hostRoute: String = RaftUnifiedDialogGenericHostRoute,
+    footer: (@Composable RowScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    // Read here, as RaftUnifiedDialog does: Modal rehosts its content in a separate window.
+    val copyHandler = LocalRaftCopyHandler.current
+    val topInset = raftWindowTopSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
+    val hostState = LocalRaftUnifiedDialogHostState.current
+    val drawer: @Composable () -> Unit = {
+        Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
+            CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
+                RaftUnifiedSideDrawerWindow(
+                    title = title,
+                    subtitle = subtitle,
+                    closeLabel = closeLabel,
+                    onDismiss = onDismiss,
+                    modifier = modifier,
+                    dismissEnabled = dismissEnabled,
+                    dismissOnOutsideTap = dismissOnOutsideTap,
+                    topInset = topInset,
+                    bottomSafeArea = bottomSafeArea,
+                    footer = footer,
+                    content = content
+                )
+            }
+        }
+    }
+    if (hostState == null) {
+        drawer()
+        return
+    }
+    val currentDrawer = rememberUpdatedState(drawer)
+    val hostKey = remember { RaftUnifiedDialogHostKey() }
+    DisposableEffect(hostState, hostKey, hostRoute) {
+        hostState.upsert(hostKey, hostRoute) {
+            currentDrawer.value()
+        }
+        onDispose {
+            hostState.remove(hostKey)
+        }
+    }
+}
+
+@Composable
+private fun RaftUnifiedSideDrawerWindow(
+    title: String,
+    subtitle: (@Composable () -> Unit)?,
+    closeLabel: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier,
+    dismissEnabled: Boolean,
+    dismissOnOutsideTap: Boolean,
+    topInset: Dp,
+    bottomSafeArea: Dp,
+    footer: (@Composable RowScope.() -> Unit)?,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var keyboardHeightDp by remember { mutableStateOf(0f) }
+    val onKeyboardHeightChange: (KeyboardParams) -> Unit =
+        remember {
+            { params: KeyboardParams -> keyboardHeightDp = params.height.coerceAtLeast(0f) }
+        }
+    val keyboardOffset =
+        raftUnifiedDialogSheetKeyboardOffset(
+            keyboardHeightDp = keyboardHeightDp,
+            bottomSafeArea = bottomSafeArea,
+            keyboardExcludesNavigationBars = raftKeyboardHeightExcludesNavigationBars
+        )
+    val reducedMotion = rememberRaftReducedMotion()
+    // 1: off the window's end (and the scrim clear); 0: in place.
+    val slide = remember { Animatable(if (reducedMotion) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        slide.animateTo(0f, tween(RaftSideDrawerDefaults.EnterMillis, easing = RaftMotion.EaseSlide))
+    }
+    val direction = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                // The keyboard as the editors see it, also when no editor reports it.
+                .keyboardHeightChange(onKeyboardHeightChange)
+    ) {
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = 1f - slide.value }) {
+            RaftModalDismissBarrier(
+                overlayAlpha = 0.60f,
+                onDismiss = onDismiss,
+                dismissEnabled = dismissEnabled && dismissOnOutsideTap
+            )
+        }
+        RaftSideDrawerSurface(
+            title = title,
+            onClose = onDismiss,
+            modifier =
+                modifier
+                    .align(Alignment.CenterEnd)
+                    .graphicsLayer { translationX = size.width * slide.value * direction }
+                    .raftDialogContentPointerBarrier(),
+            subtitle = subtitle,
+            closeLabel = closeLabel,
+            closeEnabled = dismissEnabled,
+            insets =
+                PaddingValues(
+                    top = topInset,
+                    // On the keyboard there is no home indicator to clear.
+                    bottom = if (keyboardOffset > 0.dp) keyboardOffset else bottomSafeArea
+                ),
+            footer = footer
+        ) {
+            val scope = this
+            CompositionLocalProvider(LocalRaftDialogKeyboardHeightChange provides onKeyboardHeightChange) {
+                scope.content()
             }
         }
     }
