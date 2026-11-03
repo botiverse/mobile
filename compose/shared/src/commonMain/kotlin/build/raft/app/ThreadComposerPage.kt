@@ -41,7 +41,9 @@ import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.format.RaftFormat
 import build.raft.app.model.ConversationSummary
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
+import build.raft.app.model.Presence
 import build.raft.app.model.MemberProfile
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -137,6 +139,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -1636,6 +1639,12 @@ internal fun ThreadComposerScreen() {
                                     (visualFixture == ThreadComposerMentionBatchDetailsVisualFixture ||
                                         visualFixture == "pending_mention_actions_batch_partial"),
                             attachmentPreviewEnabled = false,
+                            agentStatusResolver =
+                                if (visualFixture.isNotBlank()) {
+                                    ThreadComposerVisualAgentStatusResolver
+                                } else {
+                                    EmptyRaftAgentStatusResolver
+                                },
                             onEvent = { action, _, _, attachmentId ->
                                 if (
                                     suggestionInteractionOracleEnabled &&
@@ -1766,6 +1775,21 @@ private fun parseThreadComposerLaunchPayload(
     }
 }
 
+private const val ThreadComposerVisualOwnerId = "visual-user"
+private const val ThreadComposerVisualCindyId = "agent-cindy"
+
+/**
+ * The visual fixture's agent activity: web VisualFixtureData agents are all `activity: "working"`
+ * (the channel-members mock carries Cindy's), so their avatar light is the busy yellow.
+ */
+internal val ThreadComposerVisualAgentStatusResolver: RaftAgentStatusResolver = { memberId ->
+    flowOf(
+        memberId?.takeIf { it.startsWith("agent-") }?.let {
+            raftAgentStatusIndicatorState(status = AgentStatus.Working, presence = Presence.Active, external = false)
+        }
+    )
+}
+
 private fun threadComposerVisualFixture(
     fixture: String,
     instanceId: String
@@ -1780,8 +1804,20 @@ private fun threadComposerVisualFixture(
             syncNonce = 1,
             focusRequestNonce = 0,
             placeholder = "Message design",
+            // web `components.thread.composer.member-suggestions`: the channel's members from the
+            // react-provider `/channels/visual-thread-composer/members` mock (artin, Cindy), then the
+            // rest of the server's agents in store order (VisualFixtureData fxProductUx, fxAndroidDev4).
             memberSuggestions =
                 listOf(
+                    RaftComposerMemberItem(
+                        displayName = "artin",
+                        handle = "artin",
+                        inMentionChannel = true,
+                        kind = MemberKind.Human,
+                        description = "Owner",
+                        avatarLabel = "AR",
+                        memberId = ThreadComposerVisualOwnerId
+                    ),
                     RaftComposerMemberItem(
                         displayName = "Cindy",
                         handle = "Cindy",
@@ -1789,25 +1825,28 @@ private fun threadComposerVisualFixture(
                         kind = MemberKind.Agent,
                         description = "Keeps visual testing release notes aligned.",
                         avatarWireValue = "pixel:robot",
-                        avatarLabel = "C"
+                        avatarLabel = "CI",
+                        memberId = ThreadComposerVisualCindyId
                     ),
                     RaftComposerMemberItem(
                         displayName = "Product UX Designer",
                         handle = "Product-UX-Designer",
-                        inMentionChannel = true,
+                        inMentionChannel = false,
                         kind = MemberKind.Agent,
-                        description = "Turns screenshots into actionable UI specs.",
-                        avatarWireValue = "pixel:paint",
-                        avatarLabel = "P"
+                        description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
+                        avatarWireValue = "pixel:robot",
+                        avatarLabel = "PU",
+                        memberId = "agent-product-ux"
                     ),
                     RaftComposerMemberItem(
-                        displayName = "Android Developer",
+                        displayName = "Android Developer 4",
                         handle = "Android-Developer-4",
                         inMentionChannel = false,
                         kind = MemberKind.Agent,
                         description = "Implements shared Android/KMP UI fixes.",
                         avatarWireValue = "pixel:robot",
-                        avatarLabel = "A"
+                        avatarLabel = "AD",
+                        memberId = "agent-android-dev-4"
                     )
                 ),
             channelSuggestions =
@@ -2158,6 +2197,7 @@ internal fun ThreadComposerContent(
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
@@ -2186,6 +2226,7 @@ internal fun ThreadComposerContent(
         composerSendKeyEnabled = composerSendKeyEnabled,
         dismissKeyboardOnBlur = dismissKeyboardOnBlur,
         attachmentPreviewEnabled = attachmentPreviewEnabled,
+        agentStatusResolver = agentStatusResolver,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
