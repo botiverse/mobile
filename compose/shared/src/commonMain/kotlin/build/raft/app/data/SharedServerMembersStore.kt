@@ -870,6 +870,49 @@ class SharedServerMembersStore internal constructor(
         }.distinctUntilChanged()
     }
 
+    /**
+     * Live agent activity (Web `liveAgentActivityStore`, fed in `socketBridge` by `agent:activity`
+     * and `agent:activity_state`): this server's agents whose presence fact says thinking or
+     * working, with their name and face from what the app knows of the server's members. Read
+     * from the same registry partition as every status light; no request of its own. Left out,
+     * as on the Web: an agent the app has no profile for, another server's agent (a joint
+     * channel's peer), an external agent (its presence is a last-seen time) and an App Bot.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun workingAgentsFlow(serverId: ServerId): Flow<List<RaftWorkingAgent>> {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return flowOf(emptyList())
+        val scopedServerId = ServerId(serverKey)
+        val factsFlow =
+            presenceOwnerFlow(scopedServerId).flatMapLatest { owner ->
+                owner?.let { presenceRegistry.factsFlow(it) } ?: flowOf(emptyMap())
+            }
+        return combine(state, factsFlow) { _, facts ->
+            val working = facts.filterValues { it.agentStatus.isLiveWork() }
+            if (working.isEmpty()) return@combine emptyList()
+            val profiles = currentKnownMemberProfilesById(scopedServerId)
+            working.mapNotNull { (memberId, fact) ->
+                val profile = profiles[memberId.trim()] ?: return@mapNotNull null
+                val otherServer = profile.serverId?.value?.trim()?.let { it.isNotEmpty() && it != serverKey } == true
+                if (
+                    profile.kind != MemberKind.Agent ||
+                    profile.isExternal ||
+                    !profile.managedByAppInstallId.isNullOrBlank() ||
+                    !profile.agentDeletedAt.isNullOrBlank() ||
+                    profile.isDeletedAgentProfile(serverKey) ||
+                    otherServer
+                ) {
+                    return@mapNotNull null
+                }
+                RaftWorkingAgent(
+                    agentId = memberId.trim(),
+                    name = profile.displayName.ifBlank { profile.handle },
+                    avatarWireValue = profile.avatarWireValueForRenderedAvatar(),
+                    status = fact.agentStatus ?: return@mapNotNull null,
+                )
+            }
+        }.distinctUntilChanged()
+    }
+
     internal fun currentServerMembersEntry(owner: AuthenticatedRouteOwner): SharedServerMembersEntry {
         val normalizedOwner = owner.normalizedOrNull()
             ?: return SharedServerMembersEntry(serverId = owner.serverId.trim())

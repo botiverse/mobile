@@ -2283,6 +2283,11 @@
     <string name="settings_appearance_message_font_size_title">消息字号</string>
     <string name="settings_appearance_message_font_size_description">调整此设备上渲染的消息文本，包括标题、代码块、内联代码和引用标签。按钮、标签和侧栏保持其固定的界面尺寸。</string>
     <string name="settings_appearance_saved_on_device">已保存到此设备。</string>
+    <string name="settings_appearance_live_agent_activity_title">实时 Agent 动态</string>
+    <string name="settings_appearance_live_agent_activity_description">在窗口顶部和首页顶栏显示正在工作的 Agent 及其在做的事。</string>
+    <string name="layout_working_now_title">工作中</string>
+    <string name="layout_working_now_summary_one">%1$d 个 Agent 工作中</string>
+    <string name="layout_working_now_summary_other">%1$d 个 Agent 工作中</string>
     <string name="settings_appearance_show_agent_model_title">显示 Agent 模型</string>
     <string name="settings_appearance_show_agent_model_description">在聊天里 Agent 名字旁显示它使用的模型。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">隐藏空的侧栏分区</string>

@@ -10,9 +10,17 @@ internal const val RaftShowAgentModelNameStorageKey = "slock_show_agent_model_na
 /** The Web's default: on everywhere (`readStoredShowAgentModelName`). */
 const val RaftShowAgentModelNameDefault: Boolean = true
 
+/** The Web's `SHOW_LIVE_AGENT_ACTIVITY_BAR_STORAGE_KEY` (appearanceStore), kept as the stored key. */
+internal const val RaftShowLiveAgentActivityStorageKey = "slock_show_live_agent_activity_bar"
+
+/** The Web's default: on unless the stored value is "false" (`readStoredShowLiveAgentActivityBar`). */
+const val RaftShowLiveAgentActivityDefault: Boolean = true
+
 /**
  * Settings > Appearance display choices that are saved on this device, like the Web's
  * appearanceStore (localStorage, not the account):
+ * - "Live agent activity": who is working, at the top of the window (the wide top bar) and on
+ *   the Home bar (Web `WorkingNowSummary`).
  * - "Show agent model": the model label next to an agent's name in a message row
  *   (Web `MessageItem`).
  * - "Hide empty sidebar sections": the Home list drops sections with nothing in them; the
@@ -26,6 +34,8 @@ object RaftDisplayPreferenceRuntime {
 
     private var storeOverride: SharedPreferenceStore? = null
 
+    private var showLiveAgentActivityState by mutableStateOf(RaftShowLiveAgentActivityDefault)
+
     private var showAgentModelNameState by mutableStateOf(RaftShowAgentModelNameDefault)
 
     private var hideEmptySidebarSectionsState by mutableStateOf(RaftSidebarHideEmptySectionsDefault)
@@ -37,6 +47,9 @@ object RaftDisplayPreferenceRuntime {
         // An unreadable store (not installed yet, or a screenshot host) keeps the defaults.
         val store = runCatching { store() }.getOrNull() ?: return
         loaded = true
+        // Web: anything but "false" is on.
+        showLiveAgentActivityState =
+            runCatching { store.getString(RaftShowLiveAgentActivityStorageKey) }.getOrNull() != "false"
         showAgentModelNameState =
             when (runCatching { store.getString(RaftShowAgentModelNameStorageKey) }.getOrNull()) {
                 "true" -> true
@@ -45,6 +58,12 @@ object RaftDisplayPreferenceRuntime {
             }
         hideEmptySidebarSectionsState = KeyValueRaftSidebarHideEmptySectionsStore(store).read()
     }
+
+    val showLiveAgentActivity: Boolean
+        get() {
+            ensureLoaded()
+            return showLiveAgentActivityState
+        }
 
     val showAgentModelName: Boolean
         get() {
@@ -57,6 +76,12 @@ object RaftDisplayPreferenceRuntime {
             ensureLoaded()
             return hideEmptySidebarSectionsState
         }
+
+    fun setShowLiveAgentActivity(show: Boolean) {
+        ensureLoaded()
+        showLiveAgentActivityState = show
+        runCatching { store().putString(RaftShowLiveAgentActivityStorageKey, show.toString()) }
+    }
 
     fun setShowAgentModelName(show: Boolean) {
         ensureLoaded()
@@ -74,6 +99,7 @@ object RaftDisplayPreferenceRuntime {
     internal fun resetForTest(store: SharedPreferenceStore?) {
         storeOverride = store
         loaded = false
+        showLiveAgentActivityState = RaftShowLiveAgentActivityDefault
         showAgentModelNameState = RaftShowAgentModelNameDefault
         hideEmptySidebarSectionsState = RaftSidebarHideEmptySectionsDefault
     }

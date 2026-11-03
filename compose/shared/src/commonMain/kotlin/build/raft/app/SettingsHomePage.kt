@@ -7193,8 +7193,33 @@ private fun RaftAppShellReadyContent(
     var sidebarShortcutHeld by remember { mutableStateOf(false) }
     SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
     LaunchedEffect(appShellTopBar.bellOpen.value) { if (appShellTopBar.bellOpen.value) railHelpOpen = false }
+    // Who is working on this server (Live agent activity): the wide top bar and the Home bar read it.
+    val latestThreadTimeContext by rememberUpdatedState(threadTimeContext)
+    val workingNowSource =
+        remember(sharedStores, storeScope, readyServerId, appShellServerMembersStore) {
+            readyServerId?.trim()?.takeIf(String::isNotBlank)?.let { serverId ->
+                RaftWorkingNowSource(
+                    serverId = serverId,
+                    items = sharedStores.liveAgentActivity(storeScope).itemsFlow(serverId),
+                    agentStatusResolver = raftScopedAgentStatusResolver(appShellServerMembersStore, serverId),
+                    subscriptions = sharedStores.agentActivitySubscriptions,
+                    onOpenAgent = { agentId ->
+                        val identity =
+                            MemberDetailIdentity(memberId = MemberId(agentId), kind = MemberKind.Agent, sourceServerId = ServerId(serverId))
+                        val pageData = homeSearchMemberDetailPageData(identity, latestThreadTimeContext)
+                        bridge.log("working_now_open_agent agentId=$agentId opened=${pageData != null}")
+                        if (pageData != null) {
+                            pager.openRaftPage(pageName = MEMBER_DETAIL_PAGE, pageData = pageData, storeScopeOverride = storeScope)
+                        }
+                    },
+                )
+            }
+        }
     val mainRouteSurface: @Composable () -> Unit = {
-        CompositionLocalProvider(LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive }) {
+        CompositionLocalProvider(
+            LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive },
+            LocalRaftWorkingNow provides workingNowSource,
+        ) {
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,

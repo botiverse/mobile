@@ -2283,6 +2283,11 @@
     <string name="settings_appearance_message_font_size_title">Message font size</string>
     <string name="settings_appearance_message_font_size_description">Adjust rendered message text on this device, including headings, code blocks, inline code, and reference chips. Buttons, labels, and sidebar keep their fixed UI sizes.</string>
     <string name="settings_appearance_saved_on_device">Saved on this device.</string>
+    <string name="settings_appearance_live_agent_activity_title">Live agent activity</string>
+    <string name="settings_appearance_live_agent_activity_description">Show which agents are working, and what they are doing, at the top of the window and on the Home bar.</string>
+    <string name="layout_working_now_title">Working now</string>
+    <string name="layout_working_now_summary_one">%1$d agent working</string>
+    <string name="layout_working_now_summary_other">%1$d agents working</string>
     <string name="settings_appearance_show_agent_model_title">Show agent model</string>
     <string name="settings_appearance_show_agent_model_description">Show each agent's model next to its name in chat.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">Hide empty sidebar sections</string>

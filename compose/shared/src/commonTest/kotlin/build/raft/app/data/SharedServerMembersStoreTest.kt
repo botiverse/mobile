@@ -1171,6 +1171,42 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun workingAgentsAreThisServersManagedAgentsAtWork() = runBlocking {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        fun agent(id: String, name: String) = member(id, name).copy(kind = MemberKind.Agent)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("u1", "Cindy"),
+                    agent("niko", "Niko"),
+                    agent("kirby", "Kirby"),
+                    agent("idle", "Idle"),
+                    agent("ext", "External").copy(isExternal = true),
+                    agent("bot", "Bot").copy(managedByAppInstallId = "install-1"),
+                )
+            )
+        )
+        fun fact(id: String, status: AgentStatus) =
+            MemberPresenceUpdated(memberId = MemberId(id), presence = status.presence, kind = MemberKind.Agent, agentStatus = status, serverSeq = 1L)
+        store.applyPresence(ServerId("server-1"), fact("niko", AgentStatus.Working))
+        store.applyPresence(ServerId("server-1"), fact("kirby", AgentStatus.Thinking))
+        store.applyPresence(ServerId("server-1"), fact("idle", AgentStatus.Online))
+        store.applyPresence(ServerId("server-1"), fact("ext", AgentStatus.Working))
+        store.applyPresence(ServerId("server-1"), fact("bot", AgentStatus.Working))
+        // An agent the app has no profile for is left out, as on the web.
+        store.applyPresence(ServerId("server-1"), fact("stranger", AgentStatus.Working))
+
+        val working = store.workingAgentsFlow(ServerId("server-1")).first()
+        assertEquals(
+            listOf("niko" to AgentStatus.Working, "kirby" to AgentStatus.Thinking),
+            working.map { it.agentId to it.status }
+        )
+        assertEquals("Niko", working.first().name)
+        assertEquals(emptyList(), store.workingAgentsFlow(ServerId("server-2")).first())
+    }
+
+    @Test
     fun applyPresenceAdvancesWatermarkWithoutVisibleChurn() = runBlocking {
         // QA blocker contract (task #136): same-visible + higher seq advances
         // the canonical watermark (no more out-of-order rollback), and the
