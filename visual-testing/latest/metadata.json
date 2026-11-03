@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T20:58:18.161Z",
+  "generatedAt": "2026-11-03T21:20:43.566Z",
   "runId": "515ed2a6-20261103205636",
   "commit": "515ed2a6-20261103205636",
   "commitSubject": "refactor(thread): one threadPageServerId for flags and the member directory",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 93,
-        "ready": 30,
-        "pending": 63
+        "ready": 34,
+        "pending": 59
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 93,
-    "ready": 30,
-    "pending": 63
+    "ready": 34,
+    "pending": 59
   },
   "componentMatrixSummary": {
     "total": 122,

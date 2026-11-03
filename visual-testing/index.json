@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-03T20:58:18.161Z",
+  "generatedAt": "2026-11-03T21:20:43.566Z",
   "latestRunId": "515ed2a6-20261103205636",
   "latest": {
     "runId": "515ed2a6-20261103205636",
     "commit": "515ed2a6-20261103205636",
     "commitSubject": "refactor(thread): one threadPageServerId for flags and the member directory",
-    "generatedAt": "2026-11-03T20:58:18.161Z",
+    "generatedAt": "2026-11-03T21:20:43.566Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 93,
-      "ready": 30,
-      "pending": 63
+      "ready": 34,
+      "pending": 59
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "515ed2a6-20261103205636",
       "commit": "515ed2a6-20261103205636",
       "commitSubject": "refactor(thread): one threadPageServerId for flags and the member directory",
-      "generatedAt": "2026-11-03T20:58:18.161Z",
+      "generatedAt": "2026-11-03T21:20:43.566Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 93,
-        "ready": 30,
-        "pending": 63
+        "ready": 34,
+        "pending": 59
       },
       "comparisons": [
         "react__android"

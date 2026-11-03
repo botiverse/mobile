@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 20:58:18 UTC
+Generated: 2026-11-03 21:20:43 UTC
 Latest run: 515ed2a6-20261103205636
 Latest commit: 515ed2a6-20261103205636
 Commit subject: refactor(thread): one threadPageServerId for flags and the member directory
 Providers: react vs android
 Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 30 / total 93, pending 63
+AI analysis: ready 34 / total 93, pending 59
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
