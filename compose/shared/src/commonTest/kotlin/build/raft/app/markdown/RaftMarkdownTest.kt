@@ -650,9 +650,10 @@ class RaftMarkdownTest {
                 annotator = annotator
             )
 
-        assertTrue(annotated.text.contains(shortCode))
-        assertTrue(annotated.text.contains(longCode))
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.raftTextWithoutInlineGaps().contains(shortCode))
+        assertTrue(annotated.raftTextWithoutInlineGaps().contains(longCode))
+        // Only the reserved `px-1` gaps, never a Raft chip placeholder.
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertEquals(
             listOf(
                 inlineCodeSegment(shortCode),
@@ -679,7 +680,7 @@ class RaftMarkdownTest {
                 annotator = raftMarkdownAnnotator(body)
             )
 
-        assertEquals("Run ${inlineCodeSegment(command)} before review", annotated.text)
+        assertEquals("Run ${inlineCodeSegment(command)} before review", annotated.raftTextWithoutInlineGaps())
         assertEquals(
             listOf(inlineCodeSegment(command)),
             annotated.raftInlineCodeMarkerTextSegments()
@@ -1281,8 +1282,11 @@ class RaftMarkdownTest {
                 annotator = raftMarkdownAnnotator(body),
                 codeSpanStyle = inlineCodeStyle.toSpanStyle(),
             ).withRaftMarkdownSpanFonts(RaftType.Body)
-        val codeStart = rendered.text.indexOf("effective-family")
-        val codeEnd = codeStart + "effective-family".length
+        // The code run: its reserved `px-1` gaps and the code, break marks included.
+        val codeRange = rendered.getStringAnnotations(raftInlineCodeAnnotationTag, 0, rendered.length).single()
+        assertEquals("effective-family", rendered.subSequence(codeRange.start, codeRange.end).raftTextWithoutInlineGaps())
+        val codeStart = codeRange.start
+        val codeEnd = codeRange.end
         fun effectiveSpanStyleAt(index: Int): SpanStyle =
             rendered.spanStyles
                 .filter { range -> range.start <= index && range.end > index }
@@ -2395,7 +2399,8 @@ class RaftMarkdownTest {
 
     private fun AnnotatedString.raftInlineCodeMarkerTextSegments(): List<String> =
         getStringAnnotations(raftInlineCodeAnnotationTag, start = 0, end = length).map { range ->
-            text.substring(range.start, range.end)
+            // The code as written: without its reserved `px-1` gaps and wrap marks.
+            subSequence(range.start, range.end).raftTextWithoutInlineGaps()
         }
 
     private fun AnnotatedString.raftInlineCodeTrailingMarginSegments(): List<String> =
@@ -2419,18 +2424,20 @@ class RaftMarkdownTest {
                 range.item.background != Color.Unspecified &&
                     range.start < annotated.length && range.end > 0
             }
-        val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
+        // The box starts after the reserved leading `px-1` gap and its word joiner.
+        val boxStart = boxRanges.firstOrNull()?.start ?: 0
+        val firstClusterBoundary = boxStart + code.indexOf(expectedLeading) + expectedLeading.length
         val splitRange =
             annotated.spanStyles.first { range ->
-                range.start == 0 && range.end == firstClusterBoundary
+                range.start == boxStart && range.end == firstClusterBoundary
             }
 
-        assertEquals(code, annotated.text)
+        assertEquals(code, annotated.raftTextWithoutInlineGaps())
         assertEquals(1, boxRanges.size)
         assertTrue(glyphBackgroundRanges.isEmpty())
         assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
         assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
-        assertTrue(annotated.text.endsWith(expectedTrailing))
+        assertTrue(annotated.raftTextWithoutInlineGaps().endsWith(expectedTrailing))
         assertEquals(
             RaftColor.FillMuted,
             boxRanges.single().item.backgroundColor,
