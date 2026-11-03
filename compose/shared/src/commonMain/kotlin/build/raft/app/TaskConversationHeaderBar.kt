@@ -7,7 +7,6 @@ import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskStatusOption
 import build.raft.app.data.canEditAssignee
 import build.raft.app.data.canEditStatus
-import build.raft.app.data.taskServerRoleCanManage
 import build.raft.app.data.taskStatusOptions
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -28,11 +27,11 @@ internal fun TaskStatus.raftTaskStatus(): RaftTaskStatus =
         TaskStatus.Closed -> RaftTaskStatus.Closed
     }
 
-/** What the task conversation's bar shows, derived purely from the task, the page state and the reader's role. */
+/** What the task conversation's bar shows, derived purely from the task and the page state (web keys no edit on the role). */
 @Immutable
 internal data class TaskConversationHeaderBarModel(
     val status: TaskStatus,
-    /** Empty: the status cannot be changed here (read-only task, guest). */
+    /** Empty: the status cannot be changed here (read-only task, or no store to write to). */
     val statusOptions: List<TaskStatusOption>,
     val statusUpdating: Boolean,
     /** The assignee's display name; null = unassigned. */
@@ -48,16 +47,15 @@ internal data class TaskConversationHeaderBarModel(
 
 internal fun TaskSummary.taskConversationHeaderBarModel(
     state: TaskConversationHeaderState,
-    serverRole: String?,
     statusUpdating: Boolean,
 ): TaskConversationHeaderBarModel =
     TaskConversationHeaderBarModel(
         status = status,
         statusOptions =
-            if (canEditStatus(serverRole)) taskStatusOptions(status, taskServerRoleCanManage(serverRole)) else emptyList(),
+            if (canEditStatus()) taskStatusOptions(status) else emptyList(),
         statusUpdating = statusUpdating,
         assigneeName = assignee?.displayName?.trim()?.takeIf { it.isNotBlank() },
-        assigneeEditable = canEditAssignee(serverRole),
+        assigneeEditable = canEditAssignee(),
         followed = state.followed(conversationFollowed),
         followPending = state.followPending,
     )

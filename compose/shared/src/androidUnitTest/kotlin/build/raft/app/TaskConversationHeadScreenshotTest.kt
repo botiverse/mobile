@@ -1,5 +1,17 @@
 package build.raft.app
 
+import android.view.View
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.unit.IntOffset
+import build.raft.designsystem.components.RaftMenuSurface
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -115,8 +127,33 @@ class TaskConversationHeadScreenshotTest {
             }
         }
 
-    private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+    /**
+     * The Status chip tapped (artin, #proj-apps #35: nothing happened): its menu under the chip, as
+     * RaftDropdownMenu places it (6dp under the chip's box), every status with the current one
+     * checked. A popup is its own window, so the menu's surface is drawn in place.
+     */
+    @Test
+    fun statusMenu() {
+        var menuAt by mutableStateOf<IntOffset?>(null)
+        capture("task.conversation.head.status-menu", RaftAppAppearance.Light, interact = { view -> menuAt = statusMenuOffset(view) }) {
+            Box(Modifier.fillMaxSize()) {
+                TaskPage(keyboardUp = false, historyOpen = false)
+                menuAt?.let { at ->
+                    RaftMenuSurface(Modifier.offset { at }, minWidth = TaskHeadStatusMenuMinWidth) {
+                        TaskHeadStatusMenuRows(HeadModel.bar) {}
+                    }
+                }
+            }
+        }
+    }
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        interact: ((View) -> Unit)? = null,
+        content: @Composable () -> Unit,
+    ) =
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities, interact = interact) {
             CompositionLocalProvider(
                 LocalActivity provides RaftPageActivity(livePager),
                 LocalThreadHeaderMenuEventBus provides QuietEventBus,
@@ -124,6 +161,16 @@ class TaskConversationHeadScreenshotTest {
                 RaftDesignSystemTheme { content() }
             }
         }
+}
+
+/** Where RaftDropdownMenu opens the status menu: under the chip's box (the chip hangs left of it), 6dp down. */
+private fun statusMenuOffset(view: View): IntOffset {
+    fun find(node: SemanticsNode): SemanticsNode? =
+        if (node.config.getOrNull(SemanticsProperties.TestTag) == TaskHeadStatusTestTag) node else node.children.firstNotNullOfOrNull(::find)
+    val chip = requireNotNull(find((view as ViewRootForTest).semanticsOwner.unmergedRootSemanticsNode)) { "no status chip" }
+    val density = view.resources.displayMetrics.density
+    val bounds = chip.boundsInRoot
+    return IntOffset((bounds.left - TaskHeadChipHang.value * density).roundToInt(), (bounds.bottom + 6 * density).roundToInt())
 }
 
 /** A task with two messages, as ThreadPage lays it out: the list tells the head how far it may fold. */
@@ -377,7 +424,7 @@ private val HeadModel =
         bar =
             TaskConversationHeaderBarModel(
                 status = TaskStatus.InProgress,
-                statusOptions = taskStatusOptions(TaskStatus.InProgress, canManageServer = false),
+                statusOptions = taskStatusOptions(TaskStatus.InProgress),
                 statusUpdating = false,
                 assigneeName = "Lagoon",
                 assigneeEditable = true,

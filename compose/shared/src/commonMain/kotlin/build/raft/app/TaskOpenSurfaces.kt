@@ -262,14 +262,12 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
 /**
  * What a task page needs to change its task (web TaskProperties in the task dialog): the task
  * channel's [SharedTasksViewModel], the one the conversation page's head writes through
- * ([rememberTaskChannelTasksViewModel]), and the reader's role on the server for the gates.
+ * ([rememberTaskChannelTasksViewModel]).
  */
 internal class TaskPageEditing(
     val authStore: RaftAuthSessionStore,
     val tasksDataSource: SharedTasksDataSource,
     val tasksDataStore: SharedTasksDataStore?,
-    /** The reader's role on the task's server (owner / admin / member / guest); null = not known. */
-    val serverRole: String?,
     /** A refused write's [SharedTasksEvent.OperationFailed] code, for the host's toast. */
     val onFailed: (String) -> Unit = {},
     val log: (String) -> Unit = {},
@@ -332,7 +330,6 @@ internal fun TaskOpenSurfaceHost(
                     details = rememberTaskConversationDetails(task, detailsRepository, serverId),
                     members = rememberTaskChannelMembers(membersStore, serverId, task.channelId),
                     timeContext = timeContext,
-                    serverRole = editing?.serverRole,
                     editable = edits != null && channelTasksState?.standIn != true,
                     statusUpdating = channelTasksState?.statusUpdatingTaskId == task.id.value,
                     sending = flow.sending || flow.handingOff,
@@ -440,7 +437,6 @@ internal fun TaskPendingConversationPage(
     details: TaskHeadDetailsHandle,
     members: List<MemberProfile>,
     timeContext: RaftTimeContext?,
-    serverRole: String?,
     editable: Boolean,
     statusUpdating: Boolean,
     sending: Boolean,
@@ -496,7 +492,6 @@ internal fun TaskPendingConversationPage(
                 task = task,
                 state = state,
                 details = details.state,
-                serverRole = serverRole,
                 statusUpdating = statusUpdating,
                 assigneeCandidates = members,
                 timeContext = timeContext,
@@ -542,7 +537,6 @@ internal fun TaskPendingConversationPage(
                 task = task,
                 state = state,
                 details = details.state,
-                serverRole = serverRole,
                 statusUpdating = statusUpdating,
                 assigneeCandidates = members,
                 timeContext = timeContext,
