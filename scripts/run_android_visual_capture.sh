@@ -10,6 +10,7 @@ SHARD_TOTAL="${VISUAL_SHARD_TOTAL:-1}"
 ATTEMPT="${VISUAL_ATTEMPT:-1}"
 RETRY="${VISUAL_RETRY:-0}"
 CAPTURE_LOCALE="${VISUAL_CAPTURE_LOCALE:-}"
+FULL_LENGTH_CASES="${VISUAL_FULL_LENGTH_CASES:-}"
 OUTPUT_DIR="visual-testing-results"
 ADB_BIN="${ADB:-adb}"
 AAPT_BIN="${AAPT:-}"
@@ -40,6 +41,8 @@ Options:
   --shard-index <n> --shard-total <n>              Canonical full-suite shard.
   --attempt <n> --retry <n>                        Attempt identity.
   --capture-locale <en|zh-CN|ja>                   Force the app resource locale.
+  --full-length-cases <id[,id...]>                 Case ids flagged capture.fullLength
+                                                   in slock sharedCases.json.
   --blacksmith-cli-version <version>               Required for Testbox sample.
   --injected-fault <name>                          Control-only fault identity.
   --output-dir <path>                              Default: visual-testing-results.
@@ -60,6 +63,7 @@ while [[ $# -gt 0 ]]; do
     --attempt) ATTEMPT="$2"; shift 2 ;;
     --retry) RETRY="$2"; shift 2 ;;
     --capture-locale) CAPTURE_LOCALE="$2"; shift 2 ;;
+    --full-length-cases) FULL_LENGTH_CASES="$2"; shift 2 ;;
     --blacksmith-cli-version) BLACKSMITH_CLI_VERSION="$2"; shift 2 ;;
     --injected-fault) INJECTED_FAULT="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
@@ -685,6 +689,9 @@ run_instrumentation() {
   local locale_args=()
   if [[ -n "$CAPTURE_LOCALE" ]]; then
     locale_args=(-e capture_locale "$CAPTURE_LOCALE")
+  fi
+  if [[ -n "$FULL_LENGTH_CASES" ]]; then
+    locale_args+=(-e visualFullLengthCases "$FULL_LENGTH_CASES")
   fi
   "$ADB_BIN" shell am instrument -w \
     -e visualAttempt "$ATTEMPT" \
