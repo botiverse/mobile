@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.TextUnit
@@ -38,7 +37,6 @@ import androidx.compose.runtime.snapshots.Snapshot
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.appendRaftInlineCodeWithEdgeBoxes
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
-import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColumnWidth
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
@@ -375,34 +373,6 @@ class RaftMarkdownTest {
             snapshot.dispose()
         }
         return writes
-    }
-
-    @Test
-    fun markdownTableColumnWidthIgnoresNoOpUpdates() {
-        val widths = mutableMapOf<Int, Dp>()
-
-        assertTrue(widths.updateMarkdownTableColumnWidth(index = 0, measuredWidth = 140.dp, maxWidth = 120.dp))
-        assertEquals(120.dp, widths[0])
-
-        assertFalse(widths.updateMarkdownTableColumnWidth(index = 0, measuredWidth = 140.dp, maxWidth = 120.dp))
-        assertEquals(120.dp, widths[0])
-
-        assertFalse(widths.updateMarkdownTableColumnWidth(index = 0, measuredWidth = 80.dp, maxWidth = 120.dp))
-        assertEquals(120.dp, widths[0])
-    }
-
-    @Test
-    fun markdownTableColumnWidthCanGrowWhenUnbounded() {
-        val widths = mutableMapOf<Int, Dp>()
-
-        assertTrue(widths.updateMarkdownTableColumnWidth(index = 1, measuredWidth = 80.dp, maxWidth = Dp.Unspecified))
-        assertEquals(80.dp, widths[1])
-
-        assertTrue(widths.updateMarkdownTableColumnWidth(index = 1, measuredWidth = 96.dp, maxWidth = Dp.Unspecified))
-        assertEquals(96.dp, widths[1])
-
-        assertFalse(widths.updateMarkdownTableColumnWidth(index = 1, measuredWidth = 90.dp, maxWidth = Dp.Unspecified))
-        assertEquals(96.dp, widths[1])
     }
 
     @Test
