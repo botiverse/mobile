@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
@@ -19,6 +21,7 @@ import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
+import kotlin.test.assertFalse
 
 /**
  * Crash 69fdce17: a two-column [RaftDescriptionList] whose value is a row of chips, in a
@@ -66,5 +69,48 @@ class RaftDescriptionListReuseTest {
             waitForIdle()
 
             onNodeWithText("Codex 4").assertExists()
+        }
+
+    /**
+     * The cause of crash 69fdce17 without the luck it needs: reading the value's first baseline
+     * while measuring lays out (places) the chips inside it before the list is placed, which
+     * Compose 1.12 gets wrong for a reused item. A two-column list must lay out its values only
+     * when it is placed.
+     */
+    @Test
+    fun horizontalListPlacesItsChipsOnlyAfterMeasuring() =
+        runComposeUiTest {
+            var measuring = false
+            var placedWhileMeasuring = false
+            val probe =
+                Modifier.layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    layout(placeable.width, placeable.height) {
+                        if (measuring) placedWhileMeasuring = true
+                        placeable.place(0, 0)
+                    }
+                }
+            setContent {
+                RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+                    Layout(
+                        content = {
+                            RaftDescriptionList(Modifier.width(480.dp), direction = RaftDescriptionListDirection.Horizontal) {
+                                Item("Runtimes") {
+                                    RaftBadge("Claude Code", probe, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+                                }
+                            }
+                        },
+                    ) { measurables, constraints ->
+                        measuring = true
+                        val placeable = measurables.single().measure(constraints)
+                        measuring = false
+                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    }
+                }
+            }
+            waitForIdle()
+
+            onNodeWithText("Claude Code").assertExists()
+            assertFalse(placedWhileMeasuring, "the chip was laid out while the list was measuring")
         }
 }
