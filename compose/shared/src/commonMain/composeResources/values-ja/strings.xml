@@ -529,7 +529,9 @@
     <string name="relative_time_day_past_many">%1$d 日前</string>
     <string name="relative_time_day_future_many">%1$d 日後</string>
     <string name="thread_author_you">あなた</string>
-    <string name="thread_error_open_thread">スレッドを開けませんでした</string>
+    <string name="thread_error_open_thread_missing_identity">スレッドを開けませんでした：この会話の情報が不足しています。一覧に戻ってもう一度開いてください。</string>
+    <string name="thread_error_open_thread_stale_source">スレッドを開けませんでした：ページが更新されました。もう一度タップしてください。</string>
+    <string name="thread_error_open_thread_missing_scope">スレッドを開けませんでした：アプリ内部の状態が一致しませんでした。戻ってもう一度お試しください。解決しない場合は「フィードバック」からお知らせください。</string>
     <string name="thread_external_author_hint">外部 %1$s ユーザー</string>
     <string name="message_author_external_fallback">外部ユーザー</string>
     <string name="message_external_identity_provider_and_kind">%1$s · %2$s</string>

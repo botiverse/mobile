@@ -527,7 +527,9 @@
     <string name="relative_time_day_past_many">%1$d days ago</string>
     <string name="relative_time_day_future_many">in %1$d days</string>
     <string name="thread_author_you">You</string>
-    <string name="thread_error_open_thread">Unable to open thread</string>
+    <string name="thread_error_open_thread_missing_identity">Unable to open thread: some of its details are missing. Go back to the list and open it again.</string>
+    <string name="thread_error_open_thread_stale_source">Unable to open thread: the page has just changed. Tap it again.</string>
+    <string name="thread_error_open_thread_missing_scope">Unable to open thread: something in the app got out of step. Go back and try again; if it still fails, tell us in Feedback.</string>
     <string name="thread_external_author_hint">External %1$s user</string>
     <string name="message_author_external_fallback">External user</string>
     <string name="message_external_identity_provider_and_kind">%1$s · %2$s</string>

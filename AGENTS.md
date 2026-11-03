@@ -163,8 +163,10 @@ botiverse/slock #12392 / #proj-o11y:#18).
     message (`SettingsLoadStateCard(traceId = ...)` already does).
   - keep `traceId` when mapping an error into UI state: carry the
     `ScreenError` (or its `traceId`) next to the resolved string.
-- Local-only failures (missing route identity, no shell scope) stay a plain
-  `bridge.toast`: there is no server request to trace.
+- Local-only failures (missing route identity, no shell scope) have no server
+  request to trace: they stay a plain `bridge.toast`, but say why and what to
+  do in plain words and log a distinct reason code (see `ThreadOpenFailure`:
+  `thread_open_failed reason=missing_identity|stale_source|missing_scope`).
 - Strings: `error_trace_id_*` (en/zh-CN/ja, copied from the web
   `errors.traceId.*`). Guard: `RaftErrorTraceIdTest`.
 

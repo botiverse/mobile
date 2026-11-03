@@ -527,7 +527,9 @@
     <string name="relative_time_day_past_many">%1$d 天前</string>
     <string name="relative_time_day_future_many">%1$d 天后</string>
     <string name="thread_author_you">你</string>
-    <string name="thread_error_open_thread">无法打开消息列</string>
+    <string name="thread_error_open_thread_missing_identity">无法打开消息列：缺少这个会话的信息，请返回列表重新打开。</string>
+    <string name="thread_error_open_thread_stale_source">无法打开消息列：页面刚刚更新了，请再点一次。</string>
+    <string name="thread_error_open_thread_missing_scope">无法打开消息列：应用内部状态不一致，请返回重试；仍不行请在「反馈」里告诉我们。</string>
     <string name="thread_external_author_hint">外部 %1$s 用户</string>
     <string name="message_author_external_fallback">外部用户</string>
     <string name="message_external_identity_provider_and_kind">%1$s · %2$s</string>
