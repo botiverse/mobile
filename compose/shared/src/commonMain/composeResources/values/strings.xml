@@ -1972,10 +1972,14 @@
     <string name="agent_create_error_name_characters">Agent name must start with a letter and can only contain letters, numbers, hyphens, and underscores</string>
     <string name="agent_create_label_advanced">Advanced</string>
     <string name="agent_create_action_add_env_var">+ Add env var</string>
+    <string name="agent_create_reasoning_off">No reasoning</string>
+    <string name="agent_create_reasoning_minimal">Minimal</string>
     <string name="agent_create_reasoning_low">Low</string>
     <string name="agent_create_reasoning_medium">Medium</string>
     <string name="agent_create_reasoning_high">High</string>
     <string name="agent_create_reasoning_extra_high">Extra High</string>
+    <string name="agent_create_reasoning_max">Max</string>
+    <string name="agent_create_reasoning_ultra">Ultra</string>
     <string name="agent_invite_title">Invite Human</string>
     <string name="agent_invite_label_emails">Emails</string>
     <string name="agent_invite_placeholder_email">teammate@example.com</string>

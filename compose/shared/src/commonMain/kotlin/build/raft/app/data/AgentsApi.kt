@@ -918,7 +918,10 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
                 external = external,
                 runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime
             ),
-        reasoning = reasoningEffort ?: currentProfile?.reasoningEffort,
+        // Web profile shows the saved effort only (`hydrateRuntimeConfigForm` over the agent's
+        // columns), never `runtimeProfile.current`: a saved Default (null) must not read back as
+        // the last run's effort.
+        reasoning = reasoningEffort,
         executionMode = executionMode ?: currentProfile?.executionMode,
         machineId = machineId ?: currentProfile?.machineId,
         machineName = currentProfile?.machineName,

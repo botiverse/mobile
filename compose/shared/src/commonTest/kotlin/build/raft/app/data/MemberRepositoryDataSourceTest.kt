@@ -112,7 +112,9 @@ class MemberRepositoryDataSourceTest {
         assertEquals("agent-1", detail.data.summary?.id)
         assertEquals("codex", detail.data.summary?.runtime)
         assertEquals("gpt-5", detail.data.summary?.model)
-        assertEquals("medium", detail.data.summary?.reasoning)
+        // No saved `reasoningEffort`: the profile shows Default like web, not the running
+        // `runtimeProfile.current` effort ("medium").
+        assertEquals(null, detail.data.summary?.reasoning)
         assertEquals("local", detail.data.summary?.executionMode)
         assertEquals("machine-1", detail.data.summary?.machineId)
         assertEquals("Mac Studio", detail.data.summary?.machineName)

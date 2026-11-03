@@ -11097,7 +11097,9 @@ internal fun MembersAgentRuntimeConfigRows(
             MembersAgentInfoField(stringResource(Res.string.member_label_reasoning)) {
                 // Web `<span>`: the plain callout value.
                 RaftText(
-                    text = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(Res.string.member_label_default),
+                    text = runtimeConfig.reasoningEffort?.let { effort ->
+                        membersReasoningEffortLabel(effort)?.let { stringResource(it) } ?: effort.toMembersDisplayLabel()
+                    } ?: stringResource(Res.string.member_label_default),
                     style = membersInfoValueStyle(),
                     color = RaftTheme.colors.foreground
                 )
@@ -13929,6 +13931,24 @@ private fun String?.orDash(): String = this?.takeIf { it.isNotBlank() } ?: "—"
 
 private fun String?.orBadgeFallback(fallback: String?): String =
     this?.takeIf { it.isNotBlank() } ?: fallback?.takeIf { it.isNotBlank() } ?: "—"
+
+/**
+ * Web `REASONING_EFFORT_LABEL_ID` (packages/web/src/utils/reasoningEffortOptions.ts): the shared
+ * effort id's display label (`xhigh` -> "Extra High"); null for an id the catalog doesn't know,
+ * which the caller shows prettified.
+ */
+internal fun membersReasoningEffortLabel(effort: String): StringResource? =
+    when (effort) {
+        "off" -> Res.string.agent_create_reasoning_off
+        "minimal" -> Res.string.agent_create_reasoning_minimal
+        "low" -> Res.string.agent_create_reasoning_low
+        "medium" -> Res.string.agent_create_reasoning_medium
+        "high" -> Res.string.agent_create_reasoning_high
+        "xhigh" -> Res.string.agent_create_reasoning_extra_high
+        "max" -> Res.string.agent_create_reasoning_max
+        "ultra" -> Res.string.agent_create_reasoning_ultra
+        else -> null
+    }
 
 private fun String.toMembersDisplayLabel(): String =
     replace("_", " ")
