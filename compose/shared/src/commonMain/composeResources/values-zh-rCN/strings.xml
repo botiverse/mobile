@@ -291,7 +291,7 @@
     <string name="host_feedback_prompt_message">你的留言和设备诊断信息将发送给 Hands，并生成可复制的引用供你分享到社区。</string>
     <string name="host_feedback_prompt_placeholder">描述你的反馈</string>
     <string name="host_feedback_sent_title">反馈已发送</string>
-    <string name="host_feedback_copied_message">已复制——请粘贴到社区频道。</string>
+    <string name="host_feedback_copied_message">提交成功</string>
     <string name="host_feedback_failed_message">反馈提交失败：%1$s</string>
     <string name="host_feedback_error_unknown">未知错误</string>
     <string name="settings_feedback_submission_failed_title">反馈发送失败</string>
