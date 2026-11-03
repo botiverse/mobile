@@ -4,6 +4,7 @@
 - Drag files onto the message composer to attach them (from another app in split screen, desktop windowing or on a tablet); it shows "Drop files to attach"
 - Notifications on Home tells you when a Computer you manage must be upgraded or reinstalled before a deadline, after which its agents stop running; View opens that Computer
 - raft:// links in messages are tappable and open the channel, DM, thread or message right in the app
+- On tablets in the wide layout, tapping the search field in the top bar (or ⌘K / Ctrl+K with a keyboard) opens a search panel over the page, as on the web: recent conversations first, then matching channels, people and messages as you type
 
 🔧 Improved
 - When a server request fails, the error shows its Trace ID: tap Copy on the toast and send it to us so we can find the request. When a thread can't be opened for a reason inside the app, the message says why and what to do
@@ -20,3 +21,6 @@
 - Conversations marked Done on the web or another device leave Activity without a manual refresh
 - Markdown tables take the width of their content instead of narrow wrapped columns; on wide screens, sender names show in full when there is room
 - Back after switching bottom tabs returns to the previous tab instead of Home
+- Long-pressing a message while the keyboard is up no longer closes the keyboard, so you can keep typing after closing the menu
+- Tapping a message in a task's conversation no longer shows "Unable to open thread"; as on the web, messages there no longer offer Reply in Thread
+- In the image viewer on tablets, the time at the top now shows your local time instead of a raw date code
