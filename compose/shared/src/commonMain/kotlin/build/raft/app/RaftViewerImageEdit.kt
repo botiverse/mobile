@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -113,102 +114,61 @@ internal fun RaftViewerImageEditor(
     var fullUrl by remember(attachment.id) { mutableStateOf<String?>(null) }
     var failed by remember(attachment.id) { mutableStateOf(false) }
     var saving by remember(attachment.id) { mutableStateOf(false) }
+    var captureRef by remember(attachment.id) { mutableStateOf<RaftViewCaptureRef?>(null) }
     val state = remember(attachment.id) { RaftComposerImageEditorState() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(attachment.id) {
         val url = resolveFullUrl(attachment.id)?.trim()?.takeIf { it.isNotBlank() }
         if (url == null) failed = true else fullUrl = url
     }
-    Modal(onWillDismiss = { if (!saving) onCancel() }) {
-        if (desktop) {
-            val ui = remember(attachment.id) { RaftComposerImageDesktopEditorUi() }
-            val image = rememberAsyncImageBitmap(fullUrl)
-            val platformContext = LocalPlatformContext.current
-            val density = LocalDensity.current
-            val writer = rememberRaftPngFileWriter()
-            RaftComposerImageDesktopEditor(
-                image = image,
+    val cancel = { if (!saving) onCancel() }
+    // One editor on every platform; only its chrome differs (desktop: top bar and popovers).
+    val editor: @Composable (Modifier) -> Unit = { editorModifier ->
+        val url = fullUrl
+        if (url == null) {
+            Box(modifier = editorModifier, contentAlignment = Alignment.Center) {
+                if (failed) {
+                    build.raft.designsystem.text.RaftText(text = stringResource(Res.string.file_preview_image_full_load_failed))
+                } else {
+                    RaftSpinner()
+                }
+            }
+        } else {
+            RaftFilePreviewComposerImageEditor(
+                payload = RaftFilePreviewPayload(kind = "image", name = attachment.name, imageUrl = url),
                 state = state,
-                ui = ui,
                 saving = saving,
-                failed = failed,
-                onCancel = { if (!saving) onCancel() },
-                onDone = done@{ canvasSize ->
-                    val url = fullUrl ?: return@done
-                    val shown = image ?: return@done
+                onCaptureRef = { captureRef = it },
+                onDone = done@{
+                    // The capture re-renders the edits over the photo decoded at full size.
+                    val ref = captureRef ?: return@done
                     saving = true
                     scope.launch {
-                        val fileRef =
-                            try {
-                                val source =
-                                    raftLoadImageBitmap(
-                                        context = platformContext,
-                                        model = url,
-                                        maxDecodeEdgePx = raftComposerImageExportDecodeEdgePx(shown.width, shown.height),
-                                    ) ?: shown
-                                val content = state.history.content
-                                withContext(Dispatchers.Default) {
-                                    renderRaftComposerImageExport(
-                                        source = source,
-                                        content = content,
-                                        canvasSize = canvasSize,
-                                        density = density,
-                                        text = null,
-                                        mosaicSource = shown,
-                                    )?.let { writer.writePng(it, RaftViewerImageEditFilePrefix) }
-                                }
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (_: Throwable) {
-                                null
-                            }
+                        val result = runCatching { ref.captureToPngFile() }.getOrNull()
                         saving = false
+                        val fileRef = result?.fileRef
                         if (fileRef.isNullOrBlank()) onSaveFailed() else onEdited(fileRef)
                     }
                 },
+                desktopChrome = if (desktop) RaftComposerImageEditorDesktopChrome(onCancel = cancel) else null,
+                modifier = editorModifier,
             )
+        }
+    }
+    Modal(onWillDismiss = { cancel() }) {
+        if (desktop) {
+            Box(modifier = Modifier.fillMaxSize().background(RaftComposerImageDesktopBackdrop)) {
+                editor(Modifier.fillMaxSize())
+            }
         } else {
-            var captureRef by remember(attachment.id) { mutableStateOf<RaftViewCaptureRef?>(null) }
             RaftFilePreviewPageScaffold(
                 title = stringResource(Res.string.file_preview_editor_title),
                 iconName = RaftLucideIconName.Pencil,
-                onBack = { if (!saving) onCancel() },
+                onBack = cancel,
                 contentPadding = 0.dp,
                 trailingContent = { RaftFilePreviewImageEditorHistoryActions(state = state, saving = saving) },
             ) {
-                val url = fullUrl
-                if (url == null) {
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        if (failed) {
-                            build.raft.designsystem.text.RaftText(text = stringResource(Res.string.file_preview_image_full_load_failed))
-                        } else {
-                            RaftSpinner()
-                        }
-                    }
-                } else {
-                    RaftFilePreviewComposerImageEditor(
-                        payload =
-                            RaftFilePreviewPayload(
-                                kind = "image",
-                                name = attachment.name,
-                                imageUrl = url,
-                            ),
-                        state = state,
-                        saving = saving,
-                        onCaptureRef = { captureRef = it },
-                        onDone = done@{
-                            val ref = captureRef ?: return@done
-                            saving = true
-                            scope.launch {
-                                val result = runCatching { ref.captureToPngFile() }.getOrNull()
-                                saving = false
-                                val fileRef = result?.fileRef
-                                if (fileRef.isNullOrBlank()) onSaveFailed() else onEdited(fileRef)
-                            }
-                        },
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
-                }
+                editor(Modifier.weight(1f).fillMaxWidth())
             }
         }
     }

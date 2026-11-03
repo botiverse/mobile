@@ -55,4 +55,16 @@ class RaftViewerImageEditTest {
         assertEquals("att-2", payload.viewerShownAttachmentId())
         assertEquals("att-1", payload.copy(imageGallery = emptyList()).viewerShownAttachmentId())
     }
+
+    @Test
+    fun desktopKeys() {
+        val key = androidx.compose.ui.input.key.Key
+        assertEquals(RaftComposerImageDesktopKey.Cancel, raftComposerImageDesktopKey(key.Escape, down = true, textTool = true))
+        assertEquals(RaftComposerImageDesktopKey.Done, raftComposerImageDesktopKey(key.Enter, down = true, textTool = false))
+        // In the text tool Return and Space type into the field.
+        assertNull(raftComposerImageDesktopKey(key.Enter, down = true, textTool = true))
+        assertNull(raftComposerImageDesktopKey(key.Spacebar, down = true, textTool = true))
+        assertEquals(RaftComposerImageDesktopKey.SpaceDown, raftComposerImageDesktopKey(key.Spacebar, down = true, textTool = false))
+        assertEquals(RaftComposerImageDesktopKey.SpaceUp, raftComposerImageDesktopKey(key.Spacebar, down = false, textTool = false))
+    }
 }

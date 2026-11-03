@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -93,8 +94,8 @@ class ViewerImageEditPhoneScreenshotTest {
 
 /**
  * The same on the desktop (1440x900, a mouse): (a) the image viewer with Edit at the top right next
- * to Download / Open / Close; the editor over the window with (b) Pen and its popover, (c) Crop
- * at 1:1 with its popover.
+ * to Download / Open / Close; the editor over the window (the phone's editor with the desktop
+ * chrome) with (b) Pen, (c) Text and (d) Crop at 1:1, each with its popover.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -122,25 +123,63 @@ class ViewerImageEditDesktopScreenshotTest {
     @Test
     fun editorPen() =
         capture("image-editor.pen.desktop") { image ->
-            val state = remember { RaftComposerImageEditorState(desktopPenHistory()) }
-            val ui = remember { RaftComposerImageDesktopEditorUi(tool = RaftComposerImageEditorTool.Pencil, penWidth = RaftComposerImagePenWidth.Thick) }
-            RaftComposerImageDesktopEditor(image = image, state = state, ui = ui, saving = false, onCancel = {}, onDone = {})
+            DesktopEditor(image, desktopPenHistory(), RaftComposerImageEditorTool.Pencil)
+        }
+
+    @Test
+    fun editorText() =
+        capture("image-editor.text.desktop") { image ->
+            val content =
+                raftComposerImageAddTextDraft(
+                    content = RaftComposerImageEditorContent(),
+                    draft = "Ship this one",
+                    position = Offset(-120f, -160f),
+                    annotationId = 0,
+                    color = Color(0xFF32ADE6), // raft-color: image-editor pen palette
+                )
+            DesktopEditor(image, RaftComposerImageEditorHistory(content = content), RaftComposerImageEditorTool.Text)
         }
 
     @Test
     fun editorCrop() =
         capture("image-editor.crop.desktop") { image ->
-            val state = remember { RaftComposerImageEditorState() }
-            val ui =
-                remember {
-                    RaftComposerImageDesktopEditorUi(
-                        tool = RaftComposerImageEditorTool.Crop,
-                        cropAspect = RaftComposerImageCropAspect.Square,
-                        transientCrop = raftCropRectForAspect(RaftComposerImageCropRect.Uncropped, 1f, image.width, image.height),
-                    )
-                }
-            RaftComposerImageDesktopEditor(image = image, state = state, ui = ui, saving = false, onCancel = {}, onDone = {})
+            DesktopEditor(
+                image,
+                RaftComposerImageEditorHistory(
+                    content =
+                        RaftComposerImageEditorContent(
+                            cropRect = raftCropRectForAspect(RaftComposerImageCropRect.Uncropped, 1f, image.width, image.height)
+                        )
+                ),
+                RaftComposerImageEditorTool.Crop,
+                RaftComposerImageCropAspect.Square,
+            )
         }
+
+    /** The editor as the viewer opens it on a desktop: the same editor with the desktop chrome. */
+    @Composable
+    private fun DesktopEditor(
+        image: ImageBitmap,
+        history: RaftComposerImageEditorHistory,
+        tool: RaftComposerImageEditorTool,
+        aspect: RaftComposerImageCropAspect = RaftComposerImageCropAspect.Free,
+    ) {
+        val state = remember { RaftComposerImageEditorState(history) }
+        Box(Modifier.fillMaxSize().background(RaftComposerImageDesktopBackdrop)) {
+            RaftFilePreviewComposerImageEditor(
+                payload = RaftFilePreviewPayload(kind = "image", name = "IMG_2042.jpg", imageUrl = "file:///test/IMG_2042.jpg"),
+                state = state,
+                saving = false,
+                onCaptureRef = {},
+                onDone = {},
+                initialTool = tool,
+                initialCropAspect = aspect,
+                previewImage = image,
+                desktopChrome = RaftComposerImageEditorDesktopChrome(onCancel = {}),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 
     private fun desktopPenHistory(): RaftComposerImageEditorHistory {
         val thin =

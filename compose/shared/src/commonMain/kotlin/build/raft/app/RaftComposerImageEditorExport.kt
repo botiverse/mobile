@@ -260,7 +260,7 @@ private fun DrawScope.drawRaftComposerImageTextAnnotation(
     val layout =
         text.measurer.measure(
             text = annotation.text,
-            style = text.style,
+            style = text.style.copy(color = annotation.color),
             overflow = TextOverflow.Ellipsis,
             maxLines = RaftComposerImageTextMaxLines,
             constraints =
