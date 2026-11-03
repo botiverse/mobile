@@ -4752,7 +4752,8 @@ internal fun MemberDetailPageContent(
                                         errorTemplate = directMessageOpenErrorTemplate,
                                         permissionMessage = directMessagePermissionError,
                                         errorStrings = errorStrings,
-                                        onUnavailableAction = { bridge.toast(it) }
+                                        onUnavailableAction = { bridge.toast(it) },
+                                        onErrorAction = { message, traceId -> bridge.errorToast(message, traceId) }
                                     )
                                 }
                             },
@@ -4944,7 +4945,8 @@ internal fun MemberDetailPageContent(
                                     errorTemplate = directMessageOpenErrorTemplate,
                                     permissionMessage = directMessagePermissionError,
                                     errorStrings = errorStrings,
-                                    onUnavailableAction = { bridge.toast(it) }
+                                    onUnavailableAction = { bridge.toast(it) },
+                                    onErrorAction = { message, traceId -> bridge.errorToast(message, traceId) }
                                 )
                             }
                         },
@@ -5421,7 +5423,9 @@ internal fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
     errorTemplate: String,
     permissionMessage: String,
     errorStrings: ErrorPresentationStrings,
-    onUnavailableAction: (String) -> Unit
+    onUnavailableAction: (String) -> Unit,
+    /** A server error or refusal: its message and the failed request's trace id, for an error toast. */
+    onErrorAction: (message: String, traceId: String?) -> Unit = { message, _ -> onUnavailableAction(message) },
 ) {
     when (this) {
         is DataResult.Content -> {
@@ -5447,9 +5451,9 @@ internal fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
         is DataResult.Empty ->
             onUnavailableAction(unavailableMessage)
         is DataResult.Error ->
-            onUnavailableAction(membersFormattedScreenError(errorTemplate, error, errorStrings))
+            onErrorAction(membersFormattedScreenError(errorTemplate, error, errorStrings), error.traceId)
         is DataResult.NoPermission ->
-            onUnavailableAction(permissionMessage)
+            onErrorAction(permissionMessage, blocker.traceId)
     }
 }
 

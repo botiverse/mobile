@@ -19,6 +19,10 @@
     <string name="error_response_unreadable">応答を読み取れませんでした。もう一度お試しください。</string>
     <string name="error_server_version_incompatible">このプライベートデプロイはこのアプリバージョンと互換性がありません。管理者にサーバーのアップグレードを依頼してください。</string>
     <string name="error_generic">問題が発生しました。もう一度お試しください。</string>
+    <string name="error_trace_id_label">トレース ID</string>
+    <string name="error_trace_id_value">トレース ID %1$s</string>
+    <string name="error_trace_id_copy">トレース ID をコピー</string>
+    <string name="error_trace_id_copied">トレース ID をコピーしました</string>
     <string name="empty_no_channels">利用できるチャンネルはまだありません。</string>
     <string name="empty_no_messages">利用できるメッセージはまだありません。</string>
     <string name="empty_no_tasks">利用できるタスクはまだありません。</string>

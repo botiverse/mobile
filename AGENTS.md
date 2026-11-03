@@ -137,6 +137,37 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
   is needed for normal app validation.
 
+## Errors carry the trace ID
+
+Owner rule (artin, 2026-11-03: "有报错的地方必定要有 traceid"): every
+user-visible error that comes from a server response shows that request's
+trace ID with a way to copy it, as the web does (`TraceIdNote`,
+botiverse/slock #12392 / #proj-o11y:#18).
+
+- Where it comes from: the server returns `X-Trace-Id` on every response.
+  The bottom HTTP layer (`KtorRaftHttpExecutor`) logs it on the
+  `slock_http_execute_finish` line and records a failed (non-2xx, non-401)
+  response's id in `RaftFailedRequestTraceIds`
+  (`network/RaftRequestTraceId.kt`); `HomeNetworkResponse.traceId` reads it
+  from the headers. `ScreenError.traceId` and `PermissionBlocker.traceId`
+  default to the failure seen in the last 5 s (the web's
+  `recentFailedRequestTraceId`), so repositories get it without threading it;
+  pass it explicitly only when you have the response at hand. A request that
+  got no response has none, and its error shows as before.
+- Never add a request to get one, and never put it in route/pageData.
+- Show it through the central helpers, never hand-built text:
+  - toast: `bridge.errorToast(message, error)` (or `traceId`), not
+    `bridge.toast(...)`, for an error from a server request. It shows
+    "Trace ID a1b2c3d4…" and a Copy action that copies all 32 digits.
+  - inline (page, card, dialog): `RaftTraceIdNote(error.traceId)` under the
+    message (`SettingsLoadStateCard(traceId = ...)` already does).
+  - keep `traceId` when mapping an error into UI state: carry the
+    `ScreenError` (or its `traceId`) next to the resolved string.
+- Local-only failures (missing route identity, no shell scope) stay a plain
+  `bridge.toast`: there is no server request to trace.
+- Strings: `error_trace_id_*` (en/zh-CN/ja, copied from the web
+  `errors.traceId.*`). Guard: `RaftErrorTraceIdTest`.
+
 ## Environment Web Link URL Rule
 
 - Any Android/KMP code path that generates, normalizes, displays, copies, or

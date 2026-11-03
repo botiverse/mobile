@@ -940,14 +940,15 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
                     }
                     is DataResult.Empty -> bridge.toast(unableToOpenDirectMessage)
                     is DataResult.Error ->
-                        bridge.toast(
+                        bridge.errorToast(
                             homeDirectMessageOpenFailureMessage(
                                 failedToOpenDirectMessage,
                                 result.error,
                                 errorStrings
-                            )
+                            ),
+                            result.error
                         )
-                    is DataResult.NoPermission -> bridge.toast(noDirectMessagePermission)
+                    is DataResult.NoPermission -> bridge.errorToast(noDirectMessagePermission, result.blocker.traceId)
                 }
             }
         },

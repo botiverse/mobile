@@ -1,5 +1,6 @@
 package build.raft.app.base
 
+import build.raft.app.RaftTraceIdToastStrings
 import build.raft.app.cmp.RaftCmpToastWindow
 import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
@@ -18,6 +19,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * `BridgeModule.toast` (229 call sites) shows the design-system toast of the window that renders
@@ -90,5 +92,36 @@ class BridgeModuleToastTest {
 
         assertEquals(emptyList(), window.state.visible.map { it.title })
         assertEquals(listOf("Saved."), nativeToasts())
+    }
+
+    @Test
+    fun errorToastShowsTheTraceIdAndCopiesTheWholeId() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+        bridge().errorToast("Unable to open thread", traceId) { RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied") }
+
+        val toast = window.state.visible.single()
+        assertEquals("Unable to open thread", toast.title)
+        assertEquals("Trace ID 4bf92f35…", toast.description)
+        assertEquals("Copy", toast.actionLabel)
+        toast.onAction!!.invoke()
+        val copied = calls.single { it.method == "copyToPasteboard" }
+        assertEquals(traceId, Json.parseToJsonElement(copied.params).jsonObject.getValue("content").jsonPrimitive.content)
+        assertEquals(listOf("Trace ID copied"), window.state.visible.map { it.title })
+    }
+
+    @Test
+    fun errorToastWithoutATraceIdIsThePlainToast() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+
+        bridge().errorToast("Unable to open thread", traceId = null)
+
+        val toast = window.state.visible.single()
+        assertEquals("Unable to open thread", toast.title)
+        assertNull(toast.description)
+        assertNull(toast.actionLabel)
     }
 }

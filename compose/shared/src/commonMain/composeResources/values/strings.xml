@@ -19,6 +19,10 @@
     <string name="error_response_unreadable">The response could not be read. Please try again.</string>
     <string name="error_server_version_incompatible">This self-hosted server is not compatible with this app version. Ask its administrator to upgrade the server.</string>
     <string name="error_generic">Something went wrong. Please try again.</string>
+    <string name="error_trace_id_label">Trace ID</string>
+    <string name="error_trace_id_value">Trace ID %1$s</string>
+    <string name="error_trace_id_copy">Copy trace ID</string>
+    <string name="error_trace_id_copied">Trace ID copied</string>
     <string name="empty_no_channels">No channels are available yet.</string>
     <string name="empty_no_messages">No messages are available yet.</string>
     <string name="empty_no_tasks">No tasks are available yet.</string>

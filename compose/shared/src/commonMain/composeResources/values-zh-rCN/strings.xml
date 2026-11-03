@@ -19,6 +19,10 @@
     <string name="error_response_unreadable">无法读取服务器响应。请重试。</string>
     <string name="error_server_version_incompatible">该私有化部署与此版本 App 不兼容。请联系管理员升级服务端。</string>
     <string name="error_generic">出了点问题。请重试。</string>
+    <string name="error_trace_id_label">追踪 ID</string>
+    <string name="error_trace_id_value">追踪 ID %1$s</string>
+    <string name="error_trace_id_copy">复制追踪 ID</string>
+    <string name="error_trace_id_copied">已复制追踪 ID</string>
     <string name="empty_no_channels">暂无可用频道。</string>
     <string name="empty_no_messages">暂无可用消息。</string>
     <string name="empty_no_tasks">暂无可用任务。</string>

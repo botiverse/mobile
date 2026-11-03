@@ -15,6 +15,7 @@ import build.raft.app.host.HostCapabilities
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftToastHost
 import build.raft.designsystem.components.RaftToastHostState
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
@@ -47,16 +48,22 @@ object RaftCmpToasts {
      *
      * False when no window can show it (the app in the background, before the first frame):
      * the caller then uses the platform toast. A blank [message] shows nothing and is handled.
+     * [description], [intent] and the action ([actionLabel] + [onAction]) are the toast's
+     * ([RaftToastHostState.show]): an error's trace id line and its Copy action.
      */
     fun post(
         message: String,
         origin: HostCapabilities? = null,
         foregroundOnly: Boolean = true,
         durationMillis: Long? = null,
+        description: String? = null,
+        intent: RaftToastIntent? = null,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null,
     ): Boolean {
         if (message.isBlank()) return true
         val window = target(origin, foregroundOnly) ?: return false
-        window.state.show(message, durationMillis = durationMillis)
+        window.state.show(message, description, intent, actionLabel, onAction, durationMillis)
         return true
     }
 

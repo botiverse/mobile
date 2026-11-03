@@ -13348,7 +13348,7 @@ private fun SharedThreadRouteContentContent(
                                             "generation=$requestGeneration " +
                                             "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                     )
-                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
                                 }
                                 MarkdownTaskNumberOpenResult.AuthRequired -> {
                                     bridge.log(
@@ -13366,7 +13366,7 @@ private fun SharedThreadRouteContentContent(
                                             "generation=$requestGeneration " +
                                             "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                     )
-                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
                                 }
                             }
                         } finally {
@@ -13471,7 +13471,7 @@ private fun SharedThreadRouteContentContent(
                                         }
                                 )
                             if (loadingPayload == null) {
-                                bridge.toast(
+                                bridge.errorToast(
                                     localizedUnableToOpenTarget(
                                         if (openDirectMessage) {
                                             "dm:@${itemId.take(28)}"
@@ -13562,11 +13562,11 @@ private fun SharedThreadRouteContentContent(
                                 }
                                 is DataResult.Empty -> {
                                     resolveOutcome = "empty"
-                                    bridge.toast(unableToOpenThreadRefLabel)
+                                    bridge.errorToast(unableToOpenThreadRefLabel)
                                 }
                                 is DataResult.Error -> {
                                     resolveOutcome = "error"
-                                    bridge.toast(unableToOpenThreadRefLabel)
+                                    bridge.errorToast(unableToOpenThreadRefLabel, result.error)
                                 }
                                 is DataResult.NoPermission -> {
                                     resolveOutcome = "no_permission"

@@ -38,6 +38,7 @@ new product concept gets a Japanese rendering.
 | Inbox | 受信トレイ | Agent-permission surface too |
 | Activity | アクティビティ | |
 | Reaction | リアクション | |
+| Trace ID (under an error) / Copy trace ID / Trace ID copied | トレース ID / トレース ID をコピー / トレース ID をコピーしました | The failed request's server id shown with a copy action; copied from the web ja catalog (`errors.traceId.*`) |
 | Forward | 転送 | |
 | Quote | 引用 | |
 | Draft | 下書き | |
