@@ -110,10 +110,13 @@ internal fun SettingsLoadStateCard(
     retryLabel: String?,
     onRetry: () -> Unit,
     // Still loading: a spinner in place of [iconName].
-    loading: Boolean = false
+    loading: Boolean = false,
+    // The failed request's trace id (ScreenError/PermissionBlocker.traceId), shown with a copy action.
+    traceId: String? = null,
 ) {
     SettingsFormSectionCard(iconName = iconName, title = title, loading = loading) {
         SettingsFormDetailText(detail)
+        RaftTraceIdNote(traceId)
         retryLabel?.let {
             RaftButton(
                 text = it,

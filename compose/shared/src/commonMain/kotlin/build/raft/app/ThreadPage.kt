@@ -4814,8 +4814,12 @@ private fun ThreadPageScreen(
     val routerModule = remember(pager) {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
-    val unableToOpenThreadLabel = stringResource(Res.string.thread_error_open_thread)
+    val threadOpenFailureMessages = ThreadOpenFailure.entries.associateWith { stringResource(it.message) }
     val unableToOpenProfileLabel = stringResource(Res.string.thread_error_open_profile)
+    fun failThreadOpen(failure: ThreadOpenFailure, payload: RaftThreadScreenPayload) {
+        bridge.toast(threadOpenFailureMessages.getValue(failure))
+        bridge.logWarn(threadOpenFailureLog(failure, payload))
+    }
     fun openStandaloneThreadPayload(
         nextPayload: RaftThreadScreenPayload,
         serverIdOverride: String? = null,
@@ -4824,8 +4828,7 @@ private fun ThreadPageScreen(
     ) {
         val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
         if (launchPayload == null) {
-            bridge.toast(unableToOpenThreadLabel)
-            bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
+            failThreadOpen(ThreadOpenFailure.MissingIdentity, nextPayload)
             return
         }
         val targetStoreScope =
@@ -4853,18 +4856,14 @@ private fun ThreadPageScreen(
                     current.openWithinWideDetail(source, launchPayload, pane.serverId, desktopModeEnabled)
                 }
                 if (next.launchPayload != launchPayload && next.visibleSideThread()?.payload != launchPayload) {
-                    bridge.toast(unableToOpenThreadLabel)
-                    bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
+                    failThreadOpen(ThreadOpenFailure.StaleSource, nextPayload)
                 }
             } else pager.openRaftPage(
                 pageName = THREAD_PAGE,
                 pageData = launchPayload.toThreadPageData().withRaftOpenAnimation(animated),
                 storeScopeOverride = targetStoreScope,
                 onMissingScope = {
-                    bridge.toast(unableToOpenThreadLabel)
-                    bridge.logWarn(
-                        "thread_open_skip reason=missing_shell_scope instanceId=${nextPayload.instanceId}"
-                    )
+                    failThreadOpen(ThreadOpenFailure.MissingScope, nextPayload)
                 }
             )
         }
@@ -13484,7 +13483,7 @@ private fun SharedThreadRouteContentContent(
                                             "generation=$requestGeneration " +
                                             "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                     )
-                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
                                 }
                                 MarkdownTaskNumberOpenResult.AuthRequired -> {
                                     bridge.log(
@@ -13502,7 +13501,7 @@ private fun SharedThreadRouteContentContent(
                                             "generation=$requestGeneration " +
                                             "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
                                     )
-                                    bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
+                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
                                 }
                             }
                         } finally {
@@ -13607,7 +13606,7 @@ private fun SharedThreadRouteContentContent(
                                         }
                                 )
                             if (loadingPayload == null) {
-                                bridge.toast(
+                                bridge.errorToast(
                                     localizedUnableToOpenTarget(
                                         if (openDirectMessage) {
                                             "dm:@${itemId.take(28)}"
@@ -13698,11 +13697,11 @@ private fun SharedThreadRouteContentContent(
                                 }
                                 is DataResult.Empty -> {
                                     resolveOutcome = "empty"
-                                    bridge.toast(unableToOpenThreadRefLabel)
+                                    bridge.errorToast(unableToOpenThreadRefLabel)
                                 }
                                 is DataResult.Error -> {
                                     resolveOutcome = "error"
-                                    bridge.toast(unableToOpenThreadRefLabel)
+                                    bridge.errorToast(unableToOpenThreadRefLabel, result.error)
                                 }
                                 is DataResult.NoPermission -> {
                                     resolveOutcome = "no_permission"

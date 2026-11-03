@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.network.RaftFailedRequestTraceIds
+
 sealed interface DataResult<out T> {
     data class Content<T>(val data: T) : DataResult<T>
     data class Empty(val reason: EmptyReason) : DataResult<Nothing>
@@ -69,6 +71,14 @@ data class ScreenError(
      * needs a fresh second step; [SecondFactorStepUpCoordinator] asks for it and retries.
      */
     val secondFactorStepUp: SecondFactorStepUpChallenge? = null,
+    /**
+     * The failed request's server trace id (`X-Trace-Id`), shown with a copy action under the
+     * error so a report can be found on the server (AGENTS.md "Errors carry the trace ID").
+     * Defaults to the failure the HTTP layer saw just now ([RaftFailedRequestTraceIds], as the
+     * web's error toasts do), so every repository's error carries it without threading it.
+     * Null for a request that got no response.
+     */
+    val traceId: String? = RaftFailedRequestTraceIds.recent(),
 )
 
 data class PermissionBlocker(
@@ -85,6 +95,8 @@ data class PermissionBlocker(
     val serverMessage: String? = null,
     /** Structured cleanup facts retained when a multi-step operation cannot retract all work. */
     val cleanupEvidence: String? = null,
+    /** As [ScreenError.traceId]: the refusing response's server trace id. */
+    val traceId: String? = RaftFailedRequestTraceIds.recent(),
 )
 
 /** Stable, locale-independent keys emitted by the data/domain layer. */
@@ -123,7 +135,9 @@ enum class RawServerMessagePriority {
 data class ErrorPresentation(
     val key: ErrorPresentationKey,
     val rawServerMessage: String? = null,
-    val rawServerMessagePriority: RawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+    val rawServerMessagePriority: RawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+    /** The failed request's server trace id; the UI shows it with a copy action when present. */
+    val traceId: String? = null,
 )
 
 fun PermissionBlocker.isAuthSessionBlocker(): Boolean =
@@ -150,7 +164,8 @@ internal fun ScreenError.errorPresentation(): ErrorPresentation {
         return ErrorPresentation(
             key = ErrorPresentationKey.EdgeBlocked,
             rawServerMessage = serverMessage,
-            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
         )
     }
     val key = code.errorPresentationKeyOrNull()
@@ -162,7 +177,8 @@ internal fun ScreenError.errorPresentation(): ErrorPresentation {
                 RawServerMessagePriority.ServerMessageFirst
             } else {
                 RawServerMessagePriority.LocalizedCopyFirst
-            }
+            },
+        traceId = traceId,
     )
 }
 
@@ -171,13 +187,15 @@ internal fun PermissionBlocker.errorPresentation(): ErrorPresentation =
         ErrorPresentation(
             key = ErrorPresentationKey.EdgeBlocked,
             rawServerMessage = serverMessage,
-            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
         )
     } else if (isAuthSessionBlocker() || code.isHttpStatusPresentationCode(401)) {
         ErrorPresentation(
             key = ErrorPresentationKey.SessionExpired,
             rawServerMessage = serverMessage,
-            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst
+            rawServerMessagePriority = RawServerMessagePriority.LocalizedCopyFirst,
+            traceId = traceId,
         )
     } else {
         ErrorPresentation(
@@ -187,7 +205,8 @@ internal fun PermissionBlocker.errorPresentation(): ErrorPresentation =
             // the endpoint's confirmed human-readable field. A non-blank
             // value is therefore the deterministic "specific reason" signal;
             // do not guess actionability from English keywords.
-            rawServerMessagePriority = RawServerMessagePriority.ServerMessageFirst
+            rawServerMessagePriority = RawServerMessagePriority.ServerMessageFirst,
+            traceId = traceId,
         )
     }
 

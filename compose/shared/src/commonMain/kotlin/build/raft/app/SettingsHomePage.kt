@@ -11589,8 +11589,8 @@ private fun SharedHomeScreen(
                                 }
                                 is DataResult.Empty -> bridge.toast(openDirectMessageFailedMessage)
                                 is DataResult.Error ->
-                                    bridge.toast(openDirectMessageFailedPrefix + result.error.code)
-                                is DataResult.NoPermission -> bridge.toast(openDirectMessagePermissionMessage)
+                                    bridge.errorToast(openDirectMessageFailedPrefix + result.error.code, result.error)
+                                is DataResult.NoPermission -> bridge.errorToast(openDirectMessagePermissionMessage, result.blocker.traceId)
                             }
                         }
                     }

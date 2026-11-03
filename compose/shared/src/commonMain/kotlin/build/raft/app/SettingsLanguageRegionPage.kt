@@ -85,7 +85,8 @@ internal fun SettingsLanguageRegionContent(
                         stringResource(Res.string.settings_error_language),
                         state.error.localizedUserFacingMessage(),
                         stringResource(Res.string.common_retry),
-                        onRetry
+                        onRetry,
+                        traceId = state.error.traceId
                     )
                 }
             is ScreenLoadState.NoPermission ->
@@ -95,7 +96,8 @@ internal fun SettingsLanguageRegionContent(
                         stringResource(Res.string.settings_state_permission_required),
                         state.blocker.localizedUserFacingMessage(),
                         null,
-                        onRetry
+                        onRetry,
+                        traceId = state.blocker.traceId
                     )
                 }
             is ScreenLoadState.Content -> {

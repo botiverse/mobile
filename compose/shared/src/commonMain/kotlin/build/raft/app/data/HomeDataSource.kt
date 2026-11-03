@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.network.raftResponseTraceIdOrNull
 import build.raft.app.resources.*
 import build.raft.app.raftAvatarDiagnosticsSource
 import build.raft.app.projectionRejectingDiagnosticsLogger
@@ -634,6 +635,10 @@ data class HomeNetworkResponse(
 ) {
     val isSuccessful: Boolean
         get() = code in 200..299
+
+    /** The server's `X-Trace-Id` for this request (validated); null when it got no answer. */
+    val traceId: String?
+        get() = responseHeaders.raftResponseTraceIdOrNull()
 }
 
 internal class RaftHomeApiClient(
