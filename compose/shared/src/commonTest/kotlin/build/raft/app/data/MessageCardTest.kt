@@ -20,7 +20,7 @@ class MessageCardTest {
         Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), actionMetadata).toMessageItemMetadata()
 
     @Test
-    fun `the TestFlight card reads as a link card v2 tree, as sent and as stored`() {
+    fun `the TestFlight card reads as a link card v2 tree as sent and as stored`() {
         for (json in listOf(messageCardBuildInputJson, messageCardBuildStoredJson)) {
             val card = assertNotNull(parse(json), json)
             assertEquals("root", card.root)
@@ -62,7 +62,7 @@ class MessageCardTest {
     }
 
     @Test
-    fun `a card message projects its card, revision and time onto the message`() {
+    fun `a card message projects its card and revision and time onto the message`() {
         val metadata = metadataOf(messageCardMetadataJson(messageCardUpdateTestCardJson("Ready for testing"), 2, "2026-11-03T12:10:00.000Z"))
         val card = assertNotNull(readMessageCardFromMetadata(metadata))
         assertEquals(2, card.revision)
