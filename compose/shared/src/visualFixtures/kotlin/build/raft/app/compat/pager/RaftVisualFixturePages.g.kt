@@ -13,7 +13,6 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_app_update_progress_visual" to { build.raft.app.AppUpdateProgressVisualFixture() },
         "compose_auth_choose_server_visual" to { build.raft.app.ComposeAuthChooseServerVisualPage() },
         "compose_auth_email_verification_visual" to { build.raft.app.ComposeAuthEmailVerificationVisualPage() },
-        "compose_auth_profile_setup_visual" to { build.raft.app.ComposeAuthProfileSetupVisualPage() },
         "compose_bottom_tabbar_mockup_visual" to { build.raft.app.ComposeBottomTabBarMockupVisualPage() },
         "compose_bottom_tabbar_visual" to { build.raft.app.ComposeBottomTabBarVisualPage() },
         "compose_channel_add_member_panel_visual" to { build.raft.app.ComposeChannelAddMemberPanelVisualPage() },

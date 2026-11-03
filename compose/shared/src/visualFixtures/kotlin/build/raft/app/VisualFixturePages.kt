@@ -652,14 +652,6 @@ internal class ComposeAppShellRestoreSplashVisualPage : BasePager() {
     }
 }
 
-@Page("compose_auth_profile_setup_visual", supportInLocal = true)
-internal class ComposeAuthProfileSetupVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { AuthProfileSetupVisualScreen() }
-    }
-}
-
 @Page("compose_create_agent_dialog_visual", supportInLocal = true)
 internal class ComposeCreateAgentDialogVisualPage : BasePager() {
     override fun willInit() {

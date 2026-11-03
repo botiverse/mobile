@@ -96,10 +96,6 @@ internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
 internal const val AUTH_DESTINATION_KEY = "slockAuthDestination"
 internal const val AUTH_DESTINATION_API_ENVIRONMENT = "apiEnvironment"
-private const val AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY = "profileSetupHandle"
-private const val AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY = "profileSetupDisplayName"
-private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE = "new_designer"
-private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME = "New Designer"
 internal const val AUTH_TERMS_URL = "https://raft.build/terms"
 internal const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
@@ -728,27 +724,6 @@ private val AuthDiagnosticsSensitivePatterns =
 
 private val AuthDiagnosticsEmailPattern =
     Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
-
-@Composable
-internal fun AuthProfileSetupVisualScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val params = pager.pageData.params
-    AuthProfileSetupContent(
-        handle = TextFieldValue(
-            params.optString(AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY)
-                .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE }
-        ),
-        displayName = TextFieldValue(
-            params.optString(AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY)
-                .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME }
-        ),
-        submitting = false,
-        errorMessage = null,
-        onHandleChange = {},
-        onDisplayNameChange = {},
-        onSubmit = {}
-    )
-}
 
 @Composable
 internal fun AuthProfileSetupContent(
