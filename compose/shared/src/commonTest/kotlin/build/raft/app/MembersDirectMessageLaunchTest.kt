@@ -85,6 +85,64 @@ class MembersDirectMessageLaunchTest {
     }
 
     @Test
+    fun agentHeadKeepsDirectMessageInTheMoreMenu() {
+        // Web AgentDetailHeader at phone width: only the More button; Direct Message is its first item.
+        assertTrue(membersHeaderMessageInOverflowMenu(MemberKind.Agent))
+        assertFalse(membersHeaderMessageInOverflowMenu(MemberKind.Human))
+
+        val items =
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = true,
+                deleted = false,
+                inProgress = false,
+                canStopTurn = true,
+                canMessage = true
+            )
+        assertEquals(
+            listOf(
+                MEMBERS_DIRECT_MESSAGE_MENU_ID,
+                MembersAgentLifecycleAction.Stop.actionKey,
+                MembersAgentLifecycleAction.Restart.actionKey,
+                MEMBERS_STOP_TURN_MENU_ID
+            ),
+            items.map { it.id }
+        )
+        // Someone who may not manage the agent still gets Direct Message, before Stop Current Turn.
+        assertEquals(
+            listOf(MEMBERS_DIRECT_MESSAGE_MENU_ID, MEMBERS_STOP_TURN_MENU_ID),
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = false,
+                deleted = false,
+                inProgress = false,
+                canStopTurn = true,
+                canMessage = true
+            ).map { it.id }
+        )
+        // An opening DM disables the item; an archived agent has no menu at all.
+        assertFalse(
+            buildMembersManagementMenuItems(
+                primaryAction = null,
+                canManage = true,
+                deleted = false,
+                inProgress = false,
+                canMessage = true,
+                directMessageOpening = true
+            ).first().enabled
+        )
+        assertTrue(
+            buildMembersManagementMenuItems(
+                primaryAction = null,
+                canManage = true,
+                deleted = true,
+                inProgress = false,
+                canMessage = true
+            ).isEmpty()
+        )
+    }
+
+    @Test
     fun agentDetailMessageActionBuildsDirectMessageLaunchPayload() {
         val timeContext = RaftTimeContext(
             localOffsetMinutes = 480,
