@@ -4460,6 +4460,8 @@ internal data class RaftFilePreviewAnnotationDraft(
 internal data class RaftComposerImageStroke(
     val points: List<Offset>,
     val color: Color = Color(0xFFFF3B30), // raft-color: image-editor pen palette default
+    /** Line width in editor-canvas pixels ([RaftComposerImagePenWidth]). */
+    val width: Float = RaftComposerImagePencilStrokeWidthPx,
 )
 
 internal data class RaftComposerImageMosaicTile(
@@ -4488,6 +4490,12 @@ internal data class RaftComposerImageEditorContent(
     val textAnnotations: List<RaftComposerImageTextAnnotation> = emptyList(),
     val drawOperations: List<RaftComposerImageDrawOperation> = emptyList(),
     val cropRect: RaftComposerImageCropRect = RaftComposerImageCropRect.Uncropped,
+    /**
+     * Clockwise quarter turns of the whole picture. The edits above stay in the unrotated canvas;
+     * the canvas is turned as a whole on screen and in the export
+     * (RaftComposerImageEditorTransform.kt).
+     */
+    val rotationQuarterTurns: Int = 0,
 )
 
 internal data class RaftComposerImageEditorHistory(
@@ -6355,18 +6363,20 @@ internal fun raftApplyCropToContent(
 ): RaftComposerImageEditorContent {
     val oldCrop = content.cropRect
     if (oldCrop == newCrop) return content
+    // A turned canvas fits the stage with its sides swapped (RaftComposerImageEditorTransform.kt).
+    val fitBox = raftComposerImageEditorFitBox(maxWidth, maxHeight, content.rotationQuarterTurns)
     val oldCapture = raftComposerImageEditorCaptureSize(
         imageWidth = imageWidth,
         imageHeight = imageHeight,
-        maxWidth = maxWidth,
-        maxHeight = maxHeight,
+        maxWidth = fitBox.width,
+        maxHeight = fitBox.height,
         cropRect = oldCrop,
     ) ?: return content.copy(cropRect = newCrop)
     val newCapture = raftComposerImageEditorCaptureSize(
         imageWidth = imageWidth,
         imageHeight = imageHeight,
-        maxWidth = maxWidth,
-        maxHeight = maxHeight,
+        maxWidth = fitBox.width,
+        maxHeight = fitBox.height,
         cropRect = newCrop,
     ) ?: return content.copy(cropRect = newCrop)
     return raftRemapContentForCrop(

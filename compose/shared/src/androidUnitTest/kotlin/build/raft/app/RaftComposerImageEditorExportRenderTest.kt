@@ -141,6 +141,34 @@ class RaftComposerImageEditorExportRenderTest {
         assertEquals(source.asAndroidBitmap().getPixel(40, 40), out.getPixel(40, 40))
     }
 
+    @Test
+    fun quarterTurnExportSwapsSidesAndCarriesTheStrokeWithThePhoto() {
+        // 2000x1500 photo on a 500x375 canvas, turned clockwise once: the export is 1500x2000.
+        val source = gradientSource(2000, 1500)
+        val canvas = IntSize(500, 375)
+        val stroke =
+            RaftComposerImageStroke(
+                points = listOf(Offset(100f, 100f), Offset(300f, 100f)),
+                color = pen,
+                width = RaftComposerImagePenWidth.Thick.px,
+            )
+        val content =
+            RaftComposerImageEditorContent(rotationQuarterTurns = 1)
+                .raftComposerImageAppendStroke(stroke)
+
+        val out = assertNotNull(render(source, content, canvas)).asAndroidBitmap()
+
+        assertEquals(1500 to 2000, out.width to out.height)
+        // Source (800, 400) turns to (1500 - 400, 800) = (1100, 800).
+        val turned = raftComposerImageRotatePoint(Offset(800f, 400f), androidx.compose.ui.geometry.Size(2000f, 1500f), 1)
+        assertEquals(Offset(1100f, 800f), turned)
+        assertPen(out.getPixel(1100, 800), "turned stroke centre")
+        // The thick pen (16 canvas px) is 64 px wide here: 25 px across the line is still ink.
+        assertPen(out.getPixel(1100 + 25, 800), "inside the thick stroke")
+        // The photo turned with it: source (100, 1400) -> (100, 100).
+        assertEquals(source.asAndroidBitmap().getPixel(100, 1400), out.getPixel(100, 100), "photo pixel follows the turn")
+    }
+
     private fun render(
         source: ImageBitmap,
         content: RaftComposerImageEditorContent,
