@@ -234,6 +234,27 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
                                              selector:@selector(raftTabBarDidLayout:)
                                                  name:RaftIosTabBarController.didLayoutNotificationName
                                                object:nil];
+    [self raftObserveVerticalBarEdge];
+}
+
+/// The vertical bar can move to the other edge with no resize and so no layout pass (a Split View
+/// half moved to the other side), so the window facts are republished when the traits UIKit names
+/// for it change. Those traits are iOS 27.1 API, reached at runtime like the edge itself.
+- (void)raftObserveVerticalBarEdge {
+    if (@available(iOS 17.0, *)) {
+        NSString *key = @"systemTraitsAffectingVerticalBarEdge";
+        if (![UITraitCollection respondsToSelector:NSSelectorFromString(key)]) {
+            return;
+        }
+        NSArray *traits = [UITraitCollection valueForKey:key];
+        if (traits.count > 0) {
+            [self registerForTraitChanges:traits withAction:@selector(raftVerticalBarEdgeTraitsDidChange)];
+        }
+    }
+}
+
+- (void)raftVerticalBarEdgeTraitsDidChange {
+    [self raftPublishAdaptivePaneForCurrentBounds:@"verticalBarEdge"];
 }
 
 - (void)viewDidLayoutSubviews {
