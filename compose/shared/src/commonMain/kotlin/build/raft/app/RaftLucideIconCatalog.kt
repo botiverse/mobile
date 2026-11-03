@@ -12,6 +12,7 @@ import kotlinx.serialization.encoding.Encoder
 @Serializable(with = RaftLucideIconNameWireSerializer::class)
 enum class RaftLucideIconName(val wireName: String) {
     Activity("activity"),
+    AlarmClock("alarm-clock"),
     AlignHorizontalSpaceAround("align-horizontal-space-around"),
     AppWindow("app-window"),
     Archive("archive"),
@@ -200,6 +201,7 @@ enum class RaftLucideIconName(val wireName: String) {
     ReopenTask("reopen-task"),
     Artifact("artifact"),
     Redo2("redo-2"),
+    Repeat("repeat"),
     RotateCcw("rotate-ccw"),
     RotateCw("rotate-cw"),
     Route("route"),

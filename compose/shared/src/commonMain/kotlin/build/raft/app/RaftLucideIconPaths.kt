@@ -44,6 +44,18 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"),
                     ),
                 )
+            RaftLucideIconName.AlarmClock ->
+                RaftLucideIconSpec(
+                    "alarm-clock",
+                    listOf(
+                        RaftLucidePathSpec("M 4.0 13.0 A 8.0 8.0 0 1 0 20.0 13.0 A 8.0 8.0 0 1 0 4.0 13.0 Z"),
+                        RaftLucidePathSpec("M12 9v4l2 2"),
+                        RaftLucidePathSpec("M5 3 2 6"),
+                        RaftLucidePathSpec("m22 6-3-3"),
+                        RaftLucidePathSpec("M6.38 18.7 4 21"),
+                        RaftLucidePathSpec("M17.64 18.67 20 21"),
+                    ),
+                )
             RaftLucideIconName.AlignHorizontalSpaceAround ->
                 RaftLucideIconSpec(
                     "align-horizontal-space-around",
@@ -1809,6 +1821,16 @@ internal object RaftLucideIconPaths {
                     listOf(
                         RaftLucidePathSpec("m15 14 5-5-5-5"),
                         RaftLucidePathSpec("M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"),
+                    ),
+                )
+            RaftLucideIconName.Repeat ->
+                RaftLucideIconSpec(
+                    "repeat",
+                    listOf(
+                        RaftLucidePathSpec("m17 2 4 4-4 4"),
+                        RaftLucidePathSpec("M3 11v-1a4 4 0 0 1 4-4h14"),
+                        RaftLucidePathSpec("m7 22-4-4 4-4"),
+                        RaftLucidePathSpec("M21 13v1a4 4 0 0 1-4 4H3"),
                     ),
                 )
             RaftLucideIconName.RotateCcw ->
