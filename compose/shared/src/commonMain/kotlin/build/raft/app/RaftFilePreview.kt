@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.raftStateOverlay
+import build.raft.designsystem.components.rememberRaftStateOverlay
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
@@ -98,6 +102,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.aspectRatio
@@ -5499,15 +5508,26 @@ private fun RaftFilePreviewColorSwatch(
     label: String,
     onClick: () -> Unit,
 ) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        pressFeedback = false,
-        pressOffset = 0.dp,
+    // One choice of the pen colour group: a radio, with the design-system hover / press overlay
+    // in the swatch's circle.
+    val source = remember { MutableInteractionSource() }
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = enabled)
+    Box(
         modifier =
             Modifier
                 .size(28.dp)
+                .raftPointerHover(source, enabled)
+                .raftStateOverlay(overlay, CircleShape)
+                .selectable(
+                    selected = selected,
+                    interactionSource = source,
+                    indication = null,
+                    enabled = enabled,
+                    role = Role.RadioButton,
+                    onClick = onClick,
+                )
                 .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier =
@@ -5561,14 +5581,18 @@ private fun RaftFilePreviewEditorToolButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Button(
+    // raft-ui ghost action (hover / press overlay, focus ring); the chosen tool reads from its
+    // accent icon and bold label.
+    RaftPanelAction(
         onClick = onClick,
         enabled = enabled,
-        pressOffset = 0.dp,
         modifier =
             modifier
                 .padding(horizontal = 2.dp)
-                .semantics { contentDescription = label },
+                .semantics {
+                    contentDescription = label
+                    this.selected = selected
+                },
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

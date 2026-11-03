@@ -29814,20 +29814,39 @@ internal fun threadReactionDetailsLabel(
 
 internal const val ThreadReactionDetailsMaxNames = 4
 
+// raft-ui MessageReactionAddButton (gap 6): the design-system chip draws and owns the tap.
 @Composable
 private fun ThreadReactionAddChip(
     messageId: String,
     onClick: (RaftPopoverAnchor) -> Unit
 ) {
     val addReactionDescription = stringResource(Res.string.thread_action_add_reaction)
-    Button(
-        onClick2 = onClick,
-        clickIdentity = "thread_reaction_add:$messageId",
-        anchorOwnerIdentity = threadMessageMenuOwnerIdentity(messageId),
-        modifier = Modifier.background(Color.Transparent)
-    ) {
-        ThreadReactionAddChipChrome(addReactionDescription)
-    }
+    val currentOnClick by rememberUpdatedState(onClick)
+    // The picker / action menu anchors where the finger landed, owned by the message's menu
+    // identity (the same contract as the message long-press menu).
+    val anchorIdentity = threadMessageMenuOwnerIdentity(messageId)
+    val rootAnchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
+    val pressPoint = remember(anchorIdentity) { arrayOfNulls<Offset>(1) }
+    build.raft.designsystem.components.RaftMessageReactionAdd(
+        label = addReactionDescription,
+        modifier =
+            Modifier
+                .raftCaptureLiveRootAnchor(rootAnchor)
+                // Observes (never consumes) the down so the design-system chip keeps the tap.
+                .pointerInput(rootAnchor) {
+                    awaitEachGesture {
+                        pressPoint[0] =
+                            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position
+                    }
+                },
+        onClick = {
+            // A keyboard / accessibility click has no finger point: anchor under the chip.
+            val localPoint =
+                pressPoint[0]?.let { RaftPopoverLocalPoint.Exact(it) } ?: RaftPopoverLocalPoint.BottomStart
+            pressPoint[0] = null
+            rootAnchor.resolve(localPoint)?.let(currentOnClick)
+        }
+    )
 }
 
 // task #569: who-reacted tooltip, long-press pendant of the web hover
@@ -29983,12 +30002,6 @@ private fun ThreadAuthorDescriptionPopover(
             }
         }
     }
-}
-
-// raft-ui MessageReactionAddButton (gap 6): the design-system chip draws; the anchored tap stays on the host Button.
-@Composable
-private fun ThreadReactionAddChipChrome(label: String) {
-    build.raft.designsystem.components.RaftMessageReactionAdd(label = label)
 }
 
 private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =

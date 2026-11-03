@@ -4893,22 +4893,14 @@ private fun ComposerTextChip(
     onClick: () -> Unit
 ) {
     if (variant == ComposerTextChipVariant.MutedText) {
-        val mutedColor = RaftColor.TextBlack.copy(alpha = if (enabled) 0.45f else 0.3f)
-        Button(
+        // Web PendingMentionActionStripRow: Dismiss is a raft-ui `Button variant="ghost" size="md"`.
+        RaftButton(
+            text = text,
             onClick = onClick,
+            variant = RaftButtonVariant.Ghost,
+            size = RaftButtonSize.Md,
             enabled = enabled,
-            modifier =
-                Modifier
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = text,
-                style = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = mutedColor),
-                color = mutedColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        )
         return
     }
 
