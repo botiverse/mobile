@@ -7293,8 +7293,6 @@ private fun MembersDetailContent(
                 dismissOnOutsideTap = false,
                 maxWidth = 384.dp,
                 contentPadding = 24.dp,
-                titleFontSize = 18,
-                titleLineHeight = 22,
                 onDismiss = {
                     if (sharedAgentDetailStore != null) {
                         sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
@@ -7756,7 +7754,8 @@ internal fun MembersLifecycleConfirmation(
             // carries no warning at all).
             Text(
                 text = stringResource(Res.string.member_archive_description),
-                style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                // Web ConfirmDialog DialogBody: text-subhead (15/20 400).
+                style = RaftType.Subhead,
                 color = RaftColor.TextBlack
             )
             if (archiveHasComputerWorkspace) {
@@ -7849,7 +7848,8 @@ private fun MembersLifecycleWarningBanner(destructive: Boolean, text: String) {
         )
         Text(
             text = text,
-            style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            // Web Banner: text-callout (14/20 400).
+            style = RaftType.Callout,
             color = RaftColor.TextBlack
         )
     }
@@ -8050,7 +8050,8 @@ private fun MembersAgentArchiveSection(
             Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text(
                     text = stringResource(Res.string.member_archive_confirm_delete_workspace, computer),
-                    style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    // Web ConfirmDialog danger: the message sits in a Banner, text-callout (14/20 400).
+                    style = RaftType.Callout,
                     color = RaftColor.TextBlack
                 )
                 RaftDialogFooter {
@@ -8111,12 +8112,13 @@ private fun MembersArchiveWorkspaceOption(
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = label,
-                style = RaftType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp).withRaftFontWeight(FontWeight.SemiBold),
+                style = RaftType.Subhead.withRaftFontWeight(FontWeight.SemiBold),
                 color = if (enabled) RaftColor.TextBlack else RaftColor.TextBlack.copy(alpha = 0.45f)
             )
             Text(
                 text = description,
-                style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                // Web AgentArchiveDialog: text-footnote font-normal (13/18 400).
+                style = RaftType.Footnote,
                 color = RaftColor.TextMutedGray
             )
         }
@@ -8141,8 +8143,6 @@ internal fun MembersRestartResetDialog(
         maxWidth = 520.dp,
         // Web ResetAgentDialog is a ConfirmDialog: 18px title, text-sm option
         // labels, text-xs descriptions. Match the sibling lifecycle confirm dialog.
-        titleFontSize = 18,
-        titleLineHeight = 22,
         titleMaxLines = 2,
         contentSpacing = RaftAppSpacing.Md
     ) {
@@ -8894,7 +8894,8 @@ internal fun MembersServerRoleEditor(
         ) {
             Text(
                 text = displayValue,
-                style = RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                // Web InlineBadgeEditor soft Badge: text-caption font-semibold (12/16 600).
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold),
                 color = RaftColor.TextBlack,
                 modifier = Modifier.weight(1f)
             )
@@ -8935,8 +8936,8 @@ internal fun MembersServerRoleEditor(
         error?.let {
             Text(
                 text = it,
-                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
+                // Web HumanDetailPanel: text-caption font-semibold (12/16 600).
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold),
                 color = RaftColor.AccentRed
             )
         }
@@ -9890,9 +9891,8 @@ private fun MembersAgentProfileFieldsSection(
             Text(
                 text = member.description?.takeIf { it.isNotBlank() }
                     ?: stringResource(Res.string.member_state_no_description),
-                style = RaftType.Body.copy(
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                // Web AgentProfileInfo: text-subhead (15/20 400).
+                style = RaftType.Subhead.copy(
                     fontStyle = if (member.description.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal
                 ),
                 color = if (member.description.isNullOrBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
@@ -11333,8 +11333,6 @@ internal fun MembersRuntimeSwitchConfirmationDialog(
         title = title,
         maxWidth = 384.dp,
         contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
         onDismiss = onCancel
     ) {
         Column(
@@ -11357,7 +11355,8 @@ internal fun MembersRuntimeSwitchConfirmationDialog(
                 )
                 Text(
                     text = message,
-                    style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    // Web ConfirmDialog warning body: text-subhead (15/20 400).
+                    style = RaftType.Subhead,
                     color = RaftColor.TextBlack
                 )
             }
@@ -14165,7 +14164,8 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
         )
         Text(
             text = text,
-            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            // Web Banner: text-callout (14/20 400).
+            style = RaftType.Callout,
             color = RaftColor.TextBlack,
             modifier = Modifier.weight(1f)
         )

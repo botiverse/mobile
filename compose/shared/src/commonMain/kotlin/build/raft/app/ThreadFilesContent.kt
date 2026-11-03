@@ -808,7 +808,8 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
     ) {
         Text(
             text = stringResource(Res.string.thread_files_error_load),
-            style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+            // Web ChannelFilesPanel: text-callout font-semibold (14/20 600).
+            style = RaftType.Callout.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         Text(
@@ -829,7 +830,8 @@ private fun ThreadFilesStateMessage(title: String, detail: String?) {
     ) {
         Text(
             text = title,
-            style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+            // Web EmptyStateTitle: text-headline font-bold (17/22 700).
+            style = RaftType.Headline.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         detail?.takeIf { it.isNotBlank() }?.let {

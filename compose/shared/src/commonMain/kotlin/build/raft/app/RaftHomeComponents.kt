@@ -7742,7 +7742,8 @@ private fun DirectMessageAgentMeta(
             is RaftHomeDmAgentMeta.Live ->
                 Triple(
                     meta.activity.localizedText(),
-                    RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    // Web SIDEBAR_AGENT_LIVE_META_CLASS: font-sans text-footnote font-normal (13/18 400).
+                    RaftType.Footnote,
                     RaftColor.TextMuted
                 )
             is RaftHomeDmAgentMeta.Runtime ->

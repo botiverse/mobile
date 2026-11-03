@@ -38,7 +38,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -220,7 +219,8 @@ internal fun RaftTopPageHeader(
                     subtitle?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             text = it,
-                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                            // raft-ui PanelMeta: font-sans text-caption (12/16 500).
+                            style = RaftType.Caption,
                             color = RaftColor.ForegroundHint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -345,7 +345,7 @@ private val RaftPanelHeaderHeight = 56.dp
 
 // raft-ui `text-headline`: 17/22 700, no tracking.
 private val RaftPanelHeaderTitleStyle: TextStyle
-    get() = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = 0.sp)
+    get() = RaftType.Headline
 
 @Composable
 internal fun RaftTopPageHeaderFrame(
@@ -477,13 +477,8 @@ internal fun RaftCenteredLoading(
             RaftIconSpinner(size = 16.dp, color = RaftColor.TextMutedGray)
             Text(
                 text = resolvedMessage,
-                style = RaftType.Caption
-                    .copy(
-                        fontFamily = raftMonoFamilyForWeight(FontWeight.SemiBold),
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
+                // Web ContentLoading: sans text-callout (14/20 400).
+                style = RaftType.Callout,
                 color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

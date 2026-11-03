@@ -298,14 +298,10 @@ private fun AttachmentCommentCard(
         )
         RaftMarkdownBody(
             body = comment.content,
-            textStyle =
-                RaftType.Body.copy(
-                    fontSize = RaftTheme.typography.footnote.fontSize,
-                    lineHeight = RaftTheme.typography.footnote.lineHeight,
-                    color = colors.foreground
-                ),
+            // Web AttachmentCommentsPanel: MessageItemBody text-body + MarkdownContent (16/24 400).
+            textStyle = RaftType.Body.copy(color = colors.foreground),
             modifier = Modifier.padding(top = CommentChipLineBoxDescent),
-            minInlineLineHeight = RaftTheme.typography.footnote.lineHeight
+            minInlineLineHeight = RaftTheme.typography.body.lineHeight
         )
     }
 }

@@ -89,15 +89,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
@@ -107,16 +104,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
-
-internal fun settingsAccountInputTextStyle(
-    color: Color = RaftColor.TextBlack
-): TextStyle =
-    RaftType.Input.copy(
-        fontFamily = RaftMonoFamily,
-        fontSize = 14.sp,
-        lineHeight = 18.sp,
-        color = color
-    )
 
 @Page(SETTINGS_ACCOUNT_PAGE, supportInLocal = true)
 internal class ComposeSettingsAccountPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsAccount) {
@@ -743,7 +730,8 @@ private fun SettingsAccountProfileCard(
                 Text(
                     profile.displayName.ifBlank { stringResource(Res.string.settings_account_title) },
                     modifier = Modifier.raftCopyable(profile.displayName),
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
+                    // Web SettingsProfileCard: text-headline (17/22 700).
+                    style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                     color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -916,12 +904,14 @@ private fun SettingsEmailField(
     verifiedLabel: String
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = RaftType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
+        // Web FormField compact → FieldLabel sm: text-caption font-semibold (12/16 600).
+        Text(label, style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 value.ifBlank { placeholder },
                 modifier = Modifier.raftCopyable(value),
-                style = settingsAccountInputTextStyle().copy(fontSize = 15.sp),
+                // Web AccountSection: font-mono text-mono-code (13/20).
+                style = RaftTheme.typography.monoCode,
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1260,12 +1250,14 @@ private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmL
         SettingsAccountHardShadowCard {
             Text(
                 payload.logoutTitle,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
+                // Web AccountSignOutSection: text-subhead font-semibold (15/20 600).
+                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold, color = RaftColor.TextBlack),
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(payload.logoutDetail, style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
+            // Web: text-footnote, muted (13/18 400).
+            Text(payload.logoutDetail, style = RaftTheme.typography.footnote.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
             if (confirming.value) {
                 SettingsAccountWarning(payload.logoutConfirmMessage)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

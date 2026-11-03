@@ -22,8 +22,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -199,8 +197,8 @@ private fun FollowerNoticeView(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RaftLucideIcon(if (isError) RaftLucideIconName.Info else RaftLucideIconName.CircleCheck,
                     Modifier.size(16.dp), color = raftArgbHex(RaftColor.StickerPaper))
-                Text(label, style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium), color = ink,
+                // raft-ui toast title: text-callout font-normal (14/20 400).
+                Text(label, style = RaftType.Callout, color = ink,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
             if (canUndo) {

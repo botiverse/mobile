@@ -830,14 +830,16 @@ internal fun RaftUiNotificationItem(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = title,
-                style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                // raft-ui notification-center title: text-subhead font-bold (15/20 700).
+                style = RaftType.ButtonBold,
                 color = RaftColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = body,
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                // raft-ui notification-center body: text-callout (14/20 400).
+                style = RaftType.Callout,
                 color = RaftColor.TextBlack.copy(alpha = 0.70f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis

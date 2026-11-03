@@ -252,12 +252,6 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun settingsAccountInputForegroundUsesSpaceMono() {
-        assertEquals(RaftMonoFamily, settingsAccountInputTextStyle().fontFamily)
-        assertEquals(RaftMonoFamily, settingsAccountInputTextStyle(RaftColor.TextMutedGray).fontFamily)
-    }
-
-    @Test
     fun feedbackComposerBottomPaddingLiftsAboveKeyboard() {
         assertEquals(
             24.dp,

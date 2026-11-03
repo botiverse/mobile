@@ -79,7 +79,7 @@ import build.raft.app.data.parseSharedMessageContext
 import build.raft.app.data.toHomeChannelRow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import build.raft.app.raftMonoFamilyForWeight
+import build.raft.app.RaftMonoFamily
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -758,13 +758,12 @@ class ThreadPayloadTest {
     fun threadDateDividerTextStyleUsesCompactMetaScale() {
         val style = threadDateDividerTextStyle()
 
-        assertEquals(11.sp, style.fontSize)
-        assertEquals(14.sp, style.lineHeight)
+        // raft-ui MessageListDateDivider: font-mono text-mono-meta, 12/16 regular.
+        assertEquals(12.sp, style.fontSize)
+        assertEquals(16.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
-        // Space Mono ships weight in the family (Kuikly drops serialized weight),
-        // so the bold divider uses the mono Bold family with Normal weight (#375).
         assertEquals(FontWeight.Normal, style.fontWeight)
-        assertEquals(raftMonoFamilyForWeight(FontWeight.Bold), style.fontFamily)
+        assertEquals(RaftMonoFamily, style.fontFamily)
     }
 
     @Test

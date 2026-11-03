@@ -8,9 +8,6 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftComposerUploadDisplay
 import build.raft.app.transfer.RaftComposerUploadPhase
-import build.raft.designsystem.components.RaftBanner
-import build.raft.designsystem.components.RaftBannerSize
-import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -4089,12 +4086,24 @@ private fun MentionActionNotice(
     title: String?,
     detail: String
 ) {
-    RaftBanner(
-        description = detail,
-        status = RaftBannerStatus.Warning,
-        modifier = Modifier.fillMaxWidth(),
-        title = title?.takeIf { it.isNotBlank() },
-        size = RaftBannerSize.Sm,
+    // Web MessageInput mention notice: one line, `rounded-control bg-fill-muted px-2.5 py-1.5
+    // text-caption font-semibold text-foreground-muted` (12/16 600).
+    val heading = title?.trim()?.takeIf { it.isNotEmpty() }
+    val text =
+        when {
+            heading == null -> detail
+            heading.last() in ".!?。！？" -> "$heading $detail"
+            else -> "$heading. $detail"
+        }
+    Text(
+        text = text,
+        style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
+        color = RaftTheme.colors.foregroundMuted,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(RaftTheme.colors.fillMuted, RaftTheme.shapes.control)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }
 
@@ -4589,7 +4598,8 @@ private fun PendingMentionActionRow(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = targetLabel,
-                    style = RaftType.Button.copy(fontSize = 12.sp),
+                    // Web PendingMentionActionStripRow: text-footnote font-bold (13/18 700).
+                    style = RaftType.SectionLabel,
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

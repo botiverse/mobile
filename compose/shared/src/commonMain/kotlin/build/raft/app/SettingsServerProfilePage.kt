@@ -78,7 +78,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 internal fun rememberSettingsServerPublicAccessBinding(
@@ -394,10 +393,7 @@ internal fun SettingsServerDeleteConfirmationDialog(
                         // "Delete Server"), with the ghost 32dp close.
                         Text(
                             stringResource(Res.string.settings_server_action_delete),
-                            style =
-                                RaftType.PageTitle
-                                    .copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack)
-                                    .withRaftFontWeight(FontWeight.Bold),
+                            style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                             color = RaftColor.TextBlack,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
@@ -417,21 +413,23 @@ internal fun SettingsServerDeleteConfirmationDialog(
                     ) {
                         Text(
                             stringResource(Res.string.settings_server_delete_type_prefix) + " ",
-                            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+                            // Web DeleteServerConfirmDialog: text-footnote font-semibold (13/18 600),
+                            // the slug in <code> font-mono text-mono-code (13/20).
+                            style = RaftType.Footnote.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextMutedGray),
                             color = RaftColor.TextMutedGray
                         )
                         Text(
                             resolvedSlug,
                             // The slug to type: a long press copies it (not the "server-slug" stand-in).
                             modifier = Modifier.raftCopyable(expectedServerSlug),
-                            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+                            style = RaftTheme.typography.monoCode.copy(color = RaftColor.TextBlack),
                             color = RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             stringResource(Res.string.settings_server_delete_confirm_suffix),
-                            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+                            style = RaftType.Footnote.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextMutedGray),
                             color = RaftColor.TextMutedGray
                         )
                     }
