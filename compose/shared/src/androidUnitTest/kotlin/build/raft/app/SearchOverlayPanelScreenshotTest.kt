@@ -39,6 +39,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.model.ThreadId
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
@@ -103,6 +105,13 @@ class SearchOverlayPanelScreenshotTest {
                             onOpenItem = {},
                             onOpenEntity = {},
                             bottomContentPadding = 0.dp,
+                            // The web render's clock: the fixture's June messages read "134 days ago".
+                            timeContext =
+                                RaftTimeContext(
+                                    localOffsetMinutes = 0,
+                                    todayEpochDay = raftEpochDayForDate(2026, 11, 3),
+                                    nowEpochMillis = java.time.Instant.parse("2026-11-03T10:30:00Z").toEpochMilli(),
+                                ),
                             overlay =
                                 HomeSearchOverlayChrome(
                                     // The top bar field's top: (48 - 36) / 2 under the window top.

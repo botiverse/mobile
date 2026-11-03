@@ -357,7 +357,16 @@ internal fun HomeSearchOverlayPanel(
             exact = exact,
             entities = entityResults.filter { it.key != exactKey },
             entitiesExpanded = entitiesExpanded,
-            messages = groupedResults.take(HomeSearchOverlayMessagePreviewCount),
+            // Flat message rows, as the web panel: a thread hit shows "#channel · thread" on its
+            // own row rather than under its thread's heading (the full page groups them).
+            messages =
+                groupedResults
+                    .flatMap { group ->
+                        when (group) {
+                            is HomeSearchResultGroup.Message -> listOf(group)
+                            is HomeSearchResultGroup.Thread -> group.items.map(HomeSearchResultGroup::Message)
+                        }
+                    }.take(HomeSearchOverlayMessagePreviewCount),
             messageCount = state.totalCount.takeIf { it > 0 && !state.loading },
             searched = state.searched,
             loading = state.loading || state.querySearchPending,
