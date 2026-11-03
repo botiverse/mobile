@@ -274,6 +274,8 @@ LUCIDE_ICONS = [
     "terminal",
     "text-quote",
     "thread",
+    "message",
+    "direct-message",
     "triangle-alert",
     "trash",
     "trash-2",
@@ -301,7 +303,7 @@ RAFT_UI_ICON_SOURCE_DIR = os.path.join(SCRIPT_DIR, "assets", "raft-ui")
 
 # Icons drawn by raft-ui where Lucide has none (raft-design packages/ui/src/components/icons:
 # conversation-icons.tsx ThreadIcon, action-icons.tsx Follow/UnfollowThreadIcon, ReopenTaskIcon,
-# object-icons.tsx ArtifactIcon),
+# object-icons.tsx ArtifactIcon, conversation-icons.tsx MessageIcon / DirectMessageIcon),
 # copied path for path so the app's menus draw what the web's do.
 CUSTOM_ICONS = {
     "mosaic": os.path.join(BRAND_ASSET_SOURCE_DIR, "mosaic.svg"),
@@ -310,6 +312,8 @@ CUSTOM_ICONS = {
     "unfollow-thread": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "unfollow-thread.svg"),
     "reopen-task": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "reopen-task.svg"),
     "artifact": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "artifact.svg"),
+    "message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "message.svg"),
+    "direct-message": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "direct-message.svg"),
 }
 
 BRAND_SVGS = {

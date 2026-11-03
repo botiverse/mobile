@@ -415,7 +415,8 @@ internal enum class MembersAgentDetailTab(
 ) {
     Profile("Profile", RaftLucideIconName.Bot, privateSurface = false),
     Activity("Activity", RaftLucideIconName.Activity),
-    Chat("Chat", RaftLucideIconName.MessageSquare),
+    // raft-ui `MessageIcon` (web AGENT_TABS chat).
+    Chat("Chat", RaftLucideIconName.Message),
     Reminders("Reminders", RaftLucideIconName.AlarmClock),
     Workspace("Workspace", RaftLucideIconName.FolderOpen),
     Apps("Apps", RaftLucideIconName.Link2)
@@ -7471,7 +7472,8 @@ private fun MembersHumanDetailHeader(
                         size = RaftIconButtonSize.Lg,
                         loading = directMessageOpening
                     ) {
-                        MembersHumanGlyph(RaftLucideIconName.MessageSquare, 22.dp)
+                        // raft-ui `DirectMessageIcon`, 22px (web HumanDetailPanel).
+                        MembersHumanGlyph(RaftLucideIconName.DirectMessage, 22.dp)
                     }
                 }
             } else {
@@ -7587,7 +7589,8 @@ internal fun MembersDetailHeader(
                         size = RaftIconButtonSize.Lg,
                         loading = directMessageOpening
                     ) {
-                        RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = 22.dp)
+                        // raft-ui `DirectMessageIcon`, as the web head draws it.
+                        RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = 22.dp)
                     }
                 } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
                     // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
@@ -7596,7 +7599,7 @@ internal fun MembersDetailHeader(
                         onClick = onOpenDirectMessage,
                         modifier = Modifier.padding(end = 7.dp),
                         loading = directMessageOpening,
-                        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare) }
+                        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
                     )
                 }
                 // The More menu holds only Start/Stop and Restart / Reset: nothing to show without
