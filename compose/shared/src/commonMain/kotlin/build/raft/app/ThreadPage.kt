@@ -1701,6 +1701,7 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "attachImage",
             "toggleOriginalImage",
             "attachFile",
+            ThreadComposerDropAttachmentsAction,
             "removeAttachment",
             "retryAttachments"
         )
@@ -8021,6 +8022,8 @@ private fun SharedThreadRouteContentContent(
     val unableToSaveMessageLabel = stringResource(Res.string.thread_error_save_message)
     val unableToRemoveSavedMessageLabel = stringResource(Res.string.thread_error_remove_saved_message)
     val attachmentSkippedOneLabel = stringResource(Res.string.thread_attachment_skipped_one)
+    val dropFoldersCantUploadLabel = stringResource(Res.string.thread_composer_drop_folders_cant_upload)
+    val dropFoldersSkippedLabel = stringResource(Res.string.thread_composer_drop_folders_skipped)
     val attachmentSkippedManyTemplate =
         stringResource(Res.string.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
     fun localizedAttachmentUploadFailedDetail(detail: String): String =
@@ -11461,6 +11464,85 @@ private fun SharedThreadRouteContentContent(
             ) ?: return
         )
     }
+    /**
+     * A host files envelope from the attach buttons' picker or a drop on the composer
+     * (`threadAttachmentDrop`): one admission path for both, so a dropped file is admitted, sized
+     * and reported exactly like a picked one.
+     */
+    suspend fun admitComposerPickedAttachments(action: String, response: JSONObject?) {
+        val files = parseSharedThreadPickedPlatformFiles(response)
+        bridge.log(
+            "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
+                "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
+                "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
+        )
+        // Native generic pickers may finish a mixed selection with a readable
+        // subset and a compression error (code 206).  Never upload that subset:
+        // doing so would silently drop the failed image while the user believes
+        // the whole selection was admitted.  Retire every ref exposed by the
+        // envelope before returning, including refs from successful files and
+        // any future error/fileRefs compatibility fields.
+        if (threadAttachmentPickerHasCompressionFailure(response)) {
+            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
+            if (cleanupRefs.isNotEmpty()) {
+                bridge.retireFilePreviewTemporaryFiles(
+                    sessionId = "thread-picker-compression-$threadInstanceKey",
+                    fileRefs = cleanupRefs.toList()
+                )
+            }
+            bridge.logWarn(
+                "thread_attachment_picker_rejected reason=image_compression_failed " +
+                    "cleanupRefs=${cleanupRefs.size}"
+            )
+            bridge.toast(
+                localizedAttachmentUploadFailedDetail(
+                    userFacingErrorLabels.forErrorCode(
+                        RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
+                    ) ?: genericThreadErrorLabel
+                )
+            )
+            return
+        }
+        if (files.isEmpty()) {
+            val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
+            when {
+                errorCode != null ->
+                    bridge.toast(
+                        localizedAttachmentUploadFailedDetail(
+                            userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
+                        )
+                    )
+                response == null ->
+                    bridge.toast(attachmentPickerUnavailableLabel)
+            }
+            return
+        }
+        val skippedCount = response?.optInt("skippedCount", 0) ?: 0
+        if (skippedCount > 0) {
+            bridge.toast(
+                if (skippedCount == 1) {
+                    attachmentSkippedOneLabel
+                } else {
+                    localizedAttachmentSkippedMany(skippedCount)
+                }
+            )
+        }
+        when (
+            resolveThreadPickedAttachmentComposerAction(
+                action = action,
+                fileCount = files.size,
+                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files),
+            )
+        ) {
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
+                // The picker-reported bytes are the source image, not the final
+                // editor output.  Defer the server-size gate until the confirmed
+                // PNG/original or compressor-produced JPEG reaches upload.
+                openComposerImageAnnotation(files)
+            ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
+            ThreadPickedAttachmentComposerAction.None -> Unit
+        }
+    }
     DisposableEffect(eventBus, threadInstanceKey) {
         // Event-bus callbacks can be re-entrant and may be dispatched from different host turns.
         // Keep the callback side-effect-free: one sequential consumer owns parsing, accumulation,
@@ -14008,6 +14090,35 @@ private fun SharedThreadRouteContentContent(
                 }
                 handleComposerSendRequest(request)
             },
+            onComposerDropFiles = { drop ->
+                // Files dragged onto the composer (web MessageInput handleDrop): the web's folder
+                // notice, then the host reads them as a File pick and the picker's admission
+                // takes them (sizes, skipped files, upload), straight into the tray.
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, ThreadComposerDropAttachmentsAction)) {
+                    bridge.log("thread_composer_action_blocked action=$ThreadComposerDropAttachmentsAction reason=read_only_access_fallback")
+                    drop.release()
+                } else {
+                    coroutineScope.launch {
+                        try {
+                            bridge.log("thread_attachment_drop files=${drop.fileRefs.size} folders=${drop.folderCount}")
+                            when (drop.folderNotice()) {
+                                ThreadComposerFileDropFolderNotice.FoldersCantUpload -> bridge.toast(dropFoldersCantUploadLabel)
+                                ThreadComposerFileDropFolderNotice.FoldersSkipped -> bridge.toast(dropFoldersSkippedLabel)
+                                ThreadComposerFileDropFolderNotice.None -> Unit
+                            }
+                            if (drop.fileRefs.isEmpty()) return@launch
+                            if (composerSurface.sendChannelId == null) {
+                                bridge.toast(attachmentPickerUnavailableLabel)
+                                return@launch
+                            }
+                            val response = bridge.threadAttachmentDrop(drop.fileRefs)
+                            admitComposerPickedAttachments(ThreadComposerDropAttachmentsAction, response)
+                        } finally {
+                            drop.release()
+                        }
+                    }
+                }
+            },
             onComposerEvent = { action, value, asTask, attachmentId ->
                 if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, action)) {
                     bridge.log("thread_composer_action_blocked action=$action reason=read_only_access_fallback")
@@ -14297,78 +14408,7 @@ private fun SharedThreadRouteContentContent(
                                 // and the shared size gate sees the real file.
                                 compressImages = compressPickerImages,
                             )
-                        val files = parseSharedThreadPickedPlatformFiles(response)
-                        bridge.log(
-                            "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
-                                "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
-                                "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
-                        )
-                        // Native generic pickers may finish a mixed selection with a readable
-                        // subset and a compression error (code 206).  Never upload that subset:
-                        // doing so would silently drop the failed image while the user believes
-                        // the whole selection was admitted.  Retire every ref exposed by the
-                        // envelope before returning, including refs from successful files and
-                        // any future error/fileRefs compatibility fields.
-                        if (threadAttachmentPickerHasCompressionFailure(response)) {
-                            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
-                            if (cleanupRefs.isNotEmpty()) {
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = "thread-picker-compression-$threadInstanceKey",
-                                    fileRefs = cleanupRefs.toList()
-                                )
-                            }
-                            bridge.logWarn(
-                                "thread_attachment_picker_rejected reason=image_compression_failed " +
-                                    "cleanupRefs=${cleanupRefs.size}"
-                            )
-                            bridge.toast(
-                                localizedAttachmentUploadFailedDetail(
-                                    userFacingErrorLabels.forErrorCode(
-                                        RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
-                                    ) ?: genericThreadErrorLabel
-                                )
-                            )
-                            return@launch
-                        }
-                        if (files.isEmpty()) {
-                            val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
-                            when {
-                                errorCode != null ->
-                                    bridge.toast(
-                                        localizedAttachmentUploadFailedDetail(
-                                            userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-                                        )
-                                    )
-                                response == null ->
-                                    bridge.toast(attachmentPickerUnavailableLabel)
-                            }
-                            return@launch
-                        }
-                        val skippedCount = response?.optInt("skippedCount", 0) ?: 0
-                        if (skippedCount > 0) {
-                            bridge.toast(
-                                if (skippedCount == 1) {
-                                    attachmentSkippedOneLabel
-                                } else {
-                                    localizedAttachmentSkippedMany(skippedCount)
-                                }
-                            )
-                        }
-                        when (
-                            resolveThreadPickedAttachmentComposerAction(
-                                action = action,
-                                fileCount = files.size,
-                                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files),
-                            )
-                        ) {
-                            ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
-                                // The picker-reported bytes are the source image, not the final
-                                // editor output.  Defer the server-size gate until the confirmed
-                                // PNG/original or compressor-produced JPEG reaches upload.
-                                openComposerImageAnnotation(files)
-                            ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
-                            ThreadPickedAttachmentComposerAction.None -> Unit
-                        }
+                        admitComposerPickedAttachments(action, response)
                     }
                 }
                 "removeAttachment" -> {
@@ -15916,6 +15956,7 @@ private class ThreadPageContentCallbacks(
     val onComposerKeyboardInsetChanged: (Float) -> Unit,
     val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    val onComposerDropFiles: (ThreadComposerFileDrop) -> Unit = { it.release() },
 )
 
 private @Composable
@@ -16018,6 +16059,7 @@ fun ThreadPageContent(
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onComposerDropFiles: (ThreadComposerFileDrop) -> Unit = { it.release() },
     onToggleFocusMode: (() -> Unit)? = null,
     focusModeActive: Boolean = false,
 )
@@ -16131,6 +16173,7 @@ fun ThreadPageContent(
                 onComposerKeyboardInsetChanged = onComposerKeyboardInsetChanged,
                 onComposerSendRequest = onComposerSendRequest,
                 onComposerEvent = onComposerEvent,
+                onComposerDropFiles = onComposerDropFiles,
             ),
     )
 }
@@ -16252,6 +16295,7 @@ private fun ThreadPageContentContent(
     val onThreadEvent = data.onThreadEvent
     val onComposerSendRequest = callbacks.onComposerSendRequest
     val onComposerEvent = callbacks.onComposerEvent
+    val onComposerDropFiles = callbacks.onComposerDropFiles
     val inlineReplyParticipantsById =
         remember(payload.members, payload.memberCandidates) {
             (payload.members + payload.memberCandidates)
@@ -17549,6 +17593,7 @@ private fun ThreadPageContentContent(
                             channelSuggestionsFlow = channelSuggestionsFlow,
                             agentStatusResolver = agentStatusResolver,
                             onEvent = onComposerEvent,
+                            onDropFiles = onComposerDropFiles,
                             onSendRequest = onComposerSendRequest,
                             insertMentionRequest = insertMentionRequest,
                             onInsertMentionConsumed = { request ->
@@ -18590,6 +18635,8 @@ private fun ThreadComposerRoute(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: RaftAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    /** Files dropped on the composer (its drop zone): the page reads and admits them. */
+    onDropFiles: (ThreadComposerFileDrop) -> Unit,
     onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
@@ -18642,7 +18689,11 @@ private fun ThreadComposerRoute(
                 edge
             }
         }
-    Box(
+    // Web MessageInput's drop zone: files dragged over the composer light it up; a drop attaches
+    // them as the attach button does.
+    ThreadComposerFileDropZone(
+        enabled = composerUiState.enabled && composerUiState.attachmentActionsEnabled && surface.sendChannelId != null,
+        onDropFiles = onDropFiles,
         modifier =
             Modifier.fillMaxWidth().onSizeChangedDp { size ->
                 if (composerAtRest) ThreadComposerRestingHeight.record(restingHeightKey, size.height)

@@ -15,7 +15,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -23,6 +26,8 @@ import kotlinx.serialization.json.put
  * Desktop attachment bridge methods, on the Android host's wire contract:
  * - `threadAttachmentUpload`: the system open panel (several files; images only for the image
  *   button). There is no camera on desktop: `capture` answers "picker unavailable".
+ * - `threadAttachmentDrop`: files dragged onto the composer (their paths), answered as the open
+ *   panel's pick of the same files.
  * - `compressThreadImage` / `cancelCompressThreadImage`: the Skia compressor.
  * - `saveAttachment` / `cancelAttachmentExport`: the system save panel, then the shared download
  *   coordinator writes the file where the user chose (atomically: nothing appears until it is
@@ -69,6 +74,15 @@ class RaftDesktopAttachments(
                 }
             callback?.invoke(payload)
         }
+    }
+
+    fun threadAttachmentDrop(params: JsonObject, callback: ((String?) -> Unit)?) {
+        val files =
+            (params["fileRefs"] as? JsonArray)
+                ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf(String::isNotEmpty) }
+                ?.map(::File)
+                .orEmpty()
+        scope.launch { callback?.invoke(RaftDesktopPickedAttachments.response(files).toRaftJsonString()) }
     }
 
     fun compressThreadImage(params: JsonObject, callback: ((String?) -> Unit)?) {
