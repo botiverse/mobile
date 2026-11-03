@@ -1,0 +1,53 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.settings.appearance.page",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_settings_route_visual","fixtureKey":"canonical","fixtureRevision":"settings-appearance-v2","renderedGoalSha256":"bc0d82ab7b79ef4008cefdaf0db0ffdcb8d5daeefbce8911e7614f65ecc28624","realProductRoute":true},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.appearance.page.png",
+              "viewport": { "width": 1170, "height": 3030, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 1010 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-viewport-density-resize-full-length",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 567,
+                  "dominantRatio": 0.8998217
+                },
+                "readyTokenObserved": true,
+                "readyTokenRequired": true,
+                "stableFrameCount": 2
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2840,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 3030,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4765,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "c3849c06b2cadf1ddf3584a190db15ad",
+                "bootId": "10573be2-75eb-47bf-a347-d04afacd8237",
+                "capturedAtEpochMs": 1793748069307,
+                "capturedAtMonotonicNs": 197241163977
+              },
+              "clampedToShortWindow": false,
+              "fullLength": {"requested":true,"baseViewportHeight":844,"expandedViewportHeight":1010,"initialOverflowDp":166,"residualOverflowDp":0,"iterations":1,"capped":false,"maxHeight":2700,"scroller":"lazy#2414@216..2484"},
+              "capturedAt": "1793748069307"
+            }

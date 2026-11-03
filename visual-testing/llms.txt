@@ -1,20 +1,18 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 22:06:43 UTC
-Latest run: 33a0350d-20261103220336
-Latest commit: 33a0350d-20261103220336
-Commit subject: fix(members): profile Reasoning shows web effort labels and the saved effort (#4255)
-Providers: react vs android, react vs ios, android vs ios
+Generated: 2026-11-03 23:27:36 UTC
+Latest run: e6d3cbab-20261103232613
+Latest commit: e6d3cbab-20261103232613
+Commit subject: The Home list ends with the web's space under its last item (#4259)
+Providers: react vs android
 Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 34 / total 93, pending 59
+AI analysis: ready 32 / total 93, pending 61
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
 - react__android: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-- react__ios: total 93, same 0, pass 16, basic-pass 13, different 47, missing 17
-- android__ios: total 93, same 0, pass 18, basic-pass 25, different 33, missing 17
 
 ## Capture Type Coverage
 
@@ -116,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- e6d3cbab-20261103232613: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/e6d3cbab-20261103232613/component-matrix.json, page runs/e6d3cbab-20261103232613/
 - 33a0350d-20261103220336: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/33a0350d-20261103220336/component-matrix.json, page runs/33a0350d-20261103220336/
 - 515ed2a6-20261103205636: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/515ed2a6-20261103205636/component-matrix.json, page runs/515ed2a6-20261103205636/
 - cd8e52ea-20261103200309: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/cd8e52ea-20261103200309/component-matrix.json, page runs/cd8e52ea-20261103200309/
