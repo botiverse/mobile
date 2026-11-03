@@ -18,4 +18,11 @@ class ThreadComposerActionSpacingTest {
         assertEquals(32f, threadComposerIconButtonSizeDp())
         assertEquals(18f, threadComposerIconSizeDp())
     }
+
+    @Test
+    fun composerCardPaddingFollowsRaftUi059() {
+        // raft-ui 0.59 `Composer`: px-3 pt-3, pb = embedded inset - 1px; `ComposerInput` px-0.5.
+        assertEquals(listOf(12f, 12f, 5f), threadComposerCardPaddingDp())
+        assertEquals(2f, threadComposerInputPaddingHorizontalDp())
+    }
 }
