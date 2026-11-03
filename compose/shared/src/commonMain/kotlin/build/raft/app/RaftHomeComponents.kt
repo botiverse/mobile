@@ -2320,6 +2320,8 @@ private fun RaftStructuralHomeShellContent(
         }
     val hasDisplayedPinned = displayedPinned.isNotEmpty()
     val hasDisplayedJointChannels = displayedJointChannels.isNotEmpty()
+    // Web keeps an empty Joint Channels section while its "+" can create one.
+    val canCreateJointChannel = onCreateJointChannelClick != null
     // Keep the DMs section while its rows are still loading (skeletons).
     val hasDisplayedDirectMessages = displayedDirectMessages.isNotEmpty() || showLoadingSkeletons
     val displayedSidebarSections =
@@ -2330,7 +2332,8 @@ private fun RaftStructuralHomeShellContent(
             hasDisplayedPinned,
             hasDisplayedJointChannels,
             hasDisplayedDirectMessages,
-            hideEmptySections
+            hideEmptySections,
+            canCreateJointChannel
         ) {
             homeSidebarSectionOrder(
                 sectionOrder = sectionOrder,
@@ -2339,7 +2342,8 @@ private fun RaftStructuralHomeShellContent(
                 hasPinned = hasDisplayedPinned,
                 hasJointChannels = hasDisplayedJointChannels,
                 hasDirectMessages = hasDisplayedDirectMessages,
-                hideEmptySections = hideEmptySections
+                hideEmptySections = hideEmptySections,
+                canCreateJointChannel = canCreateJointChannel
             )
         }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
@@ -3923,7 +3927,8 @@ internal sealed interface RaftHomeSidebarSection {
  * sections in canonical order, then custom sections in declaration order.
  * Visibility follows web's "Hide Empty Sections" display preference
  * (sidebarEmptySectionVisibility.ts): when on, empty Pinned / Joint Channels /
- * DMs drop out; Channels always shows (it carries the empty-state hint) and so
+ * DMs drop out; Joint Channels stays while [canCreateJointChannel] (its "+" is the only way
+ * to create one); Channels always shows (it carries the empty-state hint) and so
  * does every custom section in [customSectionRows], empty or not.
  */
 internal fun homeSidebarSectionOrder(
@@ -3933,13 +3938,16 @@ internal fun homeSidebarSectionOrder(
     hasPinned: Boolean,
     hasJointChannels: Boolean,
     hasDirectMessages: Boolean = true,
-    hideEmptySections: Boolean = true
+    hideEmptySections: Boolean = true,
+    canCreateJointChannel: Boolean = false
 ): List<RaftHomeSidebarSection> {
     val rowsBySectionId = customSectionRows.associateBy { it.section.id }
     return normalizeSidebarSectionOrder(sectionOrder, customSections).mapNotNull { id ->
         when (id) {
             "system:pinned" -> RaftHomeSidebarSection.Pinned.takeIf { hasPinned || !hideEmptySections }
-            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf { hasJointChannels || !hideEmptySections }
+            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf {
+                    hasJointChannels || canCreateJointChannel || !hideEmptySections
+                }
             "system:channels" -> RaftHomeSidebarSection.Channels
             "system:dms" -> RaftHomeSidebarSection.DirectMessages.takeIf { hasDirectMessages || !hideEmptySections }
             else -> rowsBySectionId[id]?.let { RaftHomeSidebarSection.Custom(it) }

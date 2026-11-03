@@ -97,6 +97,26 @@ class RaftHomeSidebarSectionsTest {
     }
 
     @Test
+    fun hideEmptySectionsKeepsAnEmptyJointChannelsSectionWhileOneCanBeCreated() {
+        // Web SidebarChatSections: `canCreateJointChannel || !isEmptySectionHidden(...)`.
+        fun keys(canCreate: Boolean) =
+            sectionKeys(
+                homeSidebarSectionOrder(
+                    sectionOrder = listOf("system:pinned", "system:joint", "system:channels", "system:dms"),
+                    customSections = emptyList(),
+                    customSectionRows = emptyList(),
+                    hasPinned = false,
+                    hasJointChannels = false,
+                    hasDirectMessages = false,
+                    hideEmptySections = true,
+                    canCreateJointChannel = canCreate
+                )
+            )
+        assertEquals(listOf("system:joint", "system:channels"), keys(canCreate = true))
+        assertEquals(listOf("system:channels"), keys(canCreate = false))
+    }
+
+    @Test
     fun hideEmptySectionsDropsEmptyPinnedJointAndDmsButKeepsChannelsAndCustomSections() {
         // Web sidebarEmptySectionVisibility.ts: the preference hides empty
         // Pinned / Joint / DMs; Channels and custom sections always render.

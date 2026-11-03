@@ -189,6 +189,7 @@ internal fun SettingsNativeDetailScreen() {
         onOpenLocalFeatureOverridePage = { key ->
             openNativePage(SettingsNativeDetailPage.LocalFeatureOverride, key)
         },
+        onOpenThemePage = { openNativePage(SettingsNativeDetailPage.Theme) },
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
@@ -271,6 +272,8 @@ internal fun SettingsNativeDetailPageContent(
     onOpenDeveloperPage: (() -> Unit)? = null,
     onOpenLocalFeatureOverridesPage: () -> Unit,
     onOpenLocalFeatureOverridePage: (String) -> Unit,
+    /** Appearance's "Theme on <server>" row (Web `ServerThemeLink`): Settings > Theme. */
+    onOpenThemePage: () -> Unit = {},
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -568,6 +571,8 @@ internal fun SettingsNativeDetailPageContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
                     showModeCard = settingsAppearanceShowsModeCard(session),
+                    themeServerName = session?.settingsThemeServer()?.name,
+                    onOpenTheme = onOpenThemePage,
                     appPreferenceItems =
                         if (settingsAppPreferencesUnderAppearance()) {
                             {

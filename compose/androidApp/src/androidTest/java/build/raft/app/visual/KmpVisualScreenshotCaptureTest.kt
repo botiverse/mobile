@@ -4056,13 +4056,13 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("destination", "appearance")
                     .put("fixtureKey", "canonical")
-                    .put("fixtureRevision", "settings-appearance-v1")
+                    .put("fixtureRevision", "settings-appearance-v2")
                     // SHA-256 of the frozen rendered goal:
                     // route=compose_settings_route_visual;destination=appearance;fixture=canonical;
-                    // fixtureRevision=settings-appearance-v1;viewport=1170x2532@480
+                    // fixtureRevision=settings-appearance-v2;viewport=1170x2532@480
                     .put(
                         "renderedGoalSha256",
-                        "6f8210b1c05e7f09df898d6b38d7d3f0f98bd5b270d9f56d9975f33002f3d234"
+                        "bc0d82ab7b79ef4008cefdaf0db0ffdcb8d5daeefbce8911e7614f65ecc28624"
                     ),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500,

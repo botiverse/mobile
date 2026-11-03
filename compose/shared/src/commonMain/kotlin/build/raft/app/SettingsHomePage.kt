@@ -11478,19 +11478,9 @@ private fun SharedHomeScreen(
             val homeShellLabels = RaftHomeShellLabels.localized()
             // Row menu "Leave Channel" awaiting its confirmation (web Sidebar `leaveConfirm`).
             var leaveConfirmChannel by remember(snapshot.server.id) { mutableStateOf<HomeChannelRow?>(null) }
-            // Web "Hide Empty Sections": a device-local display preference.
-            val hideEmptySectionsStore = remember {
-                runCatching {
-                    build.raft.app.data.KeyValueRaftSidebarHideEmptySectionsStore(
-                        build.raft.app.data.raftSharedPreferenceStore()
-                    )
-                }.getOrNull()
-            }
-            var hideEmptySections by remember(hideEmptySectionsStore) {
-                mutableStateOf(
-                    hideEmptySectionsStore?.read() ?: build.raft.app.data.RaftSidebarHideEmptySectionsDefault
-                )
-            }
+            // Web "Hide Empty Sections": a device-local display preference, shared with
+            // Settings > Appearance "Hide empty sidebar sections".
+            val hideEmptySections = build.raft.app.data.RaftDisplayPreferenceRuntime.hideEmptySidebarSections
             RaftStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
@@ -11669,8 +11659,7 @@ private fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.SetJointChannelSortMode(mode))
                 },
                 onHideEmptySectionsChange = { hide ->
-                    hideEmptySections = hide
-                    hideEmptySectionsStore?.write(hide)
+                    build.raft.app.data.RaftDisplayPreferenceRuntime.setHideEmptySidebarSections(hide)
                 },
                 onSidebarOrderChange = { target, order ->
                     onIntent(target.toReorderSidebarIntent(order))
@@ -17986,29 +17975,32 @@ internal fun SettingsRouteVisualScreen() {
         )
     }
 
-    if (route.destination == SettingsDestinationHome) {
-        SettingsHomeContent(
-            payload = appShellSettingsHomePayload(session),
-            onSelect = {},
-        )
-    } else {
-        SettingsRouteVisualFixtureDetailContent(
-            pager = pager,
-            eventBus = eventBus,
-            session = session,
-            authDataSource = authDataSource,
-            settingsCapabilities = settingsCapabilities,
-            storeScope = storeScope,
-            handsFeedbackVisualFixture = handsFeedbackVisualFixture,
-            settingsState = state,
-            notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
-            onSettingsIntent = {},
-            route = route,
-            onBack = {},
-            bottomContentPadding = RaftAppSpacing.Lg,
-            timeContext = null,
-            onLogout = {},
-        )
+    // The web case's frozen clock: the Appearance preview message is sent at 20:30.
+    CompositionLocalProvider(LocalSettingsAppearancePreviewTimeLabel provides "20:30") {
+        if (route.destination == SettingsDestinationHome) {
+            SettingsHomeContent(
+                payload = appShellSettingsHomePayload(session),
+                onSelect = {},
+            )
+        } else {
+            SettingsRouteVisualFixtureDetailContent(
+                pager = pager,
+                eventBus = eventBus,
+                session = session,
+                authDataSource = authDataSource,
+                settingsCapabilities = settingsCapabilities,
+                storeScope = storeScope,
+                handsFeedbackVisualFixture = handsFeedbackVisualFixture,
+                settingsState = state,
+                notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
+                onSettingsIntent = {},
+                route = route,
+                onBack = {},
+                bottomContentPadding = RaftAppSpacing.Lg,
+                timeContext = null,
+                onLogout = {},
+            )
+        }
     }
 }
 
