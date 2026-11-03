@@ -32895,91 +32895,12 @@ internal fun threadMessageMenuActions(
     onDownloadVideo: (() -> Unit)? = null
 ): List<ThreadMessageMenuAction> =
     // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
+    // web MessageItem's sections, by what the action does: keep going on this message (thread and
+    // task), take it elsewhere (copy, forward, select), just for me (save, translate); a local
+    // send's own Delete / Cancel close the menu.
     buildList {
-        if (onCopySelection != null) {
-            add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
-        }
-        if (showCopyLinkAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.thread_action_copy_link.desc(),
-                    icon = RaftLucideIconName.Link,
-                    group = "copy",
-                    onClick = onCopyLink
-                )
-            )
-        }
-        add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
-        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.SquareDashedText, "copy", onClick = onSelectText))
-        if (showTranslateAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (translatePending) {
-                            Res.string.translation_state_in_progress.desc()
-                        } else {
-                            Res.string.thread_action_translate.desc()
-                        },
-                    icon = RaftLucideIconName.Languages,
-                    group = "copy",
-                    enabled = !translatePending,
-                    onClick = onTranslate
-                )
-            )
-        }
-        if (showShareMessagesAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.thread_action_select_message.desc(),
-                    // web: ListChecks (SquareCheckBig is Mark as Done in the same menu).
-                    icon = RaftLucideIconName.ListChecks,
-                    group = "copy",
-                    onClick = onShareMessages
-                )
-            )
-        }
         if (showReplyAction) {
             add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.Thread, "message", onClick = onReply))
-        }
-        if (showForwardAction) {
-            // Web uses the select-mode Forward glyph (lucide forward) for the per-message entry.
-            add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Forward, "message", onClick = onForward))
-        }
-        if (onDownloadVideo != null) {
-            // Telegram / WhatsApp / iMessage: a long press on a video message offers to save it.
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.file_preview_action_download.desc(),
-                    icon = RaftLucideIconName.Download,
-                    group = "message",
-                    onClick = onDownloadVideo
-                )
-            )
-        }
-        if (showSaveAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (message.isSaved) {
-                            Res.string.thread_action_remove_from_saved.desc()
-                        } else {
-                            Res.string.thread_action_save_message.desc()
-                        },
-                    icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
-                    group = "message",
-                    onClick = onSave
-                )
-            )
-        }
-        if (showMarkThreadUnreadAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.thread_action_mark_thread_unread.desc(),
-                    icon = RaftLucideIconName.MessageSquareDot,
-                    group = "message",
-                    onClick = onMarkThreadUnread
-                )
-            )
         }
         val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
         if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
@@ -33003,6 +32924,119 @@ internal fun threadMessageMenuActions(
                 )
             )
         }
+        if (showMarkThreadUnreadAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.thread_action_mark_thread_unread.desc(),
+                    icon = RaftLucideIconName.MessageSquareDot,
+                    group = "message",
+                    onClick = onMarkThreadUnread
+                )
+            )
+        }
+        message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
+            val isDone = message.isThreadTaskDone()
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (isDone) {
+                            Res.string.thread_action_reopen_task.desc()
+                        } else {
+                            Res.string.thread_action_mark_done.desc()
+                        },
+                    icon = threadTaskStatusMenuIcon(isDone),
+                    group = "message",
+                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                )
+            )
+        }
+        if (showConvertToTaskAction && (createTaskFromMessage || message.canConvertToTask())) {
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (createTaskFromMessage) {
+                            Res.string.thread_action_create_task_from_message.desc()
+                        } else {
+                            Res.string.thread_action_convert_to_task.desc()
+                        },
+                    icon = RaftLucideIconName.Plus,
+                    group = "message",
+                    onClick = onConvertToTask
+                )
+            )
+        }
+        if (onCopySelection != null) {
+            add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
+        }
+        if (showCopyLinkAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.thread_action_copy_link.desc(),
+                    icon = RaftLucideIconName.Link,
+                    group = "copy",
+                    onClick = onCopyLink
+                )
+            )
+        }
+        add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
+        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.SquareDashedText, "copy", onClick = onSelectText))
+        if (showForwardAction) {
+            // Web uses the select-mode Forward glyph (lucide forward) for the per-message entry.
+            add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Forward, "copy", onClick = onForward))
+        }
+        if (showShareMessagesAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.thread_action_select_message.desc(),
+                    // web: ListChecks (SquareCheckBig is Mark as Done in the same menu).
+                    icon = RaftLucideIconName.ListChecks,
+                    group = "copy",
+                    onClick = onShareMessages
+                )
+            )
+        }
+        if (onDownloadVideo != null) {
+            // Telegram / WhatsApp / iMessage: a long press on a video message offers to save it.
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.file_preview_action_download.desc(),
+                    icon = RaftLucideIconName.Download,
+                    group = "copy",
+                    onClick = onDownloadVideo
+                )
+            )
+        }
+        if (showSaveAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (message.isSaved) {
+                            Res.string.thread_action_remove_from_saved.desc()
+                        } else {
+                            Res.string.thread_action_save_message.desc()
+                        },
+                    icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
+                    group = "personal",
+                    onClick = onSave
+                )
+            )
+        }
+        if (showTranslateAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (translatePending) {
+                            Res.string.translation_state_in_progress.desc()
+                        } else {
+                            Res.string.thread_action_translate.desc()
+                        },
+                    icon = RaftLucideIconName.Languages,
+                    group = "personal",
+                    enabled = !translatePending,
+                    onClick = onTranslate
+                )
+            )
+        }
         if (showDeleteAction) {
             add(
                 ThreadMessageMenuAction(
@@ -33020,37 +33054,6 @@ internal fun threadMessageMenuActions(
                     icon = RaftLucideIconName.X,
                     group = "destructive",
                     onClick = onCancel
-                )
-            )
-        }
-        message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
-            val isDone = message.isThreadTaskDone()
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (isDone) {
-                            Res.string.thread_action_reopen_task.desc()
-                        } else {
-                            Res.string.thread_action_mark_done.desc()
-                        },
-                    icon = threadTaskStatusMenuIcon(isDone),
-                    group = "task",
-                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
-                )
-            )
-        }
-        if (showConvertToTaskAction && (createTaskFromMessage || message.canConvertToTask())) {
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (createTaskFromMessage) {
-                            Res.string.thread_action_create_task_from_message.desc()
-                        } else {
-                            Res.string.thread_action_convert_to_task.desc()
-                        },
-                    icon = RaftLucideIconName.Plus,
-                    group = "task",
-                    onClick = onConvertToTask
                 )
             )
         }

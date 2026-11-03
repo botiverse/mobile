@@ -178,22 +178,24 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
-    fun classicMenuOrdersReplyInThreadForwardThenSave() {
+    fun classicMenuFollowsTheWebSectionsThreadThenElsewhereThenSave() {
         var forwarded = 0
         val actions = classicActions(message(), showForwardAction = true, onForward = { forwarded += 1 })
 
+        // web MessageItem: thread and task, then take it elsewhere, then just for me.
         assertEquals(
             listOf(
+                Res.string.thread_action_reply_in_thread.desc(),
                 Res.string.thread_action_copy_link.desc(),
                 Res.string.thread_action_copy_markdown.desc(),
                 Res.string.thread_action_select_text.desc(),
-                Res.string.thread_action_select_message.desc(),
-                Res.string.thread_action_reply_in_thread.desc(),
                 Res.string.thread_action_forward.desc(),
+                Res.string.thread_action_select_message.desc(),
                 Res.string.thread_action_save_message.desc()
             ),
             actions.map { it.label }
         )
+        assertEquals(listOf("message", "copy", "copy", "copy", "copy", "copy", "personal"), actions.map { it.group })
         assertFalse(
             actions.any { it.icon == RaftLucideIconName.SmilePlus },
             "Add Reaction ends the reaction row, it is not an action row"
