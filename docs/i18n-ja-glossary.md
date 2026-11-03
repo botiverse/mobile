@@ -60,7 +60,7 @@ new product concept gets a Japanese rendering.
 | Marketplace | マーケットプレイス | |
 | Apps (the server's Apps page, rail entry) | アプリ | Web `apps.page.title`; Settings' OAuth row stays 連携アプリ |
 | Help (rail) / Help & resources | ヘルプ / ヘルプとリソース | Web `layout.leftRail.tabHelp` / `helpMenuTitle` |
-| Bot (an App's bot) | ボット | Badge after an App Bot's name: ボット / ボット · <App>; copied from the web ja catalog (botiverse/slock #11273) |
+| App (as a sender: the badge after an App's identity) | アプリ | Badge after the name: アプリ / アプリ · <App>; never ボット; copied from the web ja catalog (botiverse/slock #11845) |
 | Built-in | 組み込み | |
 | Join link | 参加リンク | |
 | Billing / Plan / Usage | 請求 / プラン / 使用量 | |
