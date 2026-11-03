@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 17:37:20 UTC
-Latest run: 2bf19cb1-20261103170447
-Latest commit: 2bf19cb1-20261103170447
-Commit subject: test(visual): the create-agent empty case waits for its own window before clearing the name
+Generated: 2026-11-03 20:04:53 UTC
+Latest run: cd8e52ea-20261103200309
+Latest commit: cd8e52ea-20261103200309
+Commit subject: People in Add Member show the person icon, as on the web (#4244)
 Providers: react vs android
 Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 28 / total 93, pending 65
+AI analysis: ready 24 / total 93, pending 69
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -114,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- cd8e52ea-20261103200309: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/cd8e52ea-20261103200309/component-matrix.json, page runs/cd8e52ea-20261103200309/
 - 2bf19cb1-20261103170447: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/2bf19cb1-20261103170447/component-matrix.json, page runs/2bf19cb1-20261103170447/
 - fcf6ae60-20261103094938: react vs android, total 93, pass 1, basic-pass 12, different 78, matrix runs/fcf6ae60-20261103094938/component-matrix.json, page runs/fcf6ae60-20261103094938/
 - 5468c13a-20261103070304: react vs android, total 94, pass 2, basic-pass 14, different 76, matrix runs/5468c13a-20261103070304/component-matrix.json, page runs/5468c13a-20261103070304/
