@@ -1,7 +1,10 @@
 package build.raft.app
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
+import build.raft.designsystem.components.RaftFrameInsets
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,9 +30,17 @@ class RaftImageLightboxScreenshotTest {
     @Test
     fun lightboxDark() = capture("image.lightbox.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    /**
+     * artin 11-03: a Mac window whose controls are drawn over the top-left corner (the host's
+     * frame insets): the sender starts after them instead of under the traffic lights.
+     */
+    @Test
+    fun lightboxFrameInsets() =
+        capture("image.lightbox.frame-insets", RaftAppAppearance.Dark, RaftFrameInsets(left = 80.dp))
+
+    private fun capture(name: String, appearance: RaftAppAppearance, frameInsets: RaftFrameInsets = RaftFrameInsets.Zero) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) {
+            CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0, LocalRaftFrameInsets provides frameInsets) {
                 RaftImageLightboxContent(
                     request = RaftImageLightboxRequest(lightboxFixtureItems, index = 1),
                     resolveFullUrl = { null },

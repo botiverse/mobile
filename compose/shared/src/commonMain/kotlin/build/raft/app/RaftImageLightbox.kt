@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,11 +44,14 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftFrameInsets
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSpinner
@@ -70,8 +74,11 @@ import net.engawapg.lib.zoomable.zoomable
  *   (`net.engawapg.lib:zoomable`).
  * - Left / Right step through the conversation's images, Escape (and Back) closes; so does a click
  *   anywhere outside the image.
- * - The top bar shows who sent it and when, "3 of 12", and the actions the conversation already
- *   has for an attachment: Download and Open with.
+ * - The top bar shows who sent it and when (as the message header shows the time), "3 of 12",
+ *   and the actions the conversation already has for an attachment: Download and Open with.
+ * - The lightbox covers the whole window, so its top bar starts below the window's top safe area
+ *   and inside the host's frame insets ([LocalRaftFrameInsets]: a desktop window's own controls,
+ *   the macOS traffic lights), never under them ([raftImageLightboxBarPadding]).
  */
 internal data class RaftImageLightboxItem(
     val attachment: RaftThreadAttachmentItem,
@@ -152,13 +159,30 @@ internal const val RaftImageLightboxTag = "raft_image_lightbox"
 /** One page per image: `raft_image_lightbox_page_<attachment id>` (the pager composes the neighbours too). */
 internal fun raftImageLightboxPageTag(attachmentId: String): String = "raft_image_lightbox_page_$attachmentId"
 internal const val RaftImageLightboxCounterTag = "raft_image_lightbox_counter"
+internal const val RaftImageLightboxTopBarTag = "raft_image_lightbox_top_bar"
+internal const val RaftImageLightboxSenderTag = "raft_image_lightbox_sender"
+internal const val RaftImageLightboxTimeTag = "raft_image_lightbox_time"
 
 // The photo viewer's backdrop is near-black in every theme (Telegram, Photos).
 private val RaftImageLightboxBackdrop = Color(0xF0000000) // raft-color: photo viewer backdrop, dark in every theme
 private val RaftImageLightboxBarHeight = 56.dp
+private val RaftImageLightboxBarSidePadding = 16.dp
 private val RaftImageLightboxSideGutter = 64.dp
 private const val RaftImageLightboxMaxScale = 5f
 private const val RaftImageLightboxDoubleClickScale = 2.5f
+
+/**
+ * Where the lightbox's top bar sits: below the window's top safe area and the host's top frame
+ * inset (whichever reaches further), and its own 16dp in from each side plus the host's left /
+ * right frame inset (physical sides). The pages start under the bar.
+ */
+internal fun raftImageLightboxBarPadding(topSafeArea: Dp, frameInsets: RaftFrameInsets): PaddingValues =
+    PaddingValues.Absolute(
+        left = RaftImageLightboxBarSidePadding + frameInsets.left.coerceAtLeast(0.dp),
+        top = maxOf(topSafeArea, frameInsets.top, 0.dp),
+        right = RaftImageLightboxBarSidePadding + frameInsets.right.coerceAtLeast(0.dp),
+        bottom = 0.dp
+    )
 
 /** The lightbox in its own full-window layer ([Modal]); Back and Escape close it there too. */
 @Composable
@@ -169,13 +193,16 @@ internal fun RaftImageLightbox(
     onDownload: (RaftThreadAttachmentItem) -> Unit,
     onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?
 ) {
+    // The window's top safe area, read in the page (the lightbox covers the whole window).
+    val topSafeArea = raftWindowTopSafeAreaPadding()
     Modal(onWillDismiss = { onDismiss() }) {
         RaftImageLightboxContent(
             request = request,
             resolveFullUrl = resolveFullUrl,
             onDismiss = onDismiss,
             onDownload = onDownload,
-            onOpenWith = onOpenWith
+            onOpenWith = onOpenWith,
+            topSafeArea = topSafeArea
         )
     }
 }
@@ -192,6 +219,7 @@ internal fun RaftImageLightboxContent(
     onDownload: (RaftThreadAttachmentItem) -> Unit,
     onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?,
     modifier: Modifier = Modifier,
+    topSafeArea: Dp = 0.dp,
     pageImage: @Composable (item: RaftImageLightboxItem, fullUrl: String?, onContentSize: (Size) -> Unit) -> Unit =
         { item, fullUrl, onContentSize -> RaftImageLightboxRemoteImage(item, fullUrl, onContentSize) }
 ) {
@@ -222,6 +250,8 @@ internal fun RaftImageLightboxContent(
         if (target != pagerState.currentPage) scope.launch { pagerState.animateScrollToPage(target) }
     }
     val current = items[pagerState.currentPage.coerceIn(0, items.lastIndex)]
+    val barPadding = raftImageLightboxBarPadding(topSafeArea, LocalRaftFrameInsets.current)
+    val barTop = barPadding.calculateTopPadding()
     RaftDesignSystemTheme(forceDark = true) {
         Box(
             modifier =
@@ -250,7 +280,7 @@ internal fun RaftImageLightboxContent(
                     Modifier
                         .fillMaxSize()
                         .padding(
-                            top = RaftImageLightboxBarHeight,
+                            top = barTop + RaftImageLightboxBarHeight,
                             bottom = RaftImageLightboxBarHeight,
                             start = RaftImageLightboxSideGutter,
                             end = RaftImageLightboxSideGutter
@@ -273,6 +303,7 @@ internal fun RaftImageLightboxContent(
                 onDownload = { onDownload(current.attachment) },
                 onOpenWith = onOpenWith?.let { open -> { open(current.attachment) } },
                 onClose = { currentOnDismiss() },
+                padding = barPadding,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
             if (pagerState.currentPage > 0) {
@@ -415,15 +446,24 @@ private fun RaftImageLightboxTopBar(
     onDownload: () -> Unit,
     onOpenWith: (() -> Unit)?,
     onClose: () -> Unit,
+    padding: PaddingValues,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.fillMaxWidth().height(RaftImageLightboxBarHeight).padding(horizontal = 16.dp)) {
+    Box(
+        modifier =
+            modifier
+                .testTag(RaftImageLightboxTopBarTag)
+                .fillMaxWidth()
+                .padding(padding)
+                .height(RaftImageLightboxBarHeight)
+    ) {
         Column(
             modifier = Modifier.align(Alignment.CenterStart).fillMaxWidth(0.36f),
             verticalArrangement = Arrangement.Center
         ) {
             if (item.senderName.isNotBlank()) {
                 RaftText(
+                    modifier = Modifier.testTag(RaftImageLightboxSenderTag),
                     text = item.senderName,
                     style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
@@ -431,12 +471,16 @@ private fun RaftImageLightboxTopBar(
                 )
             }
             if (item.timeLabel.isNotBlank()) {
-                RaftText(
-                    text = item.timeLabel,
+                // The message's wire time, shown as a message header shows it (the conversation's
+                // time display: local time, toggles to relative), never the raw ISO string.
+                RaftRelativeTimestampText(
+                    value = item.timeLabel,
+                    displayGroup = RaftTimestampDisplayGroup.Conversation,
                     style = RaftTheme.typography.footnote,
                     color = RaftTheme.colors.foregroundHint,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag(RaftImageLightboxTimeTag)
                 )
             }
         }
