@@ -158,7 +158,6 @@ import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTable
-import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTableHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownParagraph
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownBlockQuote
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownListIndentEm
@@ -2684,15 +2683,7 @@ fun RaftMarkdownBody(
                         model.content,
                         model.node,
                         style = model.typography.table,
-                        headerBlock = { content, header, style, columnWidths, rowWidths ->
-                            MarkdownTableHeader(
-                                content = content,
-                                header = header,
-                                style = style.withRaftFontWeight(FontWeight.Bold),
-                                columnWidths = columnWidths,
-                                rowWidths = rowWidths
-                            )
-                        }
+                        headerStyle = model.typography.table.withRaftFontWeight(FontWeight.Bold),
                     )
                 }
             },
@@ -2927,7 +2918,8 @@ private object RaftMarkdownDimens : MarkdownDimens {
     override val codeBackgroundCornerSize: Dp = 8.dp
     override val blockQuoteThickness: Dp = 2.dp
     override val tableMaxWidth: Dp = Dp.Unspecified
-    override val tableCellWidth: Dp = 160.dp
+    // Unused: Raft tables size columns to their content (MarkdownTable, artin 11-03).
+    override val tableCellWidth: Dp = Dp.Unspecified
     override val tableSeparatorThickness: Dp = 1.dp
     // Legacy uniform inset; Raft tables use RaftMarkdownTableCellPadding (web px-2 py-1).
     override val tableCellPadding: Dp = 6.dp
