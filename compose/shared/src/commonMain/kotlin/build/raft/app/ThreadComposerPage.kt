@@ -217,6 +217,10 @@ private val ComposerChannelSuggestionGlyphSize = 11.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
+// web cases `composerOffsetTop`: the React capture puts the composer frame's top edge at 258px
+// (member, offset 250) and 218px (channel, offset 210); the visual input sits 8dp into the box.
+private const val ThreadComposerVisualMemberSuggestionAnchorOffset = 250f
+private const val ThreadComposerVisualChannelSuggestionAnchorOffset = 210f
 private const val ThreadComposerVisualSuggestionRepositionOffset = 336f
 private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
 private const val ThreadComposerSuggestionRepositionOracleFixture = "member_suggestions_reposition_oracle"
@@ -1620,6 +1624,10 @@ internal fun ThreadComposerScreen() {
                                     when {
                                         suggestionRepositionOracleEnabled && suggestionRepositioned ->
                                             ThreadComposerVisualSuggestionRepositionOffset
+                                        visualFixture == "member_suggestions" ->
+                                            ThreadComposerVisualMemberSuggestionAnchorOffset
+                                        visualFixture == "channel_suggestions" ->
+                                            ThreadComposerVisualChannelSuggestionAnchorOffset
                                         payload.suggestionsOpen -> ThreadComposerVisualSuggestionAnchorOffset
                                         else -> 0f
                                     }
@@ -1813,8 +1821,9 @@ private fun threadComposerVisualFixture(
                         displayName = "artin",
                         handle = "artin",
                         inMentionChannel = true,
+                        // The web row shows no description for artin (the channel-members mock's
+                        // role is not a mention description).
                         kind = MemberKind.Human,
-                        description = "Owner",
                         avatarLabel = "AR",
                         memberId = ThreadComposerVisualOwnerId
                     ),
@@ -4038,7 +4047,9 @@ internal fun ComposerMemberSuggestionRow(
             ) {
                 RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),
-                    label = member.displayName.ifBlank { member.avatarLabel },
+                    // web `MentionCandidateAvatar`: a person is a Gravatar or, without one, the
+                    // placeholder person icon, never initials (an empty label falls back to the icon).
+                    label = if (member.kind == MemberKind.Human) "" else member.displayName.ifBlank { member.avatarLabel },
                     avatarSize = ComposerMemberSuggestionAvatarSize,
                     carriedAvatarWireValue = member.avatarWireValue,
                 )
