@@ -28,11 +28,11 @@ import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
+import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.fail
 import org.jetbrains.skia.EncodedImageFormat
 
 /**
@@ -75,21 +75,32 @@ class RaftTooltipCaretFrameTest {
     }
 
     private fun assertCaretInFirstFrame(name: String, anchorTop: Int = ANCHOR_TOP, content: @Composable () -> Unit) {
+        val failures = mutableListOf<String>()
         for (hovered in listOf(true, false)) {
             val how = if (hovered) "$name, hovered" else "$name, preview"
             val (frames, colors) = render(preview = !hovered, anchorTop = anchorTop, content = content)
             val tooltips = frames.map { it.tooltip(colors) }
             val settled = tooltips.last()
-            assertTrue(settled.opacity > 0.95f, "$how: the tooltip never settled (${tooltips.map { it.describe() }})")
             val caret = settled.narrowEdges()
-            assertEquals(1, caret.size, "$how: the settled tooltip should have one caret, has ${settled.describe()}")
             val first = tooltips.indexOfFirst { it.opacity >= MIN_OPACITY }
-            assertEquals(
-                caret,
-                tooltips[first].narrowEdges(),
-                "$how: frame $first is the first to draw the tooltip; frames: ${tooltips.map { it.describe() }}",
-            )
+            val problem =
+                when {
+                    settled.opacity <= 0.95f -> "the tooltip never settled"
+                    caret.size != 1 -> "the settled tooltip should have one caret"
+                    tooltips[first].narrowEdges() != caret -> "frame $first, the first to draw the tooltip, has no caret where it settles"
+                    else -> null
+                }
+            if (problem != null) {
+                // The frames and their reading, for the CI's screenshot-diffs artifact.
+                val slug = how.replace(", ", "_")
+                reportDir.mkdirs()
+                frames.forEachIndexed { i, frame -> if (i <= first + 3 || i == frames.lastIndex) ImageIO.write(frame, "png", File(reportDir, "tooltip_caret_${slug}_$i.png")) }
+                val report = tooltips.mapIndexed { i, t -> "$i ${t.describe()}" }.joinToString("\n")
+                File(reportDir, "tooltip_caret_$slug.txt").writeText("$problem\n$report\n")
+                failures += "$how: $problem; frames:\n$report"
+            }
         }
+        if (failures.isNotEmpty()) fail(failures.joinToString("\n\n"))
     }
 
     private class Colors(val canvas: Int, val hud: Int)
@@ -184,6 +195,8 @@ class RaftTooltipCaretFrameTest {
         }
         return a
     }
+
+    private val reportDir = File(System.getProperty("raft.screenshot.reportDir") ?: "build/reports/screenshots")
 
     private companion object {
         const val OPAQUE = 0xFF shl 24
