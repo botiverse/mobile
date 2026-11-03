@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-03T23:27:36.940Z",
+  "generatedAt": "2026-11-03T23:49:43.792Z",
   "latestRunId": "e6d3cbab-20261103232613",
   "latest": {
     "runId": "e6d3cbab-20261103232613",
     "commit": "e6d3cbab-20261103232613",
     "commitSubject": "The Home list ends with the web's space under its last item (#4259)",
-    "generatedAt": "2026-11-03T23:27:36.940Z",
+    "generatedAt": "2026-11-03T23:49:43.792Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 93,
-      "ready": 32,
-      "pending": 61
+      "ready": 38,
+      "pending": 55
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "e6d3cbab-20261103232613",
       "commit": "e6d3cbab-20261103232613",
       "commitSubject": "The Home list ends with the web's space under its last item (#4259)",
-      "generatedAt": "2026-11-03T23:27:36.940Z",
+      "generatedAt": "2026-11-03T23:49:43.792Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 93,
-        "ready": 32,
-        "pending": 61
+        "ready": 38,
+        "pending": 55
       },
       "comparisons": [
         "react__android"

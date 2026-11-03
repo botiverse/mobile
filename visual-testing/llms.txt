@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 23:27:36 UTC
+Generated: 2026-11-03 23:49:43 UTC
 Latest run: e6d3cbab-20261103232613
 Latest commit: e6d3cbab-20261103232613
 Commit subject: The Home list ends with the web's space under its last item (#4259)
 Providers: react vs android
 Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 32 / total 93, pending 61
+AI analysis: ready 38 / total 93, pending 55
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
