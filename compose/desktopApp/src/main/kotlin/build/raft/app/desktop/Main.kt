@@ -1,6 +1,10 @@
 package build.raft.app.desktop
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -11,6 +15,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import build.raft.app.cmp.RaftCmpRouter
@@ -65,7 +70,13 @@ fun main(args: Array<String>) {
             },
         ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT) }
-            RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+            // macOS: the title bar over the app's top bar, traffic lights inside it (web desktop app).
+            val titleBar = remember { RaftDesktopTitleBar.install(window) }
+            RaftDesktopTitleBarProvider(titleBar, fullscreen = windowState.placement == WindowPlacement.Fullscreen) { hitTest ->
+                Box(Modifier.fillMaxSize().then(hitTest)) {
+                    RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+                }
+            }
         }
     }
 }

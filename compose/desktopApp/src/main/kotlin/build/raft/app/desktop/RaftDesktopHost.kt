@@ -27,6 +27,7 @@ import build.raft.app.cmp.RaftCmpToastLayer
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.nav.RaftPageStackDisplay
+import build.raft.designsystem.components.LocalRaftWindowTitleBar
 
 /**
  * Renders [navigator]'s back stack with Navigation 3: :shared's [RaftPageStackDisplay], a
@@ -94,10 +95,20 @@ private fun RaftDesktopPageContent(navigator: RaftDesktopNavigator, page: RaftDe
     val publisher = remember { RaftDesktopAdaptivePanePublisher(page.events::send) }
     val density = LocalDensity.current.density
     var size by remember { mutableStateOf(IntSize.Zero) }
+    // macOS: the title bar's band over the window's top as the page's top safe area (a page header
+    // starts under the traffic lights; the wide top bar covers the band itself).
+    val insetsPublisher = remember { RaftDesktopWindowInsetsPublisher(page.events::send) }
+    val titleBarBand = LocalRaftWindowTitleBar.current.height
     // After the first composition is applied, i.e. after the page subscribed to page.events.
-    LaunchedEffect(size, density) {
-        if (publisher.publish(size.width, size.height, density)) {
-            log("adaptive pane page=${page.args.pageName} widthPx=${size.width} heightPx=${size.height} density=$density")
+    LaunchedEffect(size, density, titleBarBand) {
+        val resized = publisher.publish(size.width, size.height, density)
+        // Again with each resize: a page part that observes the insets may have joined since.
+        val insets = insetsPublisher.publish(titleBarBand, density, resend = resized)
+        if (resized || insets) {
+            log(
+                "adaptive pane page=${page.args.pageName} widthPx=${size.width} heightPx=${size.height} " +
+                    "density=$density titleBarBand=$titleBarBand"
+            )
         }
     }
     Box(Modifier.fillMaxSize().onSizeChanged { size = it }) {
