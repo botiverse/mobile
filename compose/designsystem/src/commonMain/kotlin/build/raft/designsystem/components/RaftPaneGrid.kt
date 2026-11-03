@@ -9,6 +9,14 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.runtime.CompositionLocalContext
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.currentCompositionLocalContext
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -71,6 +79,12 @@ import kotlin.math.roundToInt
  *
  * The main pane keeps its place in the composition whatever the columns do, so opening or
  * closing a column never remounts it.
+ *
+ * Left of the main pane a grid may have a leading column (the sidebar or a list,
+ * [RaftPaneGridLeadingColumn]; its host puts the splitter on its seam). Grids nest the way pages
+ * do: one declared in another's main pane hands its columns to the outermost grid, so the window
+ * has one row, left to right list | main | the outer levels' columns | the inner levels' (web:
+ * sidebar | conversation | thread | Tasks / Files), and the rightmost gives way first.
  */
 
 /** Web `MAIN_COLUMN_MIN_WIDTH`: the main pane never renders narrower than this beside a column. */
@@ -283,12 +297,113 @@ class RaftPaneGridColumn(
     val shortSwitch: (@Composable () -> Unit)? = null,
 )
 
+// ---------------------------------------------------------------- the leading column
+
+/** Where the leading column stands: beside the main pane, filling the row (the main pane gets no width), or out of sight. */
+enum class RaftPaneGridLeadingMode { Beside, Fill, Hidden }
+
+/**
+ * The column left of the main pane (web ShellSidebarColumn: the sidebar, or the Activity / Search
+ * list): its width is the host's ([widthDp], already fitted to the row; the host keeps it), with
+ * a 1dp seam on its right. The host draws the splitter on that seam ([RaftPaneSplitter]) above
+ * the grid, since the sidebar's handle does more than resize (web `snap`: a drag past its end
+ * collapses it, Enter too), and keeps it while a drag has the column out of sight.
+ */
+@Immutable
+class RaftPaneGridLeadingColumn(
+    val widthDp: Float,
+    val mode: RaftPaneGridLeadingMode = RaftPaneGridLeadingMode.Beside,
+    val content: @Composable () -> Unit,
+)
+
+// ---------------------------------------------------------------- one grid for nested pages
+
+/**
+ * The columns a grid inside another grid's main pane hands to it: they stand in the outermost
+ * grid, after its own columns and the ones handed up from outer levels (a page inside the
+ * workspace: conversation | thread | Tasks / Files). [locals] are where they were declared, so
+ * their cells render as they would have there.
+ */
+internal class RaftPaneGridHandedUp(
+    val depth: Int,
+    val columns: List<RaftPaneGridColumn>,
+    val fillColumn: String? = null,
+    val topInset: Dp = 0.dp,
+    val locals: CompositionLocalContext? = null,
+)
+
+/** A column where the outermost grid lays it out, with the top inset and locals of the grid that declared it. */
+internal class RaftPaneGridPlaced(val column: RaftPaneGridColumn, val topInset: Dp, val locals: CompositionLocalContext?)
+
+/** The outermost grid, as the grids and pages in its main pane see it. */
+@Stable
+internal class RaftPaneGridHost internal constructor() {
+    private val handedUp = mutableStateMapOf<Any, RaftPaneGridHandedUp>()
+
+    /** The row less the leading column: the main pane and every column; null before it is measured. */
+    internal var roomDp by mutableStateOf<Float?>(null)
+
+    /** The outermost grid's own columns: their minimums, and their widths as they stand. */
+    internal var ownMinsDp by mutableFloatStateOf(0f)
+    internal var ownWidthsDp by mutableFloatStateOf(0f)
+
+    /** [token]'s grid hands up [up] (null: nothing any more). */
+    internal fun handUp(token: Any, up: RaftPaneGridHandedUp?) {
+        if (up == null || (up.columns.isEmpty() && up.fillColumn == null)) handedUp.remove(token) else handedUp[token] = up
+    }
+
+    /** Left to right: the outermost grid's [own] columns, then the handed-up ones, outer levels first. */
+    internal fun placed(own: List<RaftPaneGridColumn>, ownTopInset: Dp): List<RaftPaneGridPlaced> =
+        own.map { RaftPaneGridPlaced(it, ownTopInset, null) } +
+            handedUp.values.sortedBy { it.depth }.flatMap { up -> up.columns.map { RaftPaneGridPlaced(it, up.topInset, up.locals) } }
+
+    internal fun fillIds(ownFill: String?): Set<String> = (listOfNotNull(ownFill) + handedUp.values.mapNotNull { it.fillColumn }).toSet()
+
+    /**
+     * Web `placeSections`: what columns declared at [depth] may count on beside a main pane at its
+     * 360, the columns declared before them (outer levels) given way down to their minimums.
+     */
+    internal fun spareDp(depth: Int): Float? {
+        val room = roomDp ?: return null
+        val before = handedUp.values.filter { it.depth < depth }.sumOf { up -> up.columns.sumOf { it.bounds.minWidthDp.toDouble() } }.toFloat()
+        return room - ownMinsDp - before - RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP
+    }
+}
+
+internal val LocalRaftPaneGridHost = compositionLocalOf<RaftPaneGridHost?> { null }
+
+/** How many grids' main panes enclose this point (0: none). */
+private val LocalRaftPaneGridDepth = compositionLocalOf { 0 }
+
+/**
+ * For a page deciding whether its columns stand beside it (web `placeSections`: `mins(columns) <=
+ * room - 360`): the width a [RaftPaneGrid] declared here could give its columns, with the main
+ * pane at 360 and the columns of the grids around it at their minimums. Null outside any grid's
+ * main pane, or before the outermost grid is measured.
+ */
+@Composable
+fun raftPaneGridSpareDp(): Float? = LocalRaftPaneGridHost.current?.spareDp(LocalRaftPaneGridDepth.current)
+
+/**
+ * The outermost grid's room for the main pane and the columns handed up to it (its row less the
+ * leading column and its own columns): what the region around a nested grid measured when its
+ * columns stood inside it. Null outside any grid's main pane, or before it is measured.
+ */
+@Composable
+fun raftPaneGridRoomDp(): Float? = LocalRaftPaneGridHost.current?.let { host -> host.roomDp?.let { it - host.ownWidthsDp } }
+
 // ---------------------------------------------------------------- the grid
 
 /**
- * The main pane and [columns] in one row. [fillColumn] (Focus mode) gives that column the whole
- * row and the main pane no width (it stays composed). [topInset] keeps the columns' heads out of
- * the status bar, as the main pane's own header does.
+ * The main pane and [columns] in one row, after an optional [leading] column. [fillColumn] (Focus
+ * mode) gives that column the row right of the leading one and the main pane no width (it stays
+ * composed). [topInset] keeps the columns' heads out of the status bar, as the main pane's own
+ * header does.
+ *
+ * A grid declared inside another grid's main pane draws only its main pane: its columns (and
+ * [fillColumn], [topInset]) go to the outermost grid, after that grid's own columns and those of
+ * the levels between, so every column of the window shares one row and one set of width rules
+ * (the rightmost gives way first; the main pane keeps 360).
  */
 @Composable
 fun RaftPaneGrid(
@@ -296,32 +411,99 @@ fun RaftPaneGrid(
     modifier: Modifier = Modifier,
     fillColumn: String? = null,
     topInset: Dp = 0.dp,
+    leading: RaftPaneGridLeadingColumn? = null,
     main: @Composable () -> Unit,
 ) {
+    val outer = LocalRaftPaneGridHost.current
+    val depth = LocalRaftPaneGridDepth.current
+    if (outer != null) {
+        val locals = currentCompositionLocalContext
+        val token = remember { Any() }
+        SideEffect { outer.handUp(token, RaftPaneGridHandedUp(depth, columns, fillColumn, topInset, locals)) }
+        DisposableEffect(outer) { onDispose { outer.handUp(token, null) } }
+    }
+    val host = outer ?: remember { RaftPaneGridHost() }
     val store = LocalRaftPaneGridSizes.current
     val density = LocalDensity.current.density
     var availableDp by remember { mutableStateOf(0f) }
+    // The outermost grid lays out its own columns and every column handed up, left to right.
+    val placed = if (outer != null) emptyList() else host.placed(columns, topInset)
+    val fillIds = if (outer != null) emptySet() else host.fillIds(fillColumn)
+    val beside = leading?.mode == RaftPaneGridLeadingMode.Beside
+    val leadingDp =
+        when (leading?.mode) {
+            RaftPaneGridLeadingMode.Beside -> leading.widthDp + RaftStroke.Hairline.value
+            RaftPaneGridLeadingMode.Fill -> availableDp
+            else -> 0f
+        }
+    val roomDp = maxOf(0f, availableDp - leadingDp)
     val fitted =
         raftPaneGridFitWidths(
-            availableDp = availableDp.takeIf { it > 0f } ?: Float.MAX_VALUE,
-            columns = columns.map { store.widthDp(it.bounds) to it.bounds.minWidthDp },
+            availableDp = roomDp.takeIf { availableDp > 0f } ?: Float.MAX_VALUE,
+            columns = placed.map { store.widthDp(it.column.bounds) to it.column.bounds.minWidthDp },
         )
-    val filling = fillColumn != null && columns.any { it.bounds.id == fillColumn }
+    val filling = placed.any { it.column.bounds.id in fillIds }
+    if (outer == null) {
+        SideEffect {
+            host.roomDp = roomDp.takeIf { availableDp > 0f }
+            host.ownMinsDp = columns.sumOf { it.bounds.minWidthDp.toDouble() }.toFloat()
+            host.ownWidthsDp = fitted.take(columns.size).sum()
+        }
+    }
+    val leadingFills = leading?.mode == RaftPaneGridLeadingMode.Fill
     Row(modifier.onSizeChanged { availableDp = it.width / density }) {
+        if (leading != null) RaftPaneGridLeadingView(leading)
         // Collapsed by width, never weight(0f) (Compose rejects it): see raftParentPaneLayout.
-        Box((if (filling) Modifier.width(0.dp) else Modifier.weight(1f)).fillMaxHeight()) { main() }
-        columns.forEachIndexed { index, column ->
+        Box(
+            (if (filling || leadingFills) Modifier.width(0.dp) else Modifier.weight(1f))
+                .fillMaxHeight()
+                // Beside the leading column the main pane's start is away from the screen edge.
+                .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
+        ) {
+            CompositionLocalProvider(LocalRaftPaneGridHost provides host, LocalRaftPaneGridDepth provides depth + 1) { main() }
+        }
+        placed.forEachIndexed { index, place ->
+            val column = place.column
             key(column.bounds.id) {
-                RaftPaneGridSideColumn(
-                    column = column,
-                    widthDp = fitted[index],
-                    // A column's width includes its left seam (web), so the main pane has the rest.
-                    mainWidthDp = maxOf(0f, availableDp - fitted.sum()),
-                    fill = filling && column.bounds.id == fillColumn,
-                    hidden = filling && column.bounds.id != fillColumn,
-                    topInset = topInset,
-                )
+                val draw: @Composable () -> Unit = {
+                    RaftPaneGridSideColumn(
+                        column = column,
+                        widthDp = fitted[index],
+                        // A column's width includes its left seam (web), so the main pane has the rest.
+                        mainWidthDp = maxOf(0f, roomDp - fitted.sum()),
+                        fill = filling && column.bounds.id in fillIds,
+                        hidden = leadingFills || (filling && column.bounds.id !in fillIds),
+                        topInset = place.topInset,
+                    )
+                }
+                val locals = place.locals
+                if (locals != null) CompositionLocalProvider(locals) { draw() } else draw()
             }
+        }
+    }
+}
+
+/** The leading column and its right seam. */
+@Composable
+private fun RowScope.RaftPaneGridLeadingView(leading: RaftPaneGridLeadingColumn) {
+    val beside = leading.mode == RaftPaneGridLeadingMode.Beside
+    Box(
+        when (leading.mode) {
+            RaftPaneGridLeadingMode.Fill -> Modifier.weight(1f)
+            RaftPaneGridLeadingMode.Beside -> Modifier.width(leading.widthDp.dp + RaftStroke.Hairline)
+            RaftPaneGridLeadingMode.Hidden -> Modifier.width(0.dp)
+        }.fillMaxHeight()
+    ) {
+        Row(Modifier.fillMaxSize()) {
+            Box(
+                Modifier.weight(1f).fillMaxHeight()
+                    // Beside the main pane the column's inner side is away from the screen edge.
+                    .then(if (beside) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier)
+            ) {
+                CompositionLocalProvider(LocalRaftPaneGridHost provides null) { leading.content() }
+            }
+            // raft-ui: one line-seam between regions, as the rail's.
+            if (beside) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
         }
     }
 }
@@ -356,7 +538,10 @@ fun RowScope.RaftPaneGridSideColumn(
             if (!fill) Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(RaftTheme.colors.lineSeam))
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 if (topInset > 0.dp) Spacer(Modifier.fillMaxWidth().height(topInset))
-                RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxWidth())
+                // A page in a cell is not in the main pane: a grid it declares is its own.
+                CompositionLocalProvider(LocalRaftPaneGridHost provides null) {
+                    RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxWidth())
+                }
             }
         }
         if (!fill && !hidden) {

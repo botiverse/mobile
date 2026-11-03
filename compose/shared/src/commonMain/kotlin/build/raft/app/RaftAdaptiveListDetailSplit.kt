@@ -1,14 +1,9 @@
 package build.raft.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -18,14 +13,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import build.raft.app.resources.*
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.WindowInsetsSides
-import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftPaneGridPlatform
 import build.raft.designsystem.components.RaftPaneSplitter
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -56,8 +49,10 @@ internal class RaftListPaneWidths(private val store: KeyValueChatLayoutPreferenc
     fun renderedDp(kind: RaftListPaneKind, rowWidthDp: Float?): Float =
         raftListPaneWidthDp(kind, preferredDp(kind), rowWidthDp)
 
-    fun drag(kind: RaftListPaneKind, startWidthDp: Float, deltaDp: Float, rowWidthDp: Float?) {
-        preferred.getValue(kind).value = raftListPaneDraggedWidthDp(kind, startWidthDp, deltaDp, rowWidthDp)
+    /** A drag in flight: [deltaDp] from [startWidthDp], within [kind]'s limits, the row and [maxDp] (a share cap). */
+    fun drag(kind: RaftListPaneKind, startWidthDp: Float, deltaDp: Float, rowWidthDp: Float?, maxDp: Float = Float.MAX_VALUE) {
+        preferred.getValue(kind).value =
+            minOf(raftListPaneDraggedWidthDp(kind, startWidthDp, deltaDp, rowWidthDp), maxOf(kind.minDp, maxDp))
     }
 
     /** Shows [widthDp] (within the kind's range) without saving it: a drag in flight. */
@@ -81,12 +76,22 @@ internal fun rememberRaftListPaneWidths(store: KeyValueChatLayoutPreferenceStore
     remember(store) { RaftListPaneWidths(store) }
 
 /**
+ * Web `shareCapWidth`: the widest a list may render when it must not outgrow the pane beside it,
+ * [share] of the [roomDp] right of the rail, never below the kind's minimum (web Activity with an
+ * item open: half, "the channel narrower than the list is odd", stdrc).
+ */
+internal fun raftListPaneShareCapDp(roomDp: Float, share: Float, minDp: Float): Float = maxOf(minDp, kotlin.math.floor(roomDp * share))
+
+/**
  * task #13 / #37 / artin task #20: the wide list + detail split the Home, Activity and Search hosts
  * share (lifted out of SettingsHomePage). The list stays in the first slot in every state, so
- * picking an item or narrowing never remounts it.
+ * picking an item or narrowing never remounts it. The split is a [RaftPaneGrid]: the list is its
+ * leading column, the detail its main pane, so the detail's own columns (the reply thread, a
+ * conversation's Tasks / Files) stand in the same row, right of the detail.
  *
  * - [dualPane]: the [kind]'s remembered width, clamped to the row so the detail keeps its
- *   minimum, a 1dp seam and the drag handle on top ([RaftListPaneSeam]).
+ *   minimum (and to [maxShare] of the row where given, web `maxShare`), the grid's 1dp seam and
+ *   the drag handle on top ([RaftListPaneSeam]).
  * - [fillListWhenNothingPicked] with no [hasSelection] (web Search before a result is picked):
  *   the list takes the whole row and there is no empty detail beside it.
  * - [collapsed] (the rail's Collapse Sidebar, [RaftSidebarCollapseState]): the detail takes the
@@ -108,12 +113,15 @@ internal fun RaftAdaptiveListDetailSplit(
     fillListWhenNothingPicked: Boolean = false,
     collapsed: Boolean = false,
     onCollapsedChange: ((Boolean) -> Unit)? = null,
+    maxShare: Float? = null,
     onResizingChange: (Boolean) -> Unit = {},
     log: (String) -> Unit = {},
 ) {
     val density = LocalDensity.current
     var rowWidthDp by remember { mutableStateOf<Float?>(null) }
-    val listWidthDp = widths.renderedDp(kind, rowWidthDp)
+    val shareCap = maxShare?.let { share -> rowWidthDp?.let { raftListPaneShareCapDp(it, share, kind.minDp) } }
+    val listWidthDp = widths.renderedDp(kind, rowWidthDp).let { if (shareCap != null) minOf(it, shareCap) else it }
+    val listMaxDp = raftListPaneWidthDp(kind, kind.maxDp, rowWidthDp).let { if (shareCap != null) minOf(it, shareCap) else it }
     val listFillsRow = dualPane && fillListWhenNothingPicked && !hasSelection
     val listCollapsed = dualPane && !listFillsRow && collapsed
     val split = dualPane && !listFillsRow && !listCollapsed
@@ -126,33 +134,23 @@ internal fun RaftAdaptiveListDetailSplit(
                     if (rowWidthDp != widthDp) rowWidthDp = widthDp
                 }
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier =
-                    when {
-                        listFillsRow -> Modifier.weight(1f)
-                        split -> Modifier.width(listWidthDp.dp)
-                        else -> Modifier.width(0.dp)
-                    }.fillMaxHeight()
-                        // Split: the list's inner side is away from the screen edge, so its rows
-                        // pad no horizontal safe area there (the detail pane's start likewise).
-                        .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier),
-            ) {
-                if (dualPane && !listCollapsed) listPane(active)
-            }
-            Spacer(
-                modifier =
-                    Modifier
-                        .width(if (split) RAFT_LIST_PANE_DIVIDER_DP.dp else 0.dp)
-                        .fillMaxHeight()
-                        .background(RaftColor.BorderSeam), // raft-ui: one line-seam between regions, as the rail's
-            )
-            Box(
-                modifier =
-                    (if (listFillsRow) Modifier.width(0.dp) else Modifier.weight(1f))
-                        .fillMaxHeight()
-                        .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
-            ) {
+        RaftPaneGrid(
+            columns = emptyList(),
+            modifier = Modifier.fillMaxSize(),
+            leading =
+                RaftPaneGridLeadingColumn(
+                    widthDp = listWidthDp,
+                    mode =
+                        when {
+                            listFillsRow -> RaftPaneGridLeadingMode.Fill
+                            split -> RaftPaneGridLeadingMode.Beside
+                            else -> RaftPaneGridLeadingMode.Hidden
+                        },
+                ) {
+                    if (dualPane && !listCollapsed) listPane(active)
+                },
+        ) {
+            Box(Modifier.fillMaxSize()) {
                 if (split || listCollapsed || hasSelection) {
                     detailPane(Modifier.fillMaxSize().padding(bottom = detailBottomInset))
                 } else if (!dualPane) {
@@ -160,12 +158,14 @@ internal fun RaftAdaptiveListDetailSplit(
                 }
             }
         }
+        // On top of the grid, so all of its hit area takes touches over the detail too.
         RaftListPaneSeam(
             kind = kind,
             widths = widths,
             split = split,
             active = active,
             listWidthDp = listWidthDp,
+            listMaxDp = listMaxDp,
             rowWidthDp = rowWidthDp,
             onCollapsedChange = onCollapsedChange,
             onResizingChange = onResizingChange,
@@ -197,6 +197,7 @@ private fun RaftListPaneSeam(
     split: Boolean,
     active: Boolean,
     listWidthDp: Float,
+    listMaxDp: Float,
     rowWidthDp: Float?,
     onCollapsedChange: ((Boolean) -> Unit)?,
     onResizingChange: (Boolean) -> Unit,
@@ -207,6 +208,7 @@ private fun RaftListPaneSeam(
     val currentLog by rememberUpdatedState(log)
     val currentKind by rememberUpdatedState(kind)
     val currentRow by rememberUpdatedState(rowWidthDp)
+    val currentMax by rememberUpdatedState(listMaxDp)
     var startWidthDp by remember { mutableStateOf(0f) }
     // The remembered width when the drag started: where a collapsed list comes back to.
     var restoreWidthDp by remember { mutableStateOf(0f) }
@@ -232,7 +234,7 @@ private fun RaftListPaneSeam(
     // Collapsed by the rail (not by this drag), the list is inert and has no handle.
     if (!split && !dragCollapsed) return
     val min = kind.minDp
-    val max = raftListPaneWidthDp(kind, kind.maxDp, rowWidthDp)
+    val max = maxOf(min, listMaxDp)
     val seamDp = if (split) listWidthDp else 0f
     RaftPaneGridAppLocals {
         // The splitter's hit area: 12dp across the seam for a mouse, 24dp for a finger.
@@ -260,7 +262,7 @@ private fun RaftListPaneSeam(
                     dragCollapsed = past
                     collapse?.invoke(past)
                 }
-                if (dragCollapsed) widths.preview(kind, restoreWidthDp) else widths.drag(kind, startWidthDp, total, currentRow)
+                if (dragCollapsed) widths.preview(kind, restoreWidthDp) else widths.drag(kind, startWidthDp, total, currentRow, currentMax)
             },
             onDragEnd = { session.end("lift") },
             onStep = { step -> widths.commit(kind, (listWidthDp + step).coerceIn(min, max)) },

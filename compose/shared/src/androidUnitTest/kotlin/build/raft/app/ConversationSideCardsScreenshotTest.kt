@@ -19,7 +19,14 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import androidx.compose.foundation.layout.padding
 import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.RaftListPaneKind
+import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.ScreenLoadState
@@ -159,6 +166,139 @@ class ConversationSideCardsWideScreenshotTest {
                 }
             }
         }
+}
+
+/**
+ * The workspace's one pane grid (web MainLayout row), light and dark: the sidebar as the grid's
+ * leading column at a width someone dragged (300, kept under its own key, the sidebar's default
+ * being 240), then the conversation, the reply thread and Task v2's Tasks / Files column, left to
+ * right as on web. Nested as in the app: [RaftAdaptiveListDetailSplit] around the workspace's
+ * detail grid (the thread's column) around the conversation's (the cards' column), which hand
+ * their columns up to the split's row.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w1600dp-h900dp-mdpi")
+class WorkspacePaneGridScreenshotTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
+    @Before
+    fun installPreferenceStore() {
+        val store = InMemoryRaftKeyValueStore()
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) { store }
+    }
+
+    @After
+    fun clearPreferenceStore() = RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+
+    @Test fun conversationThreadAndCards() = capture("workspace.pane-grid.thread-cards", RaftAppAppearance.Light)
+
+    @Test fun conversationThreadAndCardsDark() = capture("workspace.pane-grid.thread-cards.dark", RaftAppAppearance.Dark)
+
+    private val both = ConversationSideCardsState().withOpen(ConversationSideCard.Tasks, true).withOpen(ConversationSideCard.Files, true)
+
+    private fun capture(name: String, appearance: RaftAppAppearance) =
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/side-cards", activities = activities) {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+            val widths =
+                remember {
+                    val preferences = KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
+                    preferences.saveAdaptiveListPaneWidth(RaftListPaneKind.Sidebar, "300")
+                    RaftListPaneWidths(preferences)
+                }
+            val grid = remember { RaftPaneGridStore() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftPaneGridStore provides grid) {
+                RaftDesignSystemTheme {
+                    Box(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+                        RaftAdaptiveListDetailSplit(
+                            kind = RaftListPaneKind.Sidebar,
+                            widths = widths,
+                            dualPane = true,
+                            active = true,
+                            hasSelection = true,
+                            detailBottomInset = 0.dp,
+                            listPane = { SidebarFixture() },
+                            detailPane = { modifier ->
+                                RaftPaneGrid(
+                                    columns =
+                                        listOf(
+                                            RaftPaneGridColumn(
+                                                bounds = RaftPaneGridColumns.Thread,
+                                                resizeLabel = "Resize thread",
+                                                cells = listOf(RaftPaneGridCell(id = "thread") { ThreadFixture() }),
+                                            )
+                                        ),
+                                    modifier = modifier,
+                                ) {
+                                    RaftPaneGrid(
+                                        columns =
+                                            listOfNotNull(
+                                                conversationSideCardsColumn(
+                                                    cards = both,
+                                                    onPick = {},
+                                                    onClose = {},
+                                                    tasksContent = { TasksFixture() },
+                                                    filesContent = { ThreadFilesContent(payload = filesPayload, onEvent = { _, _ -> }) },
+                                                )
+                                            ),
+                                        modifier = Modifier.fillMaxSize(),
+                                    ) {
+                                        Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+                                            Header(both)
+                                            Column(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) { Conversation() }
+                                        }
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+}
+
+@Composable
+private fun SidebarFixture() {
+    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        RaftText("Botiverse", modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), style = RaftTheme.typography.headline)
+        listOf("triage", "wg-context-p", "proj-workflow", "design", "general").forEach { name ->
+            RaftListRow(title = "# $name", selected = name == "wg-context-p", onClick = {})
+        }
+    }
+}
+
+@Composable
+private fun ThreadFixture() {
+    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        RaftPanelBackHeader(title = "Thread", subtitle = "#wg-context-p", onBack = null)
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            listOf(messages[3], msg(5, "Cora", "agent", "Started: the table compares storage, serving and tenancy.")).forEach { message ->
+                ThreadMessageCard(
+                    message = message,
+                    messageBodyTextStyle = raftMessageBodyTextStyle("md"),
+                    isMarkdownTagValid = { false },
+                    timestampLabel = message.timestampLabel.substring(11, 16),
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = { _, _ -> },
+                    onOpenMarkdownUrl = {},
+                )
+            }
+        }
+        ThreadComposerDock {
+            ThreadComposerContent(
+                payload = RaftThreadComposerPayload(instanceId = "pane-grid-thread-dock", placeholder = "Reply"),
+                onEvent = { _, _, _, _ -> },
+                attachmentPreviewEnabled = false,
+            )
+        }
+    }
 }
 
 @Composable

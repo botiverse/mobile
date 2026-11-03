@@ -16261,12 +16261,20 @@ private fun ThreadPageContentContent(
     val sideCards =
         if (sideCardsEnabled) sideCardsStoreState.availableIn(RaftThreadTab.Tasks in availableTabs) else ConversationSideCardsState()
     // Task v2 on a wide page: the cards stand in a column beside the conversation instead of
-    // covering it ([conversationSideCardsBeside]). The page's width is measured on its root; until
-    // then the window's stands in for it.
+    // covering it ([conversationSideCardsBeside]). In the workspace the column joins the pane grid
+    // around the page, right of the reply thread: the room is that grid's ([raftPaneGridSpareDp]).
+    // A page on its own measures its root; until then the window's width stands in for it.
     val sideCardsDensity = LocalDensity.current.density
     val sideCardsWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     var sideCardsPageWidthDp by remember { mutableStateOf(sideCardsWindowWidthDp) }
-    val sideCardsBeside = sideCardsEnabled && conversationSideCardsBeside(sideCardsWindowWidthDp, sideCardsPageWidthDp)
+    val sideCardsGridSpareDp = raftPaneGridSpareDp()
+    val sideCardsBeside =
+        sideCardsEnabled &&
+            if (sideCardsGridSpareDp != null) {
+                conversationSideCardsBesideInGrid(sideCardsWindowWidthDp, sideCardsGridSpareDp)
+            } else {
+                conversationSideCardsBeside(sideCardsWindowWidthDp, sideCardsPageWidthDp)
+            }
     val onSelectedTabChanged = callbacks.onSelectedTabChanged
     val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
     val activityMuteState = data.activityMuteState

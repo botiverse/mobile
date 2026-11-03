@@ -7619,6 +7619,16 @@ private fun RaftAppShellReadyContent(
                         // Wide pane roles (RaftWidePanes.kt): a page the conversation opens with a
                         // Supporting role shows in the pane on the right; the conversation stays.
                         // The task overlay has no room for one: its pages open as before.
+                        // Inside the list + detail split the detail's columns stand in the split's row,
+                        // right of this pane: the width the side column decision reads is that of the
+                        // pane and its columns together, as when they stood inside it.
+                        val gridRoomDp = raftPaneGridRoomDp()
+                        LaunchedEffect(active, allowSideColumn, gridRoomDp) {
+                            if (!active || !allowSideColumn || gridRoomDp == null) return@LaunchedEffect
+                            adaptiveWorkspaceStore.update {
+                                if (it.detailPaneWidthDp == gridRoomDp) it else it.copy(detailPaneWidthDp = gridRoomDp)
+                            }
+                        }
                         val supportingPaneHost = navRailActive && allowSideColumn
                         val supportingOpen = supportingPaneHost && detailAccepted && supportingPanes.isOpen
                         // Only the main detail pane reports whether the pane is shown (RaftWidePanes.kt).
@@ -7628,7 +7638,7 @@ private fun RaftAppShellReadyContent(
                                 paneModifier
                                     .fillMaxSize()
                                     .onSizeChanged { size ->
-                                        if (!active || !allowSideColumn) return@onSizeChanged
+                                        if (!active || !allowSideColumn || gridRoomDp != null) return@onSizeChanged
                                         val widthDp = with(density) { size.width.toDp().value }
                                         adaptiveWorkspaceStore.update {
                                             if (it.detailPaneWidthDp == widthDp) it else it.copy(detailPaneWidthDp = widthDp)
@@ -7666,21 +7676,6 @@ private fun RaftAppShellReadyContent(
                             wide = supportingPaneHost,
                             openInPane = { _, pageName, pageData -> supportingPanes = supportingPanes.replace(pageName, pageData) },
                         ) {
-                        Row(modifier = detailModifier) {
-                        // task #180: in Focus mode the thread owns the row and the parent channel/DM
-                        // gets no space. It is collapsed by WIDTH, never by weight -- `weight(0f)` is
-                        // illegal in Compose and threw IllegalArgumentException "invalid weight 0.0"
-                        // the moment Focus was entered. See raftParentPaneLayout.
-                        val paneLayout = raftParentPaneLayout(focused = sideThreadFocusActive)
-                        val modifier =
-                            when {
-                                // Collapsed by width; a focused pane deliberately takes NO weight.
-                                paneLayout.widthDp != null ->
-                                    Modifier.width(paneLayout.widthDp.dp).fillMaxHeight()
-                                paneLayout.weight != null ->
-                                    Modifier.weight(paneLayout.weight).fillMaxHeight()
-                                else -> Modifier.fillMaxHeight()
-                            }
                         val workspace = adaptiveWorkspaceState
                         // task #33: a surface may decline the shared selection (the DMs tab shows only
                         // DMs); a declined selection renders the empty placeholder, never its composer.
@@ -7718,55 +7713,23 @@ private fun RaftAppShellReadyContent(
                                 generation = mounted.generation,
                             )
                         }
-                            if (detailPageData == null) {
-                                // The wide detail with nothing open: the shared empty state (icon,
-                                // muted title) on the pane's surface, not a bare line of text.
-                                RaftEmptyState(
-                                    title = adaptiveEmptyLabel,
-                                    modifier = modifier.fillMaxSize(),
-                                    iconName = RaftLucideIconName.MessageSquare,
-                                )
-                            } else {
-                                RaftChildPage(
-                                    pageName = THREAD_PAGE,
-                                    pageData = detailPageData,
-                                    modifier = modifier.fillMaxSize(),
-                                    active = childActive,
-                                    onLoadSuccess = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                    onLoadFailure = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                )
-                            }
                         // One right-hand column at a time: the side thread steps aside while the
                         // supporting pane is open and comes back when it closes.
-                        if (showSideColumn && sideThread != null && workspace != null && !supportingOpen) {
-                            // task #180: the page data key is deliberately independent of Focus mode.
-                            // Toggling re-lays-out the same child page instead of recreating it, which is
-                            // what keeps the reader's scroll position across Focus <-> Standard.
-                            val sidePageData =
-                                remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
-                                    threadLaunchPageData(sideThread.payload)
-                                        .withRaftShellStoreScope(navigationStoreScope)
-                                        .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
-                                        .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
-                                        .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
-                                }
-                            // The thread's column in the pane grid (RaftPaneGrid.kt; web COLUMN_BOUNDS.thread):
-                            // 400 by default, at least 360, its left seam dragging it until the
-                            // conversation beside it is down to 360; the width is kept. In Focus
-                            // mode it takes the row.
-                            val sideThreadPageData by rememberUpdatedState(sidePageData)
-                            val sideThreadDetailWidthDp = adaptiveWorkspaceSession.detailPaneWidthDp ?: 0f
-                            val sideThreadWidthDp =
-                                raftPaneGridFitWidths(
-                                    availableDp = sideThreadDetailWidthDp.takeIf { it > 0f } ?: Float.MAX_VALUE,
-                                    columns = listOf(LocalRaftPaneGridStore.current.widthDp(RaftPaneGridColumns.Thread) to RaftPaneGridColumns.Thread.minWidthDp),
-                                ).first()
-                            val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
-                            val sideThreadColumn =
+                        val sideThreadColumn: RaftPaneGridColumn? =
+                            if (showSideColumn && sideThread != null && workspace != null && !supportingOpen) {
+                                // task #180: the page data key is deliberately independent of Focus mode.
+                                // Toggling re-lays-out the same child page instead of recreating it, which is
+                                // what keeps the reader's scroll position across Focus <-> Standard.
+                                val sidePageData =
+                                    remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
+                                        threadLaunchPageData(sideThread.payload)
+                                            .withRaftShellStoreScope(navigationStoreScope)
+                                            .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                            .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
+                                            .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
+                                    }
+                                val sideThreadPageData by rememberUpdatedState(sidePageData)
+                                val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
                                 remember(sideThreadResizeLabel, childActive) {
                                     RaftPaneGridColumn(
                                         bounds = RaftPaneGridColumns.Thread,
@@ -7784,13 +7747,44 @@ private fun RaftAppShellReadyContent(
                                             ),
                                     )
                                 }
-                            RaftPaneGridSideColumn(
-                                column = sideThreadColumn,
-                                widthDp = sideThreadWidthDp,
-                                mainWidthDp = maxOf(0f, sideThreadDetailWidthDp - sideThreadWidthDp),
-                                fill = sideThreadFocusActive,
-                            )
-                        }
+                            } else {
+                                null
+                            }
+                        // The detail is the main pane of the pane grid (RaftPaneGrid.kt; web
+                        // MainLayout's row): the thread's column right of it (web COLUMN_BOUNDS.thread:
+                        // 400 by default, at least 360, its left seam dragging it until the
+                        // conversation is down to 360; the width is kept), then the columns the
+                        // conversation declares (Task v2's Tasks / Files), the rightmost giving way
+                        // first. Inside the list + detail split they all stand in its row. In Focus
+                        // mode the thread takes the row (task #180: the conversation is collapsed by
+                        // width and stays composed).
+                        RaftPaneGrid(
+                            columns = listOfNotNull(sideThreadColumn),
+                            modifier = detailModifier,
+                            fillColumn = RaftPaneGridColumns.Thread.id.takeIf { sideThreadFocusActive && sideThreadColumn != null },
+                        ) {
+                            if (detailPageData == null) {
+                                // The wide detail with nothing open: the shared empty state (icon,
+                                // muted title) on the pane's surface, not a bare line of text.
+                                RaftEmptyState(
+                                    title = adaptiveEmptyLabel,
+                                    modifier = Modifier.fillMaxSize(),
+                                    iconName = RaftLucideIconName.MessageSquare,
+                                )
+                            } else {
+                                RaftChildPage(
+                                    pageName = THREAD_PAGE,
+                                    pageData = detailPageData,
+                                    modifier = Modifier.fillMaxSize(),
+                                    active = childActive,
+                                    onLoadSuccess = {
+                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                    },
+                                    onLoadFailure = {
+                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                    },
+                                )
+                            }
                         }
                         }
                         }
@@ -8024,6 +8018,9 @@ private fun RaftAppShellReadyContent(
                                             bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=handle")
                                         }
                                     },
+                                // Web: Activity's list with an item open is at most half the row, so the
+                                // conversation is never narrower than the list (stdrc).
+                                maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
                             )
