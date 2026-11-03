@@ -10920,28 +10920,21 @@ private fun MembersAgentProfileTab(
             }
         }
 
-        MembersAgentProfileFieldsSection(
+        // One plain call, no capturing composable lambda here: this function's generated code is
+        // shape-sensitive (see the note above MembersAgentRuntimeModelInputs), so the hero slot
+        // lambda lives in [MembersAgentProfileIdentity] instead.
+        MembersAgentProfileIdentity(
             member = member,
+            summary = summary,
+            canEdit = canEdit,
             edit = edit,
             sharedAgentDetailStore = sharedAgentDetailStore,
             storeState = storeState,
-            hero = { onEditDisplayName ->
-                MembersAgentProfileHeader(
-                    member = member,
-                    summary = summary,
-                    canEdit = canEdit,
-                    agentStatusIndicatorState = agentStatusIndicatorState,
-                    agentStatusObservedState = agentStatusObservedState,
-                    memberAvatarResolver = memberAvatarResolver,
-                    onChangeAvatar = onChangeAvatar,
-                    toolStuck = membersAgentToolStuck(agentStatusIndicatorState, summary?.toolStuck),
-                    onStopTurn = lifecycle.onStopTurn,
-                    stopTurnInProgress = lifecycle.stopTurnInProgress,
-                    // Web: `canManageAgent && !agent.deletedAt && !agent.managedByAppInstallId`.
-                    onEditDisplayName = onEditDisplayName?.takeIf { member.managedByAppInstallId.isNullOrBlank() },
-                    showActivityDetail = lifecycle.showActivityDetail
-                )
-            }
+            agentStatusIndicatorState = agentStatusIndicatorState,
+            agentStatusObservedState = agentStatusObservedState,
+            memberAvatarResolver = memberAvatarResolver,
+            onChangeAvatar = onChangeAvatar,
+            lifecycle = lifecycle
         )
         if (!remoteProfile) {
             MembersAgentInfoSection(
@@ -10999,6 +10992,46 @@ private fun MembersAgentProfileTab(
             )
         }
     }
+}
+
+/** The profile hero plus the description, sharing the display-name editor's state. */
+@Composable
+private fun MembersAgentProfileIdentity(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    canEdit: Boolean,
+    edit: MembersAgentProfileEditInputs,
+    sharedAgentDetailStore: SharedAgentDetailStore?,
+    storeState: SharedAgentDetailState?,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    agentStatusObservedState: RaftAgentStatusIndicatorState?,
+    memberAvatarResolver: RaftMemberAvatarResolver,
+    onChangeAvatar: () -> Unit,
+    lifecycle: MembersAgentLifecycleInputs
+) {
+    MembersAgentProfileFieldsSection(
+        member = member,
+        edit = edit,
+        sharedAgentDetailStore = sharedAgentDetailStore,
+        storeState = storeState,
+        hero = { onEditDisplayName ->
+            MembersAgentProfileHeader(
+                member = member,
+                summary = summary,
+                canEdit = canEdit,
+                agentStatusIndicatorState = agentStatusIndicatorState,
+                agentStatusObservedState = agentStatusObservedState,
+                memberAvatarResolver = memberAvatarResolver,
+                onChangeAvatar = onChangeAvatar,
+                toolStuck = membersAgentToolStuck(agentStatusIndicatorState, summary?.toolStuck),
+                onStopTurn = lifecycle.onStopTurn,
+                stopTurnInProgress = lifecycle.stopTurnInProgress,
+                // Web: `canManageAgent && !agent.deletedAt && !agent.managedByAppInstallId`.
+                onEditDisplayName = onEditDisplayName?.takeIf { member.managedByAppInstallId.isNullOrBlank() },
+                showActivityDetail = lifecycle.showActivityDetail
+            )
+        }
+    )
 }
 
 @Composable
