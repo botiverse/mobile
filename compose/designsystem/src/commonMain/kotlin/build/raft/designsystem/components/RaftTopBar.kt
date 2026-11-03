@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -133,6 +134,9 @@ private fun RaftTopBarTrailing(
  * The web top bar: a [RaftTopBarDefaults.Height] row on `layer-frame` (the brand yellow in light
  * mode, the dark frame in dark) with a 1dp `line-seam` underneath, content in
  * `foreground-on-frame`. [topInset] (the status bar) is added above the row, on the frame.
+ * Under a window title bar laid over the row ([LocalRaftWindowTitleBar], the macOS Compose 版
+ * window) the row covers the title bar's band itself, and its items start after the window
+ * controls ([RaftWindowTitleBar.startInset]): one row, as the web desktop app's.
  * A decorated theme paints its pixel art on the row's end from a 1024dp window
  * ([RaftThemeDecorSlot.Top], web AppTopBar `frame-decor-top`): before the trailing actions and
  * the end inset, only in the empty room after the centre, whole or not at all
@@ -177,10 +181,13 @@ fun RaftTopBar(
     val density = LocalDensity.current
     val room = remember { RaftTopBarDecorRoom() }
     val inset = endInset.coerceAtLeast(0.dp)
+    val titleBar = LocalRaftWindowTitleBar.current
+    val rowTopInset = RaftTopBarDefaults.rowTopInset(topInset)
+    val startInset = titleBar.startInset.coerceAtLeast(0.dp)
     val decorEnd: (Dp) -> Dp? = { artWidth -> room.placement(density, inset, artWidth) }
     // The frame runs up under the status bar when the bar pads for it: the host's icons follow it.
-    RaftStatusBarBackdropClaim(colors.layerFrame, enabled = topInset > 0.dp)
-    Column(modifier.fillMaxWidth().background(colors.layerFrame)) {
+    RaftStatusBarBackdropClaim(colors.layerFrame, enabled = rowTopInset > 0.dp)
+    Column(modifier.fillMaxWidth().background(colors.layerFrame).then(titleBar.modifier)) {
         CompositionLocalProvider(
             LocalRaftContentColor provides colors.foregroundOnFrame,
             LocalRaftTooltipPlacement provides RaftTooltipPlacement.Below,
@@ -189,14 +196,16 @@ fun RaftTopBar(
                 RaftTopBarWithCenterLeading(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = topInset)
+                        .padding(top = rowTopInset)
                         // The frame runs edge to edge; its items stay out of the horizontal safe area.
                         .raftSafeAreaHorizontalPadding()
                         .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
                         // The theme's pixel art on the bar's end, over the frame, under the items.
                         .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth, decorEnd)
                         // The items stay out of the window controls; the frame and the decor's offset don't.
-                        .padding(end = inset),
+                        .padding(end = inset)
+                        // The traffic lights are on the left edge, whatever the language.
+                        .absolutePadding(left = startInset),
                     room = room,
                     leading = leading,
                     centerLeading = centerLeading,
@@ -208,12 +217,14 @@ fun RaftTopBar(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = topInset)
+                        .padding(top = rowTopInset)
                         // The frame runs edge to edge; its items stay out of the horizontal safe area.
                         .raftSafeAreaHorizontalPadding()
                         .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
                         .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth, decorEnd)
-                        .padding(end = inset),
+                        .padding(end = inset)
+                        // The traffic lights are on the left edge, whatever the language.
+                        .absolutePadding(left = startInset),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(

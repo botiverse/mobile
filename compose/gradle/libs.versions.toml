@@ -47,6 +47,9 @@ wrywebview = "1.0.0-beta-02"
 # JNA). :desktopApp only; built against Kotlin 2.4.21 / coroutines 1.11.0 like the app.
 # Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
 filekit = "0.17.0"
+# JetBrains Runtime API (Apache-2.0): the macOS custom title bar (RaftDesktopTitleBar). :desktopApp
+# only; jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars).
+jbrApi = "1.9.0"
 # kdroidFilter ComposeMediaPlayer (MIT): desktop video playback (RaftVideoPlayer.desktop.kt). On macOS a
 # small JNI bridge (shipped in the jar, macOS 14+) drives AVFoundation; no bundled media runtime.
 # :shared desktopMain only, never on the Android / iOS graphs. Built against Kotlin 2.4.10 / CMP 1.11.1.
@@ -124,6 +127,7 @@ sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-drive
 sqldelight-native-driver = { group = "app.cash.sqldelight", name = "native-driver", version.ref = "sqldelight" }
 wrywebview = { group = "io.github.kdroidfilter", name = "wrywebview", version.ref = "wrywebview" }
 filekit-dialogs = { group = "io.github.vinceglb", name = "filekit-dialogs", version.ref = "filekit" }
+jbr-api = { group = "org.jetbrains.runtime", name = "jbr-api", version.ref = "jbrApi" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }

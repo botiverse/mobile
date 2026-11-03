@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,10 +20,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
+import build.raft.designsystem.components.LocalRaftWindowTitleBar
 import build.raft.designsystem.components.LocalRaftPressedPreview
 import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftAvatarAttentionLight
@@ -34,6 +37,7 @@ import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftSearchTrigger
 import build.raft.designsystem.components.RaftTopBar
+import build.raft.designsystem.components.RaftWindowTitleBar
 import build.raft.designsystem.components.RaftWorkspaceButton
 import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import build.raft.designsystem.components.RaftWorkspaceStrip
@@ -89,12 +93,13 @@ class TopBarScreenshotTest {
         }
 
     @Composable
-    private fun Bar(width: Dp, currentKey: String, name: String? = null, arrows: Boolean = false) {
+    private fun Bar(width: Dp, currentKey: String, name: String? = null, arrows: Boolean = false, topInset: Dp = 0.dp) {
         val current = servers.first { it.key == currentKey }
         var stripShown by remember { mutableStateOf(true) }
         val otherUnread = servers.any { it.key != currentKey && it.unread }
         RaftTopBar(
             modifier = Modifier.width(width),
+            topInset = topInset,
             leading = {
                 RaftWorkspaceButton(
                     name = name ?: current.name,
@@ -155,6 +160,40 @@ class TopBarScreenshotTest {
                 }
             }
         }
+
+    /**
+     * The macOS Compose 版 window ([LocalRaftWindowTitleBar]): the title bar is laid over the bar,
+     * so the host's 48dp top safe area (the title bar's band) is the bar's own row, not a strip
+     * above it, and the items start after the traffic lights' 70dp corner (drawn here as three
+     * 12dp dots where the system puts them) instead of at the edge. With and without the arrows.
+     */
+    @Test
+    fun topBarUnderWindowTitleBar() =
+        appearances.forEach { appearance ->
+            RaftScreenshot.capture("top_bar_window_title_bar_${appearance.name.lowercase()}", appearance, settleFrames = 2) {
+                CompositionLocalProvider(
+                    LocalRaftWindowTitleBar provides RaftWindowTitleBar(height = 48.dp, startInset = 70.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        WithTrafficLights { Bar(width = 1100.dp, currentKey = "b", topInset = 48.dp) }
+                        WithTrafficLights { Bar(width = 840.dp, currentKey = "b", arrows = true, topInset = 48.dp) }
+                    }
+                }
+            }
+        }
+
+    /** Stand-ins for the system's traffic lights, over [content]'s top-left corner. */
+    @Composable
+    private fun WithTrafficLights(content: @Composable () -> Unit) {
+        Box {
+            content()
+            Row(Modifier.padding(start = 20.dp, top = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(Color(0xFFFF5F57), Color(0xFFFEBC2E), Color(0xFF28C840)).forEach { color ->
+                    Box(Modifier.size(12.dp).background(color, CircleShape))
+                }
+            }
+        }
+    }
 
     /**
      * The bar's tooltips open below their items (raft-ui #174), away from the window's edge and

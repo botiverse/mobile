@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftSearchTriggerDefaults
 import build.raft.designsystem.components.RaftWorkspaceStripDefaults
 import build.raft.designsystem.components.RaftWorkspaceStripItems
+import build.raft.designsystem.components.raftTopBarRowTopInset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -34,5 +35,15 @@ class RaftTopBarTest {
         assertEquals(360.dp, RaftSearchTriggerDefaults.width(900.dp))
         assertEquals(409.6f, RaftSearchTriggerDefaults.width(1280.dp).value, 0.01f)
         assertEquals(520.dp, RaftSearchTriggerDefaults.width(2000.dp))
+    }
+
+    @Test
+    fun aWindowTitleBarsBandComesOutOfTheBarsTopInset() {
+        // macOS Compose 版: the host's top safe area is the title bar's band, which the bar's row covers.
+        assertEquals(0.dp, raftTopBarRowTopInset(topInset = 48.dp, titleBarHeight = 48.dp))
+        assertEquals(0.dp, raftTopBarRowTopInset(topInset = 28.dp, titleBarHeight = 48.dp), "never below zero")
+        assertEquals(20.dp, raftTopBarRowTopInset(topInset = 48.dp, titleBarHeight = 28.dp))
+        // No title bar (every other host): the status bar inset as before.
+        assertEquals(44.dp, raftTopBarRowTopInset(topInset = 44.dp, titleBarHeight = 0.dp))
     }
 }
