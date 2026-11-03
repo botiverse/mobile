@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import build.raft.designsystem.components.RaftAvatarSize
@@ -210,7 +211,6 @@ internal fun List<MemberProfile>.taskHeadDisplayName(kind: MemberKind, id: Strin
 internal fun TaskSummary.taskConversationHeadModel(
     state: TaskConversationHeaderState,
     details: TaskConversationDetailsState,
-    serverRole: String?,
     statusUpdating: Boolean,
     members: List<MemberProfile>,
     timeContext: RaftTimeContext?,
@@ -245,7 +245,7 @@ internal fun TaskSummary.taskConversationHeadModel(
         }
     return TaskConversationHeadModel(
         bar =
-            taskConversationHeaderBarModel(state, serverRole, statusUpdating).let { bar ->
+            taskConversationHeaderBarModel(state, statusUpdating).let { bar ->
                 if (editable) bar else bar.copy(statusOptions = emptyList(), assigneeEditable = false)
             },
         title = title,
@@ -675,12 +675,15 @@ private fun TaskHeadFacts(
     var statusMenuOpen by remember { mutableStateOf(false) }
     RaftDescriptionList(direction = RaftDescriptionListDirection.Inline) {
         Item(stringResource(Res.string.task_head_status)) {
-            Box {
+            val anchor = LocalTaskHeadStatusMenuAnchor.current
+            Box(if (anchor != null) Modifier.onGloballyPositioned(anchor) else Modifier) {
+                // Web InlineBadgeEditor: the chip opens the status menu; a status the reader may not
+                // change is the plain badge, with no chevron.
                 RaftTaskStatusBadge(
                     status = bar.status.raftTaskStatus(),
                     text = statusLabel,
                     // raft-ui inline: a leading chip hangs its padding outward (the text lines up).
-                    modifier = Modifier.offset(x = TaskHeadChipHang),
+                    modifier = Modifier.offset(x = TaskHeadChipHang).testTag(TaskHeadStatusTestTag),
                     onClick = if (bar.statusEditable) ({ statusMenuOpen = true }) else null,
                     enabled = !bar.statusUpdating,
                     contentDescription = "$statusFieldLabel: $statusLabel",
@@ -688,23 +691,11 @@ private fun TaskHeadFacts(
                 RaftDropdownMenu(
                     expanded = statusMenuOpen && bar.statusEditable,
                     onDismissRequest = { statusMenuOpen = false },
-                    minWidth = 200.dp,
+                    minWidth = TaskHeadStatusMenuMinWidth,
                 ) {
-                    bar.statusOptions.forEach { option ->
-                        RaftMenuItem(
-                            text =
-                                if (option.reopensToTodo) {
-                                    stringResource(Res.string.tasks_status_reopen_to_todo)
-                                } else {
-                                    option.status.localizedLabel()
-                                },
-                            checked = option.status == bar.status,
-                            leadingIcon = { RaftTaskStatusPixel(option.status.raftTaskStatus()) },
-                            onClick = {
-                                statusMenuOpen = false
-                                if (option.status != bar.status) onSelectStatus(option.status)
-                            },
-                        )
+                    TaskHeadStatusMenuRows(bar) { status ->
+                        statusMenuOpen = false
+                        if (status != bar.status) onSelectStatus(status)
                     }
                 }
             }
@@ -722,7 +713,7 @@ private fun TaskHeadFacts(
                 hasValue = bar.assigneeName != null,
                 enabled = bar.assigneeEditable,
                 showIndicator = bar.assigneeEditable,
-                modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp),
+                modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp).testTag(TaskHeadAssigneeTestTag),
                 // The status badge's box (22dp chip): web InlineBadgeEditor draws both as the same chip.
                 size = RaftPickerTriggerSize.Chip,
             )
@@ -753,6 +744,34 @@ private fun TaskHeadFacts(
                 }
             }
         }
+    }
+}
+
+internal const val TaskHeadStatusTestTag = "task-head-status"
+internal const val TaskHeadAssigneeTestTag = "task-head-assignee"
+internal val TaskHeadStatusMenuMinWidth = 200.dp
+
+/** Screenshots only: the status menu's anchor (the chip's box), so a capture can draw the popup's surface in place. */
+internal val LocalTaskHeadStatusMenuAnchor = staticCompositionLocalOf<((LayoutCoordinates) -> Unit)?> { null }
+
+/**
+ * The status menu's rows (web InlineBadgeEditor's options): every status, the current one checked,
+ * each with its status pixel; Closed -> Todo reads "Reopen to Todo". [onPick] gets the row's status.
+ */
+@Composable
+internal fun TaskHeadStatusMenuRows(bar: TaskConversationHeaderBarModel, onPick: (TaskStatus) -> Unit) {
+    bar.statusOptions.forEach { option ->
+        RaftMenuItem(
+            text =
+                if (option.reopensToTodo) {
+                    stringResource(Res.string.tasks_status_reopen_to_todo)
+                } else {
+                    option.status.localizedLabel()
+                },
+            checked = option.status == bar.status,
+            leadingIcon = { RaftTaskStatusPixel(option.status.raftTaskStatus()) },
+            onClick = { onPick(option.status) },
+        )
     }
 }
 
@@ -997,7 +1016,6 @@ internal fun TaskConversationHeadRoute(
     task: TaskSummary,
     state: TaskConversationHeaderState,
     details: TaskConversationDetailsState,
-    serverRole: String?,
     statusUpdating: Boolean,
     assigneeCandidates: List<MemberProfile>,
     timeContext: RaftTimeContext?,
@@ -1010,7 +1028,7 @@ internal fun TaskConversationHeadRoute(
     /** The keyboard is up: on a phone the head folds away. */
     keyboardUp: Boolean = false,
     onRetryHistory: (() -> Unit)? = null,
-    /** False: status and assignee are plain facts whatever the role ([taskConversationHeadModel]). */
+    /** False: status and assignee are plain facts ([taskConversationHeadModel]). */
     editable: Boolean = true,
     /** The head pulled down from the top bar over the messages ([TaskHeadFloat]), not the one in the conversation. */
     floating: Boolean = false,
@@ -1019,7 +1037,7 @@ internal fun TaskConversationHeadRoute(
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
-    val model = task.taskConversationHeadModel(state, details, serverRole, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
+    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
     val onOpenAssignee = {
         if (model.bar.assigneeEditable) {
             assigneeQuery = ""

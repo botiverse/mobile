@@ -7914,7 +7914,6 @@ private fun RaftAppShellReadyContent(
                                     authStore = shellAuthStore,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = sharedStores.tasksDataStore,
-                                    serverRole = readySession?.servers?.firstOrNull { it.id == readyServerId }?.role,
                                     onFailed = { code ->
                                         when {
                                             code.startsWith("tasks_status") -> bridge.toast(tasksUpdateFailedLabel)

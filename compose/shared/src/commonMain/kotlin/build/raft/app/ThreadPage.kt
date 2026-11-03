@@ -12123,7 +12123,6 @@ private fun SharedThreadRouteContentContent(
                 authStore = authStore,
                 tasksDataSource = tasksDataSource,
                 tasksDataStore = tasksDataStore,
-                serverRole = currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
                 onFailed = { code ->
                     when {
                         code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateTaskLabel)
@@ -12467,8 +12466,6 @@ private fun SharedThreadRouteContentContent(
                 MutableStateFlow(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
             }
         }.collectAsState(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
-        val taskConversationServerRole =
-            currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role
         // Task v2: leave the task for a place in its channel (web `onLeave` + `nav.toMessage`): its
         // source / host message, the channel itself, or a pre-v2 task's earlier discussion thread.
         fun openTaskConversationTarget(request: HomeMessageOpenRequest?, action: String) {
@@ -12546,7 +12543,6 @@ private fun SharedThreadRouteContentContent(
                         task = taskConversationTask,
                         state = taskConversationHeaderState,
                         details = taskConversationDetailsState,
-                        serverRole = taskConversationServerRole,
                         statusUpdating = taskConversationTasksState?.statusUpdatingTaskId == taskConversationTask.id.value,
                         assigneeCandidates = taskConversationMembersSlice.members,
                         timeContext = taskConversationTimeContext,

@@ -16,55 +16,30 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * Task v2 status transitions, mirrored from web `taskStatusUi.ts` `VALID_TRANSITIONS` (itself the
- * mirror of slock `taskService.ts` `VALID_TRANSITIONS`), so the menu only offers what the server
- * accepts.
- */
-internal val TaskStatusValidTransitions: Map<TaskStatus, List<TaskStatus>> =
-    mapOf(
-        TaskStatus.Todo to listOf(TaskStatus.InProgress, TaskStatus.Closed),
-        TaskStatus.InProgress to listOf(TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed),
-        TaskStatus.InReview to listOf(TaskStatus.Done, TaskStatus.InProgress, TaskStatus.Closed),
-        TaskStatus.Done to listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Closed),
-        TaskStatus.Closed to listOf(TaskStatus.Todo, TaskStatus.InProgress),
-    )
-
 /** One row of the status menu. [reopensToTodo]: web labels Closed -> Todo "Reopen to Todo". */
 internal data class TaskStatusOption(val status: TaskStatus, val reopensToTodo: Boolean = false)
 
 /**
- * Web `getTaskStatusOptions`: members get the current status and its legal transitions; a server
- * owner or admin (`deleteAnyTask`) may force any status.
+ * Web `getTaskStatusOptions`: every status, from any status, for members and admins alike (the
+ * server has no transition table: slock `taskService.getTaskStatusTransitionError` only refuses the
+ * current status). Closed -> Todo reads "Reopen to Todo".
  */
-internal fun taskStatusOptions(current: TaskStatus, canManageServer: Boolean): List<TaskStatusOption> {
-    val allowed =
-        if (canManageServer) {
-            listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed)
-        } else {
-            listOf(current) + TaskStatusValidTransitions.getValue(current)
-        }
-    return allowed.map { status ->
+internal fun taskStatusOptions(current: TaskStatus): List<TaskStatusOption> =
+    TaskStatus.entries.map { status ->
         TaskStatusOption(status = status, reopensToTodo = current == TaskStatus.Closed && status == TaskStatus.Todo)
     }
-}
-
-/** slock `serverPermissions.ts`: owners and admins hold `deleteAnyTask` (web `canManageServer`). */
-internal fun taskServerRoleCanManage(role: String?): Boolean =
-    role?.trim()?.lowercase().let { it == "owner" || it == "admin" }
-
-private fun taskServerRoleIsGuest(role: String?): Boolean = role?.trim()?.lowercase() == "guest"
-
-/** Web `canEditTaskStatus`: any non-guest who can see the task, unless it is read-only (historical joint). */
-internal fun TaskSummary.canEditStatus(serverRole: String?): Boolean =
-    readOnlyReason == null && !taskServerRoleIsGuest(serverRole)
 
 /**
- * Web TaskProperties `canEditAssignee` (`authorizeTaskAction({action: "assign"})`): not a guest, not
- * read-only, and not done (the server freezes a completed task's assignee).
+ * Web `canEditTaskStatus`: anyone who can see the task, unless it is read-only (historical joint).
+ * A guest sees only its own channel's tasks and moves them like a member (slock task matrix §1).
  */
-internal fun TaskSummary.canEditAssignee(serverRole: String?): Boolean =
-    status != TaskStatus.Done && readOnlyReason == null && !taskServerRoleIsGuest(serverRole)
+internal fun TaskSummary.canEditStatus(): Boolean = readOnlyReason == null
+
+/**
+ * Web TaskProperties `canEditAssignee` (`authorizeTaskAction({action: "assign"})`): not read-only and
+ * not done (the server freezes a completed task's assignee). A guest assigns in its channel like a member.
+ */
+internal fun TaskSummary.canEditAssignee(): Boolean = status != TaskStatus.Done && readOnlyReason == null
 
 internal enum class TaskConversationRefStatus {
     Loading,

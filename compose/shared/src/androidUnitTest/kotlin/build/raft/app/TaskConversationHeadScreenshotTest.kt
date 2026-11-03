@@ -1,5 +1,14 @@
 package build.raft.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import build.raft.designsystem.components.RaftMenuSurface
+import kotlin.math.roundToInt
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -112,6 +121,33 @@ class TaskConversationHeadScreenshotTest {
         capture("task.conversation.head.faces", RaftAppAppearance.Light) {
             Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
                 TaskHeadContent(model = FacesHeadModel)
+            }
+        }
+
+    /**
+     * The Status chip tapped (artin, #proj-apps #35: nothing happened): its menu under the chip, as
+     * RaftDropdownMenu places it (6dp under the chip's box), every status with the current one
+     * checked. A popup is its own window, so the menu's surface is drawn in place.
+     */
+    @Test
+    fun statusMenu() =
+        capture("task.conversation.head.status-menu", RaftAppAppearance.Light) {
+            var menuAt by remember { mutableStateOf<IntOffset?>(null) }
+            val gap = with(LocalDensity.current) { 6.dp.roundToPx() }
+            // RaftDropdownMenu's place: under the chip's box, start-aligned, 6dp down.
+            val anchor: (LayoutCoordinates) -> Unit = { box ->
+                val at = box.positionInRoot()
+                menuAt = IntOffset(at.x.roundToInt(), at.y.roundToInt() + box.size.height + gap)
+            }
+            Box(Modifier.fillMaxSize()) {
+                CompositionLocalProvider(LocalTaskHeadStatusMenuAnchor provides anchor) {
+                    TaskPage(keyboardUp = false, historyOpen = false)
+                }
+                menuAt?.let { at ->
+                    RaftMenuSurface(Modifier.offset { at }, minWidth = TaskHeadStatusMenuMinWidth) {
+                        TaskHeadStatusMenuRows(HeadModel.bar) {}
+                    }
+                }
             }
         }
 
@@ -377,7 +413,7 @@ private val HeadModel =
         bar =
             TaskConversationHeaderBarModel(
                 status = TaskStatus.InProgress,
-                statusOptions = taskStatusOptions(TaskStatus.InProgress, canManageServer = false),
+                statusOptions = taskStatusOptions(TaskStatus.InProgress),
                 statusUpdating = false,
                 assigneeName = "Lagoon",
                 assigneeEditable = true,

@@ -56,7 +56,7 @@ class TaskConversationHeadModelTest {
                 source = TaskDetailLoad.Loaded(TaskSourceMessagePreview(MessageId("source-1"), members[0], "first line", null)),
             )
         val model =
-            task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), details, "member", false, members, null, serverId = "server-1")
+            task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), details, false, members, null, serverId = "server-1")
         assertEquals("Ship the bar", model.title)
         // Source and Created by name who they are, so their faces resolve from the server's directory
         // (RaftMemberAvatar) rather than from the sparse task / message payload.
@@ -84,7 +84,7 @@ class TaskConversationHeadModelTest {
     fun creatorOutsideTheChannelReadsAsTheHandleAndNoSourceRowForAHostSource() {
         // A pre-v2 task whose source IS its host: Earlier discussion leads there, so no Source row.
         val task = task().copy(hostMessageId = MessageId("host-1"), sourceMessageId = MessageId("host-1"))
-        val unknownCount = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), null, false, emptyList(), null)
+        val unknownCount = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), false, emptyList(), null)
         assertEquals("@Artin", unknownCount.createdBy)
         assertNull(unknownCount.source)
         assertEquals(TaskHeadEarlierDiscussion(replyCount = null), unknownCount.earlierDiscussion)
@@ -94,10 +94,10 @@ class TaskConversationHeadModelTest {
                 hostMessageId = MessageId("host-1"),
                 earlierDiscussion = TaskDetailLoad.Loaded(TaskEarlierDiscussion(MessageId("host-1"), count, ChannelId("th-1"))),
             )
-        val counted = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(3), null, false, emptyList(), null)
+        val counted = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(3), false, emptyList(), null)
         assertEquals(TaskHeadEarlierDiscussion(replyCount = 3), counted.earlierDiscussion)
         // Known to have no replies: hidden (web).
-        val empty = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(0), null, false, emptyList(), null)
+        val empty = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), withReplies(0), false, emptyList(), null)
         assertNull(empty.earlierDiscussion)
     }
 
