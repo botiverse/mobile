@@ -217,10 +217,11 @@ private fun DescriptionTerm(
     modifier: Modifier = Modifier,
     lines: HorizontalFactLines? = null,
 ) {
+    val textModifier = remember(lines) { if (lines != null) Modifier.textLineInto(lines.termBaseline, lines.termTextHeight) else Modifier }
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftText(
             term,
-            modifier = if (lines != null) Modifier.textLineInto(lines.termBaseline, lines.termTextHeight) else Modifier,
+            modifier = textModifier,
             style = raftDescriptionTermStyle(RaftTheme.typography),
             color = RaftTheme.colors.foregroundHint,
         )
@@ -366,16 +367,15 @@ private object TermsScope : RaftDescriptionListScope {
  * Side by side, the fact never reads its label's or its value's alignment lines while it is
  * measured: in a `LazyColumn` that made Compose 1.12 place the chips of a reused value before
  * the value itself, and RectManager threw (crash 69fdce17, fixed upstream in Compose 1.13,
- * androidx fd550bed79). The baselines come from the text nodes themselves ([textLineInto]); a
- * value that isn't one text centres the label's first line on its own first line.
+ * androidx fd550bed79). The label's baseline and a text value's come from the text nodes
+ * themselves ([textLineInto]); any other value's is read once it is placed.
  */
 private class HorizontalScope(private val stacked: Boolean, private val column: Int) : RaftDescriptionListScope {
     @Composable
     override fun Item(term: String, value: String?, mono: Boolean, copyable: Boolean) {
         val lines = remember { HorizontalFactLines() }
-        Fact(term, null, lines) {
-            RaftDescriptionValue(value, Modifier.textLineInto(lines.valueBaseline), mono = mono, copyable = copyable)
-        }
+        val valueModifier = remember(lines) { Modifier.textLineInto(lines.valueBaseline) }
+        Fact(term, null, lines) { RaftDescriptionValue(value, valueModifier, mono = mono, copyable = copyable) }
     }
 
     @Composable
@@ -416,28 +416,41 @@ private class HorizontalScope(private val stacked: Boolean, private val column: 
                 val t = termMeasurable.measure(Constraints(maxWidth = 160.dp.roundToPx()))
                 val valueMax = if (bounded) (constraints.maxWidth - column - gapX).coerceAtLeast(0) else Constraints.Infinity
                 val v = detailsMeasurable.measure(Constraints(maxWidth = valueMax))
-                // The label's text is centred in its row (beside a help button); a value's text
-                // starts its row.
+                // The label's first baseline: its text is centred in its row (beside a help button).
                 val termTextHeight = lines.termTextHeight.intValue
                 val termTextTop = Alignment.CenterVertically.align(termTextHeight, t.height)
+                val tb = termTextTop + (lines.termBaseline.intValue.takeIf { it != AlignmentLine.Unspecified } ?: 0)
+                // The value's first baseline: a text value's own (its text starts the value's
+                // first line); any other value's as read when it was last placed; before that, the
+                // label's first line centred on the value's first line.
                 val lineTop = lines.valueLineTop.intValue
-                val termTop =
-                    if (lines.valueBaseline.intValue != AlignmentLine.Unspecified) {
-                        // One text: the label on its first baseline.
-                        val tb = termTextTop + (lines.termBaseline.intValue.takeIf { it != AlignmentLine.Unspecified } ?: 0)
-                        lineTop + lines.valueBaseline.intValue - tb
-                    } else {
-                        // Chips, an avatar and a name: the label's first line centred on the value's.
-                        val labelLine = if (termLineHeight.isSp) min(termLineHeight.roundToPx(), termTextHeight) else termTextHeight
-                        lineTop + Alignment.CenterVertically.align(labelLine, lines.valueLineHeight.intValue) - termTextTop
+                val textValue = lines.valueBaseline.intValue != AlignmentLine.Unspecified
+                val vb =
+                    when {
+                        textValue -> lineTop + lines.valueBaseline.intValue
+                        lines.placedValueBaseline.intValue != AlignmentLine.Unspecified -> lines.placedValueBaseline.intValue
+                        else -> {
+                            val labelLine = if (termLineHeight.isSp) min(termLineHeight.roundToPx(), termTextHeight) else termTextHeight
+                            lineTop + Alignment.CenterVertically.align(labelLine, lines.valueLineHeight.intValue) - termTextTop + tb
+                        }
                     }
-                // A label lower than the value's line pushes the value down instead.
-                val tTop = termTop.coerceAtLeast(0)
-                val vTop = (-termTop).coerceAtLeast(0)
+                // The label on the value's first baseline; a label whose baseline is lower than the
+                // value's pushes the value down instead.
+                val baseline = max(tb, vb)
+                val vTop = baseline - vb
                 val width = if (bounded) constraints.maxWidth else column + gapX + v.width
-                layout(width, max(tTop + t.height, vTop + v.height)) {
-                    t.place(0, tTop)
-                    v.place(column + gapX, vTop)
+                layout(width, max(baseline - tb + t.height, vTop + v.height)) {
+                    // The value goes first, so its baseline can be read once it and its content are
+                    // placed (safe, unlike while measuring); zIndex keeps the label first for screen
+                    // readers. A baseline that moved from what was measured lays the fact out again.
+                    v.place(column + gapX, vTop, zIndex = 1f)
+                    val placedVb =
+                        if (textValue) {
+                            vb
+                        } else {
+                            (v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb).also { lines.placedValueBaseline.intValue = it }
+                        }
+                    t.place(0, (vTop + placedVb - tb).coerceAtLeast(0))
                 }
             }
         }
@@ -456,6 +469,9 @@ private class HorizontalFactLines {
 
     /** A text value's first baseline within the text; unspecified for any other value. */
     val valueBaseline: MutableIntState = mutableIntStateOf(AlignmentLine.Unspecified)
+
+    /** A value that isn't one text: its first baseline as read when it was last placed. */
+    val placedValueBaseline: MutableIntState = mutableIntStateOf(AlignmentLine.Unspecified)
 
     /** The value's first line: its top in the value and its height. */
     val valueLineTop: MutableIntState = mutableIntStateOf(0)
