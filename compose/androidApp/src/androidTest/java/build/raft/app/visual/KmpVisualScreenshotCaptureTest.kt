@@ -5690,39 +5690,6 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    /**
-     * Full-height Settings capture (task #388, approach 1). The window is pinned
-     * to the display, so a long route can never lay out taller than the screen —
-     * instead we grow the emulator display itself (wm size) so the existing
-     * LazyColumn's viewport covers the whole route and every item composes, then
-     * crop the single frame to the content bottom the render-side sentinel
-     * reports (#250: `settings_route_visual_fullheight contentBottomPx=N` on the
-     * bridge tag). Crop height = true content bottom (includes the route's own
-     * trailing padding), matching the React fullPage document-height contract —
-     * the grown display's excess white is cropped away, never baselined.
-     * The display is restored in finally; a wm-size failure surfaces as a crop
-     * bounds/validation failure, never a silent short baseline (#135 history).
-     */
-    private fun captureKmpFullHeightSettingsCase(caseId: String, destination: String) {
-        runShellCommand("wm size ${FULL_HEIGHT_DISPLAY_WIDTH_PX}x$FULL_HEIGHT_DISPLAY_HEIGHT_PX")
-        try {
-            captureKmpComponentCase(
-                caseId = caseId,
-                pageName = "compose_settings_route_visual",
-                pageData =
-                    JSONObject()
-                        .put("destination", destination)
-                        .put("fixtureKey", "canonical")
-                        .put("slockVisualFullHeight", true),
-                crop = FULL_VIEWPORT_CROP,
-                settleMs = 2_500,
-                cropOverride = { awaitFullHeightCrop(caseId) }
-            )
-        } finally {
-            runShellCommand("wm size reset")
-        }
-    }
-
     /** Case ids flagged `capture.fullLength` in slock sharedCases.json (instrumentation arg). */
     private val fullLengthCases: Set<String> by lazy {
         VisualFullLength.requestedCases(
@@ -5801,10 +5768,11 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     /**
-     * Pixels of content below the fold of [scroller]. `verticalScroll` reports
-     * them exactly; a lazy list is scrolled in half-viewport steps and the
-     * travelled distance is read from how far its composed descendants move,
-     * then scrolled back to the top.
+     * Pixels of content outside the viewport of [scroller] (below the fold, or
+     * above it for a bottom-anchored reversed list). `verticalScroll` reports
+     * them exactly; a lazy list is scrolled forward in half-viewport steps and
+     * the travelled distance is read from how far its composed descendants move
+     * (in either direction), then scrolled back to its start.
      */
     private fun measureOverflowPx(caseId: String, scroller: VisualFullLength.Scroller, limitPx: Int): Int {
         if (!scroller.lazy) return kotlin.math.ceil(scroller.maxValue).toInt()
@@ -5821,8 +5789,9 @@ class KmpVisualScreenshotCaptureTest {
             val moved =
                 VisualFullLength.displacement(before, scrollerAnchors(scroller.nodeId))
                     ?: throw AssertionError("$caseId full-length: lost every anchor of ${scroller.label} after a ${stepPx}px step")
-            if (moved < 0.5f) break
-            travelled += moved
+            val magnitude = kotlin.math.abs(moved)
+            if (magnitude < 0.5f) break
+            travelled += magnitude
             if (travelled >= limitPx) break
         }
         onActivityNoIdle { VisualFullLength.scrollToTop(windowRoots(it), scroller.nodeId) }
@@ -5913,37 +5882,6 @@ class KmpVisualScreenshotCaptureTest {
                 "initialOverflowPx=$initialOverflow residualPx=$residual iterations=$iterations capped=$capped scroller=$label"
         )
         return result
-    }
-
-    /**
-     * Block until the render-side full-height sentinel reports the content
-     * bottom, then build the dynamic crop. Fails loud on timeout: a viewport
-     * fallback here would silently publish a short baseline that looks green.
-     */
-    private fun awaitFullHeightCrop(caseId: String): VisualCrop {
-        val deadline = SystemClock.uptimeMillis() + FULL_HEIGHT_TOKEN_TIMEOUT_MS
-        while (SystemClock.uptimeMillis() < deadline) {
-            val line = logcatLastTokenLine(FULL_HEIGHT_TOKEN)
-            val bottomPx = line?.substringAfter("contentBottomPx=", "")?.trim()?.takeWhile { it.isDigit() }?.toIntOrNull()
-            if (bottomPx != null && bottomPx > 0) {
-                val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-                val heightDp = kotlin.math.ceil(bottomPx / density).toInt()
-                Log.i(VISUAL_LOG_TAG, "$caseId full-height content bottom ${bottomPx}px -> ${heightDp}dp crop")
-                return VisualCrop(
-                    leftDp = 0,
-                    topDp = 0,
-                    widthDp = 390,
-                    heightDp = heightDp,
-                    contract = "full-height",
-                    captureMethod = "app-window-root-draw-full-height-density-resize"
-                )
-            }
-            Thread.sleep(FULL_HEIGHT_POLL_MS)
-        }
-        throw AssertionError(
-            "$caseId full-height sentinel token '$FULL_HEIGHT_TOKEN' not seen within " +
-                "${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms — render hook missing or route never rendered"
-        )
     }
 
     /**
@@ -7373,9 +7311,6 @@ class KmpVisualScreenshotCaptureTest {
         // Full-height Settings captures (task #388): display grown so the whole
         // route composes in one frame; crop height comes from the render-side
         // sentinel token. 7500px ≈ 3 viewports, under common GL texture limits.
-        private const val FULL_HEIGHT_DISPLAY_WIDTH_PX = 1170
-        private const val FULL_HEIGHT_DISPLAY_HEIGHT_PX = 7500
-        private const val FULL_HEIGHT_TOKEN = "settings_route_visual_fullheight"
         private const val FULL_HEIGHT_TOKEN_TIMEOUT_MS = 20_000L
         private const val FULL_HEIGHT_POLL_MS = 250L
         // Full-length capture (sharedCases.json capture.fullLength).

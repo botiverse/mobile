@@ -37,6 +37,7 @@ internal object VisualFullLength {
         val value: Float,
         val maxValue: Float,
         val lazy: Boolean,
+        val reversed: Boolean,
         val label: String
     )
 
@@ -71,12 +72,18 @@ internal object VisualFullLength {
     private fun findNode(windowRoots: List<View>, nodeId: Int): SemanticsNode? =
         allNodes(windowRoots).firstOrNull { it.id == nodeId }
 
-    /** Largest visible vertical scroller that can still scroll forward, or null. */
+    /**
+     * Largest visible vertical scroller that has content outside its viewport,
+     * or null. Bottom-anchored lists (reverseLayout message lists, newest at the
+     * bottom) count too: their hidden content is the history ABOVE the fold.
+     * Growing the display reveals it upward while the header stays on top and
+     * the composer at the bottom; [scrollToTop] returns them to their start
+     * (the newest message), i.e. their normal anchored position.
+     */
     fun mainScroller(windowRoots: List<View>): Scroller? =
         allNodes(windowRoots)
             .mapNotNull { node ->
                 val range = node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) ?: return@mapNotNull null
-                if (range.reverseScrolling) return@mapNotNull null
                 if (node.config.getOrNull(SemanticsActions.ScrollBy) == null) return@mapNotNull null
                 val value = range.value()
                 val maxValue = range.maxValue()
@@ -92,7 +99,8 @@ internal object VisualFullLength {
                     value = value,
                     maxValue = maxValue,
                     lazy = lazy,
-                    label = "${if (lazy) "lazy" else "scroll"}#${node.id}@${bounds.top.toInt()}..${bounds.bottom.toInt()}"
+                    reversed = range.reverseScrolling,
+                    label = "${if (lazy) "lazy" else "scroll"}${if (range.reverseScrolling) "-reversed" else ""}#${node.id}@${bounds.top.toInt()}..${bounds.bottom.toInt()}"
                 )
             }
             .maxByOrNull { it.visibleArea }
@@ -128,7 +136,11 @@ internal object VisualFullLength {
         return action(0f, -1_000_000f)
     }
 
-    /** Median displacement of the anchors present in both snapshots, or null when none overlap. */
+    /**
+     * Median displacement of the anchors present in both snapshots, or null
+     * when none overlap. Signed: a reversed list moves its content down when
+     * scrolled forward, so callers use the magnitude.
+     */
     fun displacement(before: Map<Int, Float>, after: Map<Int, Float>): Float? {
         val deltas = before.keys.intersect(after.keys).map { before.getValue(it) - after.getValue(it) }.sorted()
         return if (deltas.isEmpty()) null else deltas[deltas.size / 2]
