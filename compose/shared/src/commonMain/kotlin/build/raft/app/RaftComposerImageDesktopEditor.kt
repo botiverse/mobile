@@ -422,7 +422,8 @@ internal fun RaftComposerImageDesktopEditor(
                     val x = (centre - popoverWidthPx / 2f).coerceIn(8f, (windowWidthPx - popoverWidthPx - 8f).coerceAtLeast(8f))
                     val y = with(density) { (RaftComposerImageDesktopBarHeight - 6.dp).toPx() }
                     RaftPopoverSurface(
-                        width = null,
+                        // Sized to its row (the surface fills its constraints when unsized).
+                        width = if (activeTool == RaftComposerImageEditorTool.Pencil) 352.dp else 376.dp,
                         contentPadding = PaddingValues(12.dp),
                         modifier =
                             Modifier
