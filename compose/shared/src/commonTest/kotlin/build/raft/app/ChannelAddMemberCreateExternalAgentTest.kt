@@ -98,8 +98,8 @@ class ChannelAddMemberCreateExternalAgentTest {
     @Test
     fun theExternalCreatePostsTheWebPayload() =
         runPortableCoroutineTest {
-            val api = RecordingCreateAgentApi()
-            val coordinator = SharedCreateAgentCoordinator(RaftAgentsApiClient(api), RaftComputersApiClient(UnusedComputersApi))
+            val api = ExternalAgentRecordingAgentsApi()
+            val coordinator = SharedCreateAgentCoordinator(RaftAgentsApiClient(api), RaftComputersApiClient(ExternalAgentUnusedComputersApi))
             val request: CreateAgentRequest =
                 SharedCreateAgentDialogSubmit(name = "mia", description = "Runs on my laptop", machineId = null, external = true)
                     .toCreateAgentRequest()
@@ -118,8 +118,8 @@ class ChannelAddMemberCreateExternalAgentTest {
     @Test
     fun anExternalCreateWithoutADescriptionLeavesItOut() =
         runPortableCoroutineTest {
-            val api = RecordingCreateAgentApi()
-            val coordinator = SharedCreateAgentCoordinator(RaftAgentsApiClient(api), RaftComputersApiClient(UnusedComputersApi))
+            val api = ExternalAgentRecordingAgentsApi()
+            val coordinator = SharedCreateAgentCoordinator(RaftAgentsApiClient(api), RaftComputersApiClient(ExternalAgentUnusedComputersApi))
             coordinator.createAgent(
                 SharedCreateAgentDialogSubmit(name = "mia", description = null, machineId = null, external = true).toCreateAgentRequest()
             )
@@ -149,7 +149,7 @@ class ChannelAddMemberCreateExternalAgentTest {
 
 private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
 
-private class RecordingCreateAgentApi : RaftAgentsApi {
+private class ExternalAgentRecordingAgentsApi : RaftAgentsApi {
     val bodies = mutableListOf<String>()
 
     override suspend fun createAgent(body: String): HomeNetworkResponse {
@@ -177,7 +177,7 @@ private class RecordingCreateAgentApi : RaftAgentsApi {
     override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
 }
 
-private object UnusedComputersApi : RaftComputersApi {
+private object ExternalAgentUnusedComputersApi : RaftComputersApi {
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
     override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
     override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
