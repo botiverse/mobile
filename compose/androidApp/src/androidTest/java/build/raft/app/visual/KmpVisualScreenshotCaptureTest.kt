@@ -835,7 +835,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-member-suggestions")
                     .put("visualFixture", "member_suggestions"),
-            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
+            crop = THREAD_COMPOSER_MEMBER_SUGGESTIONS_CROP
         )
     }
 
@@ -6966,6 +6966,15 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 320
+            )
+        // React `components.thread.composer.member-suggestions`: `composerOffsetTop: 250` with
+        // the height following the composer, a 342x358 capture.
+        private val THREAD_COMPOSER_MEMBER_SUGGESTIONS_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 358
             )
         private val THREAD_COMPOSER_ATTACHMENTS_CROP =
             VisualCrop(

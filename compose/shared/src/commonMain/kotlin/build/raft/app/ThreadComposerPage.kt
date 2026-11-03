@@ -41,7 +41,9 @@ import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.format.RaftFormat
 import build.raft.app.model.ConversationSummary
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
+import build.raft.app.model.Presence
 import build.raft.app.model.MemberProfile
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -116,7 +118,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -133,6 +139,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -176,12 +183,12 @@ private const val ThreadComposerAttachmentRowGapDp = 8
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
-// raft-ui 0.6.0 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1.5`, opening
+// raft-ui 0.58.1 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1`, opening
 // `mb-2` above the composer; `min-h-9 px-2.5 py-1 gap-2.5` options with a `gap-1.5`
 // title/meta content row; `px-2.5 pt-2 pb-1` caption group labels; 19dp compact avatars
 // and framed channel tiles (11dp glyph).
 private val ComposerSuggestionPanelMaxHeight = 240.dp
-private val ComposerSuggestionPanelInset = 6.dp
+private val ComposerSuggestionPanelInset = 4.dp
 private val ComposerSuggestionPopoverGap = 8.dp
 private val ComposerSuggestionHeaderEstimatedHeight = 28.dp
 private val ComposerMemberSuggestionRowMinHeight = 36.dp
@@ -193,7 +200,8 @@ private val ComposerSuggestionItemGap = 10.dp
 private val ComposerSuggestionContentGap = 6.dp
 private val ComposerMemberSuggestionAvatarSize = 19.dp
 private val ComposerMemberSuggestionAvatarNameGap = ComposerSuggestionItemGap
-// web `AgentActivityDot size="sm"` on the 19dp compact avatar.
+// web `AgentActivityDot` in raft-ui `AvatarBadge` on the xs (19px) avatar: the badge shell
+// sets the light to `size-[7px] -right-0.5 -bottom-0.5`.
 private val ComposerMemberSuggestionStatusSize = 7.dp
 // web `ComposerSuggestionTitle max-w-[12rem]`, server meta `max-w-[10rem]`, handle `max-w-[7rem]`.
 private val ComposerSuggestionTitleMaxWidth = 192.dp
@@ -209,6 +217,10 @@ private val ComposerChannelSuggestionGlyphSize = 11.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private const val ThreadComposerVisualSuggestionAnchorOffset = 216f
+// web cases `composerOffsetTop`: the React capture puts the composer frame's top edge at 258px
+// (member, offset 250) and 218px (channel, offset 210); the visual input sits 8dp into the box.
+private const val ThreadComposerVisualMemberSuggestionAnchorOffset = 250f
+private const val ThreadComposerVisualChannelSuggestionAnchorOffset = 210f
 private const val ThreadComposerVisualSuggestionRepositionOffset = 336f
 private const val ThreadComposerSuggestionScrollOracleFixture = "member_suggestions_scroll_oracle"
 private const val ThreadComposerSuggestionRepositionOracleFixture = "member_suggestions_reposition_oracle"
@@ -1612,6 +1624,10 @@ internal fun ThreadComposerScreen() {
                                     when {
                                         suggestionRepositionOracleEnabled && suggestionRepositioned ->
                                             ThreadComposerVisualSuggestionRepositionOffset
+                                        visualFixture == "member_suggestions" ->
+                                            ThreadComposerVisualMemberSuggestionAnchorOffset
+                                        visualFixture == "channel_suggestions" ->
+                                            ThreadComposerVisualChannelSuggestionAnchorOffset
                                         payload.suggestionsOpen -> ThreadComposerVisualSuggestionAnchorOffset
                                         else -> 0f
                                     }
@@ -1631,6 +1647,12 @@ internal fun ThreadComposerScreen() {
                                     (visualFixture == ThreadComposerMentionBatchDetailsVisualFixture ||
                                         visualFixture == "pending_mention_actions_batch_partial"),
                             attachmentPreviewEnabled = false,
+                            agentStatusResolver =
+                                if (visualFixture.isNotBlank()) {
+                                    ThreadComposerVisualAgentStatusResolver
+                                } else {
+                                    EmptyRaftAgentStatusResolver
+                                },
                             onEvent = { action, _, _, attachmentId ->
                                 if (
                                     suggestionInteractionOracleEnabled &&
@@ -1761,6 +1783,21 @@ private fun parseThreadComposerLaunchPayload(
     }
 }
 
+private const val ThreadComposerVisualOwnerId = "visual-user"
+private const val ThreadComposerVisualCindyId = "agent-cindy"
+
+/**
+ * The visual fixture's agent activity: web VisualFixtureData agents are all `activity: "working"`
+ * (the channel-members mock carries Cindy's), so their avatar light is the busy yellow.
+ */
+internal val ThreadComposerVisualAgentStatusResolver: RaftAgentStatusResolver = { memberId ->
+    flowOf(
+        memberId?.takeIf { it.startsWith("agent-") }?.let {
+            raftAgentStatusIndicatorState(status = AgentStatus.Working, presence = Presence.Active, external = false)
+        }
+    )
+}
+
 private fun threadComposerVisualFixture(
     fixture: String,
     instanceId: String
@@ -1775,8 +1812,21 @@ private fun threadComposerVisualFixture(
             syncNonce = 1,
             focusRequestNonce = 0,
             placeholder = "Message design",
+            // web `components.thread.composer.member-suggestions`: the channel's members from the
+            // react-provider `/channels/visual-thread-composer/members` mock (artin, Cindy), then the
+            // rest of the server's agents in store order (VisualFixtureData fxProductUx, fxAndroidDev4).
             memberSuggestions =
                 listOf(
+                    RaftComposerMemberItem(
+                        displayName = "artin",
+                        handle = "artin",
+                        inMentionChannel = true,
+                        // The web row shows no description for artin (the channel-members mock's
+                        // role is not a mention description).
+                        kind = MemberKind.Human,
+                        avatarLabel = "AR",
+                        memberId = ThreadComposerVisualOwnerId
+                    ),
                     RaftComposerMemberItem(
                         displayName = "Cindy",
                         handle = "Cindy",
@@ -1784,25 +1834,28 @@ private fun threadComposerVisualFixture(
                         kind = MemberKind.Agent,
                         description = "Keeps visual testing release notes aligned.",
                         avatarWireValue = "pixel:robot",
-                        avatarLabel = "C"
+                        avatarLabel = "CI",
+                        memberId = ThreadComposerVisualCindyId
                     ),
                     RaftComposerMemberItem(
                         displayName = "Product UX Designer",
                         handle = "Product-UX-Designer",
-                        inMentionChannel = true,
+                        inMentionChannel = false,
                         kind = MemberKind.Agent,
-                        description = "Turns screenshots into actionable UI specs.",
-                        avatarWireValue = "pixel:paint",
-                        avatarLabel = "P"
+                        description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
+                        avatarWireValue = "pixel:robot",
+                        avatarLabel = "PU",
+                        memberId = "agent-product-ux"
                     ),
                     RaftComposerMemberItem(
-                        displayName = "Android Developer",
+                        displayName = "Android Developer 4",
                         handle = "Android-Developer-4",
                         inMentionChannel = false,
                         kind = MemberKind.Agent,
                         description = "Implements shared Android/KMP UI fixes.",
                         avatarWireValue = "pixel:robot",
-                        avatarLabel = "A"
+                        avatarLabel = "AD",
+                        memberId = "agent-android-dev-4"
                     )
                 ),
             channelSuggestions =
@@ -2153,6 +2206,7 @@ internal fun ThreadComposerContent(
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
@@ -2181,6 +2235,7 @@ internal fun ThreadComposerContent(
         composerSendKeyEnabled = composerSendKeyEnabled,
         dismissKeyboardOnBlur = dismissKeyboardOnBlur,
         attachmentPreviewEnabled = attachmentPreviewEnabled,
+        agentStatusResolver = agentStatusResolver,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged,
@@ -3987,77 +4042,155 @@ internal fun ComposerMemberSuggestionRow(
                 statusColor = agentStatus?.color,
                 avatarSize = ComposerMemberSuggestionAvatarSize,
                 statusSize = ComposerMemberSuggestionStatusSize,
-                statusPulsing = agentStatus?.pulsing == true
+                // web StatusDot: "status dots mark ambient states and never animate".
+                statusPulsing = false
             ) {
                 RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),
-                    label = member.displayName.ifBlank { member.avatarLabel },
+                    // web `MentionCandidateAvatar`: a person is a Gravatar or, without one, the
+                    // placeholder person icon, never initials (an empty label falls back to the icon).
+                    label = if (member.kind == MemberKind.Human) "" else member.displayName.ifBlank { member.avatarLabel },
                     avatarSize = ComposerMemberSuggestionAvatarSize,
                     carriedAvatarWireValue = member.avatarWireValue,
                 )
             }
         }
         if (muted) {
-            // web: `ComposerSuggestionIcon variant="auxiliary"` UserX after the avatar.
+            // web `chatMentionGroups`: `<UserX size={12} />` in a `ComposerSuggestionIcon
+            // variant="auxiliary"` (`-ml-1 size-3 text-foreground-hint`) after the avatar.
             Spacer(modifier = Modifier.width(ComposerSuggestionItemGap - 4.dp))
             RaftLucideIcon(
-                RaftLucideIconName.UserMinus,
+                RaftLucideIconName.UserX,
                 modifier = Modifier.size(12.dp),
                 color = raftArgbHex(RaftColor.ForegroundHint)
             )
         }
         Spacer(modifier = Modifier.width(ComposerMemberSuggestionAvatarNameGap))
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ComposerSuggestionContentGap)
-        ) {
-            Text(
-                text = member.displayName,
-                // raft-ui suggestion item: text-callout (14/20) medium on foreground.
-                style = ComposerSuggestionTitleStyle,
-                color = RaftColor.TextBlack,
-                // Web `max-w-48`: the title takes its natural width up to 192dp and is never
-                // squeezed into an equal share with the metas; only description/server flex.
-                modifier = Modifier.widthIn(max = ComposerSuggestionTitleMaxWidth),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        val metas =
+            listOfNotNull<Pair<String, Dp?>>(
+                description?.let { text -> text to null },
+                serverLabel?.let { text -> text to ComposerSuggestionServerMaxWidth }
             )
-            if (appBot != null) {
-                RaftAppBotBadge(identity = appBot, botName = member.displayName)
-            } else {
-                actorTypeLabel?.let { ComposerSuggestionSoftBadge(it) }
-            }
-            description?.let {
+        ComposerMentionSuggestionContent(
+            modifier = Modifier.weight(1f),
+            metas = metas,
+            title = {
                 Text(
-                    text = it,
-                    style = ComposerSuggestionMetaStyle,
+                    text = member.displayName,
+                    // raft-ui suggestion item: text-callout (14/20) medium on foreground.
+                    style = ComposerSuggestionTitleStyle,
+                    color = RaftColor.TextBlack,
+                    // web `max-w-[12rem]`.
+                    modifier = Modifier.widthIn(max = ComposerSuggestionTitleMaxWidth),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            hasBadge = appBot != null || actorTypeLabel != null,
+            badge = {
+                if (appBot != null) {
+                    RaftAppBotBadge(identity = appBot, botName = member.displayName)
+                } else {
+                    actorTypeLabel?.let { ComposerSuggestionSoftBadge(it) }
+                }
+            },
+            aside = {
+                // raft-ui `ComposerSuggestionAside` + `ComposerSuggestionMeta variant="code"`
+                // (`max-w-[7rem] truncate`).
+                Text(
+                    text = "@${member.handle}",
+                    style = ComposerSuggestionMetaStyle.copy(fontFamily = RaftMonoFamily),
                     color = RaftColor.ForegroundHint,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.widthIn(max = ComposerSuggestionHandleMaxWidth),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            serverLabel?.let {
+        )
+    }
+}
+
+/**
+ * raft-ui `ComposerSuggestionContent` (`flex items-center gap-1.5`) for a mention row, with the
+ * web flex priorities (raft-ui composer-suggestion-list recipe): the kind badge never shrinks
+ * (`shrink-0`); the handle aside shows in full up to a third of the row (`ml-auto shrink-0
+ * max-w-[33%]`); the name takes the rest (`flex-[0_1_auto]`, truncating only when it alone cannot
+ * fit); text metas (`flex-1 basis-0`) start from zero and split what the name leaves. A plain Row
+ * measured the name first, so a long name squeezed the badge out of the row.
+ */
+@Composable
+private fun ComposerMentionSuggestionContent(
+    modifier: Modifier,
+    /** Text metas in order, each with its own max width (`max-w-*`) or null. */
+    metas: List<Pair<String, Dp?>>,
+    title: @Composable () -> Unit,
+    hasBadge: Boolean,
+    badge: @Composable () -> Unit,
+    aside: @Composable () -> Unit
+) {
+    Layout(
+        modifier = modifier,
+        content = {
+            Box(modifier = Modifier.layoutId("title")) { title() }
+            if (hasBadge) Box(modifier = Modifier.layoutId("badge")) { badge() }
+            metas.forEachIndexed { index, (text, _) ->
                 Text(
-                    text = it,
+                    text = text,
                     style = ComposerSuggestionMetaStyle,
                     color = RaftColor.ForegroundHint,
-                    modifier = Modifier.weight(1f, fill = false).widthIn(max = ComposerSuggestionServerMaxWidth),
+                    modifier = Modifier.layoutId("meta-$index"),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            Box(modifier = Modifier.layoutId("aside")) { aside() }
+        }
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val gap = ComposerSuggestionContentGap.roundToPx()
+        val loose = Constraints(maxWidth = width)
+        val asidePlaceable =
+            measurables.first { it.layoutId == "aside" }
+                .measure(Constraints(maxWidth = (width * 0.33f).toInt()))
+        val badgePlaceable = measurables.firstOrNull { it.layoutId == "badge" }?.measure(loose)
+        val metaMeasurables = metas.indices.map { index -> measurables.first { it.layoutId == "meta-$index" } }
+        val itemCount = 2 + (if (badgePlaceable != null) 1 else 0) + metaMeasurables.size
+        val gaps = gap * (itemCount - 1)
+        val titleMax = (width - asidePlaceable.width - (badgePlaceable?.width ?: 0) - gaps).coerceAtLeast(0)
+        val titlePlaceable = measurables.first { it.layoutId == "title" }.measure(Constraints(maxWidth = titleMax))
+        var leftover = (titleMax - titlePlaceable.width).coerceAtLeast(0)
+        // `flex-1 basis-0` metas share the leftover equally; a capped meta's surplus goes to the rest.
+        val shares = IntArray(metaMeasurables.size)
+        val open = metaMeasurables.indices.toMutableList()
+        while (open.isNotEmpty()) {
+            val share = leftover / open.size
+            val capped = open.filter { index -> metas[index].second?.roundToPx()?.let { it < share } == true }
+            if (capped.isEmpty()) {
+                open.forEach { index -> shares[index] = share }
+                break
+            }
+            capped.forEach { index ->
+                shares[index] = metas[index].second!!.roundToPx()
+                leftover -= shares[index]
+                open.remove(index)
             }
         }
-        // raft-ui `ComposerSuggestionAside` + `ComposerSuggestionMeta variant="code"`.
-        Text(
-            text = "@${member.handle}",
-            style = ComposerSuggestionMetaStyle.copy(fontFamily = RaftMonoFamily),
-            color = RaftColor.ForegroundHint,
-            modifier = Modifier.padding(start = ComposerSuggestionContentGap).widthIn(max = ComposerSuggestionHandleMaxWidth),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        val metaPlaceables = metaMeasurables.mapIndexed { index, measurable -> measurable.measure(Constraints(maxWidth = shares[index])) }
+        val height =
+            (listOfNotNull(titlePlaceable, badgePlaceable, asidePlaceable) + metaPlaceables)
+                .maxOf { it.height }
+                .coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            var x = 0
+            fun place(placeable: Placeable, advance: Int = placeable.width) {
+                placeable.placeRelative(x, (height - placeable.height) / 2)
+                x += advance + gap
+            }
+            place(titlePlaceable)
+            badgePlaceable?.let { place(it) }
+            metaPlaceables.forEachIndexed { index, placeable -> place(placeable, advance = shares[index]) }
+            asidePlaceable.placeRelative(width - asidePlaceable.width, (height - asidePlaceable.height) / 2)
+        }
     }
 }
 
@@ -4856,7 +4989,7 @@ private fun ComposerSuggestionPanel(
         LazyColumn(
             modifier = Modifier.fillMaxWidth().height(panelHeight)
         ) {
-            // `p-1.5` block inset; the side inset lives on the rows and labels.
+            // `p-1` block inset; the side inset lives on the rows and labels.
             item(key = "inset-top", contentType = "inset") {
                 Spacer(modifier = Modifier.height(ComposerSuggestionPanelInset))
             }
@@ -4956,14 +5089,14 @@ private fun ComposerSuggestionInteractiveRow(
             selected || pressed -> selectedColor
             else -> Color.Transparent
         }
-    // raft-ui `ComposerSuggestionList` item: inset 6dp (p-1.5) inside the
-    // popover, rounded-control highlight, px-2.5.
+    // raft-ui `ComposerSuggestionList` item: inset 4dp (p-1) inside the
+    // popover, rounded-chip highlight, px-2.5.
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = ComposerSuggestionPanelInset)
-                .background(background, RoundedCornerShape(RaftAppRadius.Control))
+                .background(background, RoundedCornerShape(RaftAppRadius.Chip))
     ) {
         Box(
             modifier =
