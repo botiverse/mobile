@@ -1046,6 +1046,8 @@
     <string name="thread_forward_open_source">打开源消息</string>
     <string name="thread_forward_open_attachment">打开 %1$s</string>
     <string name="thread_forward_selected">已选择 %1$d 条</string>
+    <string name="thread_share_selection_toolbar_label">已选消息操作</string>
+    <string name="thread_share_selection_more_actions">更多已选消息操作</string>
     <string name="thread_forward_placeholder_one">转发 1 条消息</string>
     <string name="thread_forward_placeholder_many">转发 %1$d 条消息</string>
     <string name="thread_forward_sending">发送中</string>

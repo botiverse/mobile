@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
@@ -117,11 +118,15 @@ object RaftMessageItemDefaults {
  * shadow-float`): `shadow-float` under a `layer-popover` fill with the container radius,
  * the 1dp `line-seam` hairline inside the box (so the box is the visible edge), and no clip,
  * so a button's focus ring is not cut. Provides `layer-popover` as [LocalRaftSurfaceColor].
+ * [contentPadding] / [gap] default to the hover toolbar's 4dp; the multi-select toolbar
+ * starts its count 10dp in and keeps 8dp after it.
  */
 @Composable
 internal fun RaftFloatingToolbarFrame(
     modifier: Modifier,
     label: String?,
+    contentPadding: PaddingValues = PaddingValues(RaftMessageItemToolbarDefaults.Padding),
+    gap: Dp = RaftMessageItemToolbarDefaults.Gap,
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -148,8 +153,8 @@ internal fun RaftFloatingToolbarFrame(
                     isTraversalGroup = true
                     if (label != null) contentDescription = label
                 }
-                .padding(RaftMessageItemToolbarDefaults.Padding),
-        horizontalArrangement = Arrangement.spacedBy(RaftMessageItemToolbarDefaults.Gap),
+                .padding(contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(gap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CompositionLocalProvider(LocalRaftSurfaceColor provides fill) { content() }
