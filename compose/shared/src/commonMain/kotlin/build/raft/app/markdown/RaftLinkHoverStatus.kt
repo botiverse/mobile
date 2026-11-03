@@ -170,7 +170,10 @@ internal fun RaftLinkHoverStatusHost(
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(LocalRaftLinkHoverStatus provides state) {
-        Box(Modifier.fillMaxSize(), propagateMinConstraints = true) {
+        // No propagateMinConstraints: the page keeps the loose constraints it had before this
+        // layer, so a page smaller than the window stays its own size at the top-left instead
+        // of being stretched to the whole window (and its content re-centred within it).
+        Box(Modifier.fillMaxSize()) {
             content()
             RaftLinkHoverStatusOverlay(state)
         }
