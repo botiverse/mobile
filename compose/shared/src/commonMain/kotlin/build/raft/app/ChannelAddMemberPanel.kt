@@ -228,7 +228,8 @@ internal fun ThreadAddMemberPanel(
                     stringResource(Res.string.thread_members_add_selected, selectedCandidates.size)
                 },
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
+            // web ChannelMembersPanel: Lucide `UserPlus` on Add Selected.
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.UserPlus) },
             enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
             onClick = { onSubmitBatch(selectedCandidates) },
             variant = RaftButtonVariant.Primary,

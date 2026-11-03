@@ -6259,6 +6259,20 @@ internal fun DirectMessageSettingsPanelVisualScreen() {
 @Composable
 internal fun ChannelAddMemberPanelVisualScreen() {
     val candidates = remember { channelPanelVisualCandidates() }
+    // fixtureData.json: every candidate agent is `active` / `working`; freeze the pulse at its
+    // resting frame so the dot is solid, as in the web capture.
+    val workingState =
+        remember {
+            raftAgentStatusIndicatorState(
+                status = AgentStatus.Working,
+                presence = AgentStatus.Working.presence,
+                external = false,
+            ).copy(pulsing = false)
+        }
+    val agentStatusResolver: RaftAgentStatusResolver =
+        remember(workingState) {
+            { memberId -> flowOf(workingState.takeIf { memberId?.startsWith("agent-") == true }) }
+        }
     ThreadMembersPageContent(
         members = emptyList(),
         filteredMembers = emptyList(),
@@ -6282,7 +6296,7 @@ internal fun ChannelAddMemberPanelVisualScreen() {
         membersLoading = false,
         refreshing = false,
         canAddMembers = true,
-        agentStatusResolver = EmptyRaftAgentStatusResolver,
+        agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = EmptyRaftMemberAvatarResolver,
         onBack = {},
         onRefresh = {},
@@ -6296,7 +6310,7 @@ internal fun ChannelAddMemberPanelVisualScreen() {
 
 // Add-member candidates: web components.channel.members.add-panel lists the server's
 // fixtureData.json agents that are not in the #design roster (Cindy is), every one
-// wearing `pixel:robot`, and no humans.
+// wearing `pixel:robot`, then the humans not in it: artin (Owner) and Designer.
 private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
     listOf(
         RaftThreadMemberItem(
@@ -6368,6 +6382,24 @@ private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
             avatarUrl = "pixel:robot",
             avatarLabel = "NM",
             kind = "agent"
+        ),
+        RaftThreadMemberItem(
+            id = "visual-user",
+            displayName = "artin",
+            handle = "artin",
+            roleLabel = "",
+            description = "Owner",
+            avatarLabel = "AR",
+            kind = "human"
+        ),
+        RaftThreadMemberItem(
+            id = "visual-human-designer",
+            displayName = "Designer",
+            handle = "designer",
+            roleLabel = "",
+            description = "Product design",
+            avatarLabel = "DE",
+            kind = "human"
         )
     )
 
