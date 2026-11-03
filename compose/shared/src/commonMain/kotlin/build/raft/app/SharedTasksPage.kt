@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -29,7 +30,6 @@ import build.raft.app.markdown.RaftTaskStatusPixelStyle
 import build.raft.app.markdown.raftTaskStatusColor
 import build.raft.app.markdown.raftTaskStatusSoft
 import build.raft.app.components.RaftAnchoredPickerTrigger
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksRouteIntent
@@ -1159,12 +1159,11 @@ private fun SharedTasksToolbar(
         )
     }
     val clearAllChip: @Composable () -> Unit = {
-        RaftToolbarChip(
-            label = stringResource(Res.string.tasks_action_clear_all),
-            iconName = RaftLucideIconName.X,
-            uppercase = false,
-            active = false,
-            onClick = onClearAll
+        RaftPickerTriggerButton(
+            text = stringResource(Res.string.tasks_action_clear_all),
+            onClick = onClearAll,
+            showIndicator = false,
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) }
         )
     }
     val newTaskButton: @Composable () -> Unit = {
@@ -1967,12 +1966,12 @@ private fun TasksCreateDialog(
                 )
             }
             item {
-                RaftToolbarChip(
-                    label = stringResource(Res.string.tasks_action_add_another),
-                    iconName = RaftLucideIconName.Plus,
-                    active = false,
+                RaftPickerTriggerButton(
+                    text = stringResource(Res.string.tasks_action_add_another),
+                    onClick = { titles = titles + "" },
                     enabled = !loading,
-                    onClick = { titles = titles + "" }
+                    showIndicator = false,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) }
                 )
             }
             errorCode?.takeIf { it.isNotBlank() }?.let { code ->

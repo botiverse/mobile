@@ -23,7 +23,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import build.raft.app.components.RaftAppCheckbox
-import build.raft.app.components.RaftLinkButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choices
@@ -46,6 +45,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.text.style.TextAlign
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -452,14 +456,17 @@ private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, ret
     Text(text, style = RaftType.Caption, color = if (status.unavailable) RaftColor.AccentRed else RaftColor.TextMutedGray)
     // Retry only when the server says it may help.
     if (status.retryable && onRetry != null) {
-        RaftLinkButton(
-            text = stringResource(Res.string.common_retry),
-            onClick = onRetry,
-            enabled = !retrying,
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
-            color = RaftColor.TextBlack
-        )
+        RaftDesignSystemTheme {
+            RaftTextLink(
+                text = stringResource(Res.string.common_retry),
+                onClick = onRetry,
+                enabled = !retrying,
+                modifier = Modifier.fillMaxWidth(),
+                variant = RaftTextLinkVariant.Strong,
+                style = RaftTheme.typography.caption.copy(textAlign = TextAlign.Center),
+                maxLines = 1
+            )
+        }
     }
 }
 

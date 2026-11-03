@@ -1,6 +1,5 @@
 package build.raft.app.components
 
-import build.raft.app.Button as RaftAppButton
 import build.raft.app.RaftColor
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftLucideIcon

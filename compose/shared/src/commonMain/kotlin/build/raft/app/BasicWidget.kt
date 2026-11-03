@@ -43,7 +43,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1397,27 +1396,11 @@ internal class RaftTouchSequenceTracker<T : Any> {
     }
 }
 
-private object RaftPressTokens {
-    val ButtonOffset = 2.dp
-}
-
-private fun Modifier.raftPressedOffset(
-    pressed: Boolean,
-    pressOffset: Dp
-): Modifier {
-    return if (pressed && pressOffset > 0.dp) {
-        this.offset(x = pressOffset, y = pressOffset)
-    } else {
-        this
-    }
-}
-
 /**
- * Makes Slock's pointer-input button a distinct node in Kuikly's merged semantics tree.
+ * Makes a custom pointer-input button a distinct node in the merged semantics tree.
  *
- * The custom button intentionally keeps its existing pointer gesture implementation for pressed
- * offset feedback and coordinate-aware callbacks. Without an explicit merging semantics boundary,
- * however, dialog-level click barriers absorb the button's descendant text into one giant native
+ * Without an explicit merging semantics boundary, dialog-level click barriers absorb the
+ * button's descendant text into one giant native
  * accessibility element. iOS/XCUITest and screen readers then see the whole dialog as a single
  * button instead of independently focusable actions.
  */
@@ -1508,152 +1491,6 @@ internal val RaftModalWindowDialogProperties =
 /** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable
 fun Modifier.dragEnable(enable: Boolean): Modifier = this
-
-@Composable
-internal fun Button(
-    onClick: () -> Unit = {},
-    onLongClick: (() -> Unit)? = null,
-    longClickLabel: String? = null,
-    onClick2: ((RaftPopoverAnchor) -> Unit)? = null,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    pressFeedback: Boolean = true,
-    pressOffset: Dp = RaftPressTokens.ButtonOffset,
-    clickIdentity: Any? = null,
-    anchorOwnerIdentity: Any? = null,
-    // Observes the press (raft-ui lays a pressed wash over the control instead of
-    // offsetting it); only reported while [pressFeedback] is on.
-    onPressedChange: ((Boolean) -> Unit)? = null,
-    content: (@Composable () -> Unit) = {}
-) {
-    val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "button"
-    val rootAnchor =
-        remember(resolvedAnchorOwnerIdentity) { RaftLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
-    var pressed by remember(resolvedAnchorOwnerIdentity) { mutableStateOf(false) }
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnLongClick by rememberUpdatedState(onLongClick)
-    val currentEnabled by rememberUpdatedState(enabled)
-    val hasLongClick = onLongClick != null
-    val gestureOwner =
-        rememberRaftGestureOwner(
-            surface = "button",
-            semanticIdentity = resolvedAnchorOwnerIdentity,
-            callbacks =
-                RaftButtonGestureCallbacks(
-                    enabled = enabled,
-                    pressFeedback = pressFeedback,
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                    onClick2 = onClick2,
-                    onPressedChange = {
-                        pressed = it
-                        onPressedChange?.invoke(it)
-                    },
-                    rootAnchor = rootAnchor
-                )
-        )
-    Box(
-        modifier = Modifier
-            .raftButtonAccessibility(
-                enabled = enabled,
-                performClick = { if (currentEnabled) currentOnClick() },
-                longClickLabel = longClickLabel,
-                performLongClick = currentOnLongClick?.let {
-                    { if (currentEnabled) currentOnLongClick?.invoke() }
-                },
-            )
-            .then(
-                if (onClick2 != null) {
-                    Modifier.raftCaptureLiveRootAnchor(rootAnchor)
-                } else {
-                    Modifier
-                }
-            )
-            // `enabled` is read through the gesture owner's current slot. Keeping it
-            // out of the pointer-input keys prevents Kuikly from tearing down
-            // the tap handler when a dynamically-enabled button (for example
-            // Undo/Clear after the first edit) transitions from false to true.
-            .raftGesturePointerInput(gestureOwner, pressFeedback, hasLongClick) { owner ->
-                var gesture: RaftGestureSession<RaftButtonGestureCallbacks>? = null
-                var arbiter = RaftButtonGestureArbiter(hasLongClick)
-                detectTapGestures(
-                    onPress = {
-                        arbiter = RaftButtonGestureArbiter(hasLongClick)
-                        val session = owner.beginGesture()
-                        gesture = session
-                        val callbacks = session.currentCallbacksOrNull()
-                        if (callbacks != null && callbacks.enabled && callbacks.pressFeedback) {
-                            callbacks.onPressedChange(true)
-                            try {
-                                tryAwaitRelease()
-                            } finally {
-                                session.currentCallbacksOrNull()?.onPressedChange(false)
-                            }
-                        }
-                    },
-                    onTap = { offset ->
-                        val callbacks =
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
-                                ?: return@detectTapGestures
-                        if (callbacks.enabled) {
-                            arbiter.dispatchTap {
-                                callbacks.onClick()
-                                callbacks.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(offset))?.let { anchor ->
-                                    callbacks.onClick2?.invoke(anchor)
-                                }
-                            }
-                        }
-                    },
-                    onLongPress =
-                        if (hasLongClick) {
-                            {
-                                val callbacks =
-                                    (gesture ?: owner.beginGesture()).currentCallbacksOrNull()
-                                        ?: return@detectTapGestures
-                                if (callbacks.enabled) {
-                                    arbiter.dispatchLongClick(callbacks.onLongClick)
-                                }
-                            }
-                        } else {
-                            null
-                        }
-                )
-            }
-            .raftPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset)
-            .then(modifier),
-        contentAlignment = Alignment.Center
-    ) {
-        content()
-    }
-}
-
-/** Owns the one-gesture tap/long-press decision used by the production pointer callbacks. */
-internal class RaftButtonGestureArbiter(private val hasLongClick: Boolean) {
-    private var longClickCommitted = false
-
-    fun dispatchTap(action: () -> Unit): Boolean {
-        if (longClickCommitted) return false
-        action()
-        return true
-    }
-
-    fun dispatchLongClick(action: (() -> Unit)?): Boolean {
-        if (!hasLongClick || action == null || longClickCommitted) return false
-        longClickCommitted = true
-        action()
-        return true
-    }
-}
-
-private data class RaftButtonGestureCallbacks(
-    val enabled: Boolean,
-    val pressFeedback: Boolean,
-    val onClick: () -> Unit,
-    val onLongClick: (() -> Unit)?,
-    val onClick2: ((RaftPopoverAnchor) -> Unit)?,
-    val onPressedChange: (Boolean) -> Unit,
-    val rootAnchor: RaftLiveRootAnchorRef
-)
 
 internal class Border(
     val lineWidth: Dp,

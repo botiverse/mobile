@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.app.resources.*
-import build.raft.app.components.RaftLinkButton
 import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldAction
@@ -69,6 +68,9 @@ import build.raft.app.compat.ui.KeyboardParams
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.theme.RaftTheme
 
 internal enum class AuthButtonTone {
     Pink,
@@ -621,15 +623,16 @@ internal fun authActionButtonTextStyle(
 
 @Composable
 internal fun AuthTextLink(text: String, onClick: () -> Unit, enabled: Boolean = true) {
-    RaftLinkButton(
-        text = text,
-        onClick = onClick,
-        enabled = enabled,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        color = RaftColor.TextMutedGray,
-        disabledColor = RaftColor.TextMutedGray.copy(alpha = 0.55f)
-    )
+    RaftDesignSystemTheme {
+        RaftTextLink(
+            text = text,
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            style = RaftTheme.typography.caption.copy(textAlign = TextAlign.Center),
+            maxLines = 1
+        )
+    }
 }
 
 @Composable

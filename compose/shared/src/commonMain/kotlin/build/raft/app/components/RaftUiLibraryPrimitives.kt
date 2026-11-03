@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftTabs
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 
@@ -625,18 +627,18 @@ internal fun RaftUiTabs(
     modifier: Modifier = Modifier,
     panelText: String
 ) {
-    // raft-ui Tabs (`variant="default"`): a 2dp-gap row of 32dp control-radius tabs;
-    // the active tab is the yellow `--brand` sticker (ink edge, bold ink type). The
-    // panel has no chrome of its own.
+    // raft-ui Tabs (`variant="default"`): the design system's tab row; the active tab is the
+    // yellow sticker. The panel has no chrome of its own.
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-            items.forEach { item ->
-                RaftSegmentedItem(
-                    label = item.label,
-                    selected = item.value == selectedValue,
-                    enabled = true,
-                    onClick = {}
-                )
+        RaftDesignSystemTheme {
+            RaftTabs {
+                items.forEach { item ->
+                    RaftTab(
+                        text = item.label,
+                        selected = item.value == selectedValue,
+                        onClick = {}
+                    )
+                }
             }
         }
         RaftUiTextSans(panelText)

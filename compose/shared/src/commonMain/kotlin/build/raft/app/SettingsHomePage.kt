@@ -15,6 +15,7 @@ import build.raft.designsystem.components.RaftTextarea
 import androidx.compose.foundation.text.KeyboardActions
 import build.raft.designsystem.components.RaftMobileNavServerPopoverItem
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
@@ -72,7 +73,6 @@ import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.app.components.rememberRaftTextareaEditorModifier
 import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.RaftLinkButton
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
@@ -9870,14 +9870,19 @@ internal fun AppShellServerGateContent(
                 )
             }
             if (!showPinnedSignOut) {
-                RaftLinkButton(
-                    text = stringResource(Res.string.auth_action_sign_out),
-                    enabled = !loading,
-                    onClick = {
-                        pendingServerId = "__logout__"
-                        loading = true
-                    }
-                )
+                RaftDesignSystemTheme {
+                    RaftTextLink(
+                        text = stringResource(Res.string.auth_action_sign_out),
+                        enabled = !loading,
+                        onClick = {
+                            pendingServerId = "__logout__"
+                            loading = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        style = RaftTheme.typography.callout.copy(textAlign = TextAlign.Center),
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
@@ -10173,16 +10178,21 @@ internal fun AppShellEmailVerificationGateContent(
                 tone = AuthButtonTone.White,
                 enabled = !loading
             )
-            RaftLinkButton(
-                text = stringResource(Res.string.auth_action_sign_out),
-                enabled = !loading,
-                onClick = {
-                    loading = true
-                    errorPresentation = null
-                    sentPresentation = null
-                    pendingSignOut = true
-                }
-            )
+            RaftDesignSystemTheme {
+                RaftTextLink(
+                    text = stringResource(Res.string.auth_action_sign_out),
+                    enabled = !loading,
+                    onClick = {
+                        loading = true
+                        errorPresentation = null
+                        sentPresentation = null
+                        pendingSignOut = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = RaftTheme.typography.callout.copy(textAlign = TextAlign.Center),
+                    maxLines = 1
+                )
+            }
         }
     }
 }

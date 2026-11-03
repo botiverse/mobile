@@ -12,7 +12,6 @@ import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.reduceAttachmentDownloadProgress
