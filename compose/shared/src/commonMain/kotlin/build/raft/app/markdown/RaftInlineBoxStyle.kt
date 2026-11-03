@@ -370,14 +370,14 @@ internal fun raftChipLinkStyles(style: SpanStyle, pressed: SpanStyle = style): T
 
 /**
  * The text without reserved chip gaps (each gap placeholder and the word joiner gluing it to its
- * chip) and without inline code's break marks ([raftWithoutInlineCodeBreakMarks]): exactly the
+ * chip) and without the other layout-only characters ([raftCopyText]): exactly the
  * characters the source rendered.
  */
 internal fun AnnotatedString.raftTextWithoutInlineGaps(): String {
     val gaps =
         getStringAnnotations(RaftInlineContentAnnotationTag, 0, length)
             .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) }
-    if (gaps.isEmpty()) return text.raftWithoutInlineCodeBreakMarks()
+    if (gaps.isEmpty()) return text.raftCopyText()
     val drop = BooleanArray(length)
     gaps.forEach { gap ->
         for (i in gap.start until gap.end) drop[i] = true
@@ -385,16 +385,8 @@ internal fun AnnotatedString.raftTextWithoutInlineGaps(): String {
         if (gap.start > 0 && text[gap.start - 1] == '\u2060') drop[gap.start - 1] = true
     }
     return buildString(length) { text.forEachIndexed { i, c -> if (!drop[i]) append(c) } }
-        .raftWithoutInlineCodeBreakMarks()
+        .raftCopyText()
 }
-
-/**
- * Drops the zero-width space and word joiner inline code carries to wrap where the web's does
- * (`withRaftInlineCodeWebBreaks`); they are layout-only and must not reach a copy.
- */
-internal fun String.raftWithoutInlineCodeBreakMarks(): String =
-    if (indexOf('\u200B') < 0 && indexOf('\u2060') < 0) this
-    else filterNot { it == '\u200B' || it == '\u2060' }
 
 private const val RaftInlineContentAnnotationTag = "androidx.compose.foundation.text.inlineContent"
 

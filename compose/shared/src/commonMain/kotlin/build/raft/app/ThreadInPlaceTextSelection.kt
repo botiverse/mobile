@@ -49,7 +49,8 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.markdown.LocalRaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftMarkdownLinkDragSelection
-import build.raft.app.markdown.raftWithoutInlineCodeBreakMarks
+import build.raft.app.markdown.RaftCleanCopyClipboardScope
+import build.raft.app.markdown.raftCopyText
 import build.raft.designsystem.components.RaftTextSelectionToolbar
 import build.raft.designsystem.components.RaftTextSelectionToolbarButton
 import build.raft.designsystem.components.RaftTextSelectionToolbarDefaults
@@ -369,8 +370,8 @@ internal fun threadInPlaceSelectionCopyText(
     if (!fullMessageText.isNullOrBlank() && threadInPlaceSelectionCoversAll(selectedTexts, selectableTexts)) {
         return fullMessageText
     }
-    // Rendered text carries layout-only break marks (inline code, chip glue); a copy has none.
-    return selected.joinToString(separator = "\n").raftWithoutInlineCodeBreakMarks()
+    // Rendered text carries layout-only characters (inline code wrap marks, chip gaps); a copy has none.
+    return selected.joinToString(separator = "\n").raftCopyText()
 }
 
 /**
@@ -634,13 +635,16 @@ internal fun ThreadInPlaceSelectableBody(
         LocalTextSelectionColors provides selectionColors,
         LocalRaftMarkdownLinkDragSelection provides linkDragSelection,
     ) {
-        SelectionContainer(
-            controller.selectionState,
-            Modifier
-                .onGloballyPositioned(controller::onBodyPositioned)
-                .threadInPlaceMouseSelectionEnd(controller),
-        ) {
-            content()
+        // Ctrl/Cmd+C and the system text menu copy through the clipboard, not copySelection: clean them too.
+        RaftCleanCopyClipboardScope {
+            SelectionContainer(
+                controller.selectionState,
+                Modifier
+                    .onGloballyPositioned(controller::onBodyPositioned)
+                    .threadInPlaceMouseSelectionEnd(controller),
+            ) {
+                content()
+            }
         }
     }
     // A kept-alive page that goes inactive (hidden shell tab) drops its selection so the popup
