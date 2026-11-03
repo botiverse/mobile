@@ -14646,8 +14646,6 @@ private fun ThreadMarkdownTaskCandidateModal(
         minWidth = 320.dp,
         maxWidth = 392.dp,
         contentPadding = 20.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
@@ -18113,8 +18111,8 @@ internal fun ThreadPageHeader(
     )
 }
 
-/** raft-ui `PanelMeta` (md): sans text-footnote. */
-private val ThreadHeaderMetaStyle = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp)
+/** raft-ui `PanelMeta` (default size sm, as the web PanelHeader passes no size): sans text-caption 12/16 500. */
+private val ThreadHeaderMetaStyle get() = RaftType.Caption
 
 /**
  * A reply thread's header meta line with its channel name as a link (web ThreadPanel #10285): the
@@ -24778,7 +24776,8 @@ private fun ThreadInlineSearchBar(
             ) {
                 Text(
                     text = "$normalizedCurrent/$matchCount",
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    // raft-ui ThreadPanelSearchCount: font-mono text-mono-meta (12/16 regular).
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontWeight = FontWeight.Normal),
                     color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -26955,12 +26954,11 @@ private fun ThreadDateDivider(label: String) {
     }
 }
 
+/** raft-ui `MessageListDateDivider`: `font-mono text-mono-meta` (12/16 regular), Caption's size in Space Mono Regular. */
 internal fun threadDateDividerTextStyle(): TextStyle =
     RaftType.Caption.copy(
-        fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
+        fontFamily = RaftMonoFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
         color = RaftColor.TextMutedGray,
         letterSpacing = 0.sp
     )
@@ -29911,7 +29909,8 @@ private fun ThreadReactionDetailsTooltip(
             )
             Text(
                 text = label,
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                // raft-ui MessageReaction tooltip: text-footnote font-medium (13/18 500).
+                style = RaftType.Footnote.withRaftFontWeight(FontWeight.Medium),
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -29937,7 +29936,7 @@ internal const val ThreadAuthorDescriptionPopoverMinWidthDp = 120f
 internal const val ThreadAuthorDescriptionPopoverHorizontalPaddingDp = 10f
 internal const val ThreadAuthorDescriptionPopoverVerticalPaddingDp = 8f
 internal const val ThreadAuthorDescriptionPopoverApproxCharWidthDp = 7.5f
-internal const val ThreadAuthorDescriptionPopoverLineHeightDp = 16f
+internal const val ThreadAuthorDescriptionPopoverLineHeightDp = 18f // RaftType.Footnote line height
 
 internal data class ThreadAuthorDescriptionPopoverDimensions(
     val width: Dp,
@@ -30012,13 +30011,8 @@ private fun ThreadAuthorDescriptionPopover(
             ) {
                 Text(
                     text = request.description,
-                    style =
-                        RaftType.Caption.copy(
-                            fontFamily = RaftMonoFamily,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
-                            color = RaftColor.TextBlack
-                        ),
+                    // Web sender subtitle Tooltip: sans text-footnote font-medium (13/18 500).
+                    style = RaftType.Footnote.withRaftFontWeight(FontWeight.Medium).copy(color = RaftColor.TextBlack),
                     color = RaftColor.TextBlack
                 )
             }
@@ -33483,10 +33477,10 @@ private fun ThreadMessageAvatarSlot(
                 Text(
                     text = timestampLabel,
                     style =
+                        // raft-ui `continuationTime`: font-mono text-mono-meta, 12/16 regular.
                         RaftType.Caption.copy(
                             fontFamily = RaftMonoFamily,
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.Normal,
                             color = RaftColor.TextBlack.copy(alpha = 0.38f)
                         ),
                     color = RaftColor.TextBlack.copy(alpha = 0.38f),
@@ -34397,12 +34391,8 @@ internal fun ThreadAttachmentCommentsSheet(
                     ) {
                         Text(
                             text = stringResource(Res.string.thread_comments_title),
-                            style =
-                                RaftType.PageTitle.copy(
-                                    fontSize = 18.sp,
-                                    lineHeight = 22.sp,
-                                    color = RaftColor.TextBlack
-                                ),
+                            // Web AttachmentCommentsPanel PanelTitle: text-headline (17/22 700).
+                            style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                             color = RaftColor.TextBlack,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
@@ -34619,7 +34609,8 @@ private fun ThreadAttachmentCommentRow(
         }
         Text(
             text = comment.content,
-            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            // Web AttachmentCommentsPanel: MessageItemBody text-body (16/24 400).
+            style = RaftType.Body.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis
@@ -36081,7 +36072,8 @@ internal fun <T> RaftForwardTargetPicker(
                 ) {
                     Text(
                         text = stringResource(Res.string.thread_forward_destinations_selected, state.selectedItems.size),
-                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        // Web ForwardComposerMobile SectionEyebrow: text-footnote font-bold (13/18 700).
+                        style = RaftType.SectionLabel,
                         color = RaftColor.TextMutedGray
                     )
                     val backSwipeRowState = rememberLazyListState()
@@ -36402,8 +36394,6 @@ internal fun ThreadSharePreviewModal(
         minWidth = 320.dp,
         maxWidth = 360.dp,
         contentPadding = 16.dp,
-        titleFontSize = 16,
-        titleLineHeight = 20,
         contentSpacing = 12.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -36468,8 +36458,6 @@ private fun ThreadRemoveMemberConfirmationDialog(
         dismissOnOutsideTap = false,
         minWidth = 320.dp,
         maxWidth = 384.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
     ) {
         RaftUiBanner(
             status = RaftUiBannerStatus.Destructive,
@@ -37547,8 +37535,6 @@ private fun ThreadTaskDetailDialog(
         uppercaseTitle = false,
         overline = headerOverline,
         overlineCopyText = headerOverline,
-        titleFontSize = 14,
-        titleLineHeight = 18,
         titleMaxLines = 1,
         onDismiss = onDismiss,
         contentSpacing = RaftAppSpacing.Sm

@@ -404,8 +404,6 @@ internal fun RaftTaskAssigneeMenuOverlay(
         minWidth = 356.dp,
         maxWidth = 356.dp,
         contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Same search field as the channel add-member dialog.
@@ -459,8 +457,13 @@ internal fun RaftTaskAssigneeMenuOverlay(
                                 }
                                 Text(
                                     text = unassignedLabel,
-                                    style = RaftType.Body.withRaftFontWeight(FontWeight.Medium)
-                                        .copy(fontSize = 14.sp, lineHeight = 18.sp),
+                                    // Web SelectionPopover row: text-callout font-medium, checked font-bold (14/20).
+                                    style =
+                                        if (selectedId == TasksUnassignedAssigneeFilterId) {
+                                            RaftType.Callout.withRaftFontWeight(FontWeight.Bold)
+                                        } else {
+                                            RaftType.Button
+                                        },
                                     color = RaftColor.TextBlack,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,

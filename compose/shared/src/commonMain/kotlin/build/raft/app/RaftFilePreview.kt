@@ -8307,7 +8307,8 @@ internal fun RaftFilePreviewPayloadContent(
                     onOpenUrl = onOpenUrl,
                     modifier = Modifier.fillMaxSize(),
                     performanceKey = "preview:${payload.path}",
-                    textStyle = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                    // Web attachmentPreviewSurfaces: the markdown card is text-body (16/24 400).
+                    textStyle = RaftType.Body,
                     showChrome = false
                 )
             }
@@ -10763,7 +10764,8 @@ internal fun RaftFilePreviewTextPanel(
                     Text(
                         text = content,
                         modifier = Modifier.fillMaxWidth(),
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        // Web CodeBlockBody: text-mono-code (13/20 Space Mono).
+                        style = RaftTheme.typography.monoCode,
                         color = RaftColor.TextBlack,
                         maxLines = Int.MAX_VALUE,
                         overflow = TextOverflow.Clip
@@ -10792,7 +10794,7 @@ internal fun RaftFilePreviewTextPanel(
         ) {
             Text(
                 text = content,
-                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                style = RaftTheme.typography.monoCode,
                 color = RaftColor.TextBlack,
                 maxLines = 28,
                 overflow = TextOverflow.Ellipsis
@@ -10846,7 +10848,8 @@ internal fun RaftFilePreviewXlsxPanel(
             ) {
                 Text(
                     text = stringResource(Res.string.file_preview_no_preview),
-                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    // Web Xlsx pane: font-mono text-mono-meta (12/16).
+                    style = RaftTheme.typography.monoMeta,
                     color = RaftColor.TextMutedGray
                 )
             }
@@ -10872,7 +10875,7 @@ internal fun RaftFilePreviewXlsxPanel(
                 if (truncated || selectedSheet.truncated) {
                     Text(
                         text = stringResource(Res.string.file_preview_truncated_open_with_hint),
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        style = RaftTheme.typography.monoMeta,
                         color = RaftColor.TextMutedGray,
                         modifier = Modifier.padding(top = RaftAppSpacing.Sm)
                     )

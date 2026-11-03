@@ -116,8 +116,6 @@ internal fun MembersAgentIssueReportDialog(
         keyboardAvoidanceEnabled = true,
         maxWidth = 384.dp,
         contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
         onDismiss = onDismiss,
         presentation = RaftDialogPresentation.Sheet,
         commitLabel = commitLabel,
@@ -354,8 +352,6 @@ internal fun MembersAgentIssueReportReceiptDialog(
         title = stringResource(Res.string.member_report_issue_success_title),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
         onDismiss = onDismiss
     ) {
         Column(

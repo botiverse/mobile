@@ -432,6 +432,12 @@ internal object RaftType {
     /** `text-callout` 14/20 400: empty-state details, previews, list values. */
     val Callout: TextStyle
         get() = raftTextStyle(RaftScale.callout)
+    /** `text-subhead` 15/20 400: auth intro descriptions, dialog bodies, profile descriptions. */
+    val Subhead: TextStyle
+        get() = raftTextStyle(RaftScale.subhead)
+    /** `text-footnote` 13/18 400: hints, secondary detail lines. */
+    val Footnote: TextStyle
+        get() = raftTextStyle(RaftScale.footnote)
     /**
      * raft-ui sidebar group / section label: `text-footnote font-bold normal-case
      * tracking-normal` (13/18 700), source case, no tracking.

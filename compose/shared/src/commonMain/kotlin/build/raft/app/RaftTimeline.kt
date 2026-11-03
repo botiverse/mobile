@@ -42,10 +42,10 @@ private val RaftTimelineLine = 20.dp
 private val RaftTimelineAxisOffset = (RaftTimelineLine - RaftTimelineMarker) / 2
 private val RaftTimelineGap = 12.dp
 
-/** The activity log's title type: Space Mono at the timeline's 14/20 (raft-ui Timeline > Activity log). */
+/** The activity log's title type: web AgentActivityLog `LOG_TITLE_CLASS`, `font-mono text-mono-code` (13/20). */
 @Composable
 internal fun raftTimelineMonoTitleStyle(): TextStyle =
-    RaftTheme.typography.monoMeta.copy(fontSize = 14.sp, lineHeight = 20.sp)
+    RaftTheme.typography.monoCode
 
 /**
  * One raft-ui TimelineItem. [last] hides the line to the next item and the gap under it.

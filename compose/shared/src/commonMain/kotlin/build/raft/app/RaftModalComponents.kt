@@ -84,9 +84,8 @@ import build.raft.app.components.raftIconButtonVariantFor
 import build.raft.app.components.LocalRaftDialogFooter
 import build.raft.app.components.RaftLegacyIconInkArgb
 
-// The brutal dialog defaults (p-6, 18sp title); raft swaps them for p-5 and the 17/22 headline.
+// The brutal dialog default padding (p-6); raft swaps it for p-5. Every title is the 17/22 headline.
 private val RaftUnifiedDialogLegacyPadding = 24.dp
-private const val RaftUnifiedDialogLegacyTitleSize = 18
 
 /**
  * Keeps the dialog card on Compose's pointer hit path without advertising the card itself as an
@@ -484,8 +483,6 @@ internal fun RaftUnifiedDialog(
     // an edge-to-edge list bleed (e.g. Forward) still keep the header aligned
     // with their own 16dp-inset content instead of flush against the border.
     headerPadding: Dp = contentPadding,
-    titleFontSize: Int = 18,
-    titleLineHeight: Int = 22,
     titleMaxLines: Int = 1,
     // Uppercased through raftDisplayUppercase, so CJK titles keep their case.
     uppercaseTitle: Boolean = true,
@@ -552,8 +549,6 @@ internal fun RaftUnifiedDialog(
                     outerPadding = outerPadding,
                     contentPadding = contentPadding,
                     headerPadding = headerPadding,
-                    titleFontSize = titleFontSize,
-                    titleLineHeight = titleLineHeight,
                     titleMaxLines = titleMaxLines,
                     contentSpacing = contentSpacing,
                     keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
@@ -595,8 +590,6 @@ internal fun RaftUnifiedDialog(
                         outerPadding = outerPadding,
                         contentPadding = contentPadding,
                         headerPadding = headerPadding,
-                        titleFontSize = titleFontSize,
-                        titleLineHeight = titleLineHeight,
                         titleMaxLines = titleMaxLines,
                         contentSpacing = contentSpacing,
                         keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
@@ -669,8 +662,6 @@ private fun RaftUnifiedDialogSurface(
     outerPadding: Dp,
     contentPadding: Dp,
     headerPadding: Dp,
-    titleFontSize: Int,
-    titleLineHeight: Int,
     titleMaxLines: Int,
     contentSpacing: Dp,
     keyboardAvoidanceEnabled: Boolean,
@@ -715,7 +706,6 @@ private fun RaftUnifiedDialogSurface(
     // source-case title and a ghost 32dp close.
     val resolvedContentPadding = if (contentPadding == RaftUnifiedDialogLegacyPadding) 20.dp else contentPadding
     val resolvedHeaderPadding = if (headerPadding == RaftUnifiedDialogLegacyPadding) 20.dp else headerPadding
-    val raftDefaultTitle = titleFontSize == RaftUnifiedDialogLegacyTitleSize
     BoxWithConstraints(
         modifier =
             Modifier
@@ -803,18 +793,8 @@ private fun RaftUnifiedDialogSurface(
                             }
                             Text(
                                 text = title,
-                                style =
-                                    if (raftDefaultTitle) {
-                                        RaftType.PageTitle
-                                            .copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack)
-                                            .withRaftFontWeight(FontWeight.Bold)
-                                    } else {
-                                        RaftType.PageTitle.copy(
-                                            fontSize = titleFontSize.sp,
-                                            lineHeight = titleLineHeight.sp,
-                                            color = RaftColor.TextBlack
-                                        )
-                                    },
+                                // raft-ui DialogTitle: text-headline font-bold (17/22 700), every dialog.
+                                style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                                 color = RaftColor.TextBlack,
                                 modifier = Modifier.fillMaxWidth().raftCopyable(titleCopyText),
                                 maxLines = titleMaxLines,
@@ -1132,7 +1112,8 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title,
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    // Web ChannelMemberList row title: text-subhead font-semibold (15/20 600).
+                    style = RaftType.ButtonBold.withRaftFontWeight(FontWeight.SemiBold),
                     color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1152,7 +1133,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    style = RaftType.Caption,
                     color = mutedInk,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

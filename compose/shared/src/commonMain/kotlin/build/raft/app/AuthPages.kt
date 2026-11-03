@@ -79,7 +79,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
@@ -777,13 +776,15 @@ internal fun AuthProfileSetupContent(
         AuthCenterMark()
         Text(
             text = stringResource(Res.string.auth_title_profile_setup),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            // Web AuthPageIntro h1: text-title (22/28 700).
+            style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
             text = stringResource(Res.string.auth_hint_profile_setup),
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+            // Web AuthPageIntro description: text-subhead (15/20 400).
+            style = RaftType.Subhead.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             modifier = Modifier.authPageStaticTextFocus()
         )
@@ -927,10 +928,11 @@ internal fun authTermsAgreementText(
 internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
 private val AuthTermsTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.70f)
+// Web LegalAcceptanceCheckbox label: text-callout font-semibold (14/20 600); the links inherit 600.
 private val AuthTermsTextStyle: TextStyle
-    get() = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
+    get() = RaftType.Callout.withRaftFontWeight(FontWeight.SemiBold).copy(color = AuthTermsTextColor)
 private val AuthTermsLinkStyle: TextStyle
-    get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
+    get() = RaftType.Callout.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
 
 internal fun Pager.openAuthPage(pageName: String, destination: String? = null) {
     val pageData =

@@ -9734,7 +9734,8 @@ internal fun AppShellServerGateContent(
                         }
                     else -> stringResource(Res.string.auth_server_title_choose)
                 },
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            // Web AuthPageIntro h1: text-title (22/28 700).
+            style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         Text(
@@ -9743,7 +9744,8 @@ internal fun AppShellServerGateContent(
                     Res.string.auth_server_signed_in_as,
                     listOf(latestSession.user.bestDisplayName)
                 ).localized(),
-            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+            // Web AuthPageIntro description: text-subhead (15/20 400).
+            style = RaftType.Subhead.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
@@ -10135,7 +10137,8 @@ internal fun AppShellEmailVerificationGateContent(
         AuthLogoBadge("RAFT")
         Text(
             text = stringResource(Res.string.auth_title_verify_email),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            // Web AuthPageIntro h1: text-title (22/28 700).
+            style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         Text(
@@ -10148,7 +10151,8 @@ internal fun AppShellEmailVerificationGateContent(
                 } else {
                     stringResource(Res.string.auth_hint_verify_email)
                 },
-            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+            // Web EmailVerificationPage: text-callout, muted (14/20 400).
+            style = RaftType.Callout.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )

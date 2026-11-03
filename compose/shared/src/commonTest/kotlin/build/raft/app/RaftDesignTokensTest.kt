@@ -135,6 +135,9 @@ class RaftDesignTokensTest {
         assertEquals(RaftType.ButtonBold.fontFamily, defaultStyle.fontFamily)
         assertEquals(expectedRenderedWeight(FontWeight.Bold), largeStyle.fontWeight)
         assertEquals(expectedRenderedWeight(FontWeight.Bold), defaultStyle.fontWeight)
+        // Web LoginPage Button size="xl": text-body 16/24.
+        assertEquals(RaftType.Body.fontSize, largeStyle.fontSize)
+        assertEquals(RaftType.Body.lineHeight, largeStyle.lineHeight)
     }
 
     @Test

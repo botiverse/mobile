@@ -70,6 +70,8 @@ import kotlinx.coroutines.launch
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.theme.RaftTheme
 
 internal enum class AuthButtonTone {
@@ -476,6 +478,9 @@ internal fun authTextFieldForwardValueChange(
     onValueChange(nextValue)
 }
 
+/** Web FormField label (FieldLabel md): `text-footnote font-semibold`, 13/18 600. */
+internal fun authFieldLabelTextStyle(): TextStyle = RaftType.SectionLabel.withRaftFontWeight(FontWeight.SemiBold)
+
 @Composable
 internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: Boolean = false) {
     Row(
@@ -485,13 +490,14 @@ internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: 
     ) {
         Text(
             text = label,
-            style = RaftType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
+            // Web FormField → FieldLabel md: text-footnote font-semibold (13/18 600).
+            style = authFieldLabelTextStyle().copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         if (required) {
             Text(
                 text = "*",
-                style = RaftType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.AccentPink),
+                style = authFieldLabelTextStyle().copy(color = RaftColor.AccentPink),
                 color = RaftColor.AccentPink
             )
         } else if (optional) {
@@ -616,7 +622,8 @@ internal fun authActionButtonTextStyle(
     contentColor: Color
 ) =
     if (variant == AuthActionButtonVariant.Large) {
-        RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp, color = contentColor)
+        // Web LoginPage `Button size="xl"`: text-body font-bold (16/24 700).
+        RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(color = contentColor)
     } else {
         RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = contentColor)
     }
@@ -629,7 +636,8 @@ internal fun AuthTextLink(text: String, onClick: () -> Unit, enabled: Boolean = 
             onClick = onClick,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
-            style = RaftTheme.typography.caption.copy(textAlign = TextAlign.Center),
+            // Web LoginPage `TextLink className="text-footnote"` (13/18; TextLink sets the weight).
+            style = RaftTheme.typography.footnote.copy(textAlign = TextAlign.Center),
             maxLines = 1
         )
     }
@@ -638,12 +646,14 @@ internal fun AuthTextLink(text: String, onClick: () -> Unit, enabled: Boolean = 
 @Composable
 internal fun AuthError(message: String?) {
     if (!message.isNullOrBlank()) {
-        Text(
-            text = message,
-            style = RaftType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp, color = RaftColor.AccentRed),
-            color = RaftColor.AccentRed,
-            modifier = Modifier.authStaticTextFocus()
-        )
+        // Web LoginPage: the error is a `Banner intent="warning"` (text-callout 14/20).
+        RaftDesignSystemTheme {
+            RaftBanner(
+                description = message,
+                status = RaftBannerStatus.Warning,
+                modifier = Modifier.fillMaxWidth().authStaticTextFocus(),
+            )
+        }
     }
 }
 
