@@ -26,6 +26,7 @@ import build.raft.designsystem.components.RaftWorkspaceButton
 import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import build.raft.designsystem.components.RaftWorkspaceStrip
 import build.raft.designsystem.components.RaftWorkspaceStripEntry
+import build.raft.designsystem.components.rowTopInset
 import build.raft.designsystem.theme.RaftTheme
 
 /**
@@ -195,10 +196,12 @@ private val RaftAppShellTopBarHistoryGlyph = 20.dp
 
 /**
  * Where the server panel under the top bar starts: 8dp (the popover's gap) under the bottom of the
- * workspace button, which ends [RaftTopBarDefaults.ItemInset] above the bar's seam.
+ * workspace button, which ends [RaftTopBarDefaults.ItemInset] above the bar's seam. Under a window
+ * title bar the bar covers its band ([RaftTopBarDefaults.rowTopInset]), so the band is not added.
  */
+@Composable
 internal fun raftAppShellTopBarMenuTopInset(topSafeArea: Dp): Dp =
-    topSafeArea + RaftTopBarDefaults.Height - RaftTopBarDefaults.ItemInset
+    RaftTopBarDefaults.rowTopInset(topSafeArea) + RaftTopBarDefaults.Height - RaftTopBarDefaults.ItemInset
 
 /**
  * The wide layout's top bar, as the pages under it see it (artin task #8, follow-up to #3550). Its
