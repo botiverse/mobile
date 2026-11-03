@@ -164,10 +164,13 @@ private val ThreadComposerTextFieldMaxHeight = 80.dp
 private val ThreadComposerToolbarMinHeight = 32.dp
 private val ThreadComposerIconButtonSize = 32.dp
 private val ThreadComposerIconSize = 18.dp
-// raft-ui `Composer`: the card's padding round the text, and `--control-embedded-inset`, how far
-// the toolbar's buttons sit inside the card's outer edge (raft-design Shape > Inside a frame).
-private val ThreadComposerCardPadding = 8.dp
+// raft-ui 0.59 `Composer`: `px-3 pt-3` round the text and `pb-[calc(var(--control-embedded-inset)-1px)]`
+// under the toolbar; `--control-embedded-inset` is how far the toolbar's buttons sit inside the
+// card's outer edge (raft-design Shape > Inside a frame). `ComposerInput` adds its own `px-0.5`.
+private val ThreadComposerCardPadding = 12.dp
 private val ThreadComposerEmbeddedInset = 6.dp
+private val ThreadComposerCardPaddingBottom = ThreadComposerEmbeddedInset - 1.dp
+private val ThreadComposerInputPaddingHorizontal = 2.dp
 // raft-ui `ComposerActions` / `ComposerMeta`: `gap-embedded-inset`. Buttons embedded in the frame
 // sit as far apart as they sit from its edge (raft-design #810, shape.md "The space is even on
 // every side"), so 6dp, not the old `gap-2` 8dp. Raft chrome casts no offset shadow, so this is
@@ -3103,7 +3106,7 @@ internal fun ThreadComposerContentLeaf(
                             start = ThreadComposerCardPadding,
                             top = ThreadComposerCardPadding,
                             end = ThreadComposerCardPadding,
-                            bottom = ThreadComposerEmbeddedInset
+                            bottom = ThreadComposerCardPaddingBottom
                         ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -3213,6 +3216,7 @@ internal fun ThreadComposerContentLeaf(
                             focusRequester = composerFocusRequester,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(horizontal = ThreadComposerInputPaddingHorizontal)
                                 .heightIn(
                                     min = ThreadComposerTextFieldMinHeight,
                                     max = ThreadComposerTextFieldMaxHeight
@@ -3359,7 +3363,8 @@ internal fun ThreadComposerContentLeaf(
  */
 private fun Modifier.composerToolbarBleed(): Modifier =
     layout { measurable, constraints ->
-        val bleed = (ThreadComposerCardPadding - ThreadComposerEmbeddedInset).roundToPx()
+        // raft-ui `ComposerToolbar`: `mx-[calc(var(--control-embedded-inset)-0.75rem-1px)]`.
+        val bleed = (ThreadComposerCardPadding - ThreadComposerCardPaddingBottom).roundToPx()
         val placeable = measurable.measure(constraints.offset(horizontal = bleed * 2))
         layout(placeable.width - bleed * 2, placeable.height) { placeable.place(-bleed, 0) }
     }
@@ -5173,7 +5178,9 @@ private fun ComposerIconButton(
         onLongClick = onLongClick,
         longClickLabel = longClickLabel,
     ) {
-        RaftSlotIcon(icon)
+        // raft-ui `ComposerIconButton`: `text-foreground-muted` glyphs; the send button keeps
+        // its primary ink, and a disabled button keeps the button's own disabled ink.
+        RaftSlotIcon(icon, color = RaftTheme.colors.foregroundMuted.takeIf { variant == RaftButtonVariant.Ghost && enabled })
     }
 }
 
@@ -5201,6 +5208,12 @@ internal fun threadComposerVisibleRightActionGapDp(): Float =
     ThreadComposerRightActionGroupSpacing.value
 
 internal fun threadComposerEmbeddedInsetDp(): Float = ThreadComposerEmbeddedInset.value
+
+/** The card's padding round the text (start/end, top, bottom) and the input's own inset, in dp. */
+internal fun threadComposerCardPaddingDp(): List<Float> =
+    listOf(ThreadComposerCardPadding.value, ThreadComposerCardPadding.value, ThreadComposerCardPaddingBottom.value)
+
+internal fun threadComposerInputPaddingHorizontalDp(): Float = ThreadComposerInputPaddingHorizontal.value
 
 internal fun threadComposerIconButtonSizeDp(): Float = ThreadComposerIconButtonSize.value
 

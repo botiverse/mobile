@@ -724,7 +724,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-empty")
                     .put("visualFixture", "empty"),
-            crop = THREAD_COMPOSER_COMPONENT_CROP
+            crop = THREAD_COMPOSER_EMPTY_CROP
         )
     }
 
@@ -737,7 +737,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer")
                     .put("visualFixture", "states"),
-            crop = THREAD_COMPOSER_COMPONENT_CROP
+            crop = THREAD_COMPOSER_TWO_LINE_CROP
         )
     }
 
@@ -823,7 +823,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-as-task")
                     .put("visualFixture", "as_task_selected"),
-            crop = THREAD_COMPOSER_COMPONENT_CROP
+            crop = THREAD_COMPOSER_TWO_LINE_CROP
         )
     }
 
@@ -862,7 +862,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-image-preview")
                     .put("visualFixture", "image_preview"),
-            crop = THREAD_COMPOSER_ATTACHMENTS_CROP,
+            crop = THREAD_COMPOSER_IMAGE_PREVIEW_CROP,
             settleMs = 1_500
         )
     }
@@ -7097,12 +7097,22 @@ class KmpVisualScreenshotCaptureTest {
             )
         // The host lays the composer out as web's 342x100 canvas does (20dp in, 8dp down),
         // so the window is that canvas: the 342dp component box, 24dp from the screen edge.
-        private val THREAD_COMPOSER_COMPONENT_CROP =
+        // The web case's box follows the composer (slock VisualTestingCases `height: "auto"`):
+        // 108dp with the one-line placeholder, 132dp with the two-line seed draft. A fixed
+        // 100dp cut the two-line composer's toolbar and bottom edge.
+        private val THREAD_COMPOSER_EMPTY_CROP =
             VisualCrop(
                 leftDp = 24,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 100
+                heightDp = 108
+            )
+        private val THREAD_COMPOSER_TWO_LINE_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 132
             )
         private val THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP =
             VisualCrop(
@@ -7126,6 +7136,14 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 358
+            )
+        // slock VisualTestingCases: the image-preview case box is 210px tall (file-previews 270).
+        private val THREAD_COMPOSER_IMAGE_PREVIEW_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 210
             )
         private val THREAD_COMPOSER_ATTACHMENTS_CROP =
             VisualCrop(
