@@ -145,7 +145,7 @@ class RaftNotificationSettingsWebPageTest {
         RaftNotificationChannelNames.apiProvider = { RaftNotificationSettingsApi(client) }
         RaftNotificationChannelNames.load("s2")
         RaftNotificationChannelNames.load("s2")
-        assertEquals(listOf("channels" to "s2", "channels/dm" to "s2"), asked)
+        assertEquals<List<Pair<String, String?>>>(listOf("channels" to "s2", "channels/dm" to "s2"), asked)
         assertEquals(mapOf("s2" to mapOf("c1" to "#general")), RaftNotificationChannelNames.state.value)
     }
 
