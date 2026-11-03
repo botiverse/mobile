@@ -133,12 +133,12 @@ internal fun homeSearchOverlayRecentConversations(
     val picked = LinkedHashMap<String, SearchEntityResult>()
     visitedThreadIds.forEach { threadId ->
         if (picked.size >= limit) return picked.values.toList()
-        byThread[threadId]?.let { picked.putIfAbsent(it.key, it) }
+        byThread[threadId]?.let { if (it.key !in picked) picked[it.key] = it }
     }
     fill.forEach { result ->
         if (picked.size >= limit) return picked.values.toList()
         if (result.archived || (result.threadId != null && result.threadId == excludeThreadId)) return@forEach
-        picked.putIfAbsent(result.key, result)
+        if (result.key !in picked) picked[result.key] = result
     }
     return picked.values.toList()
 }
