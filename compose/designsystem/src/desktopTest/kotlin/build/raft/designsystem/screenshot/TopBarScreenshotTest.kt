@@ -192,7 +192,7 @@ class TopBarScreenshotTest {
             RaftScreenshot.capture("workspace_strip_tooltip_${appearance.name.lowercase()}", appearance, settleFrames = 2) {
                 Column(Modifier.height(120.dp)) {
                     RaftTopBar(
-                        modifier = Modifier.width(560.dp),
+                        modifier = Modifier.width(1000.dp),
                         leading = {
                             Row(
                                 Modifier.padding(start = 8.dp),
@@ -208,7 +208,7 @@ class TopBarScreenshotTest {
                                 Item(servers[3], current = false, attention = false)
                             }
                         },
-                        center = { RaftSearchTrigger(label = "Search", onClick = {}, windowWidth = 560.dp) },
+                        center = { RaftSearchTrigger(label = "Search", onClick = {}, windowWidth = 1000.dp) },
                     )
                 }
             }
