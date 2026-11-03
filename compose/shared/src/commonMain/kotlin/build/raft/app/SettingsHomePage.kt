@@ -10609,7 +10609,8 @@ private fun SharedMembersScreen(
                             createAgentRetryMachines = retryMachines,
                             createAgentFormStore = createAgentFormStore,
                             createAgentServerId = serverId,
-                            createAgentTakenAgentNames = current.members.takenAgentNames()
+                            createAgentTakenAgentNames = current.members.takenAgentNames(),
+                            createAgentAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) }
                         ),
                         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
                         bottomContentPadding = bottomContentPadding,

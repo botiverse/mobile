@@ -198,6 +198,17 @@ internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisi
     }
 }
 
+/**
+ * The pending "open Add Computer" request against the page's load: null while it is still loading
+ * (wait), true once its snapshot is in (open), false when the load ended without one (drop).
+ */
+internal fun raftComputersOpenAddOnLoad(state: ScreenLoadState<*>): Boolean? =
+    when (state) {
+        ScreenLoadState.Loading -> null
+        is ScreenLoadState.Content -> true
+        else -> false
+    }
+
 internal data class RaftComputerPageTarget(val machineId: String, val serverId: String?)
 
 /** The usage sheet open on the Computers page: whose usage, the runtime's name and its reported version. */
@@ -325,6 +336,16 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         val effect = settingsState.effect as? SharedSettingsEffect.OpenComputer ?: return@LaunchedEffect
         val serverId = environment.authStore.readSession()?.currentServerId
         settingsComputerRouteIdentity(serverId, effect.machineId)?.let { pager.openSettingsComputerPage(environment.storeScope, it) }
+    }
+    // Create Agent's "Add Computer" lands here with [SETTINGS_COMPUTERS_OPEN_ADD]: open the dialog
+    // once, on the page's own loaded snapshot (it carries the add permission); a failed load just
+    // shows the page.
+    var openAddComputerPending by remember { mutableStateOf(pager.pageData.params.optBoolean(SETTINGS_COMPUTERS_OPEN_ADD)) }
+    LaunchedEffect(openAddComputerPending, settingsState.computers) {
+        if (!openAddComputerPending) return@LaunchedEffect
+        val open = raftComputersOpenAddOnLoad(settingsState.computers) ?: return@LaunchedEffect
+        openAddComputerPending = false
+        if (open) settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog)
     }
     val computersLoadState =
         raftComputersFirstFrameState(settingsState.computers, cachedComputers?.takeIf { firstFrame.serverId == currentServerId })

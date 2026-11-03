@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.ScreenError
+import build.raft.app.data.ScreenLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -173,6 +176,29 @@ class SharedCreateAgentDialogTest {
         val avatarUrl = assertNotNull(request.avatarUrl)
         assertTrue(avatarUrl.startsWith("pixel:"))
         assertTrue(avatarUrl.removePrefix("pixel:") in PixelAvatarPickerKeys)
+    }
+
+    @Test
+    fun noComputerDialogShowsOnlyForAManagedAgentWithALoadedEmptyComputerList() {
+        val one = listOf(SharedCreateAgentMachineOption(id = "m1", name = "Mac", status = "offline"))
+        // Web: `!isExternalMode && machines.length === 0` -> the short "Connect a computer first" dialog.
+        assertTrue(createAgentNeedsComputer(external = false, machines = emptyList(), machinesLoading = false, machinesErrorMessage = null))
+        assertTrue(createAgentNeedsComputer(external = false, machines = emptyList(), machinesLoading = false, machinesErrorMessage = " "))
+        // An offline computer still counts: the form explains it.
+        assertFalse(createAgentNeedsComputer(external = false, machines = one, machinesLoading = false, machinesErrorMessage = null))
+        // External agents need no computer.
+        assertFalse(createAgentNeedsComputer(external = true, machines = emptyList(), machinesLoading = false, machinesErrorMessage = null))
+        // Not yet known: the form keeps its loading / retry states.
+        assertFalse(createAgentNeedsComputer(external = false, machines = emptyList(), machinesLoading = true, machinesErrorMessage = null))
+        assertFalse(createAgentNeedsComputer(external = false, machines = emptyList(), machinesLoading = false, machinesErrorMessage = "Failed"))
+    }
+
+    @Test
+    fun computersPageOpensAddComputerOnceItsSnapshotLoads() {
+        assertEquals(null, raftComputersOpenAddOnLoad(ScreenLoadState.Loading))
+        assertEquals(true, raftComputersOpenAddOnLoad(ScreenLoadState.Content(Unit)))
+        assertEquals(false, raftComputersOpenAddOnLoad(ScreenLoadState.Error(ScreenError(code = "network"))))
+        assertEquals(false, raftComputersOpenAddOnLoad(ScreenLoadState.Empty(EmptyReason.values().first())))
     }
 
 }

@@ -30,6 +30,8 @@ internal fun ChannelMembersCreateAgentDialog(
      * agents keep the previous behaviour of just closing and refreshing.
      */
     onCreated: (MemberId) -> Unit = {},
+    /** The no-computer dialog's "Add Computer"; null hides it. */
+    onAddComputer: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val picker by remember(computersStore, owner) {
@@ -118,6 +120,7 @@ internal fun ChannelMembersCreateAgentDialog(
             onMachinesRetry = { computersStore.dispatch(SharedComputersIntent.RefreshComputerPicker(owner.serverId, DataRequestPriority.Visible)) },
             createAgentFormStore = formStore, createAgentServerId = owner.serverId,
             takenAgentNames = serverMembers.members.takenAgentNames(),
+            onAddComputer = onAddComputer,
             onDismiss = { if (!submitting) onDismiss() }, onSubmit = { submit(it) },
         )
     }
