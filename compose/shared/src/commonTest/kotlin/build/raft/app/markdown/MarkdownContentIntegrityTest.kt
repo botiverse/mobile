@@ -440,6 +440,60 @@ class MarkdownContentIntegrityTest {
     }
 
 
+    @Test
+    fun raftSchemeMessageLinksAreAutolinkedWithTheirSourceText() {
+        val channel = "raft:///s/raft/channel/6f1c2b9e-1d2a?msg=0b1c2d3e"
+        val dm = "raft://s/my_team/dm/a3b4?msg=m1&thread=a3b4:p_1"
+        val cases =
+            listOf(
+                "打开 $channel 看看" to listOf(channel),
+                "$channel。" to listOf(channel),
+                "看$dm，然后" to listOf(dm),
+                "see $channel." to listOf(channel),
+                "($channel)" to listOf(channel),
+                "【$channel】" to listOf(channel),
+                "https://example.com/a and $dm!" to listOf("https://example.com/a", dm),
+            )
+        for ((source, expectedUrls) in cases) {
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(source, rendered.text, "source=$source")
+            assertEquals(expectedUrls, rendered.urls, "source=$source")
+        }
+
+        val bold = renderTopParagraphsWithLinks("**$channel**").single()
+        assertEquals(channel, bold.text)
+        assertEquals(listOf(channel), bold.urls)
+
+        val labelled = renderTopParagraphsWithLinks("[open]($dm)").single()
+        assertEquals("open", labelled.text)
+        assertEquals(listOf(dm), labelled.urls)
+    }
+
+    @Test
+    fun raftSchemeLinksOutsideServerPathsOrInsideCodeStayText() {
+        val sources =
+            listOf(
+                "`raft:///s/raft/channel/c1?msg=m1`",
+                "run `open raft://s/raft/dm/c1` now",
+                "raft://login/callback?code=x",
+                "raft://oauth/callback?code=x",
+                "raft:///settings/profile",
+                "raft:///s/ and raft:///s//channel/c1",
+                "xraft:///s/raft/channel/c1",
+            )
+        for (source in sources) {
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(source.replace("`", ""), rendered.text, "source=$source")
+            assertEquals(emptyList(), rendered.urls, "source=$source")
+        }
+
+        val fenced = MarkdownParserContent.from("```\nraft:///s/raft/channel/c1\n```").parserContent
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(fenced)
+        fun autolinks(node: ASTNode): Int =
+            (if (node.type == GFMTokenTypes.GFM_AUTOLINK) 1 else 0) + node.children.sumOf(::autolinks)
+        assertEquals(0, autolinks(tree))
+    }
+
     private fun renderTopParagraphs(content: String): List<String> {
         // Uses the PRODUCTION annotator (raftMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
