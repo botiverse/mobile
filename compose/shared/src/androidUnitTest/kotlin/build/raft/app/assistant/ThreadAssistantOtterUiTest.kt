@@ -49,7 +49,7 @@ import build.raft.designsystem.text.RaftText
 
 /**
  * The otter on a real composer (ThreadComposerContent's `frameEdge`, as ThreadComposerRoute wires
- * it) and its list-end band: it shows on the conversation's composer, moves to a thread opened
+ * it): it shows on the conversation's composer, lying over the list's end without moving it, moves to a thread opened
  * over it and back when that leaves, takes a focused composer, never shows where the page has
  * no otter, and a press opens the assistant. Web parity: assistantOtterState.ts `useOtterHost`.
  */
@@ -79,8 +79,8 @@ class ThreadAssistantOtterUiTest {
         onCovered: (Boolean) -> Unit = {},
     ) {
         Column(Modifier.fillMaxWidth().testTag(tag)) {
-            Spacer(Modifier.height(24.dp))
-            ThreadAssistantOtterListEnd(otter)
+            // The message list's end: the otter lies over it and takes no space there.
+            Spacer(Modifier.height(24.dp).testTag("$tag-list-end"))
             ThreadComposerContent(
                 payload =
                     RaftThreadComposerPayload(
@@ -113,9 +113,6 @@ class ThreadAssistantOtterUiTest {
     private fun ComposeUiTest.otterIn(conversation: String): SemanticsNodeInteraction =
         onNode(hasTestTag(ThreadAssistantOtterTestTag) and hasAnyAncestor(hasTestTag(conversation)))
 
-    private fun ComposeUiTest.bandIn(conversation: String): SemanticsNodeInteraction =
-        onNode(hasTestTag(ThreadAssistantOtterListEndTestTag) and hasAnyAncestor(hasTestTag(conversation)))
-
     @Test
     fun showsOnTheComposerAndMovesToAThreadOpenedOverIt() =
         runRobolectricComposeUiTest {
@@ -126,18 +123,44 @@ class ThreadAssistantOtterUiTest {
                 if (threadOpen) Conversation(THREAD, otter(hosts, THREAD))
             }
             otterIn(CHANNEL).assertExists()
-            bandIn(CHANNEL).assertExists()
 
             runOnIdle { threadOpen = true }
             otterIn(THREAD).assertExists()
-            bandIn(THREAD).assertExists()
             otterIn(CHANNEL).assertDoesNotExist()
-            bandIn(CHANNEL).assertDoesNotExist()
 
             runOnIdle { threadOpen = false }
             otterIn(CHANNEL).assertExists()
-            bandIn(CHANNEL).assertExists()
             runOnIdle { assertEquals(listOf(CHANNEL), hosts.order.value) }
+        }
+
+    /**
+     * artin 11-03: the otter lies over the message list; its coming or going neither resizes nor
+     * moves the list (no list-end band). Here the channel's list end keeps its place while the
+     * otter leaves the channel's composer for another one and comes back.
+     */
+    @Test
+    fun theOtterComingOrGoingNeverMovesTheList() =
+        runRobolectricComposeUiTest {
+            val hosts = RaftAssistantOtterHosts()
+            var threadOpen by mutableStateOf(false)
+            show {
+                Conversation(CHANNEL, otter(hosts, CHANNEL))
+                if (threadOpen) Conversation(THREAD, otter(hosts, THREAD))
+            }
+            otterIn(CHANNEL).assertExists()
+            val listEnd = onNode(hasTestTag("$CHANNEL-list-end"))
+            val withOtter = listEnd.fetchSemanticsNode().boundsInRoot
+            val composerTop = onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot
+
+            runOnIdle { threadOpen = true }
+            otterIn(CHANNEL).assertDoesNotExist()
+            assertEquals(withOtter, listEnd.fetchSemanticsNode().boundsInRoot)
+            assertEquals(composerTop, onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot)
+
+            runOnIdle { threadOpen = false }
+            otterIn(CHANNEL).assertExists()
+            assertEquals(withOtter, listEnd.fetchSemanticsNode().boundsInRoot)
+            assertEquals(composerTop, onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot)
         }
 
     @Test
@@ -153,7 +176,6 @@ class ThreadAssistantOtterUiTest {
             runOnIdle { hosts.activate(CHANNEL) }
             otterIn(CHANNEL).assertExists()
             otterIn(THREAD).assertDoesNotExist()
-            bandIn(THREAD).assertDoesNotExist()
         }
 
     /**
@@ -170,7 +192,6 @@ class ThreadAssistantOtterUiTest {
             show { Conversation(CHANNEL, otter(hosts, CHANNEL), pendingMentionActions = actions, onCovered = { covered = it }) }
             runOnIdle { assertEquals(true, covered) }
             otterIn(CHANNEL).assertExists()
-            bandIn(CHANNEL).assertExists()
 
             runOnIdle { actions = emptyList() }
             runOnIdle { assertEquals(false, covered) }
@@ -182,7 +203,6 @@ class ThreadAssistantOtterUiTest {
         runRobolectricComposeUiTest {
             show { Conversation(CHANNEL, otter = null) }
             otterIn(CHANNEL).assertDoesNotExist()
-            bandIn(CHANNEL).assertDoesNotExist()
         }
 
     @Test

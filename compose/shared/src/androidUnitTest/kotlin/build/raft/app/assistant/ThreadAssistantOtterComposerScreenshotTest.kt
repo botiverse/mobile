@@ -39,8 +39,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The personal assistant's otter on a channel's composer, as ThreadPage wires it: the otter
  * lying on the composer frame's top edge (phone scale, 52dp from the frame's end) over the dock,
- * the message list ending a band as tall as the otter higher so the last message stays clear of
- * it. Light and dark. Web: AssistantOtter.tsx on ChatPanel's MessageInput.
+ * over the message list's end (no band: the list keeps its place, artin 11-03). Light and dark. Web: AssistantOtter.tsx on ChatPanel's MessageInput.
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -106,7 +105,6 @@ class ThreadAssistantOtterComposerScreenshotTest {
                                     }
                                 }
                             }
-                            ThreadAssistantOtterListEnd(otter)
                         }
                         ThreadComposerDock {
                             ThreadComposerContent(

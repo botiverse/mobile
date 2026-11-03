@@ -59,19 +59,6 @@ class RaftAssistantOtterTest {
     }
 
     @Test
-    fun bandIsThePoseHeightAtScaleRoundedUp() {
-        // Web: Math.ceil(pose.h * scale).
-        assertEquals(60.dp, raftAssistantOtterBandHeight(RaftOtterMood.Idle, scale = 1f))
-        assertEquals(71.dp, raftAssistantOtterBandHeight(RaftOtterMood.Away, scale = 1f))
-        assertEquals(48.dp, raftAssistantOtterBandHeight(RaftOtterMood.Idle, scale = 0.8f)) // 48.0
-        assertEquals(50.dp, raftAssistantOtterBandHeight(RaftOtterMood.Working, scale = 0.8f)) // 49.6
-        assertEquals(42.dp, raftAssistantOtterBandHeight(RaftOtterMood.New, scale = 0.8f)) // 41.6
-        assertEquals(53.dp, raftAssistantOtterBandHeight(RaftOtterMood.Confirm, scale = 0.8f)) // 52.8
-        assertEquals(57.dp, raftAssistantOtterBandHeight(RaftOtterMood.Away, scale = 0.8f)) // 56.8
-        assertEquals(raftAssistantOtterBandHeight(RaftOtterMood.Idle), 48.dp, "phone scale by default")
-    }
-
-    @Test
     fun edgeMetricsForHosts() {
         assertEquals(9.dp * 0.8f, RaftAssistantOtterDefaults.belowEdge())
         assertEquals(58.dp, RaftAssistantOtterDefaults.aboveEdge(RaftOtterMood.Idle, scale = 1f))
