@@ -228,6 +228,8 @@ enum class RaftLucideIconName(val wireName: String) {
     Terminal("terminal"),
     TextQuote("text-quote"),
     Thread("thread"),
+    Message("message"),
+    DirectMessage("direct-message"),
     TriangleAlert("triangle-alert"),
     Trash("trash"),
     Trash2("trash-2"),

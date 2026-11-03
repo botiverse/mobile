@@ -2081,6 +2081,22 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M11 6.667h8.333A2.667 2.667 0 0 1 22 9.333v6.334a2.667 2.667 0 0 1-2.667 2.666h-2v3.334L13 18.333h-2a2.667 2.667 0 0 1-2.667-2.666V9.333A2.667 2.667 0 0 1 11 6.667Z"),
                     ),
                 )
+            RaftLucideIconName.Message ->
+                RaftLucideIconSpec(
+                    "message",
+                    listOf(
+                        RaftLucidePathSpec("M19 3H5C3.533 3 2.333 4.2 2.333 5.667V15C2.333 16.467 3.533 17.667 5 17.667H7.667V21.667L12.667 17.667H19C20.467 17.667 21.667 16.467 21.667 15V5.667C21.667 4.2 20.467 3 19 3Z"),
+                    ),
+                )
+            RaftLucideIconName.DirectMessage ->
+                RaftLucideIconSpec(
+                    "direct-message",
+                    listOf(
+                        RaftLucidePathSpec("M21.667 6.667V5.667C21.667 4.2 20.467 3 19 3H5C3.533 3 2.333 4.2 2.333 5.667V15C2.333 16.467 3.533 17.667 5 17.667H7.667V21.667L10 19.8"),
+                        RaftLucidePathSpec("M 16.667 10.667 A 2.333 2.333 0 1 0 21.333 10.667 A 2.333 2.333 0 1 0 16.667 10.667 Z"),
+                        RaftLucidePathSpec("M14.667 21.667C15.067 18.2 16.667 16 19 16S22.933 18.2 23.333 21.667"),
+                    ),
+                )
             RaftLucideIconName.TriangleAlert ->
                 RaftLucideIconSpec(
                     "triangle-alert",
