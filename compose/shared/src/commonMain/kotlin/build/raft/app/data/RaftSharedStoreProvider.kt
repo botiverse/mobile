@@ -1027,6 +1027,20 @@ internal class RaftSharedStoreProvider private constructor(
                 activityUnreadSummaryStore.refresh(ServerId(serverId), reason = reason)
             }
 
+            override fun applyRemoteDone(serverId: String, channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome {
+                val activeScopes = scopesForServer(serverId).toSet()
+                // Every store showing the server applies it; one that can't tell reads the lists (all of them).
+                val outcomes =
+                    homeActivityStores.entries()
+                        .filter { (scope, _) -> scope in activeScopes }
+                        .map { (_, store) -> store.applyRemoteDone(channelId, doneFrontierSeq) }
+                return when {
+                    outcomes.isEmpty() || ActivityRemoteDoneOutcome.CannotTell in outcomes -> ActivityRemoteDoneOutcome.CannotTell
+                    ActivityRemoteDoneOutcome.KeptNewerActivity in outcomes -> ActivityRemoteDoneOutcome.KeptNewerActivity
+                    else -> ActivityRemoteDoneOutcome.Removed
+                }
+            }
+
             override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) {
                 syncServerMembersStores(serverId).forEach { store ->
                     store.refreshLoadedChannelMembers(ServerId(serverId), channelIds, reason)

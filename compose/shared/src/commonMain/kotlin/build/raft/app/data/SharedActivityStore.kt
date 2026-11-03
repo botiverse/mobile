@@ -5,6 +5,7 @@ import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
+import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -181,6 +182,11 @@ class SharedActivityStore internal constructor(
     staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
         { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
+    /**
+     * The process is in the foreground ([RaftStaleReadRecoverySignals.foreground]). The realtime
+     * background reconcile never reads while it is false; it owes one read for the return.
+     */
+    private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
@@ -291,6 +297,40 @@ class SharedActivityStore internal constructor(
     // (slock #10982) can deliver a message twice — live, then in a `sync:resume` batch — and the
     // summary path never patches rows, so the rows alone cannot tell. Seqs are server-global.
     private val realtimeCountedUnreadSeqs = linkedSetOf<Long>()
+    /** Reset loads started so far (guarded by realtimeOwnerLock). */
+    private var resetLoadsStarted = 0L
+    /** A reconcile was asked for while the app was in the background: one read is owed for the return. */
+    private var realtimeReconcileOwedOnForeground = false
+    /**
+     * After a return to the foreground: [resetLoadsStarted] then, and the earliest the owed read may
+     * run. Until it runs, every reconcile asked for folds into it, and any reset load started since
+     * the return (the page's own resume refresh) answers it: one read per return.
+     */
+    private var resumeFoldLoads: Long? = null
+    private var resumeNotBeforeMillis: Long? = null
+
+    init {
+        scope.launch {
+            var previous = appForeground.value
+            appForeground.collect { foreground ->
+                val returned = foreground && !previous
+                previous = foreground
+                if (returned) onAppForegroundReturned()
+            }
+        }
+    }
+
+    private fun onAppForegroundReturned() {
+        val job =
+            synchronized(realtimeOwnerLock) {
+                if (!realtimeReconcileOwedOnForeground) return@synchronized null
+                realtimeReconcileOwedOnForeground = false
+                resumeFoldLoads = resetLoadsStarted
+                resumeNotBeforeMillis = nowMillis() + realtimeBackgroundRefreshIntervalMillis
+                scheduleRealtimeBackgroundReconcileLocked()
+            }
+        job?.start()
+    }
 
     internal fun updateRuntimeIntegrations(
         authStore: RaftAuthSessionStore = this.authStore,
@@ -412,6 +452,10 @@ class SharedActivityStore internal constructor(
             }
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 scope.launch { acceptRealtime(intent) }
+            is SharedActivityIntent.ApplyRemoteDone ->
+                if (applyRemoteDone(intent.channelId, intent.doneFrontierSeq) == ActivityRemoteDoneOutcome.CannotTell) {
+                    synchronized(realtimeOwnerLock) { scheduleRealtimeBackgroundReconcileLocked() }.start()
+                }
         }
     }
 
@@ -574,6 +618,9 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
+            realtimeReconcileOwedOnForeground = false
+            resumeFoldLoads = null
+            resumeNotBeforeMillis = null
             staleRecovery.reset()
             channelAccessChecks.values.forEach(Job::cancel)
             channelAccessChecks.clear()
@@ -1144,6 +1191,13 @@ class SharedActivityStore internal constructor(
                 }
             else -> Unit
         }
+        // `activity:changed`, and incremental sync's Activity refetch (a change it could not patch):
+        // read this server's list again, like web's ACTIVITY_CHANGED_EVENT -> scheduleInboxRefresh
+        // (botiverse/slock bab9dd8c0 socketBridge.ts), through the same throttled single-flight.
+        if (event is ActivityChanged) {
+            val owner = _state.value.ownerServerId
+            return if (owner != null && owner == event.serverId.value) scheduleRealtimeBackgroundReconcileLocked() else null
+        }
         // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
         // a brand-new DM row can only arrive through the canonical projection.
         if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated || event is DirectMessageCreated) {
@@ -1413,6 +1467,11 @@ class SharedActivityStore internal constructor(
     }
 
     private fun scheduleRealtimeBackgroundReconcileLocked(): Job {
+        if (!appForeground.value) {
+            // In the background nothing reads: the return reads once (onAppForegroundReturned).
+            realtimeReconcileOwedOnForeground = true
+            return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
+        }
         realtimeBackgroundReconcileDirty = true
         realtimeBackgroundReconcileJob?.let { return it }
         // Leading + trailing throttle (web requestInboxBackgroundRefresh): the
@@ -1423,7 +1482,11 @@ class SharedActivityStore internal constructor(
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 while (true) {
-                    val waitMillis = synchronized(realtimeOwnerLock) { realtimeBackgroundRefreshWaitMillisLocked() }
+                    val waitMillis =
+                        synchronized(realtimeOwnerLock) {
+                            val resumeWait = resumeNotBeforeMillis?.let { it - nowMillis() } ?: 0L
+                            maxOf(realtimeBackgroundRefreshWaitMillisLocked(), resumeWait)
+                        }
                     if (waitMillis > 0L) delay(waitMillis)
                     val shouldReconcile =
                         synchronized(realtimeOwnerLock) {
@@ -1437,17 +1500,38 @@ class SharedActivityStore internal constructor(
                         }
                     if (!shouldReconcile) return@launch
                     awaitCurrentLoadIdle()
-                    val restartedWindow =
+                    val next =
                         synchronized(realtimeOwnerLock) {
-                            if (realtimeBackgroundRefreshWaitMillisLocked() > 0L) {
-                                // A load started while we waited; fetch on that window's trailing edge.
-                                realtimeBackgroundReconcileDirty = true
-                                true
-                            } else {
-                                false
+                            val foldBase = resumeFoldLoads
+                            resumeFoldLoads = null
+                            resumeNotBeforeMillis = null
+                            when {
+                                !appForeground.value -> {
+                                    // Went to the background while waiting: no read now, one on the return.
+                                    realtimeReconcileOwedOnForeground = true
+                                    realtimeBackgroundReconcileDirty = false
+                                    realtimeBackgroundReconcileJob = null
+                                    ReconcileStep.Stop
+                                }
+                                // The return's one read: a reset load started since the return (the
+                                // visible page's resume refresh) already was it; asks folded into it.
+                                foldBase != null ->
+                                    if (resetLoadsStarted > foldBase) {
+                                        realtimeBackgroundReconcileDirty = false
+                                        ReconcileStep.Again
+                                    } else {
+                                        ReconcileStep.Load
+                                    }
+                                realtimeBackgroundRefreshWaitMillisLocked() > 0L -> {
+                                    // A load started while we waited; fetch on that window's trailing edge.
+                                    realtimeBackgroundReconcileDirty = true
+                                    ReconcileStep.Again
+                                }
+                                else -> ReconcileStep.Load
                             }
                         }
-                    if (restartedWindow) continue
+                    if (next == ReconcileStep.Stop) return@launch
+                    if (next == ReconcileStep.Again) continue
                     load(
                         refresh = true,
                         pullRefresh = false,
@@ -1460,6 +1544,8 @@ class SharedActivityStore internal constructor(
         realtimeBackgroundReconcileJob = job
         return job
     }
+
+    private enum class ReconcileStep { Load, Again, Stop }
 
     private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
         val lastStartedAt = lastResetLoadStartedAtMillis ?: return 0L
@@ -1819,7 +1905,10 @@ class SharedActivityStore internal constructor(
                 }
                 val generation = ++loadGeneration
                 val startedAtMillis = nowMillis()
-                if (refresh) lastResetLoadStartedAtMillis = startedAtMillis
+                if (refresh) {
+                    lastResetLoadStartedAtMillis = startedAtMillis
+                    resetLoadsStarted += 1
+                }
                 foregroundResetLoadStartedAtMillis = startedAtMillis.takeIf { refresh && !backgroundRefresh }
                 loadJob?.cancel()
                 // This load owns the background flag now: a superseded background load's own
@@ -3680,6 +3769,64 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    /**
+     * Another device marked conversation [channelId] Done (incremental sync), exactly like web
+     * `inboxStore.applyRemoteDone` (botiverse/slock bab9dd8c0, inboxStore.ts:2592; server #11685
+     * pins `done.doneFrontierSeq` equal to the frontier a Done stores, web #11696): the
+     * conversation's rows leave when the Done covers every one of them, compared exactly as decimal
+     * seqs with the row's `latestActivitySeq` (equal = covered), and are held against a lagging
+     * list like a Done made here. A row with newer activity stays as shown. Unread and total counts
+     * move with the rows, as for a local Done.
+     *
+     * [ActivityRemoteDoneOutcome.CannotTell] (the caller reads the list again): no row of the
+     * conversation is held, no frontier, a thread row (a thread's Done comes as `follow`), or a row
+     * without `latestActivitySeq`.
+     */
+    internal fun applyRemoteDone(channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome =
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val snapshot = current.snapshot ?: return@synchronized ActivityRemoteDoneOutcome.CannotTell
+            val rows =
+                snapshot.items.filter { item ->
+                    item.kind != InboxItemKind.Object && item.kind != InboxItemKind.MentionAction &&
+                        item.readReceiptChannelId()?.value == channelId
+                }
+            val outcome =
+                when {
+                    rows.isEmpty() || doneFrontierSeq == null -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { it.kind == InboxItemKind.Thread } -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { it.latestActivitySeq == null } -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { compareActivitySeq(it.latestActivitySeq, doneFrontierSeq) > 0 } ->
+                        ActivityRemoteDoneOutcome.KeptNewerActivity
+                    else -> ActivityRemoteDoneOutcome.Removed
+                }
+            if (outcome == ActivityRemoteDoneOutcome.Removed) {
+                // Already on the server: the hold starts now, as for a confirmed Done made here.
+                overlayOwner(current)?.let { owner ->
+                    rows.forEach { row ->
+                        doneOverlay.remember(owner, row)?.let { generation -> doneOverlay.confirm(owner, row.key, generation) }
+                    }
+                }
+                val keys = rows.mapTo(HashSet()) { it.key }
+                reduceState(
+                    SharedActivityIntent.ApplyRemoteDone(channelId, doneFrontierSeq),
+                    current.copy(
+                        snapshot =
+                            snapshot.copy(
+                                items = snapshot.items.filterNot { it.key in keys },
+                                totalCount = maxOf(0, snapshot.totalCount - rows.size),
+                                totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - rows.sumOf { it.unreadCount })
+                            ),
+                        retainedReadRowKeys = current.retainedReadRowKeys - keys
+                    )
+                )
+            }
+            diagnosticsLogger(
+                "activity_remote_done channelId=$channelId rows=${rows.size} outcome=${outcome.name}"
+            )
+            outcome
+        }
+
     private fun removeItemOptimistically(item: InboxItem) {
         val current = _state.value
         val snapshot = current.snapshot ?: return
@@ -3735,6 +3882,7 @@ class SharedActivityStore internal constructor(
                     // The swipe's / menu's Unread (#793): an Unread page cached before it lacks the row.
                     intent is SharedActivityIntent.MarkUnread ||
                     intent is SharedActivityIntent.MarkDone ||
+                    intent is SharedActivityIntent.ApplyRemoteDone ||
                     intent is SharedActivityIntent.MarkAllRead ||
                     intent is SharedActivityIntent.ApplyReadReceiptPrediction
                 ) {
@@ -4372,6 +4520,24 @@ sealed interface SharedActivityIntent {
         val event: RealtimeEvent,
         val activeConversationId: String?
     ) : SharedActivityIntent
+
+    /**
+     * Another device marked conversation [channelId] Done, through [doneFrontierSeq] (incremental
+     * sync): [SharedActivityStore.applyRemoteDone]; a list that can't tell reads again.
+     */
+    data class ApplyRemoteDone(val channelId: String, val doneFrontierSeq: String?) : SharedActivityIntent
+}
+
+/** What [SharedActivityStore.applyRemoteDone] did with another device's Done. */
+enum class ActivityRemoteDoneOutcome {
+    /** The Done covered the conversation's rows: they left the list. */
+    Removed,
+
+    /** A row shows activity newer than the Done covered: it stays as shown. */
+    KeptNewerActivity,
+
+    /** This list can't judge it (no row, no frontier, a thread row, no `latestActivitySeq`): read again. */
+    CannotTell,
 }
 
 private fun SharedActivityIntent.activitySummarySource(): String =
@@ -4402,6 +4568,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ProjectThreadUnfollow -> "project_thread_unfollow"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
+        is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
     }
 
 private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
@@ -4416,6 +4583,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyReadReceiptFailure,
         is SharedActivityIntent.ApplyRealtimeEvent,
         is SharedActivityIntent.UndoObjectDone,
+        is SharedActivityIntent.ApplyRemoteDone,
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
         is SharedActivityIntent.UnfollowObject,
         is SharedActivityIntent.ProjectThreadUnfollow,

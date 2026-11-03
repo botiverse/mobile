@@ -110,7 +110,8 @@ internal fun activityStore(
     onReadReceiptPredictionOwnerEntered: () -> Unit = {},
     staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
         { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    appForeground: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true)
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -145,6 +146,7 @@ internal fun activityStore(
         onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered,
         onReadReceiptPredictionOwnerEntered = onReadReceiptPredictionOwnerEntered,
         staleRecoveryDelayMillis = staleRecoveryDelayMillis,
+        appForeground = appForeground,
         diagnosticsLogger = diagnosticsLogger
     )
 
