@@ -36252,6 +36252,17 @@ private fun ThreadForwardSearchingSkeletonRow() {
     }
 }
 
+/**
+ * web SelectModeToolbar (packages/web/src/components/message/SelectModeToolbar.tsx, #11761 /
+ * #12152): the toolbar for selected messages floats, centred, over the bottom of the
+ * conversation in the composer's place: raft-ui MessageMultiSelectToolbar
+ * ([build.raft.designsystem.components.RaftMessageMultiSelectToolbar]), 20dp from the sides
+ * (the composer's edge) and 12dp above the bottom plus the safe area. Nothing behind it: no
+ * full-width bar, no top divider.
+ *
+ * Order: "N selected" · Copy Link (icon only, as on a phone at 390dp) · Forward (the one
+ * primary) · More (Select All in a thread, Generate Image, Copy MD) · × (Cancel, last).
+ */
 @Composable
 internal fun ThreadShareSelectionToolbar(
     selectedCount: Int,
@@ -36270,6 +36281,14 @@ internal fun ThreadShareSelectionToolbar(
     val moreAnchor = remember { RaftLiveRootAnchorRef(identity = "thread_share_selection_more") }
     val moreItems =
         listOfNotNull(
+            onSelectAll?.let {
+                RaftUiMenuItem(
+                    id = "select-all",
+                    label = stringResource(Res.string.thread_text_selection_select_all),
+                    icon = RaftLucideIconName.ListChecks,
+                    enabled = selectedCount < selectableCount
+                )
+            },
             RaftUiMenuItem(
                 id = "generate-image",
                 label = stringResource(Res.string.thread_share_generate_image),
@@ -36285,74 +36304,52 @@ internal fun ThreadShareSelectionToolbar(
                 )
             }
         )
-    Column(
+    val d = build.raft.designsystem.components.RaftMessageMultiSelectToolbarDefaults
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.Canvas)
+                .raftSafeAreaHorizontalPadding()
+                .padding(start = d.EdgeInset, end = d.EdgeInset, bottom = d.BottomOffset + bottomSafeArea),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftSafeAreaHorizontalPadding()
-                    .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp + bottomSafeArea),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        build.raft.designsystem.components.RaftMessageMultiSelectToolbar(
+            count = stringResource(Res.string.thread_forward_selected, selectedCount),
+            label = stringResource(Res.string.thread_share_selection_toolbar_label)
         ) {
-            // web SelectModeToolbar: `font-mono text-mono-meta text-foreground-muted` count,
-            // then `gap-1` sm buttons — ghost Cancel, accent Forward, outline icon-sm Copy
-            // and More (14dp glyphs).
-            build.raft.designsystem.text.RaftText(
-                text = stringResource(Res.string.thread_forward_selected, selectedCount),
-                style = build.raft.designsystem.theme.RaftTheme.typography.monoMeta,
-                color = build.raft.designsystem.theme.RaftTheme.colors.foregroundMuted,
-                maxLines = 1
-            )
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
+            val copyLinkLabel = stringResource(Res.string.thread_action_copy_link)
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarIconButton(
+                onClick = onCopyLinks,
+                tooltip = copyLinkLabel,
+                enabled = hasSelection
             ) {
-                if (onSelectAll != null) {
-                    ThreadShareSelectionActionButton(
-                        label = stringResource(Res.string.thread_comments_filter_all),
-                        icon = RaftLucideIconName.Check,
-                        onClick = onSelectAll,
-                        enabled = hasSelection && selectedCount < selectableCount,
-                        variant = build.raft.designsystem.components.RaftButtonVariant.Default
-                    )
-                }
-                ThreadShareSelectionActionButton(
-                    label = stringResource(Res.string.common_cancel),
-                    icon = RaftLucideIconName.X,
-                    onClick = onCancel,
-                    enabled = true,
-                    variant = build.raft.designsystem.components.RaftButtonVariant.Ghost
-                )
-                ThreadShareSelectionActionButton(
-                    label = stringResource(Res.string.thread_action_forward),
-                    icon = RaftLucideIconName.Forward,
-                    onClick = onForward,
-                    enabled = hasSelection && forwardEnabled,
-                    variant = build.raft.designsystem.components.RaftButtonVariant.Primary
-                )
-                ThreadShareSelectionIconButton(
-                    icon = RaftLucideIconName.Copy,
-                    tooltip = stringResource(Res.string.thread_action_copy_link),
-                    onClick = onCopyLinks,
-                    enabled = hasSelection
-                )
-                ThreadShareSelectionIconButton(
-                    icon = RaftLucideIconName.Ellipsis,
-                    tooltip = stringResource(Res.string.thread_new_message_menu_more),
-                    onClick = {
-                        moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
-                    },
-                    enabled = hasSelection,
-                    modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
-                )
+                ThreadShareSelectionGlyph(RaftLucideIconName.Copy, 18.dp)
+            }
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarButton(
+                label = stringResource(Res.string.thread_action_forward),
+                onClick = onForward,
+                variant = build.raft.designsystem.components.RaftButtonVariant.Primary,
+                enabled = hasSelection && forwardEnabled,
+                icon = { ThreadShareSelectionGlyph(RaftLucideIconName.Forward, 16.dp) }
+            )
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarIconButton(
+                onClick = {
+                    moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
+                },
+                tooltip = stringResource(Res.string.thread_new_message_menu_more),
+                contentDescription = stringResource(Res.string.thread_share_selection_more_actions),
+                // Select All needs nothing selected; the rest of More needs a selection.
+                enabled = hasSelection || onSelectAll != null,
+                open = moreMenuAnchor != null,
+                modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
+            ) {
+                ThreadShareSelectionGlyph(RaftLucideIconName.Ellipsis, 18.dp)
+            }
+            build.raft.designsystem.components.RaftMessageMultiSelectToolbarIconButton(
+                onClick = onCancel,
+                tooltip = stringResource(Res.string.common_cancel)
+            ) {
+                ThreadShareSelectionGlyph(RaftLucideIconName.X, 18.dp)
             }
         }
     }
@@ -36364,60 +36361,25 @@ internal fun ThreadShareSelectionToolbar(
             onSelect = { id ->
                 moreMenuAnchor = null
                 when (id) {
+                    "select-all" -> onSelectAll?.invoke()
                     "generate-image" -> onExportImage()
                     "copy-md" -> onCopyMarkdown?.invoke()
                 }
             },
             onDismiss = { moreMenuAnchor = null },
-            // raft-ui DropdownMenuContent's `sideOffset` 6.
-            verticalOffset = RaftMetrics.MenuSideOffset,
+            // web SelectModeToolbar's DropdownMenuContent `side="top" align="end" sideOffset={8}`.
+            verticalOffset = 8.dp,
             verticalPlacement = RaftFloatingVerticalPlacement.Above
         )
     }
 }
 
 @Composable
-private fun ThreadShareSelectionActionButton(
-    label: String,
-    icon: RaftLucideIconName,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    variant: build.raft.designsystem.components.RaftButtonVariant
-) {
-    build.raft.designsystem.components.RaftButton(
-        text = label,
-        onClick = onClick,
-        enabled = enabled,
-        variant = variant,
-        leadingIcon = { ThreadShareSelectionGlyph(icon) }
-    )
-}
-
-@Composable
-private fun ThreadShareSelectionIconButton(
-    icon: RaftLucideIconName,
-    tooltip: String,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    build.raft.designsystem.components.RaftIconButton(
-        onClick = onClick,
-        tooltip = tooltip,
-        enabled = enabled,
-        modifier = modifier,
-        variant = build.raft.designsystem.components.RaftButtonVariant.Default
-    ) {
-        ThreadShareSelectionGlyph(icon)
-    }
-}
-
-@Composable
-private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName) {
+private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName, size: Dp) {
     val ink =
         build.raft.designsystem.theme.LocalRaftContentColor.current.takeIf { it != Color.Unspecified }
             ?: build.raft.designsystem.theme.RaftTheme.colors.foreground
-    RaftLucideIcon(icon, modifier = Modifier.size(14.dp), color = raftArgbHex(ink))
+    RaftLucideIcon(icon, modifier = Modifier.size(size), color = raftArgbHex(ink))
 }
 
 @Composable

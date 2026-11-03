@@ -476,9 +476,11 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
-        // React docks the selection toolbar at the bottom of the 390x844
-        // viewport (web MessageList), so the rows sit at the top and the
-        // toolbar at the viewport bottom.
+        // React floats the selection toolbar (SelectModeToolbar, a centred
+        // MessageMultiSelectToolbar pill 20px from the sides and 12px above
+        // the bottom) over the bottom of the 390x844 viewport, so the rows sit
+        // at the top and the pill at the viewport bottom. No select-all (the
+        // case is a channel, not a thread).
         Column(
             modifier =
                 Modifier
