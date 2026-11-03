@@ -78,6 +78,8 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.NetworkRaftAnnouncementsRemindersApi
 import build.raft.app.data.NetworkRaftHomeApi
 import build.raft.app.data.OpenDirectMessageResult
+import build.raft.app.data.RaftDirectMessageOpens
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -924,7 +926,11 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
         onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
         onPinnedMemberClick = { identity ->
             standaloneScope.launch {
-                when (val result = standaloneChannelRepository.openPinnedMemberDirectMessage(identity)) {
+                val homeSnapshot = standaloneHomeStore.snapshotFor(ServerId(payload.currentServerId))
+                val result =
+                    standaloneChannelRepository.openPinnedMemberDirectMessage(identity, homeSnapshot)
+                        ?: return@launch
+                when (result) {
                     is DataResult.Content -> {
                         standaloneHomeStore.dispatch(SharedHomeIntent.Refresh)
                         pager.openThreadPageFromConversation(
@@ -1013,12 +1019,24 @@ private fun Pager.openThreadPageFromConversation(
     openRaftPage(THREAD_PAGE, threadLaunchPageData(launchPayload))
 }
 
+/**
+ * The pinned member's DM, or null while an earlier tap is still opening it (that tap opens it).
+ * A DM [homeSnapshot] already lists opens without waiting on the server.
+ */
 internal suspend fun ChannelRepository.openPinnedMemberDirectMessage(
-    identity: MemberDetailIdentity
-): DataResult<OpenDirectMessageResult> =
+    identity: MemberDetailIdentity,
+    homeSnapshot: HomeSnapshot?,
+    directMessageOpens: RaftDirectMessageOpens = RaftDirectMessageOpens.shared
+): DataResult<OpenDirectMessageResult>? =
     when (identity.kind) {
-        MemberKind.Agent -> openAgentDirectMessage(identity.memberId)
-        MemberKind.Human -> openUserDirectMessage(identity.memberId)
+        MemberKind.Agent, MemberKind.Human ->
+            directMessageOpens.open(
+                channelRepository = this,
+                serverId = homeSnapshot?.server?.id,
+                peerKind = identity.kind,
+                peerId = identity.memberId,
+                homeSnapshot = homeSnapshot
+            )
         MemberKind.System -> DataResult.Empty(EmptyReason.NoChannels)
         MemberKind.External -> DataResult.Empty(EmptyReason.NoChannels)
     }

@@ -50,6 +50,7 @@ import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.AGENT_MIGRATION_FEATURE_FLAG_KEY
+import build.raft.app.data.isOpening
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
@@ -3096,6 +3097,8 @@ private class MemberDetailRouteProvider(
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
     /** Synchronous (environment, account) of the process auth binding, for first-frame reads. */
     val accountBinding: () -> Pair<String, String>? = { null },
+    /** DM opens: Home's DM at once, else one request per server + peer for any number of taps. */
+    val directMessageOpens: build.raft.app.data.RaftDirectMessageOpens = build.raft.app.data.RaftDirectMessageOpens.shared,
     /**
      * Runs the agent detail cache's write-through of confirmed edits: the route's composition scope (cancelled
      * with the route); a write-through already started finishes ([confirmCachedAgentDetailAsync]).
@@ -3654,9 +3657,14 @@ private class MemberDetailRouteProvider(
             priority = DataRequestPriority.Foreground
         )
 
-    suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult> {
+    /**
+     * The DM to open, or null while an earlier tap is still opening it (that tap opens the page).
+     * A DM Home already lists opens without waiting on the server.
+     */
+    suspend fun openDirectMessage(member: MemberProfile): DataResult<OpenDirectMessageResult>? {
+        val session = authStore.readSession()
         val authority =
-            authStore.readSession()?.let { session ->
+            session?.let {
                 val serverId = session.currentServerId ?: return@let null
                 OpenedDirectMessageAuthority(
                     serverId = ServerId(serverId),
@@ -3665,8 +3673,14 @@ private class MemberDetailRouteProvider(
             }
         val result =
             when (member.kind) {
-                MemberKind.Agent -> channelRepository.openAgentDirectMessage(member.id)
-                MemberKind.Human -> channelRepository.openUserDirectMessage(member.id)
+                MemberKind.Agent, MemberKind.Human ->
+                    directMessageOpens.open(
+                        channelRepository = channelRepository,
+                        serverId = authority?.serverId,
+                        peerKind = member.kind,
+                        peerId = member.id,
+                        homeSnapshot = authority?.let { sharedHomeStore?.snapshotFor(it.serverId) }
+                    ) ?: return null
                 MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
                 MemberKind.External -> DataResult.Empty(EmptyReason.NoMembers)
             }
@@ -4089,6 +4103,7 @@ internal fun MemberDetailPageContent(
             .revisionFor(ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
             .collectAsState()
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
+    val pendingDirectMessageOpens by provider.directMessageOpens.pending.collectAsState()
     val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
     val serverMembersState by provider.serverMembersStore.state.collectAsState()
     val selectedMemberId = memberIdentity?.memberId
@@ -4712,9 +4727,10 @@ internal fun MemberDetailPageContent(
                         machineStatusRow = machineStatusRow,
                         actions = MembersDetailActions(
                             onBack = { closeDetail() },
+                            directMessageOpening = pendingDirectMessageOpens.isOpening(member.kind, member.id),
                             onOpenDirectMessage = {
                                 routeScope.launch {
-                                    provider.openDirectMessage(member).openMembersDirectMessageResult(
+                                    provider.openDirectMessage(member)?.openMembersDirectMessageResult(
                                         pager = pager,
                                         storeScope = provider.storeScope,
                                         openInShell = openDirectMessageInShell,
@@ -4903,9 +4919,10 @@ internal fun MemberDetailPageContent(
                     machineStatusRow = machineStatusRow,
                     actions = MembersDetailActions(
                         onBack = { closeDetail() },
+                        directMessageOpening = pendingDirectMessageOpens.isOpening(current.member.kind, current.member.id),
                         onOpenDirectMessage = {
                             routeScope.launch {
-                                provider.openDirectMessage(current.member).openMembersDirectMessageResult(
+                                provider.openDirectMessage(current.member)?.openMembersDirectMessageResult(
                                     pager = pager,
                                     storeScope = provider.storeScope,
                                     openInShell = openDirectMessageInShell,
@@ -6148,6 +6165,8 @@ private fun membersAgentTurnStopMessages(): Map<AgentTurnStopFeedback, String> =
 private class MembersDetailActions(
     val onBack: () -> Unit,
     val onOpenDirectMessage: () -> Unit,
+    /** A Message tap waits on the server: the button shows its loading state. */
+    val directMessageOpening: Boolean = false,
     val onOpenComputer: (() -> Unit)? = null,
     val onCopyMemberId: () -> Unit,
     val onRemoveMember: (() -> Unit)? = null,
@@ -6761,7 +6780,8 @@ private fun MembersDetailContent(
                     currentServerId = currentServerId,
                     memberAvatarResolver = memberAvatarResolver,
                     onBack = onBack,
-                    onOpenDirectMessage = onOpenDirectMessage
+                    onOpenDirectMessage = onOpenDirectMessage,
+                    directMessageOpening = actions.directMessageOpening
                 )
             } else {
                 MembersDetailHeader(
@@ -6774,6 +6794,7 @@ private fun MembersDetailContent(
                     canMessage = !membersAgentProfileIsRemote(accessMode),
                     onBack = onBack,
                     onOpenDirectMessage = onOpenDirectMessage,
+                    directMessageOpening = actions.directMessageOpening,
                     onCopyMemberId = onCopyMemberId,
                     agentStatusIndicatorState = agentStatusIndicatorState,
                     memberAvatarResolver = memberAvatarResolver,
@@ -7413,7 +7434,8 @@ private fun MembersHumanDetailHeader(
     currentServerId: String?,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onBack: () -> Unit,
-    onOpenDirectMessage: () -> Unit
+    onOpenDirectMessage: () -> Unit,
+    directMessageOpening: Boolean = false
 ) {
     val canMessage =
         membersDirectMessageEligibility(
@@ -7462,7 +7484,8 @@ private fun MembersHumanDetailHeader(
                         onClick = onOpenDirectMessage,
                         tooltip = messageLabel,
                         variant = RaftButtonVariant.Ghost,
-                        size = RaftIconButtonSize.Lg
+                        size = RaftIconButtonSize.Lg,
+                        loading = directMessageOpening
                     ) {
                         MembersHumanGlyph(RaftLucideIconName.MessageSquare, 22.dp)
                     }
@@ -7487,6 +7510,7 @@ internal fun MembersDetailHeader(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
+    directMessageOpening: Boolean = false,
     onCopyMemberId: () -> Unit,
     onManagementMenuAnchorResolverReady: (RaftPopoverAnchorResolver) -> Unit,
     onRequestManagementMenu: (RaftPopoverAnchor?) -> Unit
@@ -7576,7 +7600,8 @@ internal fun MembersDetailHeader(
                         onClick = onOpenDirectMessage,
                         tooltip = stringResource(Res.string.member_label_message),
                         variant = RaftButtonVariant.Ghost,
-                        size = RaftIconButtonSize.Lg
+                        size = RaftIconButtonSize.Lg,
+                        loading = directMessageOpening
                     ) {
                         RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = 22.dp)
                     }
@@ -7586,6 +7611,7 @@ internal fun MembersDetailHeader(
                         text = stringResource(Res.string.member_label_message),
                         onClick = onOpenDirectMessage,
                         modifier = Modifier.padding(end = 7.dp),
+                        loading = directMessageOpening,
                         leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare) }
                     )
                 }
