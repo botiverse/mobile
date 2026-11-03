@@ -1743,6 +1743,53 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun selectedConversationAccruesUnreadWhileItIsNotSeen() = runBlocking {
+        // Seen = read: the selected conversation skips unread only while it is in front of the person
+        // (shell visible and in use). Left open in a hidden or idle window it counts as the server
+        // counts it, and the page's read clears it once the person is back.
+        var seen = false
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+            scope = scope,
+            selectedConversationSeen = { seen }
+        )
+        store.accept(SharedHomeIntent.Start)
+        val otherMember = sampleMember().copy(
+            id = MemberId("member-2"),
+            displayName = "Cindy",
+            handle = "cindy@slock.ai"
+        )
+        fun liveMessage(id: String, seq: Long) =
+            MessageNew(
+                Message(
+                    id = MessageId(id),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = seq,
+                    author = otherMember,
+                    timestampLabel = "12:01",
+                    body = id
+                )
+            )
+
+        store.accept(SharedHomeIntent.SelectConversation("channel-1"))
+        store.accept(SharedHomeIntent.ApplyRealtimeEvent(serverId = "server-1", event = liveMessage("message-2", 2)))
+        var content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(1, content.snapshot.channels.single().unreadCount)
+        assertEquals(1, content.snapshot.unreadTotal)
+
+        seen = true
+        store.accept(SharedHomeIntent.ApplyRealtimeEvent(serverId = "server-1", event = liveMessage("message-3", 3)))
+        content = store.state.value.content
+        assertTrue(content is SharedHomeContentState.Content)
+        assertEquals(1, content.snapshot.channels.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdateOnlyReplacesMatchingHomeRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

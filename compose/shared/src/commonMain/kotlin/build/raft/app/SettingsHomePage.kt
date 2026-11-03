@@ -21,6 +21,7 @@ import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.data.raftHostShowsContent
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftNavSurface
 import build.raft.app.data.RaftProductEvents
@@ -3233,7 +3234,8 @@ private fun RaftAppShellReadyContent(
                 },
                 resetActivity = homeActivityStore::reset,
                 diagnosticsLogger = raftLogger("SlockHomeShell", "shared_home_shell"),
-                scope = appShellCoroutineScope
+                scope = appShellCoroutineScope,
+                selectedConversationSeen = { raftHostShowsContent(storeScope.shellInstanceId) }
             )
         }
     DisposableEffect(homeShellStore) {
