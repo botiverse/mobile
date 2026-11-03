@@ -344,7 +344,7 @@ private fun WireMessage.toMessageItem(
         seq = seq,
         messageType = resolvedMessageType.name,
         systemEventType = null,
-        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        metadata = actionMetadata.toMessageItemMetadata(),
         body = content,
         randomId = randomId?.takeIf { it.isNotBlank() },
         threadChannelId = firstNonBlank(threadId, summary?.threadChannelId),

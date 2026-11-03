@@ -81,8 +81,11 @@ enum class RaftSyncSnapshot(val wireName: String) {
     }
 }
 
-/** An entity whose upsert carries the row of its list endpoint (`SyncRowEntity`). */
-enum class RaftSyncRowEntity(val wireName: String, val snapshot: RaftSyncSnapshot) {
+/**
+ * An entity whose upsert carries the row of its list endpoint (`SyncRowEntity`); [snapshot] is
+ * the snapshot that list is, null for an entity without one ([Message]).
+ */
+enum class RaftSyncRowEntity(val wireName: String, val snapshot: RaftSyncSnapshot?) {
     /** A `GET /api/channels` item, or a `GET /api/channels/dm` item for a DM. */
     Channel("channel", RaftSyncSnapshot.Channels),
 
@@ -102,7 +105,15 @@ enum class RaftSyncRowEntity(val wireName: String, val snapshot: RaftSyncSnapsho
     SidebarOrder("sidebar_order", RaftSyncSnapshot.SidebarOrder),
 
     /** id = the viewer's user id; the `GET /api/servers/order` body. */
-    ServerOrder("server_order", RaftSyncSnapshot.ServerOrder);
+    ServerOrder("server_order", RaftSyncSnapshot.ServerOrder),
+
+    /**
+     * RFC 082 §4.4 (botiverse/slock 1e9266662, `SyncRowEntity` `message`): id = message id; the
+     * message as `GET /api/messages/channel/:channelId` lists it. Sent when a message a client may
+     * already hold changed in place (a card message's update, a Slack-bridged edit): replace that
+     * message where it is held; one that is not held needs nothing. Upserts only, and no snapshot.
+     */
+    Message("message", null);
 
     companion object {
         private val byWireName = entries.associateBy { it.wireName }
@@ -291,7 +302,9 @@ private fun parseSyncChange(element: JsonObject): ParsedSyncChange {
                     RaftSyncChange.Upsert(seq, rowEntity, id, row)
                 }
                 "delete" -> RaftSyncChange.Delete(seq, rowEntity, id)
-                else -> RaftSyncChange.Resnapshot(seq, entity, op, setOf(rowEntity.snapshot))
+                // `message` has no snapshot: an op this client doesn't know retakes nothing (the open
+                // conversation reads its messages again when it is entered).
+                else -> RaftSyncChange.Resnapshot(seq, entity, op, setOfNotNull(rowEntity.snapshot))
             }
         )
     }

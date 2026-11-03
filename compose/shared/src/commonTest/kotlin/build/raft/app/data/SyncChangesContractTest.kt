@@ -102,6 +102,27 @@ class SyncChangesContractTest {
     }
 
     @Test
+    fun `a message change carries the message list row and has no snapshot to retake`() {
+        val page =
+            parseSyncChangesPage(
+                syncChangesBody(
+                    cursor = "c1.5.1",
+                    changes =
+                        listOf(
+                            syncUpsert(1, "message", "m1", messageCardRowJson()),
+                            """{"seq":2,"entity":"message","id":"m1","op":"archived"}""",
+                        ),
+                )
+            )!!
+        assertEquals(0, page.skippedUnknownEntities, "1.19.0 skipped it; this client reads it")
+        val upsert = assertIs<RaftSyncChange.Upsert>(page.changes[0])
+        assertEquals(RaftSyncRowEntity.Message, upsert.entity)
+        assertEquals(JsonPrimitive("Raft App 1.19.0 (11900001) · Ready for testing"), upsert.row["content"])
+        // An op this client doesn't know retakes nothing: there is no message snapshot.
+        assertEquals(RaftSyncChange.Resnapshot(2, "message", "archived", emptySet()), page.changes[1])
+    }
+
+    @Test
     fun `an unknown entity is skipped and counted`() {
         val page =
             parseSyncChangesPage(

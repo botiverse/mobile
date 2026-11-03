@@ -102,10 +102,9 @@ import build.raft.app.data.toAgentTypingUpdated
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
 import build.raft.app.data.projectAgentActivityStatus
-import build.raft.app.data.toThreadActionCard
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toScopeReadUpdated
-import build.raft.app.data.toMessageMetadata
+import build.raft.app.data.toMessageItemMetadata
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import build.raft.app.network.sync.decodeCanonicalMessageWire
@@ -1039,7 +1038,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         body = content,
         messageType = resolvedMessageType,
         systemEventType = null,
-        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        metadata = actionMetadata.toMessageItemMetadata(),
         attachments = attachments.map { it.toDomain() },
         randomId = randomId?.takeIf { it.isNotBlank() },
         senderMembershipStatus = senderMembershipStatus,

@@ -17,8 +17,7 @@ import build.raft.app.data.WireExternalAuthor
 import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.externalSenderIdOrSyntheticKey
 import build.raft.app.data.toForwardMessageBundle
-import build.raft.app.data.toMessageMetadata
-import build.raft.app.data.toThreadActionCard
+import build.raft.app.data.toMessageItemMetadata
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -229,7 +228,7 @@ private fun JsonElement?.toAppActionProjection(): AppActionProjection {
         canonicalProjectionJson.decodeFromJsonElement(WireActionCardMetadata.serializer(), element)
     }.getOrNull() ?: return AppActionProjection()
     return AppActionProjection(
-        metadata = wire.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        metadata = wire.toMessageItemMetadata(),
         forwardBundle = wire.toForwardMessageBundle(),
     )
 }

@@ -137,7 +137,7 @@ fun parseRaftAppLinkCardV2(element: JsonElement, origin: String): RaftAppLinkCar
     val elements = LinkedHashMap<String, CardElement>()
     for ((id, raw) in rawElements) {
         if (!CARD_ELEMENT_ID.matches(id)) return null
-        elements[id] = readLinkCardV2Element(raw, origin) ?: return null
+        elements[id] = readLinkCardV2Element(raw) { action -> readLinkCardButtonAction(action, origin) } ?: return null
     }
     if (checkCardBoundedTree(root, elements, RAFT_APP_LINK_CARD_MAX_ELEMENTS, RAFT_APP_LINK_CARD_MAX_DEPTH) != null) return null
     val buttons = elements.values.filterIsInstance<RaftLinkCardV2Element.Button>()
@@ -147,7 +147,11 @@ fun parseRaftAppLinkCardV2(element: JsonElement, origin: String): RaftAppLinkCar
     return RaftAppLinkCardV2(root, elements)
 }
 
-private fun readLinkCardV2Element(raw: JsonElement, origin: String): CardElement? {
+/**
+ * One v2 element (strict, as `linkCardV2Schema`); a Button's action through [readAction], which
+ * differs per catalog (a link card's navigate stays on its origin; a message card only navigates).
+ */
+internal fun readLinkCardV2Element(raw: JsonElement, readAction: (JsonElement?) -> RaftLinkCardButtonAction?): CardElement? {
     val obj = raw as? JsonObject ?: return null
     return when (obj["type"].cardString()) {
         "Stack" -> readCardStack(obj)
@@ -189,7 +193,7 @@ private fun readLinkCardV2Element(raw: JsonElement, origin: String): CardElement
                 } else {
                     RaftLinkCardButtonVariant.Default
                 }
-            val action = readLinkCardButtonAction(props["action"], origin) ?: return null
+            val action = readAction(props["action"]) ?: return null
             val disabledReason =
                 if ("disabledReason" in props) props["disabledReason"].cardString()?.takeIf { isCardText(it, 1, 200) } ?: return null else null
             RaftLinkCardV2Element.Button(label, variant, action, disabledReason)

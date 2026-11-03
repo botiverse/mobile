@@ -28912,6 +28912,8 @@ private fun ThreadMessageCardContent(
                             }
                         }
                         val forwardBundle = message.forwardBundle
+                        // RFC 082: a card message's card (message_cards on), else its text below.
+                        val messageCard = if (richContentEnabled && actionCard == null) rememberThreadMessageCard(message.metadata) else null
                         if (richContentEnabled && actionCard != null) {
                             // A4: the spec card when `action_card_spec` is on for the card's
                             // server; otherwise (and for every card without a spec) the typed card.
@@ -28975,6 +28977,12 @@ private fun ThreadMessageCardContent(
                                     onCommit = { onCommitActionCard(message.id) }
                                 )
                             }
+                        } else if (messageCard != null) {
+                            RaftMessageCardView(
+                                card = messageCard,
+                                onOpenUrl = onOpenMarkdownUrl,
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                            )
                         } else if (richContentEnabled && forwardBundle != null) {
                             // Web MessageItem parity: the server stores the forward
                             // note as the message content; render it above the card
@@ -29206,7 +29214,7 @@ private fun ThreadMessageCardContent(
                                 )
                             }
                         }
-                        if (actionCard == null) {
+                        if (actionCard == null && messageCard == null) {
                             translation?.indicator?.let { indicator ->
                                 Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                     ThreadMessageTranslationIndicator(

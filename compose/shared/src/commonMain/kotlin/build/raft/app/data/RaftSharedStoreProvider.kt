@@ -39,6 +39,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -1066,6 +1067,17 @@ internal class RaftSharedStoreProvider private constructor(
                         }.getOrNull()
                     }
                 return results.any { it is DataResult.Content || it is DataResult.Empty }
+            }
+
+            override suspend fun applyMessageRows(serverId: String, messages: List<Message>) {
+                // The open conversation pages of every shell showing the server, as a `message:updated`
+                // reaches them (their reducer replaces the message by id; one not held is left alone).
+                val activeScopes = scopesForServer(serverId).toSet()
+                shellRealtimeDomainEventOwners.entries()
+                    .filter { (scope, _) -> scope in activeScopes }
+                    .forEach { (_, owner) ->
+                        messages.forEach { message -> owner.deliverSyncedMessageUpdate(serverId, MessageUpdated(message)) }
+                    }
             }
 
             override suspend fun reloadMachines(serverId: String, reason: String): Boolean {
@@ -3912,6 +3924,18 @@ internal class SharedRealtimeDomainEventOwner(
 
     fun unregisterGuardedActiveThreadSink(sink: RealtimeGuardedActiveThreadSink) {
         guardedActiveThreadSinks.remove(sink)
+    }
+
+    /**
+     * RFC 082 §4.4: a message the sync log says changed in place (a card message's update), to the
+     * conversation pages only, as their tee of a live `message:updated`. It is a row read now, not a
+     * socket frame: no seq recovery, no duplicate key, no Home or Activity projection (they show its
+     * text, which the next list read brings).
+     */
+    suspend fun deliverSyncedMessageUpdate(serverId: String, event: MessageUpdated) {
+        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
+        activeThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, event) }
+        guardedActiveThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, event) }
     }
 
     suspend fun accept(
