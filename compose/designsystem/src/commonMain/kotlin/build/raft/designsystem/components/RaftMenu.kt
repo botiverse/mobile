@@ -162,6 +162,9 @@ internal val LocalRaftMenuFieldType = staticCompositionLocalOf { false }
  * - [leadingIcon]: 16dp in `foreground-muted`. [shortcut]: Space Mono `text-mono-meta`
  *   `foreground-hint` at the end ("⌘K").
  * - Disabled: `foreground-disabled`, no highlight.
+ * - [trailingIcon]: 16dp at the end, in `foreground-muted` (the leaving mark ↗ of a link item).
+ * - [description]: a second line under the label, `text-footnote` regular `foreground-muted`,
+ *   wrapping (why an item is disabled: an item can't carry a tooltip).
  * - [divider]: a 1dp `line-hairline` along the row's top edge, inside its 36dp (CSS
  *   `border-t` on a border-box row, as the web's menu rows that start a section inside a
  *   flush card): the row stays 36dp and its content centres in the 35dp under the line.
@@ -181,6 +184,8 @@ fun RaftMenuItem(
     shortcut: String? = null,
     divider: Boolean = false,
     interactionSource: MutableInteractionSource? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
+    description: String? = null,
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -241,15 +246,27 @@ fun RaftMenuItem(
                 Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { leadingIcon() }
             }
         }
-        RaftText(
-            text,
-            Modifier.weight(1f),
-            style = labelStyle,
-            color = ink,
-            // raft-ui 0.13: a long option wraps to two lines, then clamps.
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (description == null) {
+            RaftText(
+                text,
+                Modifier.weight(1f),
+                style = labelStyle,
+                color = ink,
+                // raft-ui 0.13: a long option wraps to two lines, then clamps.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            Column(Modifier.weight(1f)) {
+                RaftText(text, style = labelStyle, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                RaftText(description, style = RaftTheme.typography.footnote, color = colors.foregroundMuted)
+            }
+        }
+        if (trailingIcon != null) {
+            CompositionLocalProvider(LocalRaftContentColor provides iconInk) {
+                Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { trailingIcon() }
+            }
+        }
         if (shortcut != null) {
             RaftText(shortcut, style = RaftTheme.typography.monoMeta, color = if (enabled) colors.foregroundHint else colors.foregroundDisabled, maxLines = 1)
         }
@@ -358,7 +375,8 @@ internal fun RaftSearchRow(
 /**
  * raft-ui 0.8.0 DropdownMenu: a [RaftMenuSurface] in a popup under its anchor (the
  * composable this is placed next to, usually in the same `Box` as the trigger), start
- * aligned, 6dp below; flipped above when there is more room there, and kept 8dp inside
+ * aligned (end aligned with [alignEnd], raft-ui `align="end"`: a trigger at the end of a
+ * card, so the menu stays over the card), 6dp below; flipped above when there is more room there, and kept 8dp inside
  * the safe area of the window (clear of the status bar, the home indicator and the
  * keyboard), and no taller than that safe area less 8dp each side (or 480dp): the rows
  * scroll. Tapping outside or Back calls [onDismissRequest]. Fill it with
@@ -387,6 +405,7 @@ fun RaftDropdownMenu(
     offset: Dp = 6.dp,
     returnFocusTo: FocusRequester? = null,
     header: (@Composable () -> Unit)? = null,
+    alignEnd: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val inputModes = LocalInputModeManager.current
@@ -415,12 +434,13 @@ fun RaftDropdownMenu(
             RaftPopupMargins(RaftPopupInsets.Horizontal.roundToPx(), RaftPopupInsets.Top.roundToPx(), RaftPopupInsets.Bottom.roundToPx())
         }
     val provider =
-        remember(density, offset, area) {
+        remember(density, offset, area, alignEnd) {
             RaftMenuPositionProvider(
                 gap = with(density) { offset.roundToPx() },
                 windowMargin = windowMargin,
                 insets = insets,
                 safeArea = area,
+                alignEnd = alignEnd,
             )
         }
     val dismiss by rememberUpdatedState(onDismissRequest)
@@ -571,10 +591,10 @@ internal fun RaftSafeArea.clearOf(frame: RaftFrameInsets, density: Density): Raf
 internal data class RaftPopupMargins(val horizontal: Int, val top: Int, val bottom: Int)
 
 /**
- * Where a menu popup goes: its surface's start edge on the anchor's, [gap] below it, or
- * above when it doesn't fit below and there is more room above; then moved to stay
- * [windowMargin] inside the window's [safeArea] (clear of the bars and the keyboard).
- * [insets] is the room the popup keeps round its surface.
+ * Where a menu popup goes: its surface's start edge on the anchor's (its end edge with
+ * [alignEnd], Base UI `align="end"`), [gap] below it, or above when it doesn't fit below and
+ * there is more room above; then moved to stay [windowMargin] inside the window's [safeArea]
+ * (clear of the bars and the keyboard). [insets] is the room the popup keeps round its surface.
  */
 internal fun raftMenuPosition(
     anchor: IntRect,
@@ -585,13 +605,15 @@ internal fun raftMenuPosition(
     insets: RaftPopupMargins,
     rtl: Boolean = false,
     safeArea: RaftSafeArea = RaftSafeArea(),
+    alignEnd: Boolean = false,
 ): IntOffset {
     val surfaceWidth = popup.width - insets.horizontal * 2
     val surfaceHeight = popup.height - insets.top - insets.bottom
     val minX = safeArea.left + windowMargin
     val maxX = window.width - safeArea.right - windowMargin
     val (minY, maxY) = raftMenuVerticalBounds(window.height, windowMargin, insets, safeArea)
-    var left = if (rtl) anchor.right - surfaceWidth else anchor.left
+    // The end edge is the right one left to right, the left one right to left.
+    var left = if (rtl != alignEnd) anchor.right - surfaceWidth else anchor.left
     left = left.coerceAtMost(maxX - surfaceWidth).coerceAtLeast(minX)
     val below = anchor.bottom + gap
     val roomBelow = maxY - below
@@ -650,13 +672,14 @@ private class RaftMenuPositionProvider(
     private val windowMargin: Int,
     private val insets: RaftPopupMargins,
     private val safeArea: RaftSafeArea,
+    private val alignEnd: Boolean = false,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
-    ): IntOffset = raftMenuPosition(anchorBounds, windowSize, popupContentSize, gap, windowMargin, insets, layoutDirection == LayoutDirection.Rtl, safeArea)
+    ): IntOffset = raftMenuPosition(anchorBounds, windowSize, popupContentSize, gap, windowMargin, insets, layoutDirection == LayoutDirection.Rtl, safeArea, alignEnd)
 }
 
 

@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -23,76 +22,91 @@ import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.appLinkDomain
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.designsystem.components.RaftPopoverSurface
+import build.raft.designsystem.components.RaftPreviewCardBody
+import build.raft.designsystem.components.RaftPreviewCardButton
+import build.raft.designsystem.components.RaftPreviewCardButtonKind
+import build.raft.designsystem.components.RaftPreviewCardDefaults
+import build.raft.designsystem.components.RaftPreviewCardDetail
+import build.raft.designsystem.components.RaftPreviewCardEyebrow
+import build.raft.designsystem.components.RaftPreviewCardItemActions
+import build.raft.designsystem.components.RaftPreviewCardItemTitle
+import build.raft.designsystem.components.RaftPreviewCardMeta
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
 /**
- * An App link's item card (web `AppLinkChip` hover card: raft-ui `PreviewCardContent` with
- * `PreviewCardBody` and `PreviewCardFooter`), drawn with the design system on the popover
- * surface (`layer-popover`, container radius, `line-seam` ring, `shadow-float`).
+ * An App link's item card (web `AppLinkChip` hover card: raft-ui `PreviewCardContent
+ * size="item"` with `PreviewCardBody` and `PreviewCardFooter`, raft-design #939 / slock #12361),
+ * drawn with the design system on the popover surface (`layer-popover`, container radius,
+ * `line-seam` ring, `shadow-float`).
  *
- * - Body: the App's full title (headline, up to 3 lines), then [RaftAppLinkCardBody] for the
- *   App's tree, when [card] has one.
+ * - Body: [eyebrow] (the App's id for the item, when it sends one), the App's title
+ *   ([RaftPreviewCardItemTitle]: up to 2 lines, the whole title in a tooltip when cut), [details]
+ *   (the state chip, then the details on one line separated by "·": [RaftPreviewCardMeta]), then
+ *   [RaftAppLinkCardBody] for the App's v1 tree, when [card] has one.
+ * - [buttons]: the App's buttons in its order, then Raft's own (Open Link), laid out by
+ *   [RaftPreviewCardItemActions]: at most two on one row at the card's end (the App's first two
+ *   actions, else the first link; frameless first, the bordered one last), everything else in the
+ *   More menu (⋯) to their left.
  * - Footer: under a hairline, the App's name and the link's domain. No App icon: raft-ui keeps
  *   it on the chip, the App's only mark of its own.
  *
- * - [actions]: PreviewCardActions, at most two buttons, between the body and the footer.
- *
- * Render only: no reading, no actions run. [onAction] is for v2's Buttons (RFC 076), which
+ * Render only: no reading, no actions run here. [onAction] is for v2's Buttons (RFC 076), which
  * report their element id; the v1 catalog has none, so it is never called yet. Width: the
- * incoming constraints, at least 220dp; the web card is 300dp.
+ * incoming constraints ([RaftPreviewCardDefaults.ItemWidth], 400dp, where there is room).
  */
 @Composable
 internal fun RaftAppLinkCardView(
     card: AppLinkResult.Card,
     onAction: (elementId: String) -> Unit,
     modifier: Modifier = Modifier,
-    actions: (@Composable RowScope.() -> Unit)? = null,
+    buttons: List<RaftPreviewCardButton> = emptyList(),
+    eyebrow: String? = null,
+    details: List<RaftPreviewCardDetail> = emptyList(),
 ) {
     RaftPopoverSurface(modifier = modifier, width = null, contentPadding = PaddingValues(0.dp)) {
         // Body and actions scroll when the card is held shorter than they are (a popover in a
         // short window); the footer, where the link goes, stays.
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-            // PreviewCardBody: px-4 pt-4 pb-3, gap-1.5 (a footer always follows).
-            Column(
-                Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                RaftText(
-                    text = card.title,
-                    style = RaftTheme.typography.headline,
-                    color = RaftTheme.colors.foreground,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            RaftPreviewCardBody {
+                eyebrow?.let { RaftPreviewCardEyebrow(it) }
+                RaftPreviewCardItemTitle(card.title)
+                RaftPreviewCardMeta(details)
                 card.card?.let { RaftAppLinkCardBody(it, onAction) }
             }
-            // PreviewCardActions: at most two buttons, px-4 pb-3, gap-2 (a footer follows).
-            if (actions != null) {
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = actions,
-                )
-            }
+            RaftPreviewCardItemActions(buttons)
         }
         RaftAppLinkCardFooter(appName = card.app.name, domain = appLinkDomain(card.url).orEmpty())
     }
 }
 
 /**
+ * Raft's own Open Link on an App link's item card (the chip opens the card on a tap, so the card
+ * must offer the link): a link out of Raft (↗), bordered. It goes after the App's buttons, so a
+ * link of the App's own comes first and an App's actions keep the row.
+ */
+@Composable
+internal fun raftAppLinkOpenLinkButton(onOpenLink: () -> Unit): RaftPreviewCardButton =
+    RaftPreviewCardButton(
+        label = stringResource(Res.string.thread_link_preview_open_link),
+        kind = RaftPreviewCardButtonKind.Link,
+        onClick = onOpenLink,
+    )
+
+/**
  * An Artifact link's item card (web `ArtifactLinkPreview.tsx` in core's `ObjectLinkChip` hover
  * card): the title; the details row (the file type, the version, where it lives), then the
  * description or the start of its text, two lines; the footer names the app alone ("Artifacts"),
  * no domain: the link is Raft's own. Not drawn yet: the web's fact line ("6 pages") and "updated by".
+ * An item card (raft-design #939): the title up to 2 lines, [buttons] at the card's end
+ * ([RaftPreviewCardItemActions]).
  */
 @Composable
 internal fun RaftArtifactLinkCardView(
     summary: ArtifactSummary,
     modifier: Modifier = Modifier,
-    actions: (@Composable RowScope.() -> Unit)? = null,
+    buttons: List<RaftPreviewCardButton> = emptyList(),
 ) {
     val home =
         when (val where = summary.home) {
@@ -103,23 +117,15 @@ internal fun RaftArtifactLinkCardView(
             ArtifactHome.Server -> stringResource(Res.string.artifacts_scope_server)
             ArtifactHome.Public -> stringResource(Res.string.artifacts_scope_public)
         }
+    // PreviewCardMeta (web ArtifactLinkPreview): no state chip, the details on one line apart by "·".
     val details =
         listOfNotNull(summary.kind.badge, stringResource(Res.string.artifacts_card_version, summary.version), home)
-            .joinToString(" · ")
+            .map { RaftPreviewCardDetail.Text(it) }
     RaftPopoverSurface(modifier = modifier, width = null, contentPadding = PaddingValues(0.dp)) {
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-            Column(
-                Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                RaftText(
-                    text = summary.title,
-                    style = RaftTheme.typography.headline,
-                    color = RaftTheme.colors.foreground,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                RaftText(text = details, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+            RaftPreviewCardBody {
+                RaftPreviewCardItemTitle(summary.title)
+                RaftPreviewCardMeta(details)
                 summary.description?.let {
                     RaftText(
                         text = it,
@@ -130,14 +136,7 @@ internal fun RaftArtifactLinkCardView(
                     )
                 }
             }
-            if (actions != null) {
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = actions,
-                )
-            }
+            RaftPreviewCardItemActions(buttons)
         }
         RaftAppLinkCardFooter(appName = stringResource(Res.string.artifacts_app_name), domain = "")
     }

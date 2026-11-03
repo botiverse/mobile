@@ -38,6 +38,9 @@ enum class RaftGlyph(internal vararg val paths: String) {
 
     /** Lucide `arrow-up`: the jump pill that goes up the list. */
     ArrowUp("m5 12 7-7 7 7", "M12 19V5"),
+
+    /** Lucide `arrow-up-right`: the leaving mark (↗) after a link that leaves Raft (an item card's link button or menu item). */
+    ArrowUpRight("M7 7h10v10", "M7 17 17 7"),
     ChevronRight("m9 18 6-6-6-6"),
     ChevronDown("m6 9 6 6 6-6"),
     Check("M20 6 9 17l-5-5"),
@@ -45,7 +48,7 @@ enum class RaftGlyph(internal vararg val paths: String) {
     X("M18 6 6 18", "m6 6 12 12"),
     Search("m21 21-4.34-4.34", circle(11f, 11f, 8f)),
 
-    /** Lucide `ellipsis`: a "More Actions" overflow ([RaftSideActionColumn]). */
+    /** Lucide `ellipsis`: a "More Actions" overflow ([RaftSideActionColumn], an item card's More menu). */
     Ellipsis(circle(12f, 12f, 1f), circle(19f, 12f, 1f), circle(5f, 12f, 1f)),
     Info(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01"),
     TriangleAlert(

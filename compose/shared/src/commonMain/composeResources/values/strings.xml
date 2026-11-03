@@ -86,6 +86,7 @@
     <string name="common_refreshing">Refreshing</string>
     <string name="common_copied">Copied</string>
     <string name="common_copy">Copy</string>
+    <string name="common_more_actions">More Actions</string>
     <string name="common_play">Play</string>
     <string name="common_pause">Pause</string>
     <string name="common_show_password">Show password</string>

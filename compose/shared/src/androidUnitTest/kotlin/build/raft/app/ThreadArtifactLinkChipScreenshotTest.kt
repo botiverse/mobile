@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -34,8 +34,8 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.artifactSummaryKey
 import build.raft.app.model.ServerId
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftPreviewCardButton
+import build.raft.designsystem.components.RaftPreviewCardButtonKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -163,10 +163,16 @@ private fun ArtifactRows() {
         )
         RaftArtifactLinkCardView(
             summary = visibleSummary,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp).width(300.dp),
-            actions = {
-                RaftButton(text = stringResource(Res.string.thread_link_preview_open_link), onClick = {}, variant = RaftButtonVariant.Default)
-            },
+            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp).fillMaxWidth(),
+            buttons =
+                listOf(
+                    RaftPreviewCardButton(
+                        label = stringResource(Res.string.thread_link_preview_open_link),
+                        kind = RaftPreviewCardButtonKind.Link,
+                        leavesRaft = false,
+                        onClick = {},
+                    ),
+                ),
         )
     }
 }
