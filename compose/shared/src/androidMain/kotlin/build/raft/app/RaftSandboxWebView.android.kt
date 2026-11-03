@@ -152,10 +152,12 @@ internal class RaftAndroidSandboxWebView(
         updateAllowScripts(config.allowScripts)
         updateAllowNavigation(config.allowNavigation)
         updateDomStorageEnabled(config.domStorageEnabled)
-        updateUseWideViewPort(config.useWideViewPort)
         updateCacheEnabled(config.cacheEnabled)
         updateEphemeral(config.ephemeral)
+        // Before the wide-viewport switch, which reloads: the reloaded document gets the new script
+        // (the Artifact viewer's Desktop Mode changes both at once).
         updateInjectedJavaScript(config.injectedJavaScript)
+        updateUseWideViewPort(config.useWideViewPort)
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
         updateHostEventsEnabled(config.hostEventsEnabled)
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftDocumentStartScriptOriginRule)
@@ -269,6 +271,10 @@ internal class RaftAndroidSandboxWebView(
             // sides qualified on purpose: inside settings.apply a bare name binds to WebSettings.
             useWideViewPort = this@RaftAndroidSandboxWebView.useWideViewPort
             loadWithOverviewMode = this@RaftAndroidSandboxWebView.useWideViewPort
+            // A page laid out wider than the screen is fitted, so it has to be zoomable (pinch):
+            // Android WebView pinch-zooms only with the built-in zoom on (its +/- buttons stay hidden).
+            builtInZoomControls = this@RaftAndroidSandboxWebView.useWideViewPort
+            displayZoomControls = false
             @Suppress("DEPRECATION")
             databaseEnabled = false
             allowFileAccess = false
@@ -530,6 +536,7 @@ internal class RaftAndroidSandboxWebView(
         // starts fitted, and reload here (not from shared) so setting + document are one step.
         webView.settings.useWideViewPort = next
         webView.settings.loadWithOverviewMode = next
+        webView.settings.builtInZoomControls = next
         applyDesktopModeScale(webView)
         if (webView.url != null) webView.reload()
     }
@@ -1040,3 +1047,5 @@ private fun String.raftSanitizedLogValue(limit: Int = 160): String =
     replace('\n', ' ').replace('\r', ' ').take(limit)
 
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = true
+
+internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = true

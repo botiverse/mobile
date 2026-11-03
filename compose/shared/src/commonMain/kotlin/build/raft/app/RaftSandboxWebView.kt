@@ -113,3 +113,11 @@ internal expect fun RaftSandboxWebViewHost(
  * the page no bottom safe-area inset. iOS: WKWebView handles both. Desktop: neither exists.
  */
 internal expect val raftWebViewNeedsHostBottomInsets: Boolean
+
+/**
+ * How a host lays a page out at a desktop width (`useWideViewPort`, task #188, the Artifact
+ * viewer's Desktop Mode). Android: the page's viewport meta says `width=1280` (injected) and
+ * `useWideViewPort` + `setInitialScale` fit it. iOS: `WKWebView.pageZoom` alone (task #514), which
+ * widens any page, its own `width=device-width` included, without a reload. Desktop: no such mode.
+ */
+internal expect val raftWebViewDesktopModeViaViewportMeta: Boolean
