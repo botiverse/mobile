@@ -42,6 +42,10 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftFormSection
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftSideDrawerDefaults
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
 import build.raft.app.components.RaftSlotIcon
@@ -6145,6 +6149,11 @@ private fun ThreadReactionAtlasImagePreview() {
     }
 }
 
+/**
+ * `components.channel.settings.panel` (and `.pinned-panel`): the #design settings drawer as the web
+ * capture shows it (EditChannelDialog sheet, 390x844): name and description unchanged, Make
+ * Private / Archive / Delete offered, the Pin switch off (on for [pinned]), no Mute row.
+ */
 @Composable
 internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
@@ -37011,6 +37020,17 @@ private fun ThreadDirectMessagePreferenceRow(
     }
 }
 
+/**
+ * The channel settings: the web's channel Settings sheet (EditChannelDialog in a
+ * ChannelSettingsSheet, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer]. Head:
+ * "Settings" over "Channel #name" with × at the end. Body: Name and Description, a rule, the
+ * Preferences section (Pin, and Mute where the caller offers it, as switches), then Channel
+ * actions (Make Private, Archive, Delete). Footer: ghost Cancel and pink Save.
+ *
+ * Save is on whenever the name is valid and nothing is saving (web: off only while saving);
+ * with nothing changed it just closes, as the web's submit does. A danger action asks first in
+ * a centred confirm over the drawer (web ConfirmDialog `layer={1}`).
+ */
 @Composable
 internal fun ThreadSettingsModal(
     channelName: String,
@@ -37064,18 +37084,52 @@ internal fun ThreadSettingsModal(
     val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
     val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
-    RaftUnifiedDialog(
-        title = activeDanger?.localizedTitle() ?: stringResource(Res.string.thread_settings_edit_channel),
-        keyboardAvoidanceEnabled = true,
-        dismissOnOutsideTap = false,
-        onDismiss = onDismiss
+    val showPin = conversationPinState != null && onTogglePin != null
+    val showMute = activityMuteState != null && onToggleActivityMute != null
+    val showPreferences = showPin || showMute
+    RaftUnifiedSideDrawer(
+        title = stringResource(Res.string.thread_settings_panel_title),
+        subtitle = { ThreadSettingsPanelSubtitle(channelName) },
+        closeLabel = stringResource(Res.string.thread_settings_panel_close),
+        // web ChannelSettingsSheet: a tap beside the drawer keeps unsaved edits.
+        dismissOnOutsideTap = !profileChanged,
+        onDismiss = onDismiss,
+        footer = {
+            // The web sheet's footer: a ghost Cancel and the one pink Save, text only.
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+                enabled = !profileSaving
+            )
+            RaftButton(
+                text =
+                    if (profileSaving) {
+                        stringResource(Res.string.thread_settings_saving)
+                    } else {
+                        stringResource(Res.string.thread_action_save_changes)
+                    },
+                onClick = {
+                    if (profileChanged) {
+                        onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
+                    } else {
+                        onDismiss()
+                    }
+                },
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
+                enabled = profileValid,
+                loading = profileSaving
+            )
+        }
     ) {
-        if (activeDanger == null) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = RaftSideDrawerDefaults.BodyPadding
+        ) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     RaftField(
                         label = stringResource(Res.string.thread_settings_name),
                         modifier = Modifier.fillMaxWidth(),
@@ -37099,36 +37153,28 @@ internal fun ThreadSettingsModal(
                             keyboardOptions = editor.keyboardOptions
                         )
                     }
-                }
-                item {
                     RaftField(
                         label = stringResource(Res.string.thread_settings_description),
                         modifier = Modifier.fillMaxWidth(),
                         optional = true
                     ) {
-                        // Two 24dp field lines inside the 10dp padding, then it scrolls.
+                        // raft-ui Textarea: three field lines tall, then it grows.
                         RaftTextarea(
                             value = description,
                             onValueChange = { description = it },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = stringResource(Res.string.thread_settings_description_placeholder),
-                            minHeight = 66.dp,
-                            maxHeight = 68.dp,
                             inputModifier = rememberRaftTextareaEditorModifier()
                         )
                     }
-                }
-                if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
-                    item {
+                    if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
                         Text(
                             text = stringResource(Res.string.channel_create_error_name_format),
                             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                             color = RaftColor.AccentRed
                         )
                     }
-                }
-                if (updateStatus == ChannelProfileUpdateStatus.Failed) {
-                    item {
+                    if (updateStatus == ChannelProfileUpdateStatus.Failed) {
                         Text(
                             text =
                                 if (updateErrorCode == "channel_name_invalid") {
@@ -37141,123 +37187,183 @@ internal fun ThreadSettingsModal(
                         )
                     }
                 }
+            }
+            if (showPreferences || dangerActions.isNotEmpty()) {
+                // The form's own rule (web `Separator mt-5`) before the sections.
                 item {
-                    RaftDialogFooter {
-                        // React's Edit Channel form buttons carry no leading icons
-                        // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                        RaftModalActionButton(label = stringResource(Res.string.common_cancel), onClick = onDismiss)
-                        RaftModalActionButton(
-                            label =
-                                if (profileSaving) {
-                                    stringResource(Res.string.thread_settings_saving)
-                                } else {
-                                    stringResource(Res.string.thread_action_save_changes)
+                    RaftSeparator(Modifier.padding(top = 20.dp))
+                }
+            }
+            if (showPreferences) {
+                item {
+                    RaftFormSection(title = stringResource(Res.string.thread_settings_preferences)) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
+                                ThreadSettingsPreferenceRow(
+                                    title = stringResource(Res.string.thread_settings_pin_title),
+                                    detail = stringResource(Res.string.thread_settings_pin_detail),
+                                    checked = pinState.pinned,
+                                    onToggle = { onTogglePin?.invoke() }
+                                )
+                            }
+                            activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
+                                if (showPin) RaftSeparator()
+                                ThreadSettingsPreferenceRow(
+                                    title = stringResource(Res.string.channel_settings_mute),
+                                    detail = stringResource(Res.string.channel_settings_mute_detail),
+                                    checked = muteState.muted,
+                                    onToggle = { onToggleActivityMute?.invoke() }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (dangerActions.isNotEmpty()) {
+                item {
+                    RaftFormSection(
+                        title = stringResource(Res.string.thread_settings_actions_title),
+                        description = stringResource(Res.string.thread_settings_actions_detail),
+                        separator = showPreferences
+                    ) {
+                        ThreadSettingsChannelActionButtons(
+                            actions =
+                                dangerActions.map { (_, action) ->
+                                    RaftThreadSettingsAction(id = action.id)
                                 },
-                            color = RaftColor.AccentPink,
-                            enabled = profileValid && profileChanged,
-                            loading = profileSaving,
-                            onClick = {
-                                onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
+                            onOpenAction = { actionId ->
+                                dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
                             }
                         )
                     }
                 }
-                if (
-                    (activityMuteState != null && onToggleActivityMute != null) ||
-                        (conversationPinState != null && onTogglePin != null) ||
-                        dangerActions.isNotEmpty()
-                ) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-                    }
-                    item {
-                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
-                                RaftModalFullWidthActionButton(
-                                    label =
-                                        stringResource(
-                                            if (muteState.muted) Res.string.home_action_unmute else Res.string.home_action_mute
-                                        ),
-                                    icon = if (muteState.muted) RaftLucideIconName.Bell else RaftLucideIconName.BellOff,
-                                    color = if (muteState.muted) RaftColor.AccentOrange else RaftColor.SurfaceWhite,
-                                    onClick = { onToggleActivityMute?.invoke() }
-                                )
-                            }
-                            conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
-                                RaftModalFullWidthActionButton(
-                                    label =
-                                        stringResource(
-                                            if (pinState.pinned) Res.string.home_action_unpin else Res.string.home_action_pin
-                                        ),
-                                    icon = if (pinState.pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
-                                    color = if (pinState.pinned) RaftColor.AccentPink else RaftColor.SurfaceWhite,
-                                    onClick = { onTogglePin?.invoke() }
-                                )
-                            }
-                            ThreadSettingsChannelActionButtons(
-                                actions =
-                                    dangerActions.map { (_, action) ->
-                                        RaftThreadSettingsAction(id = action.id)
-                                    },
-                                onOpenAction = { actionId ->
-                                    dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item {
-                    when (activeDanger) {
-                        ThreadSettingsDangerAction.Visibility -> {
-                            // A lazy item stacks its children; the Column keeps the two lines apart.
-                            Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-                                Text(
-                                    text = stringResource(Res.string.thread_settings_visibility_question, channelName),
-                                    style = RaftType.Body,
-                                    color = RaftColor.TextBlack
-                                )
-                                Text(
-                                    text = stringResource(Res.string.thread_settings_visibility_detail),
-                                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                                    color = RaftColor.TextMutedGray
-                                )
-                            }
-                        }
-                        ThreadSettingsDangerAction.Archive,
-                        ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(activeDanger, channelName)
-                    }
-                }
-            }
-            RaftDialogFooter {
-                    val isSingleConfirm =
-                        threadSettingsDangerConfirmationMode(activeDanger.id) ==
-                            ThreadSettingsDangerConfirmationMode.SingleConfirm
-                    RaftModalActionButton(
-                        label =
-                            if (isSingleConfirm) {
-                                stringResource(Res.string.common_cancel)
-                            } else {
-                                stringResource(Res.string.common_back)
-                            },
-                        icon = if (isSingleConfirm) RaftLucideIconName.X else RaftLucideIconName.ArrowLeft,
-                        onClick = { dangerAction = null }
-                    )
-                    RaftModalActionButton(
-                        label = activeDanger.localizedButtonLabel(),
-                        icon = activeDanger.icon,
-                        color = activeDanger.color,
-                        onClick = { onOpenAction(activeDanger.id) }
-                    )
-                }
             }
         }
     }
+    if (activeDanger != null) {
+        ThreadSettingsDangerConfirm(
+            action = activeDanger,
+            channelName = channelName,
+            onBack = { dangerAction = null },
+            onConfirm = { onOpenAction(activeDanger.id) }
+        )
+    }
+}
+
+/** The drawer head's second line: "Channel" in caption, then the `#name` in mono (web DrawerDescription). */
+@Composable
+private fun ThreadSettingsPanelSubtitle(channelName: String) {
+    val colors = RaftTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RaftText(
+            stringResource(Res.string.thread_settings_panel_eyebrow),
+            style = RaftTheme.typography.caption,
+            color = colors.foregroundHint,
+            maxLines = 1
+        )
+        RaftText(
+            "#$channelName",
+            Modifier.weight(1f, fill = false),
+            style = RaftTheme.typography.monoMeta,
+            color = colors.foregroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/**
+ * A preference row of the settings drawer (web ChannelPreferencesSection): the label in
+ * `text-subhead` medium, its consequence in `text-footnote` hint 2dp under it, and the switch at
+ * the end, which is the row's one control. `py-3`.
+ */
+@Composable
+private fun ThreadSettingsPreferenceRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    onToggle: () -> Unit
+) {
+    val colors = RaftTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            RaftText(
+                title,
+                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Medium),
+                color = colors.foreground
+            )
+            RaftText(detail, style = RaftTheme.typography.footnote, color = colors.foregroundHint)
+        }
+        RaftSwitch(checked = checked, onCheckedChange = { onToggle() }, label = title)
+    }
+}
+
+/**
+ * The confirm a channel action asks before it runs, centred over the settings drawer (web
+ * ConfirmDialog `layer={1}`): Make Private explains what changes, Archive and Delete warn. Back
+ * (or Cancel) returns to the drawer; the confirm runs the action.
+ */
+@Composable
+private fun ThreadSettingsDangerConfirm(
+    action: ThreadSettingsDangerAction,
+    channelName: String,
+    onBack: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    RaftUnifiedDialog(
+        title = action.localizedTitle(),
+        dismissOnOutsideTap = false,
+        onDismiss = onBack
+    ) {
+        when (action) {
+            ThreadSettingsDangerAction.Visibility -> {
+                Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+                    Text(
+                        text = stringResource(Res.string.thread_settings_visibility_question, channelName),
+                        style = RaftType.Body,
+                        color = RaftColor.TextBlack
+                    )
+                    Text(
+                        text = stringResource(Res.string.thread_settings_visibility_detail),
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.TextMutedGray
+                    )
+                }
+            }
+            ThreadSettingsDangerAction.Archive,
+            ThreadSettingsDangerAction.Delete -> ThreadChannelActionWarning(action, channelName)
+        }
+        RaftDialogFooter {
+            val isSingleConfirm =
+                threadSettingsDangerConfirmationMode(action.id) ==
+                    ThreadSettingsDangerConfirmationMode.SingleConfirm
+            RaftModalActionButton(
+                label =
+                    if (isSingleConfirm) {
+                        stringResource(Res.string.common_cancel)
+                    } else {
+                        stringResource(Res.string.common_back)
+                    },
+                icon = if (isSingleConfirm) RaftLucideIconName.X else RaftLucideIconName.ArrowLeft,
+                onClick = onBack
+            )
+            RaftModalActionButton(
+                label = action.localizedButtonLabel(),
+                icon = action.icon,
+                color = action.color,
+                onClick = onConfirm
+            )
+        }
+    }
+}
 
 @Composable
 private fun ThreadChannelActionWarning(

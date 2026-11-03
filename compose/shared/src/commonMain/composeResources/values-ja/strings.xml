@@ -716,7 +716,14 @@
     <string name="thread_quoted_permalink_attachments">添付ファイル %1$d 件</string>
     <string name="thread_member_role_member">メンバー</string>
     <string name="thread_member_role_system">システム</string>
-    <string name="thread_settings_edit_channel">チャンネルを編集</string>
+    <string name="thread_settings_panel_title">設定</string>
+    <string name="thread_settings_panel_eyebrow">チャンネル</string>
+    <string name="thread_settings_panel_close">チャンネル設定を閉じる</string>
+    <string name="thread_settings_preferences">個人設定</string>
+    <string name="thread_settings_pin_title">チャンネルをピン留め</string>
+    <string name="thread_settings_pin_detail">ホームの「ピン留め」に固定します。</string>
+    <string name="thread_settings_actions_title">チャンネルの操作</string>
+    <string name="thread_settings_actions_detail">メンバーシップ、公開範囲、変換、アーカイブ、危険な操作を管理します。</string>
     <string name="thread_dm_settings_title">DM設定</string>
     <string name="thread_dm_settings_mute_person">ミュート</string>
     <string name="thread_dm_settings_mute_person_detail">@メンションも含め、この会話からは何も通知されません。あなただけに適用されます。</string>
