@@ -2736,6 +2736,7 @@ internal fun MembersPageContent(
                 if (settingsBillingOffersUpgrade()) null else ({ pager.openSettingsBillingPage(storeScope) }),
             createAgentUpgrade =
                 if (settingsBillingOffersUpgrade()) ({ pager.openSettingsBillingPage(storeScope) }) else null,
+            createAgentAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
         ),
         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
         // Task #409: persist per-machine collapse under the session user id.
@@ -5585,7 +5586,9 @@ internal class MembersCreateAgentInputs(
      */
     val createAgentViewPlan: (() -> Unit)? = null,
     /** Where Billing offers upgrades: the agent-limit banner's "Upgrade for more" link opens Billing. */
-    val createAgentUpgrade: (() -> Unit)? = null
+    val createAgentUpgrade: (() -> Unit)? = null,
+    /** The no-computer dialog's "Add Computer": Settings > Computers with its Add Computer dialog open. */
+    val createAgentAddComputer: (() -> Unit)? = null
 )
 
 /** @names (handles) of live agents and humans, so a suggested create-agent name avoids them. */
@@ -5968,6 +5971,7 @@ internal fun MembersListContent(
             onViewPlan = createAgent.createAgentViewPlan,
             errorOffersViewPlan = createAgentErrorIsLimit,
             onUpgrade = createAgent.createAgentUpgrade,
+            onAddComputer = createAgent.createAgentAddComputer,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
             machinesErrorMessage = createAgentMachinesErrorMessage,

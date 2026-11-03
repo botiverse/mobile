@@ -5473,6 +5473,7 @@ private fun ThreadMembersPageScreen() {
                         openMemberProfile(memberId, MemberKind.Agent)
                     }
                 },
+                onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
             )
         }
         removalGate.pending?.let { confirmation ->
@@ -14561,6 +14562,7 @@ private fun SharedThreadRouteContentContent(
                 computerServerId = createAgentComputerServerId,
                 computerServerResolved = createAgentComputerServerResolved,
                 onAuthRequired = ::routeAuthRequired,
+                onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
                 onDismiss = {
                     if (!dialogState.submitting) {
                         createAgentDialogState = null
@@ -14833,6 +14835,7 @@ private fun ThreadCreateAgentActionDialogHost(
     computerServerId: String?,
     computerServerResolved: Boolean,
     onAuthRequired: (String?) -> Boolean,
+    onAddComputer: (() -> Unit)?,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
@@ -14901,6 +14904,7 @@ private fun ThreadCreateAgentActionDialogHost(
         },
         createAgentFormStore = createAgentFormStore,
         createAgentServerId = computerServerId,
+        onAddComputer = onAddComputer,
         onDismiss = onDismiss,
         onSubmit = onSubmit
     )

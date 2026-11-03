@@ -389,9 +389,20 @@ internal fun SharedCreateAgentDialog(
     errorOffersViewPlan: Boolean = false,
     /** Where Billing offers upgrades: "Upgrade for more" in the agent-limit banner opens Billing. */
     onUpgrade: (() -> Unit)? = null,
+    /**
+     * Opens the Add Computer flow from the no-computer dialog (web `setShowAddMachine(true)`);
+     * null where that flow is not reachable, which hides the button.
+     */
+    onAddComputer: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
+    // Web CreateAgentDialog: with no computer there is nothing to configure, so it asks for one
+    // in a short centred dialog instead of the form (no limit banner, no fields).
+    if (createAgentNeedsComputer(external, machines, machinesLoading, machinesErrorMessage)) {
+        CreateAgentNeedsComputerDialog(onAddComputer = onAddComputer, onDismiss = onDismiss)
+        return
+    }
     val focusManager = LocalFocusManager.current
     // A fresh create starts with a suggested `adjective-noun` name instead of an empty
     // field (react CreateAgentDialog parity); the dice button beside the label rolls
@@ -825,6 +836,64 @@ internal fun SharedCreateAgentDialog(
             }
         }
     }
+
+/**
+ * Web CreateAgentDialog's needs-computer gate (`!isExternalMode && machines.length === 0`; the
+ * app has no hosted runtime): a managed agent with the computer list loaded, without error, and
+ * empty. While loading or after a failed load the form keeps its own picker states.
+ */
+internal fun createAgentNeedsComputer(
+    external: Boolean,
+    machines: List<SharedCreateAgentMachineOption>,
+    machinesLoading: Boolean,
+    machinesErrorMessage: String?,
+): Boolean = !external && !machinesLoading && machinesErrorMessage.isNullOrBlank() && machines.isEmpty()
+
+/**
+ * Web `create-agent-needs-computer`: a plain centred DialogCard (not the phone sheet) with an
+ * info banner and Cancel + Add Computer. Add Computer closes this dialog, then opens the flow.
+ */
+@Composable
+private fun CreateAgentNeedsComputerDialog(
+    onAddComputer: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    RaftUnifiedDialog(
+        title = stringResource(Res.string.agent_create_title),
+        onDismiss = onDismiss,
+        hostRoute = SharedCreateAgentDialogHostRoute,
+        presentation = RaftDialogPresentation.Centered,
+        // DialogCard's banner then `mt-5` footer.
+        contentSpacing = 20.dp,
+    ) {
+        RaftBanner(
+            title = stringResource(Res.string.agent_create_needs_computer_title),
+            description = stringResource(Res.string.agent_create_needs_computer_description),
+            status = RaftBannerStatus.Info,
+            // raft-ui Banner draws no icon unless asked; the web dialog does not ask.
+            showIcon = false,
+        )
+        RaftDialogFooter {
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
+            )
+            onAddComputer?.let { addComputer ->
+                RaftButton(
+                    text = stringResource(Res.string.agent_create_action_add_computer),
+                    onClick = {
+                        onDismiss()
+                        addComputer()
+                    },
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun localizedCreateAgentNameError(name: String, fallback: String): String =

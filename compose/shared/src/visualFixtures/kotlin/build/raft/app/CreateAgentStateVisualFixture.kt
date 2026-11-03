@@ -21,7 +21,8 @@ import build.raft.app.compat.pager.Page
  *  - `empty`            dialog-empty: empty description; the harness clears the
  *                       name field because a blank initial name is replaced by a
  *                       random suggestion
- *  - `no-computer`      dialog-no-computer: zero machines
+ *  - `no-computer`      dialog-no-computer: zero machines (loaded, no error) -> the short
+ *                       centred "Connect a computer first" dialog with Cancel + Add Computer
  *  - `builtin-provider` builtin-provider-dialog: runtime builtin
  *  - `pi-provider`      pi-provider-dialog: runtime pi
  */
@@ -90,6 +91,8 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
             currentAgentCount = 2,
             maxAgents = 2,
             limitPlanLabel = "Free",
+            // React's fixture offers Add Computer; a non-null callback shows the button.
+            onAddComputer = {},
             onDismiss = {},
             onSubmit = {}
         )

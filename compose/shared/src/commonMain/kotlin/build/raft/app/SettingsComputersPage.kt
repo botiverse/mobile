@@ -14,6 +14,12 @@ import build.raft.app.data.RaftShellStoreScope
 internal const val SETTINGS_COMPUTER_ID = "settingsComputerId"
 
 /**
+ * Page flag: the Computers list opens its Add Computer dialog once its snapshot has loaded (web
+ * Create Agent's "Add Computer" -> `setShowAddMachine(true)`).
+ */
+internal const val SETTINGS_COMPUTERS_OPEN_ADD = "settingsComputersOpenAdd"
+
+/**
  * Identity-only target for the native Computers page. The page loads the
  * canonical machine snapshot itself; this is never a route payload carrying a
  * computer name, status, or any other content.
@@ -57,10 +63,12 @@ internal fun settingsComputerPageData(
         put(SETTINGS_COMPUTER_ID, target.machineId)
     }
 
-internal fun Pager.openSettingsComputersPage(storeScope: RaftShellStoreScope) {
+internal fun Pager.openSettingsComputersPage(storeScope: RaftShellStoreScope, openAddComputer: Boolean = false) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_COMPUTERS_PAGE,
-        settingsComputersPageData(storeScope),
+        settingsComputersPageData(storeScope).apply {
+            if (openAddComputer) put(SETTINGS_COMPUTERS_OPEN_ADD, true)
+        },
     )
 }
 

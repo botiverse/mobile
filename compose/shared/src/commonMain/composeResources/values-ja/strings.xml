@@ -1917,6 +1917,9 @@
     <string name="agent_create_action_upgrade_for_more">アップグレードして追加</string>
     <string name="agent_create_state_computers_loading">コンピューターを読み込み中...</string>
     <string name="agent_create_state_computers_empty">コンピューターがありません。まずコンピューターを接続してください。</string>
+    <string name="agent_create_needs_computer_title">まずコンピューターを接続してください</string>
+    <string name="agent_create_needs_computer_description">エージェントはお使いのコンピューターで動作します。コンピューターを接続すると Raft がそのランタイムを検出し、ここでエージェントを作成できるようになります。</string>
+    <string name="agent_create_action_add_computer">コンピューターを追加</string>
     <string name="agent_create_hint_required_computer">必須のコンピューター: %1$s</string>
     <string name="agent_create_hint_suggested_computer">推奨のコンピューター: %1$s</string>
     <string name="agent_create_state_no_runtimes">利用できるランタイムがありません</string>

@@ -1915,6 +1915,9 @@
     <string name="agent_create_action_upgrade_for_more">Upgrade for more</string>
     <string name="agent_create_state_computers_loading">Loading computers...</string>
     <string name="agent_create_state_computers_empty">No computers. Connect a computer first.</string>
+    <string name="agent_create_needs_computer_title">Connect a computer first</string>
+    <string name="agent_create_needs_computer_description">Agents run on your computer. Connect one and Raft will detect the runtimes on it, then you can create agents here.</string>
+    <string name="agent_create_action_add_computer">Add Computer</string>
     <string name="agent_create_hint_required_computer">Required computer: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Suggested computer: %1$s</string>
     <string name="agent_create_state_no_runtimes">No runtimes available</string>
