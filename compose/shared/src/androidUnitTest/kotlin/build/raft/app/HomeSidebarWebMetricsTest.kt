@@ -33,8 +33,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The phone Home list's page assembly against web mobile (botiverse/slock `Sidebar.tsx`,
- * iPhone 393pt): the list is `px-2 pt-1`, rows carry their own `my-px`, and a section header's
- * own `pt-4` is the only space above it. Reads real bounds from the semantics tree at a
+ * iPhone 393pt): the list is `px-2 pt-1`, rows carry their own `my-px`, a section header has its
+ * own `pt-4`, and on a touch screen each run of rows sits in a SidebarList's `py-2`. Reads real bounds from the semantics tree at a
  * 393dp-wide xhdpi window and writes the measured table plus a PNG to
  * `build/reports/home-web-metrics/` for review.
  */
@@ -113,8 +113,9 @@ class HomeSidebarWebMetricsTest {
         assertEquals(393 - 8, saved.right.toDp(), "entry row end inset")
         // Web phone `pt-1` + the row's `my-px`: the first row's box starts 5dp under the list top.
         assertEquals(5, (saved.top - list.top).toDp(), "first row offset")
-        // Web: a row's `my-px` is the only gap above a section header (its own pt-4 sits inside).
-        assertEquals(1, (pinnedHeader.top - saved.bottom).toDp(), "entry row -> section header gap")
+        // Web on a touch screen: the entries' SidebarCellList `py-2` under the last row (the row's
+        // `my-px` plus 7dp, HomeSidebarListEdge) above a section header (its own pt-4 sits inside).
+        assertEquals(8, (pinnedHeader.top - saved.bottom).toDp(), "entry row -> section header gap")
         assertEquals(44, saved.height.toDp(), "entry row height")
         assertEquals(44, firstChannel.height.toDp(), "channel row height")
         // Web: the rows' `my-px` margins collapse, so rows stand 1px apart (RaftSidebarItem).
