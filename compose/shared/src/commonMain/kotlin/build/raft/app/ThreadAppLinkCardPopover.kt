@@ -155,7 +155,7 @@ internal fun ThreadAppLinkCardPopoverHost(
         return
     }
     if (fixture != null) {
-        val card = (results[fixture.openUrl] as? AppLinkResult.Card)?.takeIf { it.card != null }
+        val card = (results[fixture.openUrl] as? AppLinkResult.Card)?.takeIf { it.hasCardBody }
         LaunchedEffect(card) {
             if (card == null) return@LaunchedEffect
             // Two frames: the chip's inline content is placed after the text is laid out.
@@ -166,7 +166,7 @@ internal fun ThreadAppLinkCardPopoverHost(
         return
     }
     val opened = cards.opened ?: return
-    val card = (results[opened.url] as? AppLinkResult.Card)?.takeIf { it.card != null }
+    val card = (results[opened.url] as? AppLinkResult.Card)?.takeIf { it.hasCardBody }
     LaunchedEffect(opened, card == null) {
         if (card == null) cards.close()
     }

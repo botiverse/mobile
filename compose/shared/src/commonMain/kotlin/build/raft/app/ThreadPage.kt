@@ -12110,6 +12110,8 @@ private fun SharedThreadRouteContentContent(
                                 featureFlags = sharedStores.serverFeatureFlags,
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
                             ),
+                        // interactive_link_cards: the batched link-card read (App link cards v2).
+                        featureFlags = sharedStores.serverFeatureFlags,
                     )
                 }
             }

@@ -172,6 +172,14 @@ const val DRAFTS_SECTION_FEATURE_FLAG_KEY: String = "drafts_section_v0"
  */
 const val MOBILE_NAV3_STACK_FEATURE_FLAG_KEY: String = "mobile_nav3_stack_v1"
 
+/**
+ * Interactive link cards (slock `packages/shared/src/featureFlags.ts` `INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY`,
+ * web `serverFeatureFlags.ts` `interactiveLinkCards`): per server, default off. On, a message's App links
+ * are read with the batched link-card read (`POST messages/:id/link-cards/read`, App link cards v2);
+ * off (or unresolved), with the GET, as before.
+ */
+const val INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY: String = "interactive_link_cards"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -195,6 +203,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
     MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,
+    INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
 )

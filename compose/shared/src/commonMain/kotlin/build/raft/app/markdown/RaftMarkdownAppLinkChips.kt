@@ -84,7 +84,7 @@ internal data class RaftAppLinkChipHost(
  * card body ([AppLinkResult.Card.card]) and the message can show it. A preview with only its
  * title keeps the plain chip, a tap opening the link.
  */
-internal fun RaftAppLinkChipHost.opensCard(result: AppLinkResult.Card): Boolean = onOpenCard != null && result.card != null
+internal fun RaftAppLinkChipHost.opensCard(result: AppLinkResult.Card): Boolean = onOpenCard != null && result.hasCardBody
 
 internal val LocalRaftAppLinkChips = staticCompositionLocalOf<RaftAppLinkChipHost?> { null }
 
@@ -173,7 +173,7 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
         when (result) {
             is AppLinkResult.Card -> {
                 suffix = raftAppLinkKeepEnd(domain, RaftAppLinkDomainMaxChars)
-                label = raftAppLinkCap(result.title, (RaftAppLinkChipMaxChars - suffix.length).coerceAtLeast(RaftAppLinkTitleMinChars))
+                label = raftAppLinkCap(result.chipTitle, (RaftAppLinkChipMaxChars - suffix.length).coerceAtLeast(RaftAppLinkTitleMinChars))
             }
             else -> label = raftAppLinkCap(appLinkShortAddress(result.url)?.let(::raftAppLinkAsciiHost) ?: domain, RaftAppLinkChipMaxChars)
         }

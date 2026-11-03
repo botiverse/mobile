@@ -84,7 +84,7 @@ internal class RaftMarkdownAppLinkHoverCards(
         spans.forEachIndexed { index, span ->
             val state = states[index]
             if (!state.isTriggerHovered && !state.isOpen) return@forEachIndexed
-            val card = (host.results[span.url] as? AppLinkResult.Card)?.takeIf { it.card != null } ?: return@forEachIndexed
+            val card = (host.results[span.url] as? AppLinkResult.Card)?.takeIf { it.hasCardBody } ?: return@forEachIndexed
             key(span) {
                 // The item card is a popover card of its own (RaftAppLinkCardView draws its surface).
                 // An item card: 400 wide (raft-ui `PreviewCardContent size="item"`, raft-design #939).

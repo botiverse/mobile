@@ -145,6 +145,8 @@ private object HangingArtifactSummariesApi : RaftArtifactSummariesApi {
 private object HangingPreviewApi : RaftAppLinkPreviewApi {
     override suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse = awaitCancellation()
 
+    override suspend fun readLinkCards(messageId: String, serverId: String, body: build.raft.app.data.AppLinkCardReadRequestBody): HomeNetworkResponse = awaitCancellation()
+
     override suspend fun allow(appId: String, serverId: String): HomeNetworkResponse = awaitCancellation()
 
     override suspend fun decline(appId: String, serverId: String): HomeNetworkResponse = awaitCancellation()
