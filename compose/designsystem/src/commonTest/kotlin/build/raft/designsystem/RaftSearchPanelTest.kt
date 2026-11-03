@@ -11,7 +11,7 @@ class RaftSearchPanelTest {
     @Test
     fun widthIsTheAnchorOrTheReadablePanelWhicheverIsWider() {
         assertEquals(720.dp, RaftSearchPanelDefaults.width(1440.dp))
-        assertEquals(800.dp * 0.92f, RaftSearchPanelDefaults.width(800.dp), "92% of a window under 783dp")
+        assertEquals(700.dp * 0.92f, RaftSearchPanelDefaults.width(700.dp), "92% of a window under 783dp")
         assertEquals(760.dp, RaftSearchPanelDefaults.width(1440.dp, anchorWidth = 760.dp), "never narrower than the field")
         assertEquals(600.dp, RaftSearchPanelDefaults.width(600.dp, anchorWidth = 700.dp), "never wider than the window")
     }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -160,7 +161,8 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  * - Inside a [RaftField], screen readers read it by the field's label, and its error.
  *
  * InputGroup: the addons sit inside the border and the focus ring goes round the whole
- * group. [leading] / [trailing] take an 18dp icon in `foreground-hint`
+ * group. [leading] / [trailing] take an 18dp icon in `foreground-hint` ([trailing] may be a
+ * wider [RaftKbd] key hint, kept 18dp tall)
  * ([LocalRaftContentColor]), 12dp from the edge and 8dp from the text. [prefix] /
  * [suffix] take fixed text (a `/`, a domain, a unit) in Space Mono `text-mono-code`,
  * `foreground-hint`, 2dp from the text.
@@ -608,7 +610,10 @@ private fun RaftInputBox(
             }
             if (trailing != null) {
                 Box(
-                    Modifier.padding(start = if (suffix != null) 0.dp else 8.dp, end = endEdge).size(RaftTextFieldDefaults.AddonIconSize),
+                    // An 18dp icon, or a wider key hint ([RaftKbd] "Esc", the search panel's field).
+                    Modifier.padding(start = if (suffix != null) 0.dp else 8.dp, end = endEdge)
+                        .widthIn(min = RaftTextFieldDefaults.AddonIconSize)
+                        .height(RaftTextFieldDefaults.AddonIconSize),
                     contentAlignment = Alignment.Center,
                 ) { trailing() }
             }

@@ -137,7 +137,7 @@ class SearchPanelScreenshotTest {
         query: String,
         filters: Boolean = false,
         width: Dp = 960.dp,
-        height: Dp = 640.dp,
+        height: Dp = 820.dp,
         body: @Composable () -> Unit,
     ) {
         Box(Modifier.size(width, height)) {
