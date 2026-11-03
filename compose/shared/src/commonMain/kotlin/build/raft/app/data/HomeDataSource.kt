@@ -267,6 +267,8 @@ class SharedHomeDataSource(
                 ?.permissions
                 ?.canManageMachines == true
         if (!canManageMachines) return DataResult.Content(emptyList())
+        val serverRole = session.servers.firstOrNull { it.id == serverId.value }?.role
+        val currentUserId = session.user.id
         val offlineComputerAlertsEnabled =
             notificationPreferenceRepository
                 ?.getNotificationPreference()
@@ -280,7 +282,11 @@ class SharedHomeDataSource(
         if (reusable != null) {
             diagnosticsLogger("home_machine_notifications serverId=${serverId.value} source=held network=false reason=incremental_sync")
             return DataResult.Content(
-                reusable.toSharedHomeMachineNotifications(offlineComputerAlertsEnabled = offlineComputerAlertsEnabled)
+                reusable.toSharedHomeMachineNotifications(
+                    offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
+                    serverRole = serverRole,
+                    currentUserId = currentUserId
+                )
             )
         }
         return when (val result = client.machines(serverId)) {
@@ -290,7 +296,9 @@ class SharedHomeDataSource(
                 }
                 DataResult.Content(
                     result.data.toSharedHomeMachineNotifications(
-                        offlineComputerAlertsEnabled = offlineComputerAlertsEnabled
+                        offlineComputerAlertsEnabled = offlineComputerAlertsEnabled,
+                        serverRole = serverRole,
+                        currentUserId = currentUserId
                     )
                 )
             }
@@ -385,7 +393,8 @@ internal fun String.isLocalHomeNotificationId(): Boolean =
 
 internal fun String.isMachineHomeNotificationId(): Boolean =
     startsWith("machine-offline:") ||
-        startsWith("machine-outdated:")
+        startsWith("machine-outdated:") ||
+        isComputerVersionGateHomeNotificationId()
 
 internal fun String.isAppUpdateHomeNotificationId(): Boolean =
     startsWith(APP_UPDATE_HOME_NOTIFICATION_ID)
@@ -463,9 +472,12 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc():
     }
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(
-    offlineComputerAlertsEnabled: Boolean
+    offlineComputerAlertsEnabled: Boolean,
+    serverRole: String?,
+    currentUserId: String?
 ): List<SharedHomeNotification> {
     val notifications = mutableListOf<SharedHomeNotification>()
+    notifications += homeComputerVersionGateNotifications(machines, serverRole, currentUserId)
     val offlineMachines = machines.filter { it.status == ComputerStatus.Offline }
     if (offlineComputerAlertsEnabled && offlineMachines.isNotEmpty()) {
         val sortedIds = offlineMachines.map { it.id }.sorted()

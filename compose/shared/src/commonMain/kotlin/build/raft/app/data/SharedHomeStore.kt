@@ -2986,7 +2986,7 @@ internal class SharedHomeStore(
                         is DataResult.Content ->
                             reduceState(
                                 _state.value.copy(
-                                    notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
+                                    notifications = result.data.filterNot { homeLocalNotificationDismissed(it.id, dismissedLocalNotificationIds) }
                                 )
                             )
                         is DataResult.Empty ->

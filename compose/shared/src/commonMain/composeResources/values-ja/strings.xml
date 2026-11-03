@@ -2046,6 +2046,15 @@
     <string name="home_notification_machine_outdated_title_one">%1$s は古いデーモンを実行しています</string>
     <string name="home_notification_machine_outdated_title_many">%1$s は古いデーモンを実行しています</string>
     <string name="home_notification_machine_outdated_body">デーモンを停止し、再接続して更新してください。</string>
+    <string name="home_notification_computer_upgrade_deadline_title_one">%1$s は %2$s までにアップグレードが必要です</string>
+    <string name="home_notification_computer_upgrade_deadline_title_many">%1$d 台のコンピューターで %2$s までにアップグレードが必要です</string>
+    <string name="home_notification_computer_reinstall_deadline_title_one">%1$s は再インストールが必要です：%2$s までに完了してください</string>
+    <string name="home_notification_computer_reinstall_deadline_title_many">%1$d 台のコンピューターで再インストールが必要です：%2$s までに完了してください</string>
+    <string name="home_notification_computer_version_deadline_body_one">それ以降、このコンピューター上のエージェントは停止します。</string>
+    <string name="home_notification_computer_version_deadline_body_many">それ以降、これらのコンピューター上のエージェントは停止します。</string>
+    <string name="home_notification_computer_reinstall_deadline_body_one">それ以降、このコンピューター上のエージェントは停止します。エージェントとファイルはそのまま残ります。</string>
+    <string name="home_notification_computer_reinstall_deadline_body_many">それ以降、これらのコンピューター上のエージェントは停止します。エージェントとファイルはそのまま残ります。</string>
+    <string name="home_notification_computer_version_deadline_date">%3$d年%1$s月%2$d日</string>
     <string name="home_nav_search">検索</string>
     <string name="home_nav_activity">アクティビティ</string>
     <string name="home_nav_followed_threads">フォロー中のスレッド</string>

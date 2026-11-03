@@ -2044,6 +2044,15 @@
     <string name="home_notification_machine_outdated_title_one">%1$s is running an outdated daemon</string>
     <string name="home_notification_machine_outdated_title_many">%1$s are running outdated daemons</string>
     <string name="home_notification_machine_outdated_body">Stop the daemon and reconnect to update.</string>
+    <string name="home_notification_computer_upgrade_deadline_title_one">%1$s needs to upgrade before %2$s</string>
+    <string name="home_notification_computer_upgrade_deadline_title_many">%1$d Computers need to upgrade before %2$s</string>
+    <string name="home_notification_computer_reinstall_deadline_title_one">%1$s needs a reinstall: finish before %2$s</string>
+    <string name="home_notification_computer_reinstall_deadline_title_many">%1$d Computers need a reinstall: finish before %2$s</string>
+    <string name="home_notification_computer_version_deadline_body_one">After that, agents on this computer stop running.</string>
+    <string name="home_notification_computer_version_deadline_body_many">After that, agents on these computers stop running.</string>
+    <string name="home_notification_computer_reinstall_deadline_body_one">After that, agents on this computer stop running. Your agents and files stay where they are.</string>
+    <string name="home_notification_computer_reinstall_deadline_body_many">After that, agents on these computers stop running. Your agents and files stay where they are.</string>
+    <string name="home_notification_computer_version_deadline_date">%1$s %2$d, %3$d</string>
     <string name="home_nav_search">Search</string>
     <string name="home_nav_activity">Activity</string>
     <string name="home_nav_followed_threads">Followed threads</string>

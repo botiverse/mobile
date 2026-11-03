@@ -237,6 +237,47 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun homeMachineListVersionGateBecomesAComputerDeadlineNotice() = runBlocking {
+        val computersApi =
+            ConcurrentComputersApi(
+                announcementsStarted = CompletableDeferred(Unit),
+                bodyText =
+                    """
+                    {
+                      "machines": [
+                        {
+                          "id": "old-computer",
+                          "name": "Old computer",
+                          "status": "online",
+                          "statusVersion": 1,
+                          "isComputer": true,
+                          "computerVersion": "1.0.40",
+                          "versionGate": {"reason": "computer_version_unsupported", "minVersion": "1.0.53", "enforcedAt": "2026-11-10T00:00:00.000Z", "enforced": false}
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+            )
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
+                api = FakeHomeApi(),
+                computersApi = computersApi,
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                },
+            )
+
+        val notifications = (source.loadNotifications() as DataResult.Content).data
+
+        assertEquals(
+            listOf("computer-version-gate:reinstall:2026-11-10T00:00:00.000Z:old-computer"),
+            notifications.map { it.id },
+        )
+        assertEquals("old-computer", notifications.single().targetId)
+    }
+
+    @Test
     fun machineNotificationsRequireManageMachinesPermissionWithoutHidingAppUpdates() = runBlocking {
         val computersApi = RejectingComputersApi()
         val source =
