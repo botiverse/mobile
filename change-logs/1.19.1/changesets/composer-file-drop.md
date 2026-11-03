@@ -4,7 +4,7 @@ area: thread
 platforms:
   - android
   - desktop
-pull_request: https://github.com/botiverse/mobile/pull/TBD
+pull_request: https://github.com/botiverse/mobile/pull/4196
 rollout: full
 ---
 
