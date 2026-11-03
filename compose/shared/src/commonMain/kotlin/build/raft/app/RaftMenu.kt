@@ -10,6 +10,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.semantics.Role
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.raftStateOverlay
+import build.raft.designsystem.components.rememberRaftStateOverlay
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -363,9 +371,8 @@ private fun raftBaseMenuWidth(items: List<RaftBaseMenuItem>, minWidth: Dp): Dp {
  * channel add-user interaction verbatim: the design-system search RaftTextField with the Search
  * leading icon, RaftModalListShell + RaftModalSectionHeader (AGENTS then
  * HUMANS), and the exact RaftModalCompactMemberRow visuals extracted into
- * RowScope.RaftModalCompactMemberRowContent. One adaptation: rows are wrapped
- * in a native Button shell (the design-system `info-soft` selected fill) because plain-`clickable` rows inside a dialog stacked
- * on the task detail dialog lose to the outer dismiss barrier. Single-select
+ * RowScope.RaftModalCompactMemberRowContent. Rows are single-choice radios with the
+ * design-system `info-soft` selected fill and list-cell press overlay. Single-select
  * semantics: tapping a row applies it immediately and closes (matching the
  * add-member row contract), with the unassigned sentinel kept first.
  */
@@ -539,28 +546,34 @@ private fun RaftTaskAssigneeMemberButton(
     // a RowScope extension whose children rely on Row-scope weight modifiers.
     content: @Composable RowScope.() -> Unit
 ) {
-    Button(
-        onClick = onClick,
+    // A single choice in the assignee list (the RaftMemberPicker row's contract): a radio, the
+    // design-system selected row fill (RaftListRow's `info-soft`), and the list-cell hover /
+    // press overlay, which a selected row drops.
+    val source = remember { MutableInteractionSource() }
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Cell, selected = selected)
+    // Task #258 (artin msg=be381a13): the 12dp horizontal inset of the
+    // channel member rows, so member rows indent alike.
+    // Task #269 (artin msg=d04b1d19): and the same 8dp vertical padding, so rows
+    // do not sit avatar-to-avatar.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                // The design-system selected row (RaftListRow's `info-soft`).
                 if (selected) RaftTheme.colors.infoSoft.compositeOver(RaftTheme.surfaceColor) else RaftTheme.surfaceColor
             )
+            .raftStateOverlay(overlay, RectangleShape)
+            .raftPointerHover(source)
+            .selectable(
+                selected = selected,
+                interactionSource = source,
+                indication = null,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Task #258 (artin msg=be381a13): the 12dp horizontal inset of the
-        // channel member rows, so member rows indent alike.
-        // Task #269 (artin msg=d04b1d19): and the same 8dp vertical padding -- the
-        // port kept only the horizontal value, so rows sat avatar-to-avatar with no
-        // gap. The native Button shell contributes no padding of its own here.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            content()
-        }
+        content()
     }
 }
