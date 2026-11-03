@@ -38,12 +38,32 @@ class RaftHostImeInsets {
     /** Bottom IME inset of the window in px, from the latest platform inset dispatch. */
     var imeBottomPx: Int by mutableIntStateOf(0)
 
-    /** A platform IME inset animation is running and feeding `WindowInsets.ime` frame by frame. */
+    /**
+     * `WindowInsets.ime` is the value to use, not [imeBottomPx]. Android: a platform IME inset
+     * animation is running and feeding `WindowInsets.ime` frame by frame. iOS: no keyboard
+     * animation of the host's own is running (see [ProvideRaftPlatformImeInsets]); the settled
+     * keyboard is CMP's value.
+     */
     var imeAnimationRunning: Boolean by mutableStateOf(false)
 }
 
 /** The host's IME report for this composition's window; null where the host reports none. */
 val LocalRaftHostImeInsets = staticCompositionLocalOf<RaftHostImeInsets?> { null }
+
+/**
+ * Wraps one page's content with the platform's own keyboard report, where the platform needs one.
+ *
+ * iOS: CMP 1.12 animates `WindowInsets.ime` with the wrong curve (it passes the keyboard's
+ * `UIViewAnimationCurve` raw value as `UIViewAnimationOptions` without the `<< 16` shift, so the
+ * keyboard's curve 7 becomes ease-in-out; CMP-10448, fixed upstream in 1.13). The composer then
+ * trails the keyboard by up to a third of its height at the start of the slide and catches up at
+ * the end, which reads as a low-frame-rate, unglued keyboard. The iOS actual follows the keyboard
+ * with the real curve while it animates and hands back to `WindowInsets.ime` once it settles.
+ * Android's host provides [LocalRaftHostImeInsets] round its page stack itself and the desktop has
+ * no software keyboard: both pass [content] through.
+ */
+@Composable
+internal expect fun ProvideRaftPlatformImeInsets(content: @Composable () -> Unit)
 
 /**
  * The keyboard's bottom inset to lay out against: the animated Compose value while a platform IME

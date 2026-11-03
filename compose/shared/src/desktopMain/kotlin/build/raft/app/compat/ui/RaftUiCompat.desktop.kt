@@ -1,5 +1,6 @@
 package build.raft.app.compat.ui
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.text.font.Font
@@ -33,3 +34,7 @@ private fun raftReadDesignSystemFont(resource: String): ByteArray? =
     Thread.currentThread().contextClassLoader
         ?.getResourceAsStream("composeResources/build.raft.designsystem.resources/font/$resource.ttf")
         ?.use { it.readBytes() }
+
+/** The Android host provides LocalRaftHostImeInsets round its page stack; the desktop has no soft keyboard. */
+@Composable
+internal actual fun ProvideRaftPlatformImeInsets(content: @Composable () -> Unit) = content()
