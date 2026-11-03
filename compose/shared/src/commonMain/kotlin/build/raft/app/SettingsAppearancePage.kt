@@ -380,6 +380,13 @@ private val AppearancePreviewModelLabelResolver =
         labelFlow = { flowOf("preview") }
     )
 
+/** The preview agent's pixel avatar (`pixel:random:cindy-preview`). */
+private val AppearancePreviewAvatarResolver =
+    RaftMemberAvatarResolver(
+        currentAvatar = { "pixel:random:cindy-preview" },
+        avatarFlow = { flowOf("pixel:random:cindy-preview") }
+    )
+
 /**
  * The Web's preview: a real message row (`MessageItem`) from the agent Cindy in the reader's
  * message size, with a mention, a channel and inline code. It follows "Show agent model" too.
@@ -405,7 +412,8 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
             )
         }
     val knownChannels = remember { setOf("proj-uiux") }
-    val knownMentions = remember { setOf("joy", "Joy") }
+    // The Web previews @Joy as plain text (no member of that name is loaded there).
+    val knownMentions = remember { emptySet<String>() }
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(RaftAppRadius.Control)).background(RaftColor.Canvas)) {
         ThreadMessageCard(
             message = message,
@@ -425,6 +433,7 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
             onOpenAttachment = {},
             onOpenMarkdownTag = { _, _ -> },
             onOpenMarkdownUrl = {},
+            memberAvatarResolver = AppearancePreviewAvatarResolver,
             memberModelLabelResolver = AppearancePreviewModelLabelResolver,
             outerPadding = 0.dp
         )
