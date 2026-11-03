@@ -4738,7 +4738,11 @@ internal fun RaftFilePreviewComposerImageEditor(
     var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
     var editorCanvasSize by remember(payload.imageUrl) { mutableStateOf(IntSize(0, 0)) }
     val textAnnotationSizes = remember(payload.imageUrl) { mutableStateMapOf<Int, IntSize>() }
-    var nextTextAnnotationId by remember(payload.imageUrl) { mutableStateOf(0) }
+    var nextTextAnnotationId by remember(payload.imageUrl) {
+        mutableStateOf((state.history.content.textAnnotations.maxOfOrNull { it.id } ?: -1) + 1)
+    }
+    // The text the colour row edits: the one just placed or last moved.
+    var focusedTextAnnotationId by remember(payload.imageUrl) { mutableStateOf<Int?>(null) }
     var tool by remember(payload.imageUrl, initialTool) { mutableStateOf(initialTool) }
     var pencilMode by remember(payload.imageUrl) { mutableStateOf(RaftComposerImagePencilMode.Ink) }
     var selectedPenColor by remember(payload.imageUrl) { mutableStateOf(RaftComposerImageEditorDefaultPenColor) }
@@ -4802,6 +4806,29 @@ internal fun RaftFilePreviewComposerImageEditor(
             )
         }
     }
+    // The text the colour row shows: the focused text, else the newest one.
+    fun colourTextAnnotation(): RaftComposerImageTextAnnotation? {
+        val texts = state.history.content.textAnnotations
+        return texts.firstOrNull { it.id == focusedTextAnnotationId } ?: texts.lastOrNull()
+    }
+    fun syncColourToFocusedText() {
+        colourTextAnnotation()?.let { selectedPenColor = it.color }
+    }
+    // A colour picked in the text tool: new text takes it, and so does the focused text.
+    fun selectTextColor(color: Color) {
+        selectedPenColor = color
+        val focusedId = focusedTextAnnotationId ?: return
+        val content = state.history.content
+        if (content.textAnnotations.none { it.id == focusedId && it.color != color }) return
+        state.update(
+            state.history.apply(
+                content.copy(
+                    textAnnotations =
+                        content.textAnnotations.map { if (it.id == focusedId) it.copy(color = color) else it }
+                )
+            )
+        )
+    }
         fun selectTool(nextTool: RaftComposerImageEditorTool) {
         if (tool == RaftComposerImageEditorTool.Text && nextTool != RaftComposerImageEditorTool.Text) {
             focusManager.clearFocus(force = true)
@@ -4823,6 +4850,9 @@ internal fun RaftFilePreviewComposerImageEditor(
         if (nextTool == RaftComposerImageEditorTool.Crop) {
             // The crop handles work on the whole picture.
             viewTransform = RaftComposerImageViewTransform.Identity
+        }
+        if (nextTool == RaftComposerImageEditorTool.Text && tool != RaftComposerImageEditorTool.Text) {
+            syncColourToFocusedText()
         }
         tool = nextTool
     }
@@ -4894,6 +4924,7 @@ internal fun RaftFilePreviewComposerImageEditor(
         state.update(
             state.history.apply(nextContent)
         )
+        focusedTextAnnotationId = nextTextAnnotationId
         nextTextAnnotationId += 1
         textDraft = textDraft.cleared()
         return true
@@ -4992,6 +5023,9 @@ internal fun RaftFilePreviewComposerImageEditor(
         // focuses itself instead.
         if (tool != RaftComposerImageEditorTool.Text) {
             runCatching { editorFocusRequester.requestFocus() }
+        } else {
+            // Opened on the text tool: the colour row starts at the text's colour.
+            syncColourToFocusedText()
         }
     }
     // The text tool's field and Add (the phone's bottom bar, the desktop's Text popover).
@@ -5006,7 +5040,14 @@ internal fun RaftFilePreviewComposerImageEditor(
                         onValueChange = { nextText ->
                             textDraft = textDraft.updated(payload.imageUrl, nextText)
                         },
-                        placeholder = stringResource(Res.string.file_preview_placeholder_tap_to_add_text),
+                        placeholder =
+                            stringResource(
+                                if (desktopChrome != null) {
+                                    Res.string.file_preview_placeholder_click_to_add_text
+                                } else {
+                                    Res.string.file_preview_placeholder_tap_to_add_text
+                                }
+                            ),
                         placeholderColor = RaftTheme.colors.foregroundHint,
                         autoFocus = true,
                         keyboardHeightChange = { params ->
@@ -5494,6 +5535,8 @@ internal fun RaftFilePreviewComposerImageEditor(
                                 if (tool != RaftComposerImageEditorTool.Text) return@pointerInput
                                 detectDragGestures(
                                     onDragStart = {
+                                        focusedTextAnnotationId = annotation.id
+                                        selectedPenColor = annotation.color
                                         textGestureOrigin = state.history.content
                                         activeTextAnnotationId = annotation.id
                                     },
@@ -5747,7 +5790,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         RaftComposerImageColorRow(
                             selectedColor = selectedPenColor,
                             enabled = editorActionsEnabled,
-                            onSelectColor = { color -> selectedPenColor = color },
+                            onSelectColor = ::selectTextColor,
                         )
                     }
                     RaftComposerImageEditorTool.Crop ->

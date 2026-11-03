@@ -1709,6 +1709,7 @@
     <string name="file_preview_action_saving_to_files">保存中…</string>
     <string name="file_preview_action_delete_downloaded">キャッシュコピーを削除</string>
     <string name="file_preview_placeholder_tap_to_add_text">画像をタップしてテキストを配置</string>
+    <string name="file_preview_placeholder_click_to_add_text">画像をクリックしてテキストを配置</string>
     <string name="file_preview_error_send_comment">コメントを送信できませんでした</string>
     <string name="file_preview_error_resolve_comment">コメントを解決できませんでした</string>
     <string name="file_preview_download_downloading">ダウンロード中</string>
