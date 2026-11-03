@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,6 +18,7 @@ import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -208,9 +211,19 @@ fun RaftDescriptionValue(
 internal fun raftDescriptionTermStyle(typography: RaftTypography): TextStyle = typography.footnote.copy(fontWeight = FontWeight.Medium)
 
 @Composable
-private fun DescriptionTerm(term: String, accessory: (@Composable () -> Unit)?, modifier: Modifier = Modifier) {
+private fun DescriptionTerm(
+    term: String,
+    accessory: (@Composable () -> Unit)?,
+    modifier: Modifier = Modifier,
+    lines: HorizontalFactLines? = null,
+) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        RaftText(term, style = raftDescriptionTermStyle(RaftTheme.typography), color = RaftTheme.colors.foregroundHint)
+        RaftText(
+            term,
+            modifier = if (lines != null) Modifier.textLineInto(lines.termBaseline, lines.termTextHeight) else Modifier,
+            style = raftDescriptionTermStyle(RaftTheme.typography),
+            color = RaftTheme.colors.foregroundHint,
+        )
         if (accessory != null) {
             // `*:data-[slot=button]:ml-[-5px]`: a ghost icon button pulls in towards the label.
             Row(Modifier.offset(x = (-5).dp)) { accessory() }
@@ -224,7 +237,12 @@ private fun DescriptionTerm(term: String, accessory: (@Composable () -> Unit)?, 
  * far from the last line as from a one-line value.
  */
 @Composable
-private fun DescriptionDetails(minHeight: Dp, content: @Composable RowScope.() -> Unit, modifier: Modifier = Modifier) {
+private fun DescriptionDetails(
+    minHeight: Dp,
+    content: @Composable RowScope.() -> Unit,
+    modifier: Modifier = Modifier,
+    lines: HorizontalFactLines? = null,
+) {
     val lineHeight = RaftTheme.typography.callout.lineHeight
     CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foreground) {
         Layout(
@@ -242,6 +260,13 @@ private fun DescriptionDetails(minHeight: Dp, content: @Composable RowScope.() -
             val inset = if (lineHeight.isSp) ((min - lineHeight.roundToPx()) / 2).coerceAtLeast(0) else 0
             val height = if (row.height > min) row.height + inset * 2 else min
             val top = if (row.height > min) inset else (min - row.height) / 2
+            if (lines != null) {
+                // Where the first line sits, for the label beside it: one line is the whole row;
+                // wrapped content starts a text line's height below the inset.
+                lines.valueLineTop.intValue = top
+                lines.valueLineHeight.intValue =
+                    if (row.height > min && lineHeight.isSp) lineHeight.roundToPx() else row.height
+            }
             layout(max(row.width, constraints.minWidth), height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
                 row.place(0, top)
             }
@@ -337,15 +362,41 @@ private object TermsScope : RaftDescriptionListScope {
  * One fact of a horizontal list, label and value in one node. Side by side on [column]
  * (label on the value's first baseline, `items-baseline`), or [stacked] 2dp apart with no
  * minimum value height.
+ *
+ * Side by side, the fact never reads its label's or its value's alignment lines while it is
+ * measured: in a `LazyColumn` that made Compose 1.12 place the chips of a reused value before
+ * the value itself, and RectManager threw (crash 69fdce17, fixed upstream in Compose 1.13,
+ * androidx fd550bed79). The baselines come from the text nodes themselves ([textLineInto]); a
+ * value that isn't one text centres the label's first line on its own first line.
  */
 private class HorizontalScope(private val stacked: Boolean, private val column: Int) : RaftDescriptionListScope {
     @Composable
+    override fun Item(term: String, value: String?, mono: Boolean, copyable: Boolean) {
+        val lines = remember { HorizontalFactLines() }
+        Fact(term, null, lines) {
+            RaftDescriptionValue(value, Modifier.textLineInto(lines.valueBaseline), mono = mono, copyable = copyable)
+        }
+    }
+
+    @Composable
     override fun Item(term: String, termAccessory: (@Composable () -> Unit)?, details: @Composable RowScope.() -> Unit) {
+        val lines = remember { HorizontalFactLines() }
+        Fact(term, termAccessory, lines, details)
+    }
+
+    @Composable
+    private fun Fact(
+        term: String,
+        termAccessory: (@Composable () -> Unit)?,
+        lines: HorizontalFactLines,
+        details: @Composable RowScope.() -> Unit,
+    ) {
+        val termLineHeight = raftDescriptionTermStyle(RaftTheme.typography).lineHeight
         Layout(
             content = {
-                DescriptionTerm(term, termAccessory)
+                DescriptionTerm(term, termAccessory, lines = lines)
                 // Stacked, the value has no 32dp row to centre in (`min-h-0`).
-                DescriptionDetails(if (stacked) 0.dp else 32.dp, details)
+                DescriptionDetails(if (stacked) 0.dp else 32.dp, details, lines = lines)
             },
             modifier = Modifier.semantics(mergeDescendants = true) {},
         ) { measurables, constraints ->
@@ -365,11 +416,24 @@ private class HorizontalScope(private val stacked: Boolean, private val column: 
                 val t = termMeasurable.measure(Constraints(maxWidth = 160.dp.roundToPx()))
                 val valueMax = if (bounded) (constraints.maxWidth - column - gapX).coerceAtLeast(0) else Constraints.Infinity
                 val v = detailsMeasurable.measure(Constraints(maxWidth = valueMax))
-                val tb = t[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: 0
-                val vb = v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb
-                val baseline = max(tb, vb)
-                val tTop = baseline - tb
-                val vTop = baseline - vb
+                // The label's text is centred in its row (beside a help button); a value's text
+                // starts its row.
+                val termTextHeight = lines.termTextHeight.intValue
+                val termTextTop = Alignment.CenterVertically.align(termTextHeight, t.height)
+                val lineTop = lines.valueLineTop.intValue
+                val termTop =
+                    if (lines.valueBaseline.intValue != AlignmentLine.Unspecified) {
+                        // One text: the label on its first baseline.
+                        val tb = termTextTop + (lines.termBaseline.intValue.takeIf { it != AlignmentLine.Unspecified } ?: 0)
+                        lineTop + lines.valueBaseline.intValue - tb
+                    } else {
+                        // Chips, an avatar and a name: the label's first line centred on the value's.
+                        val labelLine = if (termLineHeight.isSp) min(termLineHeight.roundToPx(), termTextHeight) else termTextHeight
+                        lineTop + Alignment.CenterVertically.align(labelLine, lines.valueLineHeight.intValue) - termTextTop
+                    }
+                // A label lower than the value's line pushes the value down instead.
+                val tTop = termTop.coerceAtLeast(0)
+                val vTop = (-termTop).coerceAtLeast(0)
                 val width = if (bounded) constraints.maxWidth else column + gapX + v.width
                 layout(width, max(tTop + t.height, vTop + v.height)) {
                     t.place(0, tTop)
@@ -379,3 +443,33 @@ private class HorizontalScope(private val stacked: Boolean, private val column: 
         }
     }
 }
+
+/**
+ * What a side-by-side fact needs to line its label up with its value, written by the label's
+ * and the value's own nodes as they are measured (so the fact reads no alignment line of a
+ * subtree). States, so a baseline that moves without a size change still lays the fact out again.
+ */
+private class HorizontalFactLines {
+    /** The label text's first baseline and height, within the text. */
+    val termBaseline: MutableIntState = mutableIntStateOf(AlignmentLine.Unspecified)
+    val termTextHeight: MutableIntState = mutableIntStateOf(0)
+
+    /** A text value's first baseline within the text; unspecified for any other value. */
+    val valueBaseline: MutableIntState = mutableIntStateOf(AlignmentLine.Unspecified)
+
+    /** The value's first line: its top in the value and its height. */
+    val valueLineTop: MutableIntState = mutableIntStateOf(0)
+    val valueLineHeight: MutableIntState = mutableIntStateOf(0)
+}
+
+/**
+ * Writes a text's first baseline (and height) as it is measured. A text node has no children, so
+ * reading its own line is safe while measuring, unlike a subtree's (crash 69fdce17).
+ */
+private fun Modifier.textLineInto(baseline: MutableIntState, height: MutableIntState? = null): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        baseline.intValue = placeable[FirstBaseline]
+        height?.intValue = placeable.height
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
