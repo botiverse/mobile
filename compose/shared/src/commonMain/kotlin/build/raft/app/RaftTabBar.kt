@@ -524,7 +524,8 @@ internal fun resolveRaftAppTabBarRenderer(
  * Duo's inner screen, raft-design #859) the rail takes the server tile in its [header] and the
  * bell in [footerTools], before [bottomItems] (raft-ui AppRail without the top bar).
  * [sidebarToggle], where a list column sits beside the main area, heads the footer (web
- * SidebarToggleRailItem).
+ * SidebarToggleRailItem). With [reorder] the destinations can be dragged into the person's own
+ * order (web SortableRailTabs, [RaftRailReorderableTabs]); [items] come in that order.
  */
 @Composable
 internal fun RaftNavigationRailTabBar(
@@ -538,6 +539,7 @@ internal fun RaftNavigationRailTabBar(
     header: (@Composable () -> Unit)? = null,
     footerTools: (@Composable () -> Unit)? = null,
     sidebarToggle: RaftRailSidebarToggle? = null,
+    reorder: RaftRailTabReorder? = null,
 ) {
     // The design system's raft-ui AppRail: 56dp plus the seam, 40dp items 6dp apart and 8dp from
     // both ends (48dp / 36dp in a short window), the selected sticker on the frame. The footer in
@@ -572,8 +574,12 @@ internal fun RaftNavigationRailTabBar(
                     )
                 },
         ) {
-            items.forEach { item ->
-                RaftNavigationRailTabItem(item = item, onSelect = onSelect)
+            if (reorder != null) {
+                RaftRailReorderableTabs(items = items, onSelect = onSelect, reorder = reorder)
+            } else {
+                items.forEach { item ->
+                    RaftNavigationRailTabItem(item = item, onSelect = onSelect)
+                }
             }
         }
     }
@@ -641,9 +647,10 @@ private fun RaftNavigationRailIcon(item: RaftBottomTabItemPayload, glyph: RaftCo
 }
 
 @Composable
-private fun RaftNavigationRailTabItem(
+internal fun RaftNavigationRailTabItem(
     item: RaftBottomTabItemPayload,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
     // so an unread count reads as the dot here.
@@ -654,6 +661,7 @@ private fun RaftNavigationRailTabItem(
         selected = item.selected,
         onClick = { onSelect(item.key) },
         icon = { ink -> RaftNavigationRailIcon(item, glyph, ink) },
+        modifier = modifier,
         enabled = item.enabled,
         attention = item.attentionDot || item.badgeCount > 0,
         attentionDescription = attentionDescription,

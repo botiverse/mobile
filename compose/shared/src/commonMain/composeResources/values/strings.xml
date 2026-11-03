@@ -3710,4 +3710,12 @@
     <string name="settings_notifications_mobile_delay_minute_1">After 1 minute away from a computer</string>
     <string name="settings_notifications_mobile_delay_minutes">After %1$d minutes away from a computer</string>
     <string name="message_mention_sender">Mention @%1$s</string>
+    <string name="rail_tab_move_up">Move up</string>
+    <string name="rail_tab_move_down">Move down</string>
+    <string name="rail_tab_drag_picked_up">Picked up %1$s.</string>
+    <string name="rail_tab_drag_over">%1$s is over %2$s.</string>
+    <string name="rail_tab_drag_dropped_at">%1$s dropped at the position of %2$s.</string>
+    <string name="rail_tab_drag_dropped">%1$s dropped.</string>
+    <string name="rail_tab_drag_cancelled">Moving %1$s cancelled.</string>
+    <string name="rail_tab_order_save_failed">Couldn't save the tab order</string>
 </resources>
