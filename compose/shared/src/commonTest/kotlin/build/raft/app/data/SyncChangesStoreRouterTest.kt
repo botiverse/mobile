@@ -52,6 +52,14 @@ class SyncChangesStoreRouterTest {
             calls += "activity"
         }
 
+        /** Per conversation id; unlisted ids can't be told. */
+        val remoteDoneOutcomes = mutableMapOf<String, ActivityRemoteDoneOutcome>()
+
+        override fun applyRemoteDone(serverId: String, channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome {
+            calls += "remote_done:$channelId:$doneFrontierSeq"
+            return remoteDoneOutcomes[channelId] ?: ActivityRemoteDoneOutcome.CannotTell
+        }
+
         override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) {
             calls += "channel_members"
             channelMemberRefreshes += channelIds
@@ -146,6 +154,71 @@ class SyncChangesStoreRouterTest {
         targets.calls.clear()
         apply(syncUpsert(4, "sidebar_order", "server-1", """{"channelOrder":[]}"""), syncUpsert(5, "server_order", "user-1", "{}"))
         assertEquals(listOf("home"), targets.calls)
+    }
+
+    @Test
+    fun `another device's Done is patched in place and only what it can't patch reads the lists`() = runTest {
+        val done = """{"done":true,"doneFrontierSeq":"92233720368547758070"}"""
+        val read = """{"readSeq":12,"readStateVersion":3}"""
+        targets.remoteDoneOutcomes += mapOf(
+            "ch-removed" to ActivityRemoteDoneOutcome.Removed,
+            "ch-kept" to ActivityRemoteDoneOutcome.KeptNewerActivity,
+        )
+        // (changes, what is read again): Done alone, removed or kept, reads nothing; a read that
+        // came with it reads Home (and Activity when the row stays); one that can't be told reads both once.
+        val cases =
+            listOf(
+                listOf(syncStaleWithState(1, "ch-removed", done = done)) to listOf("remote_done:ch-removed:92233720368547758070"),
+                listOf(syncStaleWithState(1, "ch-kept", done = done)) to listOf("remote_done:ch-kept:92233720368547758070"),
+                listOf(syncStaleWithState(1, "ch-removed", refSeq = 12, read = read, done = done)) to
+                    listOf("remote_done:ch-removed:92233720368547758070", "home"),
+                listOf(syncStaleWithState(1, "ch-kept", refSeq = 12, read = read, done = done)) to
+                    listOf("remote_done:ch-kept:92233720368547758070", "home", "activity"),
+                // A read in one change and the Done in the next: one state with both parts.
+                listOf(syncStaleWithState(1, "ch-removed", refSeq = 12, read = read), syncStaleWithState(2, "ch-removed", done = done)) to
+                    listOf("remote_done:ch-removed:92233720368547758070", "home"),
+                // Web stops at the first it can't patch; the lists bring the rest.
+                listOf(
+                    syncStaleWithState(1, "ch-unknown", done = done),
+                    syncStaleWithState(2, "ch-other-unknown", done = done),
+                    syncStaleWithState(3, "ch-removed", done = done),
+                ) to listOf("remote_done:ch-unknown:92233720368547758070", "home", "activity"),
+            )
+        for ((changes, expected) in cases) {
+            targets.calls.clear()
+            apply(*changes.toTypedArray())
+            assertEquals(expected, targets.calls, changes.toString())
+        }
+    }
+
+    @Test
+    fun `conversation changes this client can't patch read Home and Activity without asking the store`() = runTest {
+        val done = """{"done":true,"doneFrontierSeq":"5"}"""
+        val unpatchable =
+            listOf(
+                listOf(syncStale(1, "ch-1", 9)),
+                listOf(syncStaleWithState(1, "ch-1", refSeq = 9, read = """{"readSeq":9,"readStateVersion":2}""")),
+                listOf(syncStaleWithState(1, "ch-1", done = """{"done":false,"doneFrontierSeq":"5"}""")),
+                listOf(syncStaleWithState(1, "ch-1", done = done, follow = """{"followed":true,"threadDone":false}""")),
+                // Malformed parts make the whole change a reload (web readSyncConversationState).
+                listOf(syncStaleWithState(1, "ch-1", done = """{"done":true,"doneFrontierSeq":5}""")),
+                listOf(syncStaleWithState(1, "ch-1", done = """{"done":true,"doneFrontierSeq":"5a"}""")),
+                listOf(syncStaleWithState(1, "ch-1", done = """{"done":"true","doneFrontierSeq":"5"}""")),
+                listOf(syncStaleWithState(1, "ch-1", read = """{"readSeq":-1,"readStateVersion":2}""", done = done)),
+                // A stateless change for the conversation in the same page.
+                listOf(syncStaleWithState(1, "ch-1", done = done), syncStale(2, "ch-1", null)),
+            )
+        for (changes in unpatchable) {
+            targets.calls.clear()
+            apply(*changes.toTypedArray())
+            assertEquals(listOf("home", "activity"), targets.calls, changes.toString())
+        }
+    }
+
+    @Test
+    fun `a Done with a null frontier still reaches the store, which can't tell`() = runTest {
+        apply(syncStaleWithState(1, "ch-1", done = """{"done":true,"doneFrontierSeq":null}"""))
+        assertEquals(listOf("remote_done:ch-1:null", "home", "activity"), targets.calls)
     }
 
     @Test

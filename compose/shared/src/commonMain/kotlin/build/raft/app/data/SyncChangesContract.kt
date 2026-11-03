@@ -145,6 +145,8 @@ sealed interface RaftSyncChange {
         override val seq: Long,
         val conversationId: String,
         val refSeq: Long?,
+        /** The state the change carries (null: none, or a part this client can't read). */
+        val state: RaftSyncConversationState? = null,
     ) : RaftSyncChange
 
     /** The viewer gained a channel or a server: take [snapshots] for it. */
@@ -169,6 +171,31 @@ sealed interface RaftSyncChange {
         val op: String,
         val snapshots: Set<RaftSyncSnapshot>,
     ) : RaftSyncChange
+}
+
+/**
+ * The viewer's current state of one conversation, as a `conversation` change carries it
+ * (botiverse/slock `SyncConversationChange` in packages/shared/src/syncChanges.ts; web
+ * `readSyncConversationState`): one part per kind that changed in the page, each read when the
+ * server built the page. Additive: an older server sends none.
+ */
+data class RaftSyncConversationState(
+    val read: Read? = null,
+    val done: Done? = null,
+    val follow: Follow? = null,
+) {
+    /** `SyncConversationReadState`. */
+    data class Read(val readSeq: Long, val readStateVersion: Long, val markedUnread: Boolean)
+
+    /**
+     * `SyncConversationDoneState`: [doneFrontierSeq] (decimal string, or null) is the
+     * conversation's latest message seq in its storage channel. Compare it with an Activity row's
+     * `latestActivitySeq`, never the row's own `doneFrontierSeq`.
+     */
+    data class Done(val done: Boolean, val doneFrontierSeq: String?)
+
+    /** `SyncConversationFollowState`. */
+    data class Follow(val followed: Boolean, val threadDone: Boolean)
 }
 
 /** `reset` set: drop the cursor's state and take [snapshots]. */
@@ -272,7 +299,7 @@ private fun parseSyncChange(element: JsonObject): ParsedSyncChange {
         "conversation" ->
             ParsedSyncChange.Known(
                 if (op == "stale") {
-                    RaftSyncChange.ConversationStale(seq, id, element.longField("refSeq"))
+                    RaftSyncChange.ConversationStale(seq, id, element.longField("refSeq"), parseConversationState(element))
                 } else {
                     RaftSyncChange.Resnapshot(seq, entity, op, RaftSyncConversationSnapshots)
                 }
@@ -301,6 +328,55 @@ private fun parseScopeChange(element: JsonObject, seq: Long, id: String, op: Str
         else -> RaftSyncChange.Resnapshot(seq, "scope", op, snapshots.ifEmpty { RaftSyncSnapshot.All })
     }
 }
+
+/**
+ * Web `readSyncConversationState`: the state a change carries, or null when it carries none this
+ * client can use. A part that is present but malformed nulls the whole state (the change then
+ * reads the lists): dropping that part would leave its kind of state unapplied.
+ */
+private fun parseConversationState(element: JsonObject): RaftSyncConversationState? {
+    var read: RaftSyncConversationState.Read? = null
+    var done: RaftSyncConversationState.Done? = null
+    var follow: RaftSyncConversationState.Follow? = null
+    if ("read" in element) {
+        val part = element["read"] as? JsonObject ?: return null
+        val readSeq = part.nonNegativeIntegerField("readSeq") ?: return null
+        val version = part.nonNegativeIntegerField("readStateVersion") ?: return null
+        read = RaftSyncConversationState.Read(readSeq, version, markedUnread = part.booleanField("markedUnread") == true)
+    }
+    if ("done" in element) {
+        val part = element["done"] as? JsonObject ?: return null
+        val isDone = part.booleanField("done") ?: return null
+        val frontier =
+            when (val value = part["doneFrontierSeq"]) {
+                null, JsonNull -> null
+                else ->
+                    (value as? JsonPrimitive)
+                        ?.takeIf { it.isString }
+                        ?.content
+                        ?.takeIf { seq -> seq.isNotEmpty() && seq.all { it in '0'..'9' } }
+                        ?: return null
+            }
+        done = RaftSyncConversationState.Done(isDone, frontier)
+    }
+    if ("follow" in element) {
+        val part = element["follow"] as? JsonObject ?: return null
+        val followed = part.booleanField("followed") ?: return null
+        val threadDone = part.booleanField("threadDone") ?: return null
+        follow = RaftSyncConversationState.Follow(followed, threadDone)
+    }
+    if (read == null && done == null && follow == null) return null
+    return RaftSyncConversationState(read = read, done = done, follow = follow)
+}
+
+private fun JsonObject.booleanField(name: String): Boolean? =
+    (this[name] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
+
+/** A JSON integer >= 0 within JS's safe range (web `Number.isSafeInteger(value) && value >= 0`). */
+private fun JsonObject.nonNegativeIntegerField(name: String): Long? =
+    longField(name)?.takeIf { it in 0L..MaxSafeJsonInteger }
+
+private const val MaxSafeJsonInteger: Long = 9_007_199_254_740_991L
 
 private fun JsonObject.stringField(name: String): String? =
     (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotBlank() }

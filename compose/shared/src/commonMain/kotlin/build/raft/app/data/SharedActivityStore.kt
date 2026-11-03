@@ -5,6 +5,7 @@ import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
+import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -412,6 +413,10 @@ class SharedActivityStore internal constructor(
             }
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 scope.launch { acceptRealtime(intent) }
+            is SharedActivityIntent.ApplyRemoteDone ->
+                if (applyRemoteDone(intent.channelId, intent.doneFrontierSeq) == ActivityRemoteDoneOutcome.CannotTell) {
+                    synchronized(realtimeOwnerLock) { scheduleRealtimeBackgroundReconcileLocked() }.start()
+                }
         }
     }
 
@@ -1143,6 +1148,13 @@ class SharedActivityStore internal constructor(
                     replyThreadFreshnessLedger.invalidateServer(serverId)
                 }
             else -> Unit
+        }
+        // `activity:changed`, and incremental sync's Activity refetch (a change it could not patch):
+        // read this server's list again, like web's ACTIVITY_CHANGED_EVENT -> scheduleInboxRefresh
+        // (botiverse/slock bab9dd8c0 socketBridge.ts), through the same throttled single-flight.
+        if (event is ActivityChanged) {
+            val owner = _state.value.ownerServerId
+            return if (owner != null && owner == event.serverId.value) scheduleRealtimeBackgroundReconcileLocked() else null
         }
         // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
         // a brand-new DM row can only arrive through the canonical projection.
@@ -3680,6 +3692,64 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    /**
+     * Another device marked conversation [channelId] Done (incremental sync), exactly like web
+     * `inboxStore.applyRemoteDone` (botiverse/slock bab9dd8c0, inboxStore.ts:2592; server #11685
+     * pins `done.doneFrontierSeq` equal to the frontier a Done stores, web #11696): the
+     * conversation's rows leave when the Done covers every one of them, compared exactly as decimal
+     * seqs with the row's `latestActivitySeq` (equal = covered), and are held against a lagging
+     * list like a Done made here. A row with newer activity stays as shown. Unread and total counts
+     * move with the rows, as for a local Done.
+     *
+     * [ActivityRemoteDoneOutcome.CannotTell] (the caller reads the list again): no row of the
+     * conversation is held, no frontier, a thread row (a thread's Done comes as `follow`), or a row
+     * without `latestActivitySeq`.
+     */
+    internal fun applyRemoteDone(channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome =
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val snapshot = current.snapshot ?: return@synchronized ActivityRemoteDoneOutcome.CannotTell
+            val rows =
+                snapshot.items.filter { item ->
+                    item.kind != InboxItemKind.Object && item.kind != InboxItemKind.MentionAction &&
+                        item.readReceiptChannelId()?.value == channelId
+                }
+            val outcome =
+                when {
+                    rows.isEmpty() || doneFrontierSeq == null -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { it.kind == InboxItemKind.Thread } -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { it.latestActivitySeq == null } -> ActivityRemoteDoneOutcome.CannotTell
+                    rows.any { compareActivitySeq(it.latestActivitySeq, doneFrontierSeq) > 0 } ->
+                        ActivityRemoteDoneOutcome.KeptNewerActivity
+                    else -> ActivityRemoteDoneOutcome.Removed
+                }
+            if (outcome == ActivityRemoteDoneOutcome.Removed) {
+                // Already on the server: the hold starts now, as for a confirmed Done made here.
+                overlayOwner(current)?.let { owner ->
+                    rows.forEach { row ->
+                        doneOverlay.remember(owner, row)?.let { generation -> doneOverlay.confirm(owner, row.key, generation) }
+                    }
+                }
+                val keys = rows.mapTo(HashSet()) { it.key }
+                reduceState(
+                    SharedActivityIntent.ApplyRemoteDone(channelId, doneFrontierSeq),
+                    current.copy(
+                        snapshot =
+                            snapshot.copy(
+                                items = snapshot.items.filterNot { it.key in keys },
+                                totalCount = maxOf(0, snapshot.totalCount - rows.size),
+                                totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - rows.sumOf { it.unreadCount })
+                            ),
+                        retainedReadRowKeys = current.retainedReadRowKeys - keys
+                    )
+                )
+            }
+            diagnosticsLogger(
+                "activity_remote_done channelId=$channelId rows=${rows.size} outcome=${outcome.name}"
+            )
+            outcome
+        }
+
     private fun removeItemOptimistically(item: InboxItem) {
         val current = _state.value
         val snapshot = current.snapshot ?: return
@@ -3735,6 +3805,7 @@ class SharedActivityStore internal constructor(
                     // The swipe's / menu's Unread (#793): an Unread page cached before it lacks the row.
                     intent is SharedActivityIntent.MarkUnread ||
                     intent is SharedActivityIntent.MarkDone ||
+                    intent is SharedActivityIntent.ApplyRemoteDone ||
                     intent is SharedActivityIntent.MarkAllRead ||
                     intent is SharedActivityIntent.ApplyReadReceiptPrediction
                 ) {
@@ -4372,6 +4443,24 @@ sealed interface SharedActivityIntent {
         val event: RealtimeEvent,
         val activeConversationId: String?
     ) : SharedActivityIntent
+
+    /**
+     * Another device marked conversation [channelId] Done, through [doneFrontierSeq] (incremental
+     * sync): [SharedActivityStore.applyRemoteDone]; a list that can't tell reads again.
+     */
+    data class ApplyRemoteDone(val channelId: String, val doneFrontierSeq: String?) : SharedActivityIntent
+}
+
+/** What [SharedActivityStore.applyRemoteDone] did with another device's Done. */
+enum class ActivityRemoteDoneOutcome {
+    /** The Done covered the conversation's rows: they left the list. */
+    Removed,
+
+    /** A row shows activity newer than the Done covered: it stays as shown. */
+    KeptNewerActivity,
+
+    /** This list can't judge it (no row, no frontier, a thread row, no `latestActivitySeq`): read again. */
+    CannotTell,
 }
 
 private fun SharedActivityIntent.activitySummarySource(): String =
@@ -4402,6 +4491,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ProjectThreadUnfollow -> "project_thread_unfollow"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
+        is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
     }
 
 private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
@@ -4416,6 +4506,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyReadReceiptFailure,
         is SharedActivityIntent.ApplyRealtimeEvent,
         is SharedActivityIntent.UndoObjectDone,
+        is SharedActivityIntent.ApplyRemoteDone,
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
         is SharedActivityIntent.UnfollowObject,
         is SharedActivityIntent.ProjectThreadUnfollow,

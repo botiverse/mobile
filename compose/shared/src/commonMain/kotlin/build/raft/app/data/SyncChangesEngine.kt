@@ -35,6 +35,12 @@ internal data class RaftSyncApplyPlan(
     val deletes: Map<RaftSyncRowEntity, Set<String>> = emptyMap(),
     /** Conversation id -> the largest read position the page moved it to (null: not a read move). */
     val staleConversations: Map<String, Long?> = emptyMap(),
+    /**
+     * Conversation id -> the state its changes carried, merged per kind (the later change's part
+     * wins, web `planSyncChanges`). Null once one of its changes carried none: only the lists can
+     * bring that conversation up to date. Same keys as [staleConversations].
+     */
+    val conversationStates: Map<String, RaftSyncConversationState?> = emptyMap(),
     /** Snapshots to retake: known entities with an unknown op, and added scopes. */
     val snapshots: Set<RaftSyncSnapshot> = emptySet(),
     /** Channels the viewer gained (their member rosters are retaken with [snapshots]). */
@@ -56,6 +62,7 @@ internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
     // entity -> id -> row (upsert) or null (delete), newest last.
     val rows = LinkedHashMap<RaftSyncRowEntity, LinkedHashMap<String, JsonObject?>>()
     val stale = LinkedHashMap<String, Long?>()
+    val states = LinkedHashMap<String, RaftSyncConversationState?>()
     val snapshots = LinkedHashSet<RaftSyncSnapshot>()
     val addedChannels = LinkedHashSet<String>()
     val removed = ArrayList<RaftSyncChange.ScopeRemoved>()
@@ -77,6 +84,19 @@ internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
                         change.refSeq == null -> previous
                         else -> maxOf(previous, change.refSeq)
                     }
+                val previousState = states[change.conversationId]
+                states[change.conversationId] =
+                    when {
+                        change.state == null -> null
+                        change.conversationId !in states -> change.state
+                        previousState == null -> null
+                        else ->
+                            RaftSyncConversationState(
+                                read = change.state.read ?: previousState.read,
+                                done = change.state.done ?: previousState.done,
+                                follow = change.state.follow ?: previousState.follow,
+                            )
+                    }
             }
             is RaftSyncChange.ScopeAdded -> {
                 snapshots += change.snapshots
@@ -90,12 +110,14 @@ internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
                         rows[RaftSyncRowEntity.Channel]?.remove(channelId)
                         rows[RaftSyncRowEntity.ChannelMember]?.keys?.removeAll { it.substringBefore(':') == channelId }
                         stale.remove(channelId)
+                        states.remove(channelId)
                         addedChannels.remove(channelId)
                     }
                     // The whole server left: nothing collected so far may be applied.
                     RaftSyncScopeKind.Server -> {
                         rows.clear()
                         stale.clear()
+                        states.clear()
                         snapshots.clear()
                         addedChannels.clear()
                     }
@@ -117,6 +139,7 @@ internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
         upserts = upserts,
         deletes = deletes,
         staleConversations = stale,
+        conversationStates = states,
         snapshots = snapshots,
         addedChannelIds = addedChannels,
         removedScopes = removed,
