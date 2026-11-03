@@ -11494,7 +11494,9 @@ private fun SharedHomeScreen(
                         bridge.toast(directMessageUnavailableMessage)
                     } else {
                         pinnedMemberOpenScope.launch {
-                            when (val result = repository.openPinnedMemberDirectMessage(identity)) {
+                            val result =
+                                repository.openPinnedMemberDirectMessage(identity, snapshot) ?: return@launch
+                            when (result) {
                                 is DataResult.Content -> {
                                     val conversation = result.data.conversation
                                     onOpenConversation(conversation.toThreadLaunchConversationIdentity())
