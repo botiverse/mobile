@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.model.ServerId
@@ -90,5 +91,6 @@ internal fun rememberRaftMemberModelLabel(
             modelLabelResolver.current(memberId)
         }
     val label by labelFlowValue.collectAsState(initialLabel)
-    return label
+    // Settings > Appearance "Show agent model" (Web MessageItem `showAgentModelName`).
+    return label.takeIf { RaftDisplayPreferenceRuntime.showAgentModelName }
 }
