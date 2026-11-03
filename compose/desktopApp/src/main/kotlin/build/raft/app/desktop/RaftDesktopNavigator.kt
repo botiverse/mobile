@@ -32,6 +32,19 @@ class RaftDesktopNavigator {
     fun back(): Boolean = stack.back()
 
     /**
+     * ⌘K / Ctrl+K ([raftDesktopSearchShortcut]): the app shell, alone on the stack, opens search
+     * (the wide layout's search panel, or the Search tab on the phone layout). A page pushed over
+     * the shell keeps the key. True when the shell took it.
+     */
+    internal fun searchShortcut(): Boolean {
+        val top = pages.lastOrNull() ?: return false
+        if (pages.size != 1 || top.args.pageName != RaftDesktopPages.APP_SHELL) return false
+        log("search shortcut")
+        top.events.send(RaftDesktopSearchInput.EVENT_NAME, JsonObject(emptyMap()))
+        return true
+    }
+
+    /**
      * A history step from the keyboard or mouse ([RaftDesktopHistoryInput]): the app shell, alone on
      * the stack, gets it (it owns the wide layout's history); a page pushed over the shell takes
      * Back as closing itself and ignores Forward. True when something took it.

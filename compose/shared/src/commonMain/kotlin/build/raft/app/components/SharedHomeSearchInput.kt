@@ -36,6 +36,7 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.tokens.RaftStroke
 import androidx.compose.foundation.layout.Arrangement
+import build.raft.designsystem.components.RaftKbd
 import build.raft.designsystem.components.RaftTextFieldClearAction
 
 
@@ -260,6 +261,8 @@ internal fun SharedHomeSearchInput(
     autoFocus: Boolean = false,
     focusRequester: FocusRequester? = null,
     raftField: Boolean = false,
+    // A key hint at the field's end, before Clear (the search panel's "Esc", web SearchQueryField).
+    trailingHint: String? = null,
     modifier: Modifier = Modifier
 ) {
     val raft = raftField && raftActive()
@@ -275,6 +278,7 @@ internal fun SharedHomeSearchInput(
             modifier = modifier.fillMaxWidth().then(editor.modifier),
             placeholder = placeholder.ifEmpty { null },
             leading = { RaftSlotIcon(RaftLucideIconName.Search) },
+            trailing = trailingHint?.let { hint -> { RaftKbd(hint) } },
             trailingAction = if (query.text.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
             keyboardOptions = editor.keyboardOptions,
             keyboardActions = sharedHomeSearchKeyboardActions { submitSharedHomeSearchInput(query.text, loading, onSubmit) }

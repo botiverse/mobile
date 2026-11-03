@@ -425,6 +425,9 @@ import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftWindowDialogProperties
+import build.raft.designsystem.components.RaftWindowDialog
+import build.raft.designsystem.components.RaftKeyGlyph
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
@@ -2111,7 +2114,9 @@ internal fun RaftAppShellContent(
     /** A desktop shortcut or mouse button's step through the wide layout's history. */
     wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
-    onSearchHandoffApplied: () -> Unit = {}
+    onSearchHandoffApplied: () -> Unit = {},
+    /** Advances with each ⌘K / Ctrl+K from the host window (the desktop app). */
+    searchShortcutTick: Int = 0,
 ) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
@@ -2133,6 +2138,7 @@ internal fun RaftAppShellContent(
         wideHistoryRequest = wideHistoryRequest,
         searchHandoff = searchHandoff,
         onSearchHandoffApplied = onSearchHandoffApplied,
+        searchShortcutTick = searchShortcutTick,
         sharedStores = sharedStores,
     )
 }
@@ -2147,6 +2153,7 @@ private fun RaftAppShellReadyContent(
     wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
     onSearchHandoffApplied: () -> Unit = {},
+    searchShortcutTick: Int = 0,
     sharedStores: RaftSharedStoreProvider,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -2221,6 +2228,8 @@ private fun RaftAppShellReadyContent(
     // The inline Search's field focuses as it opens; opening it again while it is open (top bar
     // search field, the Duo rail's Search) focuses the field again, like web's search shortcut.
     var railInlineSearchFocusRequest by remember { mutableStateOf(0) }
+    // "Search for" hands the panel's query to the list column's Search; each hand-over is new.
+    var searchOverlayHandoffNonce by remember { mutableStateOf(-1L) }
     // page_viewed for the wide rail's inline list panes (Search, Saved): they are not pages of their own.
     val railInlineProductPageSlot = remember(pager.pagerId) { "${pager.pagerId}#rail-inline" }
     val railInlineProductPageView = appShellRailInlineProductPageView(railInlineSecondaryDestination)
@@ -7131,6 +7140,74 @@ private fun RaftAppShellReadyContent(
             railInlineSecondaryDestination = railInlineSecondaryDestination,
         )
     val shortcutsUseCommand = remember { raftPlatformShortcutsUseCommand() }
+    // The web's desktop search (artin dm:@artin:#33): on the wide layout (desktop and iPad alike)
+    // the top bar's search field and ⌘K / Ctrl+K open the search panel over the page, which stays
+    // as it is behind the scrim; "Search for" goes on to the full results page (the list column's
+    // Search). The phone layout keeps its Search tab: ⌘K there opens it.
+    var searchOverlayOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(navRailActive) { if (!navRailActive) searchOverlayOpen = false }
+    fun openSearchOverlay(source: String) {
+        if (!navRailActive) {
+            openSearchTab(source)
+            return
+        }
+        serverMenuState.dismiss()
+        appShellTopBar.bellOpen.value = false
+        RaftProductEvents.navEntrySelected(
+            destination = appShellNavDestination(AppShellRailSearchKey),
+            surface = RaftNavSurface.TopBar,
+            wasActive = searchOverlayOpen,
+        )
+        searchOverlayOpen = true
+        bridge.log("app_shell_search_overlay_open from=$source")
+    }
+    LaunchedEffect(searchShortcutTick) {
+        if (searchShortcutTick > 0) openSearchOverlay(source = "host_shortcut")
+    }
+    if (searchOverlayOpen && navRailActive) {
+        val density = LocalDensity.current
+        val fieldBounds = appShellTopBar.searchFieldBounds.takeIf { appShellTopBar.drawn }
+        val visited = remember(wideNavHistory) { wideNavHistory.visitedThreadIds() }
+        val closeOverlay = { searchOverlayOpen = false }
+        RaftWindowDialog(
+            onDismissRequest = {
+                bridge.log("app_shell_search_overlay_close")
+                closeOverlay()
+            },
+            // The panel draws the scrim itself, so a click on it closes the panel.
+            properties = RaftWindowDialogProperties(drawScrim = false),
+        ) {
+            HomeSecondaryRouterContent(
+                destination = HomeDestinationSearch,
+                routeVisibleTick = pageVisibleTick,
+                adaptivePane = shellScope.adaptivePane,
+                // A row opens where the list column's Search opens it: in the detail pane.
+                inlineOpenRequest = { request, source -> openHomeMessageRequest(request, source) },
+                inlineOpenEntity = { entity ->
+                    entity.homeSearchInlineConversationOrNull()?.let { conversation ->
+                        openHomeConversation(conversation = conversation, source = "home_search_overlay_entity")
+                        true
+                    } ?: false
+                },
+                searchOverlay =
+                    HomeSearchOverlayChrome(
+                        anchorTop = fieldBounds?.let { with(density) { it.top.toDp() } },
+                        anchorWidth = fieldBounds?.let { with(density) { it.width.toDp() } } ?: 0.dp,
+                        visitedThreadIds = visited,
+                        excludeThreadId = adaptiveWorkspaceState?.selection?.identity?.threadId,
+                        onDismiss = closeOverlay,
+                        onOpenFullResults = { query ->
+                            bridge.log("app_shell_search_overlay_full_results queryLength=${query.length}")
+                            closeOverlay()
+                            searchOverlayHandoffNonce -= 1
+                            searchTabQueryRequest = RaftSearchTabQueryRequest(query.trim(), nonce = searchOverlayHandoffNonce)
+                            if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
+                            railInlineSecondaryDestination = AppShellRailSearchKey
+                        },
+                    ),
+            )
+        }
+    }
     // Held down, the key repeats: one press toggles once.
     var sidebarShortcutHeld by remember { mutableStateOf(false) }
     SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
@@ -7144,6 +7221,21 @@ private fun RaftAppShellReadyContent(
             // column can collapse.
             modifier =
                 Modifier.onPreviewKeyEvent { event ->
+                    // web MainLayout: ⌘K / Ctrl+K anywhere opens search (a text field included).
+                    if (
+                        raftSearchShortcut(
+                            keyDown = event.type == KeyEventType.KeyDown,
+                            key = event.key,
+                            meta = event.isMetaPressed,
+                            ctrl = event.isCtrlPressed,
+                            alt = event.isAltPressed,
+                            shift = event.isShiftPressed,
+                            apple = shortcutsUseCommand,
+                        )
+                    ) {
+                        openSearchOverlay(source = "shortcut")
+                        return@onPreviewKeyEvent true
+                    }
                     if (event.key == Key.Backslash && event.type == KeyEventType.KeyUp) sidebarShortcutHeld = false
                     val column = collapsibleColumn ?: return@onPreviewKeyEvent false
                     val shortcut =
@@ -7396,19 +7488,10 @@ private fun RaftAppShellReadyContent(
                                 switchServerFromServerMenu(serverId)
                             },
                             searchLabel = searchTabLabel,
-                            onSearchClick = {
-                                // The rail's old Search entry: the inline Search over the current tab.
-                                serverMenuState.dismiss()
-                                appShellTopBar.bellOpen.value = false
-                                RaftProductEvents.navEntrySelected(
-                                    destination = appShellNavDestination(AppShellRailSearchKey),
-                                    surface = RaftNavSurface.TopBar,
-                                    wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
-                                )
-                                if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
-                                railInlineSecondaryDestination = AppShellRailSearchKey
-                                bridge.log("app_shell_rail_secondary_open destination=search from=top_bar")
-                            },
+                            // The search panel over the page (web SearchOverlay); its "Search for"
+                            // opens the list column's Search.
+                            onSearchClick = { openSearchOverlay(source = "top_bar") },
+                            searchShortcut = RaftKeyGlyph.searchShortcut(apple = shortcutsUseCommand),
                             windowWidth =
                                 shellScope.adaptivePane
                                     .takeIf { it.widthPx > 0 && it.density > 0f }
@@ -12148,7 +12231,9 @@ internal fun SharedHomeSearchPanel(
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
-    modifier: Modifier = Modifier.fillMaxSize()
+    modifier: Modifier = Modifier.fillMaxSize(),
+    // The wide layout's search panel over the page (web SearchOverlay); null: the page or column.
+    overlay: HomeSearchOverlayChrome? = null,
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
     val channelEntityLabel = stringResource(Res.string.search_entity_channel)
@@ -12317,45 +12402,7 @@ internal fun SharedHomeSearchPanel(
             historyEditing -> historyEditing = false
         }
     }
-    // raft-ui search panel: designsystem type tokens and badges, on the canvas layer.
-    CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
-    RaftDesignSystemTheme {
-        Box(
-            modifier =
-                modifier
-                    .background(RaftColor.Canvas)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                SharedHomeSearchToolbar(
-                    editor = searchEditor,
-                    focusRequester = searchFocusRequester,
-                    fieldModifier = searchInputFocus.fieldModifier,
-                    query = state.query,
-                    loading = state.loading,
-                    onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
-                    onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
-                    onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
-                    onClose = onClose,
-                    showCloseButton = showCloseButton,
-                    interactive = interactiveSearchField,
-                    tabHead = tabHead,
-                    topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
-                    placeholder = stringResource(Res.string.search_placeholder)
-                )
-                // The tab head draws its own 1dp seam.
-                if (!tabHead) SharedHomeSearchDivider()
-                RaftAppShellBodyTopBanner()
-                if (onExpandToSearchTab != null) {
-                    channelFilters.firstOrNull { it.id == state.selectedChannelId }?.let { scope ->
-                        SharedHomeSearchScopeRow(
-                            scopeLabel = scope.searchScopeLabel(),
-                            onExpand = {
-                                searchInputFocus.release()
-                                onExpandToSearchTab(state.query)
-                            }
-                        )
-                    }
-                }
+    val searchFilters: @Composable () -> Unit = {
                 SharedHomeSearchFilters(
                     state = state,
                     channelFilters = channelFilters,
@@ -12426,6 +12473,180 @@ internal fun SharedHomeSearchPanel(
                         }
                     }
                 )
+    }
+    val searchPopups: @Composable () -> Unit = {
+            when (openFilterId) {
+                "scope" ->
+                    RaftFilterPopover(
+                        anchor = scopeAnchor,
+                        title = stringResource(Res.string.search_filter_scope),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options = SearchScope.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
+                        selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
+                        onToggle = { key ->
+                            SearchScope.entries.firstOrNull { it.key == key }?.let {
+                                onIntent(SharedHomeSearchSavedIntent.ToggleSearchScope(it))
+                            }
+                        },
+                        onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchScopes) },
+                        onDismiss = { openFilterId = null },
+                        widthDp = 180f,
+                        multiSelect = true,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite,
+                        showClearWhenSelected = true
+                    )
+                "time" ->
+                    RaftFilterPopover(
+                        anchor = timeAnchor,
+                        title = stringResource(Res.string.search_filter_time),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options = SearchTimeRange.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
+                        selectedIds = setOf(state.timeRange.key),
+                        onToggle = { key ->
+                            SearchTimeRange.entries.firstOrNull { it.key == key }?.let {
+                                onIntent(SharedHomeSearchSavedIntent.SetSearchTimeRange(it))
+                            }
+                        },
+                        onClear = {},
+                        onDismiss = { openFilterId = null },
+                        widthDp = 168f,
+                        multiSelect = false,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite
+                    )
+                "sort" ->
+                    RaftFilterPopover(
+                        anchor = sortAnchor,
+                        title = stringResource(Res.string.search_filter_sort),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options =
+                            listOf(
+                                RaftFilterOption("relevance", stringResource(Res.string.search_sort_relevant)),
+                                RaftFilterOption("recent", stringResource(Res.string.search_sort_recent))
+                            ),
+                        selectedIds = setOf(state.sort.searchKey),
+                        onToggle = { key ->
+                            when (key) {
+                                "recent" -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
+                                else -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Relevance))
+                            }
+                        },
+                        onClear = {},
+                        onDismiss = { openFilterId = null },
+                        widthDp = 148f,
+                        multiSelect = false,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite
+                    )
+                else -> Unit
+            }
+            activePinMenu?.let { menu ->
+                RaftBaseMenuOverlay(
+                    anchor = menu.anchor,
+                    items =
+                        listOf(
+                            RaftBaseMenuItem(
+                                id = SharedHomeSearchPinMenuActionToggle,
+                                label = if (menu.isPinned) unpinLabel else pinLabel,
+                                icon = if (menu.isPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
+                            )
+                        ),
+                    selectedId = "",
+                    uppercaseLabels = false,
+                    onDismiss = { activePinMenu = null },
+                    onSelect = { actionId ->
+                        activePinMenu = null
+                        dispatchSearchEntityPinMenuSelection(
+                            actionId = actionId,
+                            target = menu.target,
+                            onTogglePin = onTogglePin
+                        )
+                    }
+                )
+            }
+    }
+    if (overlay != null) {
+        CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
+            RaftDesignSystemTheme {
+                HomeSearchOverlayPanel(
+                    overlay = overlay,
+                    state = state,
+                    homeState = homeState,
+                    entityResults = entityResults,
+                    frequentEntityResults = frequentEntityResults,
+                    groupedResults = groupedResults,
+                    editor = searchEditor,
+                    focusRequester = searchFocusRequester,
+                    fieldModifier = searchInputFocus.fieldModifier,
+                    filterMenuOpen = openFilterId != null || activePinMenu != null,
+                    filters = searchFilters,
+                    popups = searchPopups,
+                    cacheServerId = cacheServerId,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    timeContext = timeContext,
+                    listState = listState,
+                    onIntent = onIntent,
+                    onOpenItem = onOpenItem,
+                    onOpenEntity = onOpenEntity,
+                )
+            }
+        }
+        return
+    }
+    // raft-ui search panel: designsystem type tokens and badges, on the canvas layer.
+    CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
+    RaftDesignSystemTheme {
+        Box(
+            modifier =
+                modifier
+                    .background(RaftColor.Canvas)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SharedHomeSearchToolbar(
+                    editor = searchEditor,
+                    focusRequester = searchFocusRequester,
+                    fieldModifier = searchInputFocus.fieldModifier,
+                    query = state.query,
+                    loading = state.loading,
+                    onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
+                    onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
+                    onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
+                    onClose = onClose,
+                    showCloseButton = showCloseButton,
+                    interactive = interactiveSearchField,
+                    tabHead = tabHead,
+                    topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+                    placeholder = stringResource(Res.string.search_placeholder)
+                )
+                // The tab head draws its own 1dp seam.
+                if (!tabHead) SharedHomeSearchDivider()
+                RaftAppShellBodyTopBanner()
+                if (onExpandToSearchTab != null) {
+                    channelFilters.firstOrNull { it.id == state.selectedChannelId }?.let { scope ->
+                        SharedHomeSearchScopeRow(
+                            scopeLabel = scope.searchScopeLabel(),
+                            onExpand = {
+                                searchInputFocus.release()
+                                onExpandToSearchTab(state.query)
+                            }
+                        )
+                    }
+                }
+                searchFilters()
                 SharedHomeSearchDivider()
                 LazyColumn(
                     state = listState,
@@ -12682,108 +12903,7 @@ internal fun SharedHomeSearchPanel(
                     }
                 }
             }
-            when (openFilterId) {
-                "scope" ->
-                    RaftFilterPopover(
-                        anchor = scopeAnchor,
-                        title = stringResource(Res.string.search_filter_scope),
-                        searchPlaceholder = "",
-                        searchText = "",
-                        onSearchChange = {},
-                        options = SearchScope.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
-                        selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
-                        onToggle = { key ->
-                            SearchScope.entries.firstOrNull { it.key == key }?.let {
-                                onIntent(SharedHomeSearchSavedIntent.ToggleSearchScope(it))
-                            }
-                        },
-                        onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchScopes) },
-                        onDismiss = { openFilterId = null },
-                        widthDp = 180f,
-                        multiSelect = true,
-                        searchable = false,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite,
-                        showClearWhenSelected = true
-                    )
-                "time" ->
-                    RaftFilterPopover(
-                        anchor = timeAnchor,
-                        title = stringResource(Res.string.search_filter_time),
-                        searchPlaceholder = "",
-                        searchText = "",
-                        onSearchChange = {},
-                        options = SearchTimeRange.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
-                        selectedIds = setOf(state.timeRange.key),
-                        onToggle = { key ->
-                            SearchTimeRange.entries.firstOrNull { it.key == key }?.let {
-                                onIntent(SharedHomeSearchSavedIntent.SetSearchTimeRange(it))
-                            }
-                        },
-                        onClear = {},
-                        onDismiss = { openFilterId = null },
-                        widthDp = 168f,
-                        multiSelect = false,
-                        searchable = false,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite
-                    )
-                "sort" ->
-                    RaftFilterPopover(
-                        anchor = sortAnchor,
-                        title = stringResource(Res.string.search_filter_sort),
-                        searchPlaceholder = "",
-                        searchText = "",
-                        onSearchChange = {},
-                        options =
-                            listOf(
-                                RaftFilterOption("relevance", stringResource(Res.string.search_sort_relevant)),
-                                RaftFilterOption("recent", stringResource(Res.string.search_sort_recent))
-                            ),
-                        selectedIds = setOf(state.sort.searchKey),
-                        onToggle = { key ->
-                            when (key) {
-                                "recent" -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
-                                else -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Relevance))
-                            }
-                        },
-                        onClear = {},
-                        onDismiss = { openFilterId = null },
-                        widthDp = 148f,
-                        multiSelect = false,
-                        searchable = false,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite
-                    )
-                else -> Unit
-            }
-            activePinMenu?.let { menu ->
-                RaftBaseMenuOverlay(
-                    anchor = menu.anchor,
-                    items =
-                        listOf(
-                            RaftBaseMenuItem(
-                                id = SharedHomeSearchPinMenuActionToggle,
-                                label = if (menu.isPinned) unpinLabel else pinLabel,
-                                icon = if (menu.isPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
-                            )
-                        ),
-                    selectedId = "",
-                    uppercaseLabels = false,
-                    onDismiss = { activePinMenu = null },
-                    onSelect = { actionId ->
-                        activePinMenu = null
-                        dispatchSearchEntityPinMenuSelection(
-                            actionId = actionId,
-                            target = menu.target,
-                            onTogglePin = onTogglePin
-                        )
-                    }
-                )
-            }
+            searchPopups()
         }
     }
     }
@@ -14361,7 +14481,7 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType, muted: Boolean = f
 // hit count, time at the end) over the `text-callout` semibold title; the hits follow as
 // search-message rows.
 @Composable
-private fun SharedHomeThreadResultGroup(
+internal fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
     query: String,
     showSeparator: Boolean = false,
@@ -14893,7 +15013,7 @@ internal fun openHomeSearchEntityResult(
     openPage: () -> Boolean,
 ): Boolean = openInline?.invoke(entity) == true || openPage()
 
-private sealed interface HomeSearchResultGroup {
+internal sealed interface HomeSearchResultGroup {
     data class Message(val item: InboxItem) : HomeSearchResultGroup
     data class Thread(
         val key: String,
