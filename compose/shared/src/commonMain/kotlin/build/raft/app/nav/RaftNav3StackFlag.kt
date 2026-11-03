@@ -11,8 +11,8 @@ import kotlin.concurrent.Volatile
  * process like the multi-window setting: the window structure must not change under open pages,
  * so a server or local change takes effect on the next app start.
  *
- * - Build default ([buildDefaultOn]): off, except Alpha builds (the Android host sets it from
- *   BuildConfig.NAV3_STACK_DEFAULT_ON) so testers get the stack without the developer switch.
+ * - Build default ([buildDefaultOn]): set by the Android host from BuildConfig.NAV3_STACK_DEFAULT_ON
+ *   (on for release and Alpha builds since 1.19.1); off on other platforms.
  * - Server: every evaluation of the key (any server, the last one wins) is written to
  *   [KEY_SERVER_LAST]; a kill switch is the next evaluation writing false.
  * - Local: the developer setting [KEY_LOCAL_OVERRIDE]. Unset follows the build default; set on
@@ -24,7 +24,7 @@ object RaftNav3StackFlag {
     const val KEY_SERVER_LAST: String = "mobile:nav3_stack_v1:server_last"
     const val KEY_LOCAL_OVERRIDE: String = "mobile:nav3_stack_v1:local_override"
 
-    /** On for Alpha builds only; set by the platform host before the first [launchDecision]. */
+    /** The host's build default; set by the platform host before the first [launchDecision]. */
     @Volatile var buildDefaultOn: Boolean = false
 
     @Volatile private var decided: Boolean? = null
