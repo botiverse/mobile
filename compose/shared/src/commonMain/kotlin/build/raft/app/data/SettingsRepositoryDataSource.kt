@@ -1034,7 +1034,9 @@ class RealSettingsRepository(
                     name = server.name,
                     slug = server.slug ?: server.name.toSettingsSlug(),
                     hideHumansFromMembers = server.hideHumansFromMembers,
-                    canSave = canManageServer
+                    canSave = canManageServer,
+                    serverId = server.id,
+                    avatarUrl = server.avatarUrl
                 ),
                 sections = sections,
                 admins = admins,

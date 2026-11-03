@@ -61,6 +61,9 @@ enum class RaftAvatarType {
 
     /** `palette-lavender`, under a photo or 1–2 initials. */
     Human,
+
+    /** `sticker-ink`, under the server's image or its initial in `brand`. */
+    Server,
 }
 
 /**
@@ -139,7 +142,12 @@ fun RaftAvatar(
     contentDescription: String? = null,
     image: (@Composable () -> Unit)? = null,
 ) {
-    val fill = if (type == RaftAvatarType.Agent) RaftUiPalette.inactive else RaftUiPalette.paletteLavender
+    val fill =
+        when (type) {
+            RaftAvatarType.Agent -> RaftUiPalette.inactive
+            RaftAvatarType.Human -> RaftUiPalette.paletteLavender
+            RaftAvatarType.Server -> RaftUiPalette.stickerInk
+        }
     RaftAvatarFrame(
         size = size,
         fill = fill,
@@ -166,7 +174,7 @@ fun RaftAvatar(
                     RaftText(
                         text = initials,
                         style = raftAvatarInitialsStyle(size, RaftTheme.typography),
-                        color = RaftUiPalette.stickerInk,
+                        color = if (type == RaftAvatarType.Server) RaftTheme.colors.brand else RaftUiPalette.stickerInk,
                         maxLines = 1,
                         softWrap = false,
                     )

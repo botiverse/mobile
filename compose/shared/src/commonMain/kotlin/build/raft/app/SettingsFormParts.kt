@@ -4,6 +4,10 @@ import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftFieldLabelSize
+import build.raft.app.components.RaftPrefixedInputFrame
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.rememberRaftCopyAction
@@ -155,14 +159,30 @@ internal fun SettingsFormSectionCard(
     loading: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        SettingsServerSectionHeader(iconName = iconName, title = title, loading = loading)
+    SettingsFormSection(iconName = iconName, title = title, loading = loading) {
         RaftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
         }
+    }
+}
+
+/**
+ * Web `SectionHeader className="mb-3"` over a section's own cards ([content], 12dp apart): the
+ * header without the one card [SettingsFormSectionCard] adds.
+ */
+@Composable
+internal fun SettingsFormSection(
+    iconName: RaftLucideIconName,
+    title: String,
+    loading: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SettingsServerSectionHeader(iconName = iconName, title = title, loading = loading)
+        content()
     }
 }
 
@@ -477,3 +497,76 @@ private data class SharedSettingsRowGestureCallbacks(
     val onCopyValue: ((String) -> Unit)?,
     val onAction: (String, String?) -> Unit
 )
+
+/**
+ * Web `SettingsProfileCard` (Account and Server Profile): a card (p-4, 16dp stack) whose head is
+ * the avatar in a 64dp box beside the title (headline) over a mono subtitle, then a separator and
+ * the form ([content], 12dp apart).
+ */
+@Composable
+internal fun SettingsProfileIdentityCard(
+    title: String,
+    subtitle: String,
+    avatar: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    RaftCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
+                Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) { avatar() }
+                Column(modifier = Modifier.weight(1f).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    RaftText(
+                        title,
+                        modifier = Modifier.raftCopyable(title),
+                        style = RaftTheme.typography.headline,
+                        color = RaftTheme.colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (subtitle.isNotBlank()) {
+                        RaftText(
+                            subtitle,
+                            modifier = Modifier.raftCopyable(subtitle),
+                            style = RaftTheme.typography.monoCode,
+                            color = RaftTheme.colors.foregroundMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                RaftSeparator()
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    content = content
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Web read-only `PrefixedInput` / `SlugInput` (the username's "@", the server slug's "/"): the
+ * `fill-muted` / `line-hairline` input group with its prefix addon and the value in
+ * `foreground-muted`. Long-press copies [copyText].
+ */
+@Composable
+internal fun SettingsReadOnlyPrefixedField(prefix: String, text: String, copyText: String? = text) {
+    RaftPrefixedInputFrame(
+        prefix = prefix,
+        enabled = false,
+        fieldHeight = 44.dp,
+        modifier = Modifier.raftCopyable(copyText)
+    ) {
+        RaftText(
+            text,
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+            style = RaftTheme.typography.field,
+            color = RaftTheme.colors.foregroundMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}

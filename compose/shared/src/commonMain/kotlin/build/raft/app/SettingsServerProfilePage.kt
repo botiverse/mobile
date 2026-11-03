@@ -4,6 +4,10 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftReadOnlyField
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
+import build.raft.app.data.RaftAvatarCacheSubject
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -135,9 +139,10 @@ internal fun SharedSettingsServerContent(
     onAction: (String, String?) -> Unit
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
+    // Web: each section is `mb-6`, 24dp apart.
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         if (showProfileCard) {
             item {
@@ -209,45 +214,88 @@ private fun SettingsServerProfileFormCard(
     val dirty = trimmedName.isNotBlank() && trimmedName != currentName
     val enabled = canSave && dirty && !busy
     val status = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) stringResource(Res.string.settings_server_action_save_profile) else stringResource(Res.string.settings_server_state_read_only))
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Building2, title = stringResource(Res.string.settings_profile_title)) {
-        RaftField(
-            label = stringResource(Res.string.settings_server_label_name),
-            modifier = Modifier.fillMaxWidth(),
-            labelSize = RaftFieldLabelSize.Sm,
-            required = true,
-            enabled = canSave && !busy
+    // Web ProfileSection: the "Profile" header over SettingsProfileCard (the server's tile, its
+    // name and "/slug"), then Name, the read-only "/" slug and Save Profile.
+    SettingsFormSection(iconName = RaftLucideIconName.Building2, title = stringResource(Res.string.settings_profile_title)) {
+        SettingsProfileIdentityCard(
+            title = currentName,
+            subtitle = currentSlug.takeIf { it.isNotBlank() }?.let { "/$it" }.orEmpty(),
+            avatar = { SettingsServerProfileAvatar(name = currentName, serverId = profile?.serverId, avatarUrl = profile?.avatarUrl) }
         ) {
-            RaftTextField(
-                value = if (canSave) draftName else currentName,
-                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                onValueChange = onNameChange,
-                placeholder = currentName.ifBlank { stringResource(Res.string.settings_server_placeholder_name) }
-            )
-        }
-        RaftField(
-            label = stringResource(Res.string.settings_server_label_slug),
-            modifier = Modifier.fillMaxWidth(),
-            labelSize = RaftFieldLabelSize.Sm
-        ) {
-            RaftReadOnlyField(
-                text = currentSlug.ifBlank { stringResource(Res.string.settings_server_state_not_provided) },
-                copyText = currentSlug.takeIf { it.isNotBlank() }
-            )
-        }
-        if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-        if (canSave) {
-            RaftButton(
-                text = status,
-                onClick = onSubmit,
-                enabled = enabled,
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Md,
-                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Save) }
-            )
+            RaftField(
+                label = stringResource(Res.string.settings_server_label_name),
+                modifier = Modifier.fillMaxWidth(),
+                labelSize = RaftFieldLabelSize.Sm,
+                enabled = canSave && !busy
+            ) {
+                RaftTextField(
+                    value = if (canSave) draftName else currentName,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                    onValueChange = onNameChange,
+                    placeholder = currentName.ifBlank { stringResource(Res.string.settings_server_placeholder_name) }
+                )
+            }
+            RaftField(
+                label = stringResource(Res.string.settings_server_label_slug),
+                modifier = Modifier.fillMaxWidth(),
+                labelSize = RaftFieldLabelSize.Sm
+            ) {
+                SettingsReadOnlyPrefixedField(
+                    prefix = "/",
+                    text = currentSlug.ifBlank { stringResource(Res.string.settings_server_state_not_provided) },
+                    copyText = currentSlug.takeIf { it.isNotBlank() }
+                )
+            }
+            if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
+                SettingsFormErrorText(actionState)
+            }
+            if (canSave) {
+                // Web: `<Button variant="accent" size="md">`, no icon.
+                RaftButton(
+                    text = status,
+                    onClick = onSubmit,
+                    enabled = enabled,
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Md
+                )
+            }
         }
     }
+}
+
+/**
+ * Web `AvatarSlot context="profile-tile" type="server"`: raft-ui's lg (51dp) server avatar, the
+ * uploaded image or the name's initial in `brand` on `sticker-ink`.
+ */
+@Composable
+private fun SettingsServerProfileAvatar(name: String, serverId: String?, avatarUrl: String?) {
+    val initial = name.trim().take(1).uppercase().ifBlank { "S" }
+    val source = avatarUrl?.takeIf { it.isNotBlank() }
+    val cleanServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+    RaftAvatar(
+        type = RaftAvatarType.Server,
+        size = RaftAvatarSize.Lg,
+        initials = initial,
+        image =
+            source?.let { url ->
+                @Composable {
+                    RaftAvatarHttpImage(
+                        source = url,
+                        modifier = Modifier.fillMaxSize(),
+                        cacheSubject = cleanServerId?.let { id -> RaftAvatarCacheSubject.Server(id) },
+                        cacheServerId = cleanServerId,
+                        serverDiagnosticsId = cleanServerId,
+                        fallback = { SettingsServerProfileAvatarInitial(initial) },
+                        placeholder = { SettingsServerProfileAvatarInitial(initial) }
+                    )
+                }
+            }
+    )
+}
+
+@Composable
+private fun SettingsServerProfileAvatarInitial(initial: String) {
+    RaftAvatar(type = RaftAvatarType.Server, size = RaftAvatarSize.Lg, initials = initial)
 }
 
 @Composable
@@ -275,32 +323,36 @@ private fun SettingsServerDangerZoneCard(
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
     val trimmedModalSlug = modalConfirmationSlug.trim()
     val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedModalSlug == expectedServerSlug
-    SettingsFormSectionCard(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(Res.string.settings_section_danger_zone_title)) {
+    // Web DangerZoneSection: Leave Server and Delete Server are cards of their own, 12dp apart.
+    SettingsFormSection(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(Res.string.settings_section_danger_zone_title)) {
         if (canLeave) {
-            SettingsServerActionRow(
-                title = stringResource(Res.string.settings_server_action_leave),
-                detail = stringResource(Res.string.settings_server_leave_detail),
-                buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(Res.string.settings_server_action_leave)),
-                buttonIcon = RaftLucideIconName.LogOut,
-                buttonVariant = RaftButtonVariant.Warning,
-                enabled = !leaveBusy,
-                onClick = onLeave
-            )
-            if (leaveConfirmed) {
-                Text(
-                    stringResource(Res.string.settings_server_leave_confirm),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
-                )
+            RaftCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SettingsServerActionRow(
+                        title = stringResource(Res.string.settings_server_action_leave),
+                        detail = stringResource(Res.string.settings_server_leave_detail),
+                        buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(Res.string.settings_server_action_leave)),
+                        buttonIcon = RaftLucideIconName.LogOut,
+                        buttonVariant = RaftButtonVariant.Warning,
+                        enabled = !leaveBusy,
+                        onClick = onLeave
+                    )
+                    if (leaveConfirmed) {
+                        Text(
+                            stringResource(Res.string.settings_server_leave_confirm),
+                            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray
+                        )
+                    }
+                }
             }
         }
         if (canDelete) {
-            SettingsServerActionRow(
+            SettingsDangerActionCard(
                 title = stringResource(Res.string.settings_server_action_delete),
                 detail = stringResource(Res.string.settings_server_delete_detail),
                 buttonLabel = stringResource(Res.string.settings_server_action_delete),
                 buttonIcon = RaftLucideIconName.Trash2,
-                buttonVariant = RaftButtonVariant.Danger,
                 enabled = !deleteBusy,
                 onClick = { showDeleteModal = true }
             )
@@ -339,6 +391,41 @@ private fun SettingsServerDangerZoneCard(
                 }
             }
         )
+    }
+}
+
+/**
+ * Web `DangerActionCard` on a phone: the title (subhead semibold) over the description (footnote,
+ * muted), then the red button under them at its own width.
+ */
+@Composable
+private fun SettingsDangerActionCard(
+    title: String,
+    detail: String,
+    buttonLabel: String,
+    buttonIcon: RaftLucideIconName,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    RaftCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                RaftText(
+                    title,
+                    style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                    color = RaftTheme.colors.foreground
+                )
+                RaftText(detail, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+            }
+            RaftButton(
+                text = buttonLabel,
+                onClick = onClick,
+                enabled = enabled,
+                variant = RaftButtonVariant.Danger,
+                size = RaftButtonSize.Md,
+                leadingIcon = { RaftSlotIcon(buttonIcon) }
+            )
+        }
     }
 }
 

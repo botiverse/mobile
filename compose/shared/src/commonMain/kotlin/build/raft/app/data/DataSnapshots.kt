@@ -1801,7 +1801,10 @@ data class SettingsServerProfileSnapshot(
     val name: String,
     val slug: String,
     val hideHumansFromMembers: Boolean = false,
-    val canSave: Boolean = false
+    val canSave: Boolean = false,
+    /** The server's id and uploaded avatar (`servers[].avatarUrl`), for the profile card's tile. */
+    val serverId: String? = null,
+    val avatarUrl: String? = null
 )
 
 data class SettingsServerSectionSnapshot(
