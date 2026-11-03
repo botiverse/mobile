@@ -17142,7 +17142,10 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                 passwordExpanded = variant == "account-password-expanded",
                 // web components.settings.account.error-state surfaces only the avatar upload
                 // failure (`accountInitialError`); no save, password or provider error.
-                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" }
+                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" },
+                // web SettingsPanel account tab: UsageDataSettingsCard, on by default.
+                usageDataVisible = true,
+                usageDataSharing = true
             ),
         applyTopSafeArea = false,
         onPasswordChange = { _, _ -> },

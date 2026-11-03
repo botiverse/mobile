@@ -4,7 +4,6 @@ import build.raft.app.components.RaftDesignSystemEditor
 import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldLabelSize
-import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.focus.FocusRequester
@@ -482,22 +481,26 @@ internal fun SettingsAccountContent(
                     .padding(top = topSafeArea)
                     .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            // Web: each section is `mb-6`, 24dp apart.
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            item { SettingsAccountSectionHeader(localizedPayload.profileSectionTitle) }
             item {
-                SettingsAccountProfileCard(
-                    localizedPayload,
-                    visibleConnectedAccounts,
-                    avatarCacheIdentity,
-                    onEvent,
-                    onPasswordChange,
-                    onRequestDisconnect = { providerId ->
-                        disconnectSubmitted.value = false
-                        pendingDisconnect.value = providerId
-                    }
-                )
+                SettingsFormSection(iconName = RaftLucideIconName.User, title = localizedPayload.profileSectionTitle) {
+                    SettingsAccountProfileCard(
+                        localizedPayload,
+                        visibleConnectedAccounts,
+                        avatarCacheIdentity,
+                        onEvent,
+                        onPasswordChange,
+                        onRequestDisconnect = { providerId ->
+                            disconnectSubmitted.value = false
+                            pendingDisconnect.value = providerId
+                        }
+                    )
+                }
             }
+            // Web order: the Account card, Session (Sign out), then Share usage data.
+            item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
             if (localizedPayload.usageDataVisible) {
                 item {
                     SettingsAccountUsageDataRow(
@@ -507,7 +510,6 @@ internal fun SettingsAccountContent(
                     )
                 }
             }
-            item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
             if (accountDeletion != null) {
                 item { SettingsDeleteAccountRow(onClick = accountDeletion.onOpen) }
             }
@@ -687,24 +689,6 @@ private fun SettingsAccountUsageDataRow(
 }
 
 @Composable
-private fun SettingsAccountSectionHeader(title: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        RaftLucideIcon(RaftLucideIconName.User, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
-        Text(
-            title,
-            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
 private fun SettingsAccountProfileCard(
     payload: RaftSettingsAccountPayload,
     connectedAccounts: List<RaftSettingsConnectedAccount>,
@@ -723,46 +707,13 @@ private fun SettingsAccountProfileCard(
     val passwordMinimumError = stringResource(Res.string.settings_account_password_too_short)
     val passwordMismatchError = stringResource(Res.string.settings_account_password_mismatch)
     val displayName = displayNameState.value
-    SettingsAccountHardShadowCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    profile.displayName.ifBlank { stringResource(Res.string.settings_account_title) },
-                    modifier = Modifier.raftCopyable(profile.displayName),
-                    // Web SettingsProfileCard: text-headline (17/22 700).
-                    style = RaftType.Headline.copy(color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                settingsAccountHeaderHandleLabel(profile.handle)?.let {
-                    Text(
-                        it,
-                        // The handle copies with its "@", as shown.
-                        modifier = Modifier.raftCopyable(it),
-                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                        color = RaftColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning(stringResource(Res.string.settings_account_avatar_upload_failed, code))
-        }
-        RaftField(
-            label = payload.handleLabel.takeIf { it.isNotBlank() },
-            modifier = Modifier.fillMaxWidth(),
-            labelSize = RaftFieldLabelSize.Sm
-        ) {
-            RaftReadOnlyField(
-                text = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
-                // Copies the handle as shown here (no "@"); nothing for the placeholder.
-                copyText = profile.handle.removePrefix("@").ifBlank { null }
-            )
-        }
+    // Web SettingsProfileCard: the avatar beside the name over "@username", then Display Name,
+    // the read-only "@" Username, Email, the form's error and Save Profile.
+    SettingsProfileIdentityCard(
+        title = profile.displayName.ifBlank { stringResource(Res.string.settings_account_title) },
+        subtitle = settingsAccountHeaderHandleLabel(profile.handle).orEmpty(),
+        avatar = { SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent) }
+    ) {
         RaftField(
             label = payload.displayNameLabel,
             modifier = Modifier.fillMaxWidth(),
@@ -787,16 +738,32 @@ private fun SettingsAccountProfileCard(
                 keyboardOptions = editor.keyboardOptions
             )
         }
+        RaftField(
+            label = payload.handleLabel.takeIf { it.isNotBlank() },
+            modifier = Modifier.fillMaxWidth(),
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            SettingsReadOnlyPrefixedField(
+                prefix = "@",
+                text = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
+                // Copies the handle as shown here (no "@"); nothing for the placeholder.
+                copyText = profile.handle.removePrefix("@").ifBlank { null }
+            )
+        }
         SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
+        // Web: the form's one error banner, between Email and Save Profile.
+        payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            SettingsAccountWarning(stringResource(Res.string.settings_account_avatar_upload_failed, code))
+        }
+        payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            SettingsAccountWarning(stringResource(Res.string.settings_account_profile_save_failed, code))
+        }
         SettingsProfileSaveButton(
             text = payload.profileSaveButtonLabel(),
             // Web `disabled={!profileDirty || saving}`.
             enabled = payload.canEditProfile && !payload.saveInProgress && displayName.trim() != profile.displayName,
             onClick = { onEvent("saveProfile", displayName.trim()) }
         )
-        payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning(stringResource(Res.string.settings_account_profile_save_failed, code))
-        }
         RaftSeparator()
         if (connectedAccounts.isNotEmpty()) {
             SettingsConnectedAccounts(payload, connectedAccounts, onEvent, onRequestDisconnect)
@@ -869,14 +836,15 @@ private fun SettingsProfileAvatar(
     Box(
         modifier =
             Modifier
-                .size(56.dp)
+                // raft-ui Avatar lg (web AvatarSlot "profile-tile"): 51dp.
+                .size(51.dp)
                 .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
         contentAlignment = Alignment.Center
     ) {
         RaftAppAvatar(
             avatarWireValue = profile.avatarUrl,
             label = profile.avatarLabel,
-            avatarSize = 56.dp,
+            avatarSize = 51.dp,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
         )
@@ -1242,22 +1210,39 @@ private fun SettingsDisconnectProviderDialog(
     }
 }
 
+/**
+ * Web `AccountSignOutSection`: the Session header over a card whose row is the title (subhead
+ * semibold) over the description (footnote, muted) beside the orange Sign Out button. The
+ * confirmation opens under the row.
+ */
 @Composable
 private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle(stringResource(Res.string.settings_account_session), RaftLucideIconName.LogOut)
+    SettingsFormSection(iconName = RaftLucideIconName.LogOut, title = stringResource(Res.string.settings_account_session)) {
         SettingsAccountHardShadowCard {
-            Text(
-                payload.logoutTitle,
-                // Web AccountSignOutSection: text-subhead font-semibold (15/20 600).
-                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold, color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            // Web: text-footnote, muted (13/18 400).
-            Text(payload.logoutDetail, style = RaftTheme.typography.footnote.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    RaftText(
+                        payload.logoutTitle,
+                        style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                        color = RaftTheme.colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    RaftText(payload.logoutDetail, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+                }
+                RaftButton(
+                    text = payload.logoutLabel,
+                    onClick = { confirming.value = true },
+                    enabled = !confirming.value,
+                    variant = RaftButtonVariant.Warning,
+                    size = RaftButtonSize.Md
+                )
+            }
             if (confirming.value) {
                 SettingsAccountWarning(payload.logoutConfirmMessage)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1276,30 +1261,8 @@ private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmL
                         size = RaftButtonSize.Lg
                     )
                 }
-            } else {
-                RaftButton(
-                    text = payload.logoutLabel,
-                    onClick = { confirming.value = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    variant = RaftButtonVariant.Danger,
-                    size = RaftButtonSize.Lg
-                )
             }
         }
-    }
-}
-
-@Composable
-private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconName? = null) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (iconName != null) {
-            RaftLucideIcon(iconName, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
-        }
-        Text(text, style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
 }
 
