@@ -382,6 +382,16 @@ private class SharedThreadComposerDraftStoreLockEntry(
     var activeOwner: SharedThreadComposerDraftPersistence? = null
 
     /**
+     * Held by an MVI runtime for a whole reducer transition (begin → release) on this store.
+     * Every composer draft view model shares one slice, but each has its own runtime; without a
+     * shared admission lock, a transition on a background thread (for example the send
+     * completion's CompleteSend) made a keystroke's Change on the main thread fail with
+     * `transition_conflict`, which crashed the app (iOS crash c2d27ebd).  Re-entrant, so a
+     * same-thread nested transition still reaches the fail-closed conflict check.
+     */
+    val transitionAdmissionLock: ReentrantLock = reentrantLock()
+
+    /**
      * Refs reserved for a native retirement whose callback is executing outside [lock].  A
      * concurrent draft write must not re-introduce one of these paths while the callback is in
      * flight; otherwise the callback could delete bytes which the new draft just claimed.
@@ -430,6 +440,10 @@ internal class SharedThreadComposerDraftPersistence(
     /** Shared with every facade which wraps the same [store]. */
     private val lockEntry = SharedThreadComposerDraftStoreLockRegistry.entryFor(store)
     private val lock = lockEntry.lock
+
+    /** Store-wide; see [SharedThreadComposerDraftStoreLockEntry.transitionAdmissionLock]. */
+    internal val transitionAdmissionLock: ReentrantLock
+        get() = lockEntry.transitionAdmissionLock
 
     /**
      * Capture every durable row which a draft transition can touch.  The active-key index is
@@ -1458,6 +1472,10 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val scheduler: SharedThreadComposerDraftPersistenceScheduler = ImmediateThreadComposerDraftPersistenceScheduler,
     private val changeDebounceMillis: Long = DefaultChangeDebounceMillis
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
+    /** Runtimes using this slice serialize their transitions on it; see [SharedThreadComposerDraftStore]. */
+    internal val transitionAdmissionLock: ReentrantLock
+        get() = persistence.transitionAdmissionLock
+
     val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
         SharedActiveDraftRecordsState.asStateFlow()
 
@@ -2476,7 +2494,13 @@ internal class SharedThreadComposerDraftStore(
             initialState = SharedThreadComposerDraftState(),
             scope = scope,
             reduce = ::reduce,
-            persistSlices = persistSlices
+            persistSlices = persistSlices,
+            reducerLock =
+                persistSlices
+                    .firstNotNullOfOrNull { slice ->
+                        (slice as? SharedThreadComposerDraftPersistSlice)?.transitionAdmissionLock
+                    }
+                    ?: reentrantLock()
         )
     val state: StateFlow<SharedThreadComposerDraftState> = runtime.state
 
