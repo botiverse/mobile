@@ -81,14 +81,6 @@ class ThreadMarkdownFirstFrameTokensTest {
         )
     }
 
-    @Test
-    fun theDirectoryIsReadForTheShellServerUntilTheSessionIsCaptured() {
-        assertEquals("srv-shell", threadMemberDirectoryServerId(sessionServerId = null, shellServerId = " srv-shell "))
-        assertEquals("srv-session", threadMemberDirectoryServerId(sessionServerId = "srv-session", shellServerId = "srv-shell"))
-        assertEquals("srv-shell", threadMemberDirectoryServerId(sessionServerId = "  ", shellServerId = "srv-shell"))
-        assertNull(threadMemberDirectoryServerId(sessionServerId = null, shellServerId = null))
-    }
-
     private fun RaftThreadScreenPayload.projected(entry: SharedServerMembersEntry): RaftThreadScreenPayload =
         withThreadMembersProjection(
             threadMembersProjection(

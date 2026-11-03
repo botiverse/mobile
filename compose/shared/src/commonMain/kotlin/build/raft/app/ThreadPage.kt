@@ -8415,7 +8415,7 @@ private fun SharedThreadRouteContentContent(
     // The session is captured a few frames after the page composes; until then the shell's server
     // decides, or the first frame laid out the old Chat / Tasks / Files tab row and the list jumped
     // when it went away (Compose 版 open jitter).
-    val taskV2FlagServerId = threadFeatureFlagServerId(currentServerId, storeScope.initialServerId)
+    val taskV2FlagServerId = threadPageServerId(currentServerId, storeScope.initialServerId)
     val taskV2Enabled =
         remember(featureFlagSnapshotRevision, taskV2FlagServerId) {
             taskV2FlagServerId != null &&
@@ -8546,7 +8546,7 @@ private fun SharedThreadRouteContentContent(
     // keys the member directory, so @mentions in the first content frame are already chips with
     // their names; reading nothing there painted them as plain text and re-laid the rows out as
     // chips a few frames later (Compose 版 open jitter, artin 11-03).
-    val threadMembersServerId = threadMemberDirectoryServerId(currentServerId, storeScope.initialServerId)?.let(::ServerId)
+    val threadMembersServerId = threadPageServerId(currentServerId, storeScope.initialServerId)?.let(::ServerId)
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val threadServerMembersEntry by remember(serverMembersStore, threadMembersServerId) {
         if (serverMembersStore != null && threadMembersServerId != null) {
@@ -18993,8 +18993,11 @@ internal object ThreadComposerRestingHeight {
 
 internal fun ThreadComposerSurface.threadComposerRestingHeightKey(): String = "$kind|$showTaskButton"
 
-/** The server a page reads per-server flags for: the session's once captured, the shell's before. */
-internal fun threadFeatureFlagServerId(sessionServerId: String?, shellServerId: String?): String? =
+/**
+ * The server a thread page reads per-server state for (feature flags, member directory): the
+ * session's once captured, the shell's before, so the first frames already have a server.
+ */
+internal fun threadPageServerId(sessionServerId: String?, shellServerId: String?): String? =
     sessionServerId?.trim()?.takeIf { it.isNotBlank() } ?: shellServerId?.trim()?.takeIf { it.isNotBlank() }
 
 /** The composer's slot at its resting height, before the editor itself can mount. */
@@ -37387,10 +37390,6 @@ internal fun threadAddMemberRowInteraction(
         enabled = !blocked && !alreadyJoined,
         clickEnabled = !blocked && !alreadyJoined && !adding
     )
-
-/** The server a thread page's member directory is read for: the session's once captured, the shell's before. */
-internal fun threadMemberDirectoryServerId(sessionServerId: String?, shellServerId: String?): String? =
-    sessionServerId?.trim()?.takeIf { it.isNotBlank() } ?: shellServerId?.trim()?.takeIf { it.isNotBlank() }
 
 /** Fills the known channel names from [home] while the store has not added them yet; never overrides them. */
 internal fun RaftThreadScreenPayload.withFirstFrameKnownMarkdownChannelNames(home: HomeSnapshot?): RaftThreadScreenPayload {
