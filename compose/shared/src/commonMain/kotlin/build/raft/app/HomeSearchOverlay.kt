@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
@@ -329,7 +330,7 @@ internal fun HomeSearchOverlayPanel(
     val personLabel = stringResource(Res.string.search_entity_person)
     val membersLabel = stringResource(Res.string.search_entity_members)
     val recent =
-        remember(overlay.visitedThreadIds, overlay.excludeThreadId, homeState, frequentEntityResults, channelLabel, dmLabel) {
+        remember(overlay.visitedThreadIds, overlay.excludeThreadId, homeState, frequentEntityResults, channelLabel, dmLabel, agentLabel, personLabel, membersLabel) {
             homeSearchOverlayRecentConversations(
                 visitedThreadIds = overlay.visitedThreadIds,
                 candidates =
@@ -373,6 +374,7 @@ internal fun HomeSearchOverlayPanel(
         )
     val rows = content.rows
     var cursor by remember { mutableStateOf(HomeSearchOverlayCursor()) }
+    var fieldFocused by remember { mutableStateOf(false) }
     // A palette's cursor returns to the top row whenever the query changes (web task #102).
     LaunchedEffect(state.query, exactKey) { cursor = cursor.reset() }
     val selected = cursor.selected(rows)
@@ -405,13 +407,15 @@ internal fun HomeSearchOverlayPanel(
             anchorWidth = overlay.anchorWidth,
             modifier =
                 Modifier.onPreviewKeyEvent { event ->
-                    // A filter menu keeps its own keys.
-                    if (filterMenuOpen) return@onPreviewKeyEvent false
+                    // A filter menu keeps its own keys, and a focused chip or button its Return.
+                    if (filterMenuOpen || !fieldFocused) return@onPreviewKeyEvent false
                     val action =
                         homeSearchOverlayKeyAction(
                             key = event.key,
                             keyDown = event.type == KeyEventType.KeyDown,
                             shift = event.isShiftPressed,
+                            // Return confirming an input method's word is the field's (web isComposing).
+                            composing = editor.value.composition != null,
                         ) ?: return@onPreviewKeyEvent false
                     when (action) {
                         is HomeSearchOverlayKeyAction.Move -> cursor = cursor.move(rows, action.delta)
@@ -420,7 +424,7 @@ internal fun HomeSearchOverlayPanel(
                     true
                 },
             head = {
-                Box(Modifier.fillMaxWidth().padding(12.dp)) {
+                Box(Modifier.fillMaxWidth().padding(12.dp).onFocusChanged { fieldFocused = it.hasFocus }) {
                     SharedHomeSearchInput(
                         query = editor.value,
                         loading = state.loading,

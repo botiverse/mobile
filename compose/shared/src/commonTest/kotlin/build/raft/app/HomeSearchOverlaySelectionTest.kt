@@ -79,7 +79,7 @@ class HomeSearchOverlaySelectionTest {
         assertNull(cursor.reset().selectedKey)
     }
 
-    @Test fun `arrows move, Return opens, other keys stay the field's`() {
+    @Test fun `arrows move and Return opens while other keys stay with the field`() {
         assertEquals(HomeSearchOverlayKeyAction.Move(1), homeSearchOverlayKeyAction(Key.DirectionDown, keyDown = true, shift = false))
         assertEquals(HomeSearchOverlayKeyAction.Move(-1), homeSearchOverlayKeyAction(Key.DirectionUp, keyDown = true, shift = false))
         assertEquals(HomeSearchOverlayKeyAction.Open, homeSearchOverlayKeyAction(Key.Enter, keyDown = true, shift = false))
@@ -97,7 +97,7 @@ class HomeSearchOverlaySelectionTest {
         assertNull(homeSearchOverlayExactKey("  ", results))
     }
 
-    @Test fun `recent conversations are the visits, then the frequent ones, without the open one`() {
+    @Test fun `recent conversations are the visits then the frequent ones without the open one`() {
         val design = entity("c:design", "design", "t-design")
         val android = entity("c:android", "android", "t-android")
         val old = entity("c:old", "old", "t-old", archived = true)
