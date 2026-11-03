@@ -28135,12 +28135,20 @@ private fun ThreadMessageCardContent(
                 showReplyAction = showReplyAction,
             )
         }
+    val repliesBadge =
+        threadRepliesBadgeSpec(
+            replyMetadata = replyMetadata,
+            hasDraft = hasReplyDraft,
+            showReplyAction = showReplyAction,
+            hasInlineReplies = inlineReplyPresentation != null,
+        )
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
             message.hasThreadFooterMeta(
                 showSavedBadge = showSavedBadge,
-                hasPendingReaction = hasPendingReaction
+                hasPendingReaction = hasPendingReaction,
+                showRepliesBadge = repliesBadge != null
             )
     val messagePerformanceKey =
         remember(message.id, messageIndex) {
@@ -28951,6 +28959,8 @@ private fun ThreadMessageCardContent(
                                             onShowActions = onShowActions,
                                             onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                                             showSavedBadge = showSavedBadge,
+                                            repliesBadge = repliesBadge,
+                                            onOpenReplies = { onOpenThread(message.id) },
                                             showReactionAddAction = showReactionAddAction,
                                             onToggleReaction = onToggleReaction,
                                             onShowReactionDetails = onShowReactionDetails,
@@ -32091,6 +32101,8 @@ internal fun ThreadMessageFooterMeta(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
+    repliesBadge: ThreadRepliesBadgeSpec? = null,
+    onOpenReplies: (() -> Unit)? = null,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
     onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
@@ -32111,7 +32123,7 @@ internal fun ThreadMessageFooterMeta(
         )
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions
-    if (!hasTask && !showSavedBadge && !hasReactions && !showReactionAddChip) return
+    if (!hasTask && !showSavedBadge && repliesBadge == null && !hasReactions && !showReactionAddChip) return
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -32171,6 +32183,7 @@ internal fun ThreadMessageFooterMeta(
                 label = stringResource(Res.string.thread_label_saved),
             )
         }
+        repliesBadge?.let { badge -> ThreadRepliesBadge(badge, onClick = onOpenReplies) }
         if (hasReactions) {
             visibleReactions.forEach { reaction ->
                 key("reaction:${message.id}:${reaction.emoji}") {
@@ -32190,6 +32203,41 @@ internal fun ThreadMessageFooterMeta(
             ThreadReactionAddChip(messageId = message.id, onClick = onShowQuickReactions ?: onShowActions)
         }
     }
+}
+
+/**
+ * web `ThreadRepliesBadge`: "5 replies · 2 new" (soft information while there are new replies,
+ * solid default otherwise), with the thread glyph; a draft adds "· Draft", and a draft alone shows
+ * the pencil.
+ */
+@Composable
+private fun ThreadRepliesBadge(badge: ThreadRepliesBadgeSpec, onClick: (() -> Unit)?) {
+    val parts = buildList {
+        if (badge.replyCount > 0) {
+            add(
+                if (badge.replyCount == 1) {
+                    stringResource(Res.string.thread_inline_reply_count_one)
+                } else {
+                    stringResource(Res.string.thread_inline_reply_count_many, badge.replyCount)
+                }
+            )
+        }
+        if (badge.unreadCount > 0) add(stringResource(Res.string.thread_replies_badge_new_count, badge.unreadCount))
+        if (badge.hasDraft) add(stringResource(Res.string.thread_inline_draft))
+    }
+    val hasUnread = badge.unreadCount > 0
+    RaftBadge(
+        text = parts.joinToString(" · "),
+        appearance = if (hasUnread) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Solid,
+        variant = if (hasUnread) RaftBadgeVariant.Information else RaftBadgeVariant.Default,
+        icon = {
+            RaftSlotIcon(
+                if (badge.replyCount > 0) RaftLucideIconName.Thread else RaftLucideIconName.Pencil,
+                size = 12.dp,
+            )
+        },
+        onClick = onClick,
+    )
 }
 
 private fun TaskStatus.threadTaskChipSoftFill(): Color =
@@ -32281,12 +32329,40 @@ internal val LocalThreadPendingReactionVisuals =
 
 internal fun RaftThreadMessageItem.hasThreadFooterMeta(
     showSavedBadge: Boolean = false,
-    hasPendingReaction: Boolean = false
+    hasPendingReaction: Boolean = false,
+    showRepliesBadge: Boolean = false
 ): Boolean =
     hasThreadTaskFooterMeta() ||
         showSavedBadge ||
+        showRepliesBadge ||
         hasPendingReaction ||
         reactions.any { it.count > 0 }
+
+/**
+ * web `ThreadRepliesBadge`: the footer badge that stands for a thread when no inline reply preview
+ * does (MessageItem `shouldShowThreadRepliesBadge`): replies or a reply draft, thread actions on,
+ * and no [ThreadInlineReplyPresentation] for the message.
+ */
+internal data class ThreadRepliesBadgeSpec(
+    val replyCount: Int,
+    val unreadCount: Int,
+    val hasDraft: Boolean,
+)
+
+internal fun threadRepliesBadgeSpec(
+    replyMetadata: ThreadReplyMetadata,
+    hasDraft: Boolean,
+    showReplyAction: Boolean,
+    hasInlineReplies: Boolean,
+): ThreadRepliesBadgeSpec? {
+    val replyCount = replyMetadata.replyCount.coerceAtLeast(0)
+    if (!showReplyAction || hasInlineReplies || (replyCount == 0 && !hasDraft)) return null
+    return ThreadRepliesBadgeSpec(
+        replyCount = replyCount,
+        unreadCount = replyMetadata.unreadReplyCount.coerceAtLeast(0),
+        hasDraft = hasDraft,
+    )
+}
 
 internal enum class ThreadMessageTrailingSection {
     SourceTasks,
