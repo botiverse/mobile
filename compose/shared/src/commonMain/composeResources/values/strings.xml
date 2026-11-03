@@ -719,7 +719,7 @@
     <string name="thread_settings_panel_close">Close channel settings</string>
     <string name="thread_settings_preferences">Preferences</string>
     <string name="thread_settings_pin_title">Pin channel</string>
-    <string name="thread_settings_pin_detail">Keep this channel pinned to the top of your sidebar.</string>
+    <string name="thread_settings_pin_detail">Keep it in Pinned on Home.</string>
     <string name="thread_settings_actions_title">Channel actions</string>
     <string name="thread_settings_actions_detail">Membership, visibility, conversion, archive, and destructive controls.</string>
     <string name="thread_dm_settings_title">DM Settings</string>

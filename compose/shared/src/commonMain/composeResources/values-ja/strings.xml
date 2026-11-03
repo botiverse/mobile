@@ -721,7 +721,7 @@
     <string name="thread_settings_panel_close">チャンネル設定を閉じる</string>
     <string name="thread_settings_preferences">個人設定</string>
     <string name="thread_settings_pin_title">チャンネルをピン留め</string>
-    <string name="thread_settings_pin_detail">このチャンネルをサイドバーの上部にピン留めします。</string>
+    <string name="thread_settings_pin_detail">ホームの「ピン留め」に固定します。</string>
     <string name="thread_settings_actions_title">チャンネルの操作</string>
     <string name="thread_settings_actions_detail">メンバーシップ、公開範囲、変換、アーカイブ、危険な操作を管理します。</string>
     <string name="thread_dm_settings_title">DM設定</string>

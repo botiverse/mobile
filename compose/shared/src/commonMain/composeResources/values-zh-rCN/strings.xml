@@ -719,7 +719,7 @@
     <string name="thread_settings_panel_close">关闭频道设置</string>
     <string name="thread_settings_preferences">偏好</string>
     <string name="thread_settings_pin_title">置顶频道</string>
-    <string name="thread_settings_pin_detail">将此频道固定在你的侧栏顶部。</string>
+    <string name="thread_settings_pin_detail">固定在首页的「已置顶」里。</string>
     <string name="thread_settings_actions_title">频道操作</string>
     <string name="thread_settings_actions_detail">成员资格、可见性、转换、归档和破坏性操作。</string>
     <string name="thread_dm_settings_title">私信设置</string>
