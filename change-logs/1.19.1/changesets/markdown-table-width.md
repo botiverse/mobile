@@ -5,7 +5,7 @@ platforms:
   - android
   - ios
   - desktop
-pull_request: https://github.com/botiverse/mobile/pull/PRNUM
+pull_request: https://github.com/botiverse/mobile/pull/4195
 rollout: full
 ---
 
