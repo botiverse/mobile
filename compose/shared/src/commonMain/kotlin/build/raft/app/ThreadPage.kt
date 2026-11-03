@@ -314,6 +314,9 @@ import build.raft.app.model.Presence
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
+import build.raft.app.markdown.RaftTaskStatusPixel
+import build.raft.app.markdown.RaftTaskStatusPixelStyle
+import build.raft.app.markdown.raftTaskStatusColor
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
@@ -346,6 +349,7 @@ import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.TaskStatus
+import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
@@ -31660,10 +31664,20 @@ internal fun ThreadMessageFooterMeta(
                     taskOpenEnabled = taskOpenEnabled
                 )
             // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status
-            // soft fill with a status-strong glyph and a 12/16 label.
+            // soft fill with the status pixel (`TaskStatusIcon`) and a 12/16 label.
+            val statusPixel =
+                TaskStatus.fromWireValue(message.taskStatus)?.let { status ->
+                    RaftTaskStatusPixelStyle(
+                        fill = status.raftTaskStatusColor(RaftAppThemeState.colors),
+                        stroke = RaftUiPalette.stickerInk,
+                    )
+                }
             RaftAnchoredMetaChip(
                 label = label,
-                iconName = selectedStatus.icon,
+                iconName = if (statusPixel == null) selectedStatus.icon else null,
+                leadingContent = statusPixel?.let { pixel -> { RaftTaskStatusPixel(pixel) } },
+                // `gap-1.5` between the pixel and the number.
+                contentSpacing = 6.dp,
                 iconSize = selectedStatus.iconSize,
                 color = selectedStatus.status.threadTaskChipSoftFill(),
                 iconColorArgb = raftArgbHex(selectedStatus.status.threadTaskChipStrong()),

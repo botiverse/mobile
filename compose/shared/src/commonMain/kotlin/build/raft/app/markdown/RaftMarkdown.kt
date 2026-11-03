@@ -105,6 +105,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
@@ -138,6 +139,8 @@ import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevisi
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableCellPadding
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableClosedGrid
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownParagraphFillWidth
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownBlockMargins
+import com.tencent.kuiklybase.markdown.compose.RaftMarkdownBlockMargin
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownRowRenderCostSink
 import com.tencent.kuiklybase.markdown.compose.RaftMarkdownNodeTrace
 import com.tencent.kuiklybase.markdown.compose.RaftMarkdownNodeTraceSink
@@ -2121,6 +2124,8 @@ private val RaftMarkdownBodyFontSize get() = RaftTextSize.Content
 // `text-body` 16/24, the Web's message text.
 private val RaftMarkdownBodyLineHeight get() = RaftTextSize.ContentLineHeight
 internal val RaftMarkdownTaskCheckboxSize = 14.dp
+/** web `li mb-0.5`. */
+private val RaftMarkdownListItemBottom = 2.dp
 internal val RaftMarkdownTaskCheckboxFirstLineOffset =
     ((RaftTextSize.ContentLineHeight.value.dp - RaftMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
 internal const val RaftMarkdownPendingActionIndicator = " …"
@@ -2599,7 +2604,7 @@ fun RaftMarkdownBody(
             codeBlock = PaddingValues(RaftAppSpacing.Sm),
             // web `li mb-0.5`. The marker slot carries the whole `pl-5` indent
             // (MarkdownListIndentEm), so the list adds none of its own.
-            listItemBottom = 2.dp,
+            listItemBottom = RaftMarkdownListItemBottom,
             listIndent = 0.dp,
             // Blockquote rail must span EXACTLY the quoted content's height
             // (task #62): web renders border-l-2 with no vertical padding — the
@@ -2612,6 +2617,7 @@ fun RaftMarkdownBody(
             blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 4.dp, right = 0.dp, bottom = 4.dp)
         )
     }
+    val blockMargins = remember(sectionHeadingTopPadding) { raftMarkdownBlockMargins(sectionHeadingTopPadding) }
     val components = remember(sectionHeadingTopPadding, onSectionHeadingPositioned) {
         val sectionHeadingModifier =
             Modifier
@@ -2760,7 +2766,8 @@ fun RaftMarkdownBody(
                 LocalRaftMarkdownAnnotationRevision provides annotationRevision,
                 // task #800: top-level paragraphs wrap when the body opts out of
                 // fill (right-aligned bubbles); list/quote paragraphs pin fill.
-                LocalRaftMarkdownParagraphFillWidth provides fillWidth
+                LocalRaftMarkdownParagraphFillWidth provides fillWidth,
+                LocalRaftMarkdownBlockMargins provides blockMargins
             ),
             LocalRaftMarkdownRowRenderCostSink,
             rowCensusToken
@@ -2916,6 +2923,56 @@ private fun RaftMarkdownSingleParagraphLightBody(
 // Text measure even when nothing actually changed.
 // web MarkdownLink: `text-foreground-link` (light #1447E6 / dark #8EC5FF).
 private val RaftMarkdownLinkBlue: Color get() = RaftAppThemeState.colors.foregroundLink
+
+/**
+ * Web `MarkdownContent` compact density margins, collapsed between sibling blocks as CSS does:
+ * `p` / `ul` / `ol` `mb-1`, `h1` `mt-3 mb-1`, `h2`/`h3` `mt-2 mb-1`, `h4`–`h6` `mt-1 mb-0.5`,
+ * blockquote `my-1`, code block and `hr` `my-2`. Quote, code and rule already paint their margin
+ * as their own inset, and a list's last item its `li mb-0.5`; [sectionHeadingTopPadding] is the
+ * h2/h3 inset document surfaces add. Tables, formulas, images and HTML keep their spacing.
+ */
+internal fun raftMarkdownBlockMargins(sectionHeadingTopPadding: Dp = 0.dp): (IElementType) -> RaftMarkdownBlockMargin? {
+    val paragraph = RaftMarkdownBlockMargin(bottom = 4.dp)
+    val list = RaftMarkdownBlockMargin(bottom = 4.dp, paintedBottom = RaftMarkdownListItemBottom)
+    val h1 = RaftMarkdownBlockMargin(top = 12.dp, bottom = 4.dp)
+    val h2 = RaftMarkdownBlockMargin(top = 8.dp, bottom = 4.dp, paintedTop = sectionHeadingTopPadding)
+    val h3 = h2
+    val minorHeading = RaftMarkdownBlockMargin(top = 4.dp, bottom = 2.dp)
+    val quote = RaftMarkdownBlockMargin(top = 4.dp, bottom = 4.dp, paintedTop = 4.dp, paintedBottom = 4.dp)
+    val code =
+        RaftMarkdownBlockMargin(
+            top = 8.dp,
+            bottom = 8.dp,
+            paintedTop = RaftMarkdownCodeSurfaceVerticalInset,
+            paintedBottom = RaftMarkdownCodeSurfaceVerticalInset
+        )
+    val rule =
+        RaftMarkdownBlockMargin(
+            top = 8.dp,
+            bottom = 8.dp,
+            paintedTop = RaftMarkdownDividerVerticalPadding,
+            paintedBottom = RaftMarkdownDividerVerticalPadding
+        )
+    return { type ->
+        when (type) {
+            MarkdownElementTypes.PARAGRAPH -> paragraph
+            MarkdownElementTypes.ORDERED_LIST, MarkdownElementTypes.UNORDERED_LIST -> list
+            MarkdownElementTypes.ATX_1, MarkdownElementTypes.SETEXT_1 -> h1
+            MarkdownElementTypes.ATX_2, MarkdownElementTypes.SETEXT_2 -> h2
+            MarkdownElementTypes.ATX_3 -> h3
+            MarkdownElementTypes.ATX_4, MarkdownElementTypes.ATX_5, MarkdownElementTypes.ATX_6 -> minorHeading
+            MarkdownElementTypes.BLOCK_QUOTE -> quote
+            MarkdownElementTypes.CODE_FENCE, MarkdownElementTypes.CODE_BLOCK -> code
+            MarkdownTokenTypes.HORIZONTAL_RULE -> rule
+            GFMElementTypes.TABLE,
+            GFMElementTypes.BLOCK_MATH,
+            MarkdownElementTypes.IMAGE,
+            MarkdownElementTypes.HTML_BLOCK -> RaftMarkdownBlockMargin.Barrier
+            // EOL, whitespace, link definitions and `>` / list markers render nothing.
+            else -> null
+        }
+    }
+}
 
 // File-level singleton for the same #192 stable-reference reason as the colors
 // above (`markdownDimens(...)` is @Composable and would allocate a fresh
@@ -3279,8 +3336,11 @@ internal fun raftMarkdownTypography(
 ): DefaultMarkdownTypography {
     // Markdown is user content: every style derives from this base, so Han characters render in
     // Simplified Chinese forms throughout.
-    val resolvedBase =
+    val tableBase =
         raftMarkdownTextStyleWithInlineLineHeight(base, minInlineLineHeight).withRaftUserContentLocale()
+    // CSS fills each line greedily; Compose's default paragraph strategy re-balances the lines
+    // (a word or a code run moves down early). `LineBreak.Simple` is the greedy preset.
+    val resolvedBase = tableBase.copy(lineBreak = LineBreak.Simple)
     // web pre: `font-mono [font-size:inherit]` — Space Mono at the body size.
     val codeBlock =
         resolvedBase.copy(
@@ -3309,7 +3369,7 @@ internal fun raftMarkdownTypography(
         list = resolvedBase,
         link = resolvedBase.copy(color = RaftMarkdownLinkBlue),
         textLink = TextLinkStyles(style = raftMarkdownLinkSpanStyle(resolvedBase)),
-        table = resolvedBase
+        table = tableBase
     )
 }
 

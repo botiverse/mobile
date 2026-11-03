@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftHoverTier
@@ -10687,7 +10688,9 @@ internal fun RaftFilePreviewMarkdownPanel(
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             item {
-                // Long-press selects the rendered text in place; copy yields plain text.
+                // Long-press selects the rendered text in place; copy yields plain text, without the
+                // rendered text's layout-only characters (RaftCopyText.kt).
+                RaftCleanCopyClipboardScope {
                 SelectionContainer(modifier = Modifier.fillMaxWidth()) {
                     RaftMarkdownBody(
                         body = body.orEmpty(),
@@ -10697,6 +10700,7 @@ internal fun RaftFilePreviewMarkdownPanel(
                         softLineBreaksAsNewLines = false,
                         performanceKey = performanceKey
                     )
+                }
                 }
             }
         }

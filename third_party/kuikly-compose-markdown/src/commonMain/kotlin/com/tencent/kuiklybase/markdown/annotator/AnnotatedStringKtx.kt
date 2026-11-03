@@ -41,6 +41,7 @@ import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
 import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
 import build.raft.app.markdown.raftMarkdownInlineCodeEdgeStyle
+import build.raft.app.markdown.withRaftInlineChipGaps
 import build.raft.app.markdown.raftInlineMathContentId
 import build.raft.app.markdown.raftMathFormulaRenders
 import build.raft.app.markdown.RaftMathErrorColor
@@ -82,6 +83,40 @@ internal fun String.withRaftInlineCodeCharWrapBreaks(threshold: Int): String {
     }
     return result.toString()
 }
+
+// Slock: inline code wraps where the web's does (raft-ui InlineCode, Chrome line breaking): after
+// a hyphen inside a word (`thread-route`), never after a slash (`reply/channel`). The native
+// breaker does the opposite, so a zero-width space marks each hyphen break and a word joiner
+// glues each slash to what follows. A space always lets the line break, as in CSS, also before
+// punctuation the native breaker would keep it with (`./gradlew :shared`, UAX #14 LB13). A run
+// still longer than the line breaks anywhere, as the web's `overflow-wrap: anywhere` does.
+internal fun String.withRaftInlineCodeWebBreaks(): String {
+    if (indexOf('-') < 0 && indexOf('/') < 0 && indexOf(' ') < 0) return this
+    val result = StringBuilder(length + 8)
+    forEachIndexed { index, char ->
+        result.append(char)
+        val next = getOrNull(index + 1) ?: return@forEachIndexed
+        when (char) {
+            ' ' -> if (next in RAFT_INLINE_CODE_NO_BREAK_BEFORE) result.append(RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK)
+            '/' -> if (!next.isWhitespace()) result.append(RAFT_INLINE_CODE_WORD_JOINER)
+            '-' -> {
+                val previous = getOrNull(index - 1)
+                if (previous != null && previous.isLetterOrDigit() && next.isLetter()) {
+                    result.append(RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK)
+                } else if (!next.isWhitespace()) {
+                    result.append(RAFT_INLINE_CODE_WORD_JOINER)
+                }
+            }
+        }
+    }
+    return result.toString()
+}
+
+private const val RAFT_INLINE_CODE_WORD_JOINER = '\u2060'
+
+// UAX #14 LB13 closing punctuation, exclamation / question, infix separators and the slash: the
+// native breaker never breaks before them, even after a space.
+private const val RAFT_INLINE_CODE_NO_BREAK_BEFORE = ")]},.:;!?/"
 
 /**
  * Extension function to build an `AnnotatedString` from a Markdown string.
@@ -512,10 +547,18 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                                         annotatorSettings,
                                         insideCodeSpan = true
                                     )
-                                }.toAnnotatedString().text
+                                }.toAnnotatedString().text.withRaftInlineCodeWebBreaks()
                             }
                         if (usesEdgePaddingBridge) {
-                            appendRaftInlineCodeWithEdgeBoxes(codeText)
+                            // raft-ui InlineCode `px-1` is part of the code's inline box, so the
+                            // text beside it (and the line's edge) starts after it: reserve it as
+                            // glued gaps the painted fill covers, as chips do.
+                            withRaftInlineChipGaps(
+                                raftMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
+                                    .takeIf { codeText.isNotEmpty() }
+                            ) {
+                                appendRaftInlineCodeWithEdgeBoxes(codeText)
+                            }
                         } else {
                             append(codeText)
                         }

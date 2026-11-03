@@ -347,9 +347,10 @@ private val ThreadMessageMenuVisualViewportHeight = 844.dp
 @Composable
 internal fun ThreadMessageVisualScreen() {
     val visualFixture = (LocalActivity.current.getPager() as Pager).pageData.params.optString("visualFixture")
+    val taskStatuses = remember(visualFixture) { threadVisualFixtureTaskStatuses(visualFixture) }
     ThreadReactionAtlasProvider {
         CompositionLocalProvider(
-            LocalRaftMarkdownTaskStatuses provides threadVisualFixtureTaskStatuses(visualFixture)
+            LocalRaftMarkdownTaskStatuses provides taskStatuses
         ) {
             ThreadMessageVisualScreenContent()
         }
