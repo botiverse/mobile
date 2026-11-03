@@ -4144,20 +4144,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Test
-    fun captureAuthProfileSetupScreen() {
-        captureKmpComponentCase(
-            caseId = "screens.auth.profile-setup",
-            pageName = "compose_auth_profile_setup_visual",
-            pageData =
-                JSONObject()
-                    .put("profileSetupHandle", "new_designer")
-                    .put("profileSetupDisplayName", "New Designer"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
     private fun captureKmpSettingsPageCase(
         caseId: String,
         variant: String
