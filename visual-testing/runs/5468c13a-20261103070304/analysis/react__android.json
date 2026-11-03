@@ -1,0 +1,1566 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-03T07:03:47.781Z",
+  "baseline": "react",
+  "current": "android",
+  "comparison": "react__android",
+  "analysisProvider": "minimax",
+  "analysisModel": "MiniMax-M3.1-Flash-Preview",
+  "summary": {
+    "total": 94,
+    "ready": 20,
+    "pending": 74
+  },
+  "cases": [
+    {
+      "id": "components.ui.segmented-control.states",
+      "status": "ready",
+      "imageHash": "p1:8ffd8ffd000000001ffc1ffc07fc07fc07fe07fefffe7ffefffefffefffefffefffefffef07ef07ee03ee07ec036c03e8006800680068006e03ee07ed04ed04efafef8fefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000080000001fffffffffff01ffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T04:31:26.157Z",
+      "severity": "low",
+      "summary": [
+        "Segmented-control bounds, spacing, alignment, colors, corner shapes, and selected-state styling are effectively identical between React and Android.",
+        "Android shows subtle typography rasterization differences in the labels and counts: glyph edge anti-aliasing and stroke texture differ slightly from React.",
+        "No missing elements, clipping, cropping, color shift, or component-bound mismatch is visible."
+      ],
+      "likelyCauses": [
+        "Android native font rasterization or hinting differs from the browser rendering used by React.",
+        "The Android implementation may use a system font or synthesized font weight rather than the exact React font family."
+      ],
+      "suggestedOwner": "Android design-system and UI component owner",
+      "suggestedFixes": [
+        "Bundle and use the same font family and font-weight mapping as the React implementation.",
+        "Align Android text baselines, line height, and font-size tokens with React while preserving the current segment geometry.",
+        "If platform-native typography is required, configure consistent anti-aliasing and font-synthesis behavior or raise the visual-diff tolerance for glyph edges."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.03606237816764135
+    },
+    {
+      "id": "components.ui.button.states",
+      "status": "pending",
+      "imageHash": "p1:00010001fffcfffc1ffc1ffc1fff1ffefffefffefffefffe903e903e801e801e801e801e801e801ee01e201e803e801efffefffe809e809ee77e267e900e900e801e801e80fe809ed9fed1fefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0002000000000000fffffffffff01ffffff81fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.761Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.054866796621182545
+    },
+    {
+      "id": "components.ui.card.states",
+      "status": "pending",
+      "imageHash": "p1:e003e0033ffc3ffc3ffc3ffcffff7ffffffefffefffefffffffefffffffeffff80fe81ffc0fec0fffffeffffdffeffffc006c007fffeffffc1fec1fffe02ffffc003c0038001800180018001c0018003c002c003fffefffffffefffffffefffffffefffffffefffffffeffff0000000000000000fffffffffff81fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.764Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08914366813720465
+    },
+    {
+      "id": "components.ui.badge.states",
+      "status": "pending",
+      "imageHash": "p1:ffffffff00000002fffcfffc1ffc1ffc1fff1ffefffffffffffffffffffffffffffffffff00ff00ff007f00780078007d007c007f00ff00fffffffff80ff80ff80ff80ff80ff80ff80ff80ff80ff81ffffffffffffffffffffffffffffffffffffffffff00000000fffffffffffffffffff01ffffff81fffffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.754Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.07012599937847841
+    },
+    {
+      "id": "components.ui.form-field.states",
+      "status": "ready",
+      "imageHash": "p1:f004e0040ffc0ffc7ffe7ffefffefffe9ffe9ffe9ffe9ffe80000000a7fe23fc81fe01fcbffc0000c000c00081fe89fe80fe80028000800098fe11fc807e007cbffc3f008002800080fe80fefffefffe8ffe8ffe87fe87fef0008000fffe7ffefffe7ffe8000800087fe07fe83fe87fe0000000000000000fff01fffffffffff",
+      "generatedAt": "2026-11-02T18:45:29.664Z",
+      "severity": "low",
+      "summary": [
+        "The Android render closely matches React in typography, field dimensions, spacing, alignment, colors, corner radii, and error-state treatment.",
+        "No missing, clipped, or shifted elements are apparent; both sides show identical labels, values, helper text, red error outline, and error message.",
+        "Remaining differences are limited to subtle text and rounded-border antialiasing, without meaningful layout or component-bound drift."
+      ],
+      "likelyCauses": [
+        "Platform-specific font rasterization and antialiasing.",
+        "Independent device-pixel rounding of strokes and rounded-corner curves."
+      ],
+      "suggestedOwner": "Design systems and Android UI engineering",
+      "suggestedFixes": [
+        "Normalize font family, weight, size, and line-height tokens across React and Android.",
+        "Use identical border width and corner-radius values and snap component bounds to the same pixel grid.",
+        "Accept the current 97.13% pixel-perfect and 98.8% RGB similarity unless subpixel rendering parity is required."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.028650360887202964
+    },
+    {
+      "id": "components.ui.textarea.states",
+      "status": "ready",
+      "imageHash": "p1:000000001ffc1ffc1ffe1ffefffe7ffe800000003ffc3ffc80000002000000023efc3ffe807c007c3bfc7bfc3ffc7ffc3ffc7ffc20043ffc80008000fffefff88038fff8807e003efffe003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffefffe7ffe00000000fffffffffff01ffffffe7fff",
+      "generatedAt": "2026-11-02T18:35:49.264Z",
+      "severity": "medium",
+      "summary": [
+        "The React textarea has a dark charcoal outline, while the Android textarea uses a bright red outline, indicating inconsistent invalid/error-state styling.",
+        "React shows a gray diagonal resize handle at the textarea's lower-right corner; Android has no resize handle.",
+        "The \"57 / 40\" counter and \"Agreement body must be shorter.\" message share one row in React, while Android stacks the counter above the message with larger vertical gaps."
+      ],
+      "likelyCauses": [
+        "The Android and React implementations map error-state border colors differently.",
+        "The resize affordance is implemented only in the React textarea.",
+        "The platforms use different footer layout, element ordering, or margin rules for the counter and validation message."
+      ],
+      "suggestedOwner": "Cross-platform Textarea component and design-system team",
+      "suggestedFixes": [
+        "Apply a shared invalid/error border token and stroke width in both implementations; make React red if the Android treatment is the intended error state.",
+        "Add an equivalent resize affordance to Android or explicitly disable resizing in both platforms.",
+        "Use a shared footer layout so the counter and validation message have the same order, baseline, and spacing on React and Android.",
+        "Normalize the vertical gap between the textarea bottom and the counter/message footer."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.052131357199583284
+    },
+    {
+      "id": "components.ui.checkbox.states",
+      "status": "ready",
+      "imageHash": "p1:80018001000400041ffc1ffc1ffe1ffc7ffe7ffefffefffefffefffe9ffe3ffe80fe00fe80fe00fe9ffe1ffefffefffebffe3ffe801e001ec01e001ebffe3ffefffefffebffebffe80fe00fe80fe00febffebffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00ffffffe3fffffffffff",
+      "generatedAt": "2026-11-03T04:31:26.180Z",
+      "severity": "low",
+      "summary": [
+        "Android's three checkbox rows start approximately 2 source pixels (6 rendered pixels) farther left than React's; the checkbox-to-label gap is unchanged.",
+        "Typography, vertical row spacing, checkbox sizing, corner radii, strokes, checkmarks, and disabled-state colors appear matched, with no missing or clipped elements."
+      ],
+      "likelyCauses": [
+        "Android applies a smaller horizontal inset or padding to the checkbox-list group.",
+        "The platform implementations may use separate spacing tokens for the checkbox and its label row."
+      ],
+      "suggestedOwner": "Android design-system or forms component owner",
+      "suggestedFixes": [
+        "Increase the Android checkbox-list group's horizontal inset by approximately 2dp to match the React reference.",
+        "Position the checkbox and label from a shared row container while preserving the current 7–8dp checkbox-to-label gap.",
+        "Re-run the comparison with the existing 342×132 crop bounds after adjusting the inset."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.033372221237718325
+    },
+    {
+      "id": "components.ui.check-marker.states",
+      "status": "ready",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc1ffe1ffefffefffefffefffefffefffe9ffe1ffe80fe00fe80fe00fe9ffe1ffefffefffebffebffe9ffe1ffec07e007e807e00febffebffefffefffebffebffe83fe03fe81fe01fe83fe03fefffefffefffefffe0000000000000000fffffffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T04:42:46.685Z",
+      "severity": "low",
+      "summary": [
+        "Checked, unchecked, and circular markers match in shape, size, fill/stroke, and row alignment.",
+        "Label typography and spacing are visually equivalent; Android has only minor glyph-edge rasterization differences.",
+        "The top-right badge intentionally reads \"ANDROID\" instead of \"REACT\", making it wider while retaining the same fill color and right alignment.",
+        "Both captures use identical 342×112 component bounds, with no missing or clipped marker content."
+      ],
+      "likelyCauses": [
+        "Intentional platform-specific badge copy.",
+        "Minor platform font rasterization and anti-aliasing differences."
+      ],
+      "suggestedOwner": "Design-system and Android UI team",
+      "suggestedFixes": [
+        "No check-marker component or layout correction is required.",
+        "If badge dimensions must match exactly, use a shared fixed-width badge container and center the platform text.",
+        "Otherwise, exclude the platform badge from pixel-perfect comparison or standardize font rendering across platforms."
+      ],
+      "intentional": [
+        "The upper-right badge identifies the platform as \"REACT\" or \"ANDROID\", including the resulting width difference."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.020189362294625424
+    },
+    {
+      "id": "components.ui.typography.specimen",
+      "status": "pending",
+      "imageHash": "p1:fffefffc07fc07fcffff7ffffffeffff803e803f803e803f803ea13f803e803f803ea13f803e803f803ee13f803e803f813ef9ff803e803fd07ed07f807e807f80fe80ff80fe80ff80fe80ff80fe80ff80fe80ff81fe81ff807e807f803ea07f803e803ffffefffffffefffffffefffffffefffe00000000fffa1fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.802Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10918778427550357
+    },
+    {
+      "id": "components.ui.attention-dot.states",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc0ffe0ffc3ffe3ffefffefffefffefffefffefffefffefffefffefffe000600060006000688860886fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffffffffffff00ffffff01ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.782Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.014254385964912242
+    },
+    {
+      "id": "components.ui.status-dot.states",
+      "status": "ready",
+      "imageHash": "p1:00000000000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffe7ffefffe7ffefffe7ffe07fe07fe07fe07fe07fe07fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe0000000000000000fffffffffff00ffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-10-23T10:43:34.379Z",
+      "severity": "low",
+      "summary": [
+        "Android status-dot fills are darker and more saturated than React across the green, orange, gray, and cyan states; React uses lighter, pastel-like fills.",
+        "Android outlines appear slightly thicker or darker, reducing the visible fill area while keeping the outer dimensions nearly unchanged.",
+        "Dot order, spacing, alignment, typography, and the 342×92 component bounds match. No elements are missing, clipped, or offset."
+      ],
+      "likelyCauses": [
+        "Different semantic color-token mappings between React and Android.",
+        "A heavier native stroke width than the React CSS border.",
+        "Minor platform-specific antialiasing around the dark outlines."
+      ],
+      "suggestedOwner": "Android design-system/component owner",
+      "suggestedFixes": [
+        "Map Android status-dot fill tokens to the approved React palette, or explicitly approve and document the alternate palette.",
+        "Align the Android stroke width with the React border width and verify that corner radii remain equivalent.",
+        "Keep the current dimensions and spacing, then rerun the visual comparison after updating color and stroke tokens."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.001638556939853708
+    },
+    {
+      "id": "components.ui.progress-bar.states",
+      "status": "pending",
+      "imageHash": "p1:a003a003000400041ffc1ffc0ffe0ffc7ffe7ffefffefffefffefffefffefffe81fe01fe81fc81f8fffefffe803e803e801e003e803e803efffefffefffefffe83fc83fe81fc81f8effeeffe87fe87fe83fe03fe87fe87fefffefffefffefffefffefffefffefffe00000000fffffffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.793Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.01992024565595585
+    },
+    {
+      "id": "components.ui.skeleton.states",
+      "status": "ready",
+      "imageHash": "p1:000000001ffc1ffc1ffc1ffc1ffe1ffefffe7ffefffe7ffefffe7ffee0fe60fefffe7ffefffe7ffee3fe63fefffe7ffefffe7ffec0024002c0024002c0024002c0024002c0024002c0024002c0024002fffe7ffefffe7ffebffe3ffeb03e303e803e003efffe7ffe0000000000000000fffffffffff00ffffff00fffffffffff",
+      "generatedAt": "2026-11-03T04:19:44.617Z",
+      "severity": "low",
+      "summary": [
+        "No actionable visual mismatch is evident; Android matches React's typography weight and size, spacing, alignment, fill color, rounded shapes, and component bounds within tolerance."
+      ],
+      "likelyCauses": [
+        "The negligible residual is consistent with platform-specific rendering and fractional-pixel rounding rather than a component styling defect."
+      ],
+      "suggestedOwner": "Shared UI Skeleton / Design System",
+      "suggestedFixes": [
+        "No product change is required for this passing case.",
+        "If exact raster parity is desired, use identical fractional-pixel values for skeleton dimensions, corner radii, and vertical offsets."
+      ],
+      "intentional": [
+        "Android's sub-pixel vertical overflow at the bottom of the fixed 150 px canvas mirrors React's CSS behavior and is an accepted platform difference, not a defect."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.0005739657786441033
+    },
+    {
+      "id": "components.ui.spinner.states",
+      "status": "ready",
+      "imageHash": "p1:80018001000000001ffc1ffc1ffc1ffc1ffe1ffe7ffe7ffefffefffefffefffefffefffefe7efe7efe7efc7ef87ef87e007e007e847e047ef87ef87efe7efc7efe7efc7efe7efe7efffefffefffefffefffefffefffefffefffefffefffefffefffefffe00000000bff18ffdfffffffffff00ffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T04:19:55.236Z",
+      "severity": "low",
+      "summary": [
+        "All five spinner variants match in typography, spacing, alignment, color, shape, and component bounds; no spinner elements are missing or clipped.",
+        "The visible difference is the top-right badge: React shows \"REACT\" while Android shows \"ANDROID\", making the Android badge wider.",
+        "The remaining 1.54% pixel mismatch does not produce a meaningful layout difference and is within the configured 2% tolerance."
+      ],
+      "likelyCauses": [
+        "Intentional platform-specific badge text and text-driven badge width.",
+        "Minor native text rasterization or antialiasing differences around badge glyphs and rounded-square edges."
+      ],
+      "suggestedOwner": "Android UI/components team; no spinner implementation change is required.",
+      "suggestedFixes": [
+        "Retain the current spinner layout, spacing, and component dimensions.",
+        "If exact screenshot parity is required, use shared badge typography and geometry or a fixed-width badge."
+      ],
+      "intentional": [
+        "The yellow top-right badge intentionally identifies the rendering platform and therefore differs in label and width."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.015403847783710511
+    },
+    {
+      "id": "components.ui.slug-input.states",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc1ffc7ffe7ffefffefffefffefffe8000800080008000bffe3ffcbffe3ffca1fea1fca1fea1fcbffe3ffc8000800080008000fffefffec002c00280008000fffefffefffebffea03ea03ea03ea03efffefffe9ffe8000c002800200000000fffffffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.810Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.049113752809467504
+    },
+    {
+      "id": "components.ui.section-eyebrow.states",
+      "status": "pending",
+      "imageHash": "p1:80008001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffefffefffefffefffefffe03fe07fe83fe03fefbfefbfefffefffefffefffefffefffe07fe07fe87fe07fe9ffe9ffefffefffefffefffefffedffe800280028202820283fe83fe0000000080018001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.814Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.014789388931265357
+    },
+    {
+      "id": "components.ui.section-header.states",
+      "status": "pending",
+      "imageHash": "p1:80008001000000001ffc1ffc0ffc0ffc0ffe0ffc7ffe7ffefffe7ffefffefffefffefffefff07ff0fff0fff0fff07ff403f007f087f007f0fff4fff4fff0fff0fff87ff080020006c0024002fffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fffffffffffffffffff00ffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.819Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.022335932423651728
+    },
+    {
+      "id": "components.ui.selection-popover.states",
+      "status": "ready",
+      "imageHash": "p1:0000000007fc0ffc07fe0ffefffefffec002c002fffe7ffec7f20ff200007ffe30047ffe0ffc0ffe2ffc4ffe00007ffe3ffc7ffe67fc67fc67fa67f87ffe7ffe7ffe7ffe60fe61fe75fe65fe7ffe7ffe7ffe7ffe60fe60fe7ffe7ffe7ffe7ffe61fe61fe63fe63fe3ffc0000c002c00200000000fffffffffff00ffffffe7fff",
+      "generatedAt": "2026-11-02T18:37:17.394Z",
+      "severity": "medium",
+      "summary": [
+        "React shows a thick, dark rectangular focus/selection outline around the full search-input row; Android renders the same row without that outline.",
+        "The missing Android outline leaves the search field bounded only by surrounding separators, so its active state is not visually indicated."
+      ],
+      "likelyCauses": [
+        "Android may be rendering the unfocused/default search-field state while React is rendering the focused or selected state.",
+        "The active-border color and thickness may not be implemented or exposed by the Android search-field component."
+      ],
+      "suggestedOwner": "Android UI component owner for the selection popover and search field",
+      "suggestedFixes": [
+        "Add the React-equivalent active-state border to the Android search row, including its top, sides, and bottom.",
+        "Align focus/selection state defaults and test-harness focus behavior so both platforms capture the same state.",
+        "Use the shared popover border color and thickness tokens instead of a native or default Android field style."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.20362892828779766
+    },
+    {
+      "id": "components.ui.menu-item.states",
+      "status": "ready",
+      "imageHash": "p1:000000011ffc1ffc0ffc1ffc3ffe3ffefffefffec002c002fffefffebffefffe83f883f883fe03fe7ffe7ffe7ffe7ffe83fe03fe83fe83fe7ffe7ffe7ffe7ffe7ffe7ffe81fe01fe81fe01fe7ffe7ffe7ffe7ffe3ffe7ffe81fe81fe81fe01febc007e0080000000fffeeffe0000000000000000fff81ffffff00fffffffffff",
+      "generatedAt": "2026-11-03T04:32:30.399Z",
+      "severity": "medium",
+      "summary": [
+        "Android renders the Delete Message state as a flat, full-width divider, while React draws an inset rounded outline around the entire bottom row.",
+        "Android's Delete Message label appears heavier, using an approximately bold weight rather than React's semibold weight, and is slightly wider."
+      ],
+      "likelyCauses": [
+        "The Android selected-item style uses a divider-only treatment instead of the React rounded selection container.",
+        "The Android font-weight mapping resolves the Delete Message label to bold/700 rather than semibold/600."
+      ],
+      "suggestedOwner": "Android menu component UI owner",
+      "suggestedFixes": [
+        "Render the selected Delete Message row with an inset rounded outline matching React, or document the divider treatment as an intentional platform difference.",
+        "Set the Delete Message label to semibold/600 and verify that its width and baseline match the React implementation.",
+        "Re-run the 342×178 component-bounds comparison after adjusting the state indicator and typography."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.21222193018960223
+    },
+    {
+      "id": "components.ui.select.states",
+      "status": "ready",
+      "imageHash": "p1:000000001ffc1ffc1ffc1ffc7ffe7ffefffefffe800080003ffc30048ffc1ffc8ffc0ffc3ffc3ffc8000000080008000fffefffe80028000c0028002800080008002800280028000dffec002fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00fffffffffff",
+      "generatedAt": "2026-11-02T18:55:48.808Z",
+      "severity": "medium",
+      "summary": [
+        "The Android populated select has a roughly twice-as-heavy black outline as the React version, while its outer bounds and content alignment remain essentially unchanged.",
+        "The Android disabled select also has a slightly heavier light-gray outline than the React disabled border.",
+        "Typography, label and chevron placement, spacing, and component sizes match; no elements are missing or clipped."
+      ],
+      "likelyCauses": [
+        "Android may use a 2 dp/px select stroke where React uses a 1 px border.",
+        "Android density scaling may rasterize a nominal 1 dp border as multiple physical pixels.",
+        "Enabled and disabled outlines may use separate Android stroke-width tokens."
+      ],
+      "suggestedOwner": "Android design-system / Select component owner",
+      "suggestedFixes": [
+        "Match the Android select outline to the React stroke width, approximately 1 px/1 dp in the rendered comparison, for both populated and disabled states.",
+        "Keep the existing outer component bounds; adjust stroke weight rather than control size or padding.",
+        "Use explicit shared state colors and border tokens: black for the populated outline and the same light gray for the disabled outline."
+      ],
+      "intentional": [
+        "The yellow top-right badge changes from “REACT” to “ANDROID,” including the badge width needed for the platform label."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.030438830945251683
+    },
+    {
+      "id": "components.ui.surface-list-item.states",
+      "status": "pending",
+      "imageHash": "p1:000000010ffc0ffc0ffc0ffc3ffe3ffefffefffefffefffefffefffefffefffec3fe83fec3fec3fefffefffec03ec03ec77ec77efffefffefffefffefffefffe80008002fe0284028000800280008002fa00fe02800080028002800280008000fffefffefffefffefffefffe0000000000000000ffffbffffff01fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.838Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06941142028861325
+    },
+    {
+      "id": "components.ui.avatar-list-row.states",
+      "status": "pending",
+      "imageHash": "p1:80038003fffcfffc0ffc0ffc0fff1ffffffefffffffefffffffefffffffeffffcffecfffc3f283f3c3f383e3cff38fe3c0f281f3cbfec9fffffefffffffefffff98af11f84628e63800c8001800280018fe08f8180208021c0228023ff9eff9ffffefffffffefffffffefffe00000000fffffffffff81ffffff81fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.841Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09681804820693707
+    },
+    {
+      "id": "components.navigation.tabbar.states",
+      "status": "ready",
+      "imageHash": "p1:ffffffff00000000fffe7ffe1ffc1ffc0ffc0ffc0fff0ffe7fff7fff00000000fffefffe8fff9fff8ff90ff99a491e598a5912799bd91bd99a491a499ff91ff98fff8fffffffffff924992db92499249ffffffffffffffffffffffff0000000000000000fffffffffffffffffffabffffff81ffffffffffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T04:43:40.000Z",
+      "severity": "low",
+      "summary": [
+        "No actionable non-intentional visual differences are apparent; icon placement, selected-state colors, spacing, alignment, and 390×60 component bounds match closely."
+      ],
+      "likelyCauses": [
+        "No additional implementation cause is evident beyond the documented platform-specific divergence."
+      ],
+      "suggestedOwner": "Mobile Navigation Design System, with Slock visual-test infrastructure for expectation handling.",
+      "suggestedFixes": [
+        "No UI code change is indicated.",
+        "Adjust the Slock baseline, mask, or comparison policy for known intentional platform styling so this case is not flagged as drift."
+      ],
+      "intentional": [
+        "Android renders all tab labels in ALL-CAPS, while React renders Title Case as the deliberate mobile brand style.",
+        "The smoke fixture's selected tab differs from React's route-derived active tab; this behavior should not be converged."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.06285375118708447
+    },
+    {
+      "id": "components.thread.composer.empty",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc0ffe0ffefffefffec002c00280008001fffe3ffcfffebffcfffe81fc80fe81fcc0fe7ffcfffe7ffcfffe7ff8fffc9f98ffb8838087c0838087c083988f987ffcfffc800080008003c002fffefffefffefffe0000000000000000fffffffffffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.852Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10407792457824949
+    },
+    {
+      "id": "components.thread.composer.states",
+      "status": "pending",
+      "imageHash": "p1:e003e0031ffc1ffc0ffc0ffc0ffe0ffefffe7ffefffefffe80008001fffefffcfffe80568002800280028816ffdefffefffe83fec1fe81fe81febbfcfffefffefffefff9fff99f99df99838187c183818781ff99ffb90000804100018001fffffffefffffffeffff0000ffff0000fffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.862Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11115787504676389
+    },
+    {
+      "id": "components.thread.composer.pending-mention-actions",
+      "status": "pending",
+      "imageHash": "p1:8ffccffc01fc01fc33fe33fefffefffef03ec01ee01ec01ec00ee00ec00ef00ef00ef002e41ef83ee002f3bee002e01ee01ee002fffee01ec002c002be008000fffe81fcc0fe81fcfffe7ffcdf888380878083808f988010c002c002fffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fff81fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.880Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.15981380654701893
+    },
+    {
+      "id": "components.thread.composer.as-task-selected",
+      "status": "pending",
+      "imageHash": "p1:ffffffff0ffc0ffc07fc07fc03fe03fefffe7ffefffefffe80008001fffefffcfffe90fe80028002c0028816ffdefffefffe83fec1fe81fec1febbfefffefffefffefff9fff99f99df998381878183818781ff99ffb90000906100018003fffffffefffffffeffff0000ffff0000fffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.868Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11459871620690332
+    },
+    {
+      "id": "components.thread.composer.member-suggestions",
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc03fc03fcfffe7ffefffefffefffefffefffefffec3fec3fe99fedffe8000800081f6800289fe9ffe80028006fffe7ffefffe7ffec1fe41fefffe7ffe903e90fedf3edffefffe8002d03e8000fffe9ffc80003ffc80041b919ffe8381fffe8000bf80fffe878100008000fffffffeffff0000fffffff01fffffff7fff",
+      "generatedAt": "2026-11-03T07:03:46.889Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3613670271270977
+    },
+    {
+      "id": "components.thread.composer.channel-suggestions",
+      "status": "pending",
+      "imageHash": "p1:effceffc03fc03fc7ffe7ffefffefffefffefffefffefffefffefffefffefffefffefffefffefffedff2dffa8002c00280028002fffe768ee0267ffec0024006fffe7ffec0067cfec0064006fffe7ffe80008000bffc80009ffe3ffcfffe3ffcffb83fb887810381bfb00b9080008000fffe7ffe00000000fff81ffffffe3fff",
+      "generatedAt": "2026-11-03T07:03:46.885Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2645406920077973
+    },
+    {
+      "id": "components.thread.composer.image-preview",
+      "status": "pending",
+      "imageHash": "p1:0800080003fc07fc07fe07fee7fee7fe87fe87fee7fe87fecffe8ffe8ffe8ffe8ffe8ffecffe8ffe8002800280000000bffc000c8004000cfb7e0ffc87fe0ffc8ffe3ff8fffc0b908780038087803fb080108000c002fffefffefffe0000fffefffffffefffffffefffffffefffffffeffff0000ffff0000fff01ffffffe7fff",
+      "generatedAt": "2026-11-03T07:03:46.893Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11069958847736627
+    },
+    {
+      "id": "components.thread.files.list",
+      "status": "pending",
+      "imageHash": "p1:000000001ffe1ffc7ffe7ffefffe7ffec01e401ec00e400ec8ba4bfec89e481efffe7ffefffe7ffefffe7ffed03e503ec03e403ec01e401ecffe1ffefffe7ffefffe7ffefffe7ffed00e501ec99a4f9ac81e401edffe5ffefffe7ffefffe7ffefc3e7c3efc3e7c3efc3e7c3efc3e7c3efffe7ffe00000000fff81ffffff83fff",
+      "generatedAt": "2026-11-03T07:03:46.915Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.029416745805634692
+    },
+    {
+      "id": "components.thread.header.states",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffe0ffc7fff7ffffffefffeffffffffc1ffc1ffc1f4c1f401f001f48ff00ff0c014c014e01fc01fffffffff700070008ffe8ffe87ff0fff87ff07ff813f013f813f093f87ff07fe8fff0ffff8027802fffe7ffefffffffffffe7ffe00000000fffffffffffffffffff81ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.902Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10152659069325731
+    },
+    {
+      "id": "components.thread.message.row",
+      "status": "pending",
+      "imageHash": "p1:800100037ffc7ffc0ffc1ffc1fff1ffffffeffffbfff1fff03f700070000047f1fff1fff0001001f0000000ffffefffff8fae18fc001c007e40bfffffffeffffc7fec01fc7fee01ffffeffffe6f2e07fe002e03fe002f07ffffefffffffe0000efff0001efffffffffffffff0000fffffffffffffff81ffffff81fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.923Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19758145323756182
+    },
+    {
+      "id": "components.thread.message-row.deleted-human",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000ffc0ffc03fe03fc3fff3ffffffefffffffeffff3fbf003e00120000000000be1f1f3fff1fff1fff09eb000300014001e003fffffffefffffffec00fc00ec00fe00efffffffefffffffeefffeffec3ffc3fec7ffc7feefffeffefffffffe7ffe00000000fffffffffffffffffff81ffffffe7fffffffffff",
+      "generatedAt": "2026-11-03T07:03:46.911Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1961495294828628
+    },
+    {
+      "id": "components.thread.message-menu.default",
+      "status": "pending",
+      "imageHash": "p1:01fc01fc7ffe01fe8000800280000000e0fa600080024082c002607ee07e703ee0fe707ef07e707ef07e703ee1fe703ee07e703ee07e70fef07e703ee3fe703ee000743efffe7000fffe7000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:46.979Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23139337843129315
+    },
+    {
+      "id": "components.thread.message-menu.task",
+      "status": "pending",
+      "imageHash": "p1:01fc01fc7ffe03fe8000800280000000e0fe6000800240c2c002607ee07e703ee0fe707ee0fe707ee0fe703ee1fe703ee07e703ee07e70fef07e703ee3fe703ee000757efffe7020fffe7000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:46.983Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23212284468208644
+    },
+    {
+      "id": "components.thread.message-share.selection",
+      "status": "pending",
+      "imageHash": "p1:07fc07fcfffe7ffe80000000800000009000500080000000801a70828000000280000000f01e4000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffee0025c0000020000fff83fff",
+      "generatedAt": "2026-11-03T07:03:46.992Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11591525904322109
+    },
+    {
+      "id": "components.thread.forward-modal",
+      "status": "ready",
+      "imageHash": "p1:0ffc0ffc006000600060006000000000000000001800100007fe07fe07fe07fe07fe07fe07fe07fe80fe40fe87fe07fe87fe07fe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-02T18:57:26.211Z",
+      "severity": "low",
+      "summary": [
+        "No actionable visual defects are apparent; typography, spacing, alignment, colors, shapes, bounds, and clipping closely match at the shared 390×844 viewport.",
+        "The recorded 1.33% pixel mismatch is below the configured 2% tolerance."
+      ],
+      "likelyCauses": [
+        "Minor platform-specific text and icon rendering differences account for the remaining pixel variance."
+      ],
+      "suggestedOwner": "Android modal UI team",
+      "suggestedFixes": [
+        "No visual change is required; continue regression testing within the configured pixel tolerance."
+      ],
+      "intentional": [
+        "Android shows a left-facing back arrow where React shows an X/close icon, reflecting Android's single combined forward flow versus React's two-step flow; these controls should remain platform-specific."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.013346768204588133
+    },
+    {
+      "id": "components.thread.comment-anchor",
+      "status": "pending",
+      "imageHash": "p1:03fc07fc07fe000e807e100e07fe0fe68002001ee0020002e00203fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe000e003e0000003e004e07fe07fc000e7ff87ff800000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.004Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08605710157842861
+    },
+    {
+      "id": "components.home.titlebar.states",
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffeffffffff0003000700030003ffff7fff0007000700030003ffff407f803f003f00030003ffff000781ff41ff00030003000700038017800381ff800799ffc0ffffffcfffc1ffe1ffffffec7fc3ffefffffffe3ffffffdc07fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-11-03T07:03:47.013Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27306342069375245
+    },
+    {
+      "id": "components.home.notification-center.states",
+      "status": "pending",
+      "imageHash": "p1:07fc07fc7ff87ffcfff87ff803fa07fe03fa07fe00040004000e000e607e607e68fe60fe001c001c00060006607e607e607e407e00000000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.079Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09425271060342155
+    },
+    {
+      "id": "components.home.search.results",
+      "status": "pending",
+      "imageHash": "p1:000008040000000000000000800200028886088682220026dffe5ffe8ffe5ffe87fe6ffe8000401e8000403edffe7ffe9ffe0ffe83fe0ffe8002001efffe70068cfe0ffe8002000efffe0006fffe1ffefffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.076Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.15874313066256196
+    },
+    {
+      "id": "components.home.search.channel-dropdown",
+      "status": "pending",
+      "imageHash": "p1:000400000000000000000000000200028882080680fe447ed1fa5d3e80fa5d3e805a0c3e0008400480000000dffe7ffe8ffe0ffe81fe0ffe8002001efffe700680fe0ffe8002000eeffe0006fffe1ffefffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.105Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.177048986646143
+    },
+    {
+      "id": "components.home.saved.results",
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc0ffe0ffe83fe23fee1fe63fe67fe67fe807e007e800a0008800a000a87fe07fefcfe7cfe800e001a801a0018801a001e8ffe5ffee0fe206e804a0008801a0018801e7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.060Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.07212266029470327
+    },
+    {
+      "id": "components.home.activity.results",
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc00000ffe0000a3fe0000e07e07fc4ffec7fc4ffefffe7ffe801a601880108000fdf8c000e06efffe80386070e5f88000f7fee000807efffef27ee7e2fffe807efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17747594793435206
+    },
+    {
+      "id": "components.tasks.panel.states",
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000803e40468c7e4c62847e7f00fe7e7ff09ffe4ffefffe7ffefffe7ffe8002800281fe81fec40647a6cffe40fecffe40fefffe7ffe87fe43fefffe7ffec3fe47ee8006800687fe85fec7fec07efffe7ffe8ffe47fefffe7ffec7fe47f280028002c7fe800efffe7ffe9ffe4ffe00000000fff83fff",
+      "generatedAt": "2026-11-03T07:03:47.109Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08747113865597278
+    },
+    {
+      "id": "components.tasks.status-menu",
+      "status": "pending",
+      "imageHash": "p1:000000000ffc0ffc0ffe1ffefffe7ffefffe7ffe83fe83fe83fe03fef9fe79fe3ffe7ffe8ffe0ffe5ffe5ffe7efe7efe04fe04fe00fe00fe7efe7efe7efe7efe06fe06fe6efe06fe7efe7efe0efe1efe0efe0efe7efe7efe3efe7efe0efe0efe4efe4efe00fe30fe81fe01fefffe67fe0000000000000000fff00ffffffe7fff",
+      "generatedAt": "2026-11-03T07:03:47.098Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1712575598540511
+    },
+    {
+      "id": "components.home.create-channel.dialog",
+      "status": "pending",
+      "imageHash": "p1:8ffe0ffe000000000000000000000000000041f0fff1edf1ffffffff9fffbfff81fcffff83fffc1fffffffff8fdfdfffffffffffffffcfffffffffff87ff8fff87ff87ffffffffffffffffffffffffffffffffff8fff8fff8fff8fffebffcfffffffffff83ff8fffffff83ffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.158Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.21685097419694577
+    },
+    {
+      "id": "components.members.create-agent.dialog",
+      "status": "ready",
+      "imageHash": "p1:0ffe0ffe000000000000000000000000000041f0ebffebffffffffff800f800783ffe1ffffffffff807fddffffffc1fffffffffffbfffffffbffc3ffffffffffbfffffff801fda7fffffffffffffffffffffffffffff801fffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-11-03T04:46:48.867Z",
+      "severity": "medium",
+      "summary": [
+        "The Android limit banner adds an outlined warning icon and shifts its text right; React has no icon and renders \"Upgrade for more\" in bold, while Android uses regular weight.",
+        "Android shows \"Description (optional)\" with a gray suffix, whereas React displays only \"Description\".",
+        "The Android description textarea is approximately 12 dp shorter and omits React's lower-right resize grip; the \"72/3000\" counter remains aligned to the right.",
+        "Vertical spacing diverges: Android's Computer and Name controls are roughly 9–12 dp lower than React, while the Runtime section is about 60 dp lower.",
+        "Runtime state differs: React shows \"Runtime *\" with a disabled \"Select…\" dropdown; Android adds a peach \"Runtime configuration is unavailable.\" banner, removes the required asterisk, and shows \"Codex CLI\"."
+      ],
+      "likelyCauses": [
+        "Android and React use different implementations for the agent-limit alert.",
+        "Field metadata differs for Description optional status and Runtime required status.",
+        "Android applies a different runtime-unavailable state and fallback value.",
+        "Native textarea sizing or autogrow behavior differs from the React textarea.",
+        "The platforms use inconsistent vertical spacing tokens or margin defaults."
+      ],
+      "suggestedOwner": "Android Create Agent dialog team, with design-system support",
+      "suggestedFixes": [
+        "Use one canonical runtime-unavailable presentation, including whether to show the warning banner, required marker, and \"Select…\" versus \"Codex CLI\".",
+        "Align the limit banner by adding or removing the warning icon and applying the same \"Upgrade for more\" font weight and text alignment.",
+        "Add the gray \"(optional)\" suffix to React or remove it from Android, and keep the Runtime required marker consistent.",
+        "Match the description textarea height and resize-grip treatment across both platforms.",
+        "Normalize the vertical margins and spacing tokens for the Computer, Name, Description, and Runtime sections."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.22499797464252436
+    },
+    {
+      "id": "components.members.create-agent.dialog-error",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe000000000000000000000000000041f0ebffebffffffffff800f800783ffe1ffffffffff807fddffffffc1ffffffffffffffffffffffcfffffffffffffffffff801fdfffffffda37fffff2dfffffffffffffffffffffc01fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.170Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2367916312229108
+    },
+    {
+      "id": "components.members.create-agent.dialog-onboarding",
+      "status": "ready",
+      "imageHash": "p1:0ffe01fcffff000083ff000083ff0000ffff01f0ffffe3fffc3bfffff83b8003f83be1fff83bfffffc3b817ffff9c07ffc79fffff189bffffff943ffc001ffffc1ffdffffe0f8017c007f3dfcfffffffdffbffffffff8003cfffffffffffdfffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-11-03T04:36:41.138Z",
+      "severity": "high",
+      "summary": [
+        "Android renders a different screen/state: a full-width \"Create Agent\" modal over a dimmed charcoal backdrop, while React renders the \"Meet Cindy\" onboarding panel.",
+        "Android omits React's onboarding elements: \"Set up your server\", the large \"Meet Cindy\" title, introduction, pixel-art Cindy card, centered description, runtime helper text, disabled \"Create Cindy\" button, and footer links.",
+        "Android adds form elements absent from React: a close icon, header Create button, warning triangle, populated Computer and Name fields, Description textarea, character counter, runtime-unavailable notice, and populated Runtime selector.",
+        "Typography and alignment differ: React's \"Meet Cindy\" title is substantially larger, while Android uses a smaller modal title and uniformly left-aligned form content.",
+        "Warning and control styling differ: React bolds \"Upgrade for more\" and shows a runtime refresh icon, whereas Android adds a warning icon and uses regular-weight upgrade copy."
+      ],
+      "likelyCauses": [
+        "The Android fixture captured the post-onboarding Create Agent form rather than the onboarding step represented by React.",
+        "Android and React use separate component variants and flow states instead of a shared create-agent onboarding contract.",
+        "The Android capture uses manual viewport bounds while React uses the modal-viewport element contract, so equivalent target content may not have been selected.",
+        "Platform-specific typography, spacing, and component styling were not aligned."
+      ],
+      "suggestedOwner": "Cross-platform Members/Create Agent UI team, especially the Android implementation owner",
+      "suggestedFixes": [
+        "Update the Android test fixture to open the same onboarding step and runtime state as React before visual comparison.",
+        "Implement the React onboarding hierarchy and content on Android, including the Cindy preview card, explanatory copy, runtime helper, disabled Create Cindy action, and footer links; alternatively, update both baselines if the Create Agent form is the intended target.",
+        "Align the dark backdrop and rounded modal bounds, title scale, field order, spacing, warning iconography, text emphasis, and border treatment with the approved React design.",
+        "Use shared design tokens for font sizes and weights, colors, padding, corner radii, and control heights across platforms.",
+        "Add visual assertions for the onboarding title, Cindy preview, runtime control, warning state, and footer actions so alternate form states are not captured under the onboarding test."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.5469082918135051
+    },
+    {
+      "id": "components.members.create-agent.claude-dialog",
+      "status": "pending",
+      "imageHash": "p1:0bfe0bfe000000000000000000000000000041f0ebffebffffffffff800f800783ffe1ffffffffff807fddffffffc1fffffffffffbfffffffbffc3ffffffffffbfffffff801fda7fffffffffffffffffffffffffffff801fffffffffffffffffffffc7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.197Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22528962611901004
+    },
+    {
+      "id": "components.members.create-agent.claude-custom-provider-dialog",
+      "status": "pending",
+      "imageHash": "p1:07fe07fe000000000000000000000000e1fa41f8ebffebffffffffffc07f8007ffffe1ffdffffffffdffddffd7ffe1ffffffffffffffffffffffd3ffffffffffffffffffc7ffda7fffffffffdfffffffdfffffffdfff801fffffffffa7ffffffffffc7ffffffffffffffffffffffffffffffffffffffffffcfffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.200Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20835426202724783
+    },
+    {
+      "id": "components.members.agent-detail.profile",
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffcc01e4016c03f423684da04da87fe07fe820f010f800f000f831f031f8003007f87ff87ffcfff0fff800757ffd76f5fffffff0007dfffffff9fff7fff8fff7fffc1ffdfff87ff80ff87ff0c9f83ffdcff9ffff4ffd7ffffff9fff1fff9fff8cbfffff0dffdfff1cff8fff03ff9fffefef87ffffff07fe03feffffffff",
+      "generatedAt": "2026-11-03T07:03:47.254Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11704608363376134
+    },
+    {
+      "id": "components.channel.settings.panel",
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe8fff0fffffffdfffffffffff80049fff8ffcdfff800383ffffffc1ffffffffffffff7fffffffffffffffffffffffffffeffffffbcff9effbffffffffffffffff87ffffffffff8003800180018001800180018001800180018001800180018001fffffffffffffffffffffff1fff1ff91ff91fffffff1fffeffffffff",
+      "generatedAt": "2026-11-03T07:03:47.258Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17741895194501833
+    },
+    {
+      "id": "components.channel.members.add-panel",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffcc3fe43fec1fe41fe8e000c0087fe07fcdffe5fc2ce7e4ffec03e403ec01e7ffec01e401ec01e7ff6c01e481ec07e4016c03e4ffeefde403ec00e7ffeeffe401ec03e7ffefffe407ec03e4036fffe4ffedffe403ec7fe7ffefffe7ffec3fe7ffee1ae43fee07e616ee03e7ffefffe4000c0027ffe00004002fffa3fff",
+      "generatedAt": "2026-11-03T07:03:47.263Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17836479388612092
+    },
+    {
+      "id": "components.settings.root.page",
+      "status": "ready",
+      "imageHash": "p1:1ffc1ff407fe000083fe00001ffe7ffe8ffe0ffec7fe03fec0fe01fec0fe07fec3fe07fec3fe07fec3fe0ffedffe0ffe87fe47fe87fe0ffec3fe4ffec3fe07fe9ffe03fe8ffe07fe81fe03fe83fe03fec3fe07fec1fe07fefffe7ffe8ffe0ffecffe0ffecffe07fe81fe03fe87fe7ffe87fe7ffe81fe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-02T06:22:57.226Z",
+      "severity": "high",
+      "summary": [
+        "React has a white header with a back arrow and inset gray divider; Android has a full-width yellow header, no back arrow, and the title aligned near the left edge.",
+        "React list labels are larger and bolder, with larger gray icons; Android labels and icons are smaller, lighter, and more compact.",
+        "Android content uses less left padding, a narrower icon-to-label gap, and substantially tighter vertical spacing than React.",
+        "Android adds Mobile, Storage, Applications, and Computers, while React adds a second Notifications item and a Documentation row with an external-link arrow.",
+        "The section heading differs: React shows On Raft Design, while Android shows On Visual Server; Android section headings are also lighter gray."
+      ],
+      "likelyCauses": [
+        "Android is using a native-style toolbar instead of the shared React header component.",
+        "Typography, icon-size, padding, and row-density tokens are not shared across platforms.",
+        "The platform implementations source different settings navigation items or feature flags.",
+        "The external-link indicator is not implemented in the Android row component."
+      ],
+      "suggestedOwner": "Android UI and cross-platform design-system owner",
+      "suggestedFixes": [
+        "Align the Android header with the React baseline: white background, back affordance, title placement, and divider bounds; alternatively define an explicitly approved platform-specific header variant.",
+        "Apply the baseline label typography and icon sizing, or update both implementations to use matching shared typography and icon tokens.",
+        "Normalize section and row padding, icon-to-label gaps, and vertical spacing to match the React spacing scale.",
+        "Reconcile the navigation manifests so both platforms show the same intended sections and items, including resolving Mobile, Storage, Applications, Computers, and the second Notifications entry.",
+        "Rename On Visual Server to On Raft Design if required by the baseline, and restore the Documentation row's external-link arrow on Android."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.10880794210178102
+    },
+    {
+      "id": "components.settings.account.page",
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc47fe47fec3fe47fedffe4ffefffe7ffecbfe83fec1fe83fecffe4ffefffe4ffe87fa48028ffe47fecffe4ff8c7fa4982c3825e7edffe427ec07e47fec7fe7ffef7fe40fe80fe7382f3c24082c1c27ff6fffe41c2c1c27ffeffe260fec3fe60fe80624ffec81e4ffe807e4ffe807e5ffefffe400200020000fff83fff",
+      "generatedAt": "2026-11-03T07:03:47.294Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2278658808279661
+    },
+    {
+      "id": "components.settings.account.error-state",
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc47fe47fec3fe47fedffe4ffefffe7ffecbfe83fec1fe83fecffe4006fffe400287fa4ffe8ffe4002cffe4ffec7fa47fec3824ff8dffe5982c07e4e7ec002427ec00e47fec7fe40fec1fe41fec0fe4382e3c27fc6f04243c2f3e640c2c1c27ffefffe40fe83fe6dfec0024ffec01e4ffe807e4ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.291Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27467796816138046
+    },
+    {
+      "id": "components.settings.server.profile",
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc01fe41fec1fe41fe0ffe1ffebffe1ffec07e0002807e01f8cffe0002fffe4ffe8002400281f843fe9ffa43fec00207fec00207fec7fe0180fffe0080c7fe7ffecffe7ffe83fe7ffe80067ffe81fe7ffe81fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.361Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17524034242043718
+    },
+    {
+      "id": "components.settings.appearance.page",
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc03fe43fe81fe41fefffe1cfe807e21fec01e4ff6fffe4022c7fe73fec1fe7ffe80fe47fec002400ec3ee401ec0fe403ec03e7ffef3fe0002cffe0002cffe4002804e4002800241fae0be7ffefdfe7ffefffe7ffe80fe7ffec0007ffec0727ffec3fe7ffe80fe7ffe80107ffec3f27ffefbfe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.351Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2523943100957319
+    },
+    {
+      "id": "components.settings.notifications.page",
+      "status": "ready",
+      "imageHash": "p1:0ffe0ffcc3fe43fec1fe41fedffe7ffefffe1ffe80fe0000c07e0000c0624ffec03e413efffe0010d7924010fffe7ffec00e01facffe4010c07e5ffefefe41fafffe0070fffe7f7ec1fe407ec1fe0010de0243fefffe41fec3fe00f8c0365ffec03e7ffee0fe0038fffe00fccffe603cfffe000081fe000400020000fff83fff",
+      "generatedAt": "2026-11-03T04:26:19.628Z",
+      "severity": "high",
+      "summary": [
+        "Android renders a different content hierarchy: System, On this device, and Workspace, versus React's This device, Pause and schedule, and Content sections.",
+        "React's browser-notification card, peach Unavailable badge, disabled Enable Push Notifications button, Pause notifications dropdown, and Quiet hours switch are absent on Android. Android instead shows a green Notifications allowed banner, four switches, a Ready/send action, and radio options.",
+        "Android uses dark, heavy card outlines and compact row dividers, while React uses pale-gray outlines, larger nested rounded containers, and icon-led section headings.",
+        "Typography hierarchy differs: Android row titles are darker and heavier with gray descriptions; React uses black headings, muted-gray section labels, and lighter body copy.",
+        "Bottom clipping differs: React cuts off the Notification preview card, while Android cuts off the second Workspace radio card."
+      ],
+      "likelyCauses": [
+        "The Android route is rendering a platform-specific notifications settings screen rather than the React page hierarchy.",
+        "Android uses different card, switch, radio, badge, and typography design-system components.",
+        "The compared states expose different feature sets: browser and scheduling controls on React versus system, device-toggle, test, and workspace controls on Android.",
+        "The baseline uses component-bounds while the current capture uses manual viewport-bounds; although both rects are 390×844, the comparison contract should be normalized."
+      ],
+      "suggestedOwner": "Android Notifications settings UI owner, with cross-platform design/product parity review",
+      "suggestedFixes": [
+        "Confirm the canonical information architecture; if React is authoritative, align Android to This device, Pause and schedule, and Content, or document the native exceptions.",
+        "Match section order, horizontal insets, card padding and radius, outline color and weight, and divider treatment.",
+        "Reconcile state treatments, including the Unavailable badge and disabled button versus the green permission banner, and align switch and radio styling.",
+        "Align heading and body font weights, sizes, line heights, text colors, and wrapping against shared typography tokens.",
+        "Capture both platforms at the same scroll position and with the same bounds contract, then adjust the viewport or scroll content so comparable cards are not clipped differently."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.24736906063920283
+    },
+    {
+      "id": "screens.members.agent-detail.profile",
+      "status": "pending",
+      "imageHash": "p1:17fe17fcc01e4016c03f423684da04da87fe07fe820f010f800f000f831f031f8003007f87ff87ffcfff0fff800757ffd76f5fffffff0007dfffffff9fff7fff8fff7fffc1ffdfff87ff80ff87ff0c9f83ffdcff9ffff4ffd7ffffff9fff1fff9fff8cbfffff0dffdfff1cff8fff03ff9fffefef87ffffff07fe03feffffffff",
+      "generatedAt": "2026-11-03T07:03:47.364Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11659780451249646
+    },
+    {
+      "id": "screens.members.agent-detail.profile.computer-offline",
+      "status": "pending",
+      "imageHash": "p1:15fe15fcc00f400ec11f4b1685da05da8ffe07fe8207032f80070007831f031f8003807f87ff87ffdfff4fff8007dfff9fff5fffffff0003fffffffb9fffffff9fff3fff9fff1fff87ffdfff9fff13ffdfff1bff8bff94ffdffffdfff7ffffff9fff1fffbfff8cbff7ff9eff9fff1cff8fffc3ff9fffffff87fe07feffffffff",
+      "generatedAt": "2026-11-03T07:03:47.382Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11488165161150943
+    },
+    {
+      "id": "screens.members.agent-detail.profile.computer-missing",
+      "status": "pending",
+      "imageHash": "p1:14fe15fcc00e4016c01f401684da04da87fe07fe8207000780030007831f031f8003007f87ff87ffcfff0fff80035fff8ffb5fffffff0003ffff1fff9fffffff9fff7fffdfff1fffdfff1fffd7ff7fff9fff7fff9fff5fffffffd4ffd7ffffff8fff4fff9fff1cff97ff8fbf8fff1cff9fff1bff9fffc7ff0ffe4402ffffffff",
+      "generatedAt": "2026-11-03T07:03:47.385Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11328533236116178
+    },
+    {
+      "id": "screens.members.agent-detail.profile.no-computer",
+      "status": "pending",
+      "imageHash": "p1:15fe15fcc01e4036c03f407685da04da87fe07fe800f001f800f000f831f021f8003007f87ff87ffcfff0fff80075fffdfff5fffffff0007dfffdfff9fff7fffdfff3fffffff1fff97ffffffdfff7fff9fff7fffffff14ffd7fffdffdfff7fff8fff1eff9fff8c3fe7ff1cff9fff1cffbfff43ff9fffffff01fe03feffff3fff",
+      "generatedAt": "2026-11-03T07:03:47.445Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10706005860034296
+    },
+    {
+      "id": "screens.members.agent-detail.profile.long-machine-name",
+      "status": "pending",
+      "imageHash": "p1:17fe17fcc0074016c11f493687da06da8ffe07fe8257025780070003831f031f8003807f87ff87ffdfffdfff800fdfff87ff5fffffff0003ffffffff9fffffff9fff3fffcbff1fffc7ffffff87ff0003c7ff041f83ff3cffdfffd4fff7ffffff9fff7fffbfff9efff7ff8dbf9fff1cff8fff1fff9fffcfff87fe4406ffffffff",
+      "generatedAt": "2026-11-03T07:03:47.460Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.12310831611779482
+    },
+    {
+      "id": "screens.members.agent-detail.profile.daemon-only",
+      "status": "pending",
+      "imageHash": "p1:1dfe1dfcc01f4036c23f427685da05da8ffe07fe810f011f800f000f831f031f8003807f87ff87ffdfff1fff8007ffff80775fffffff0007ffff00ff9fffffff9fff7fffdeff1fffc7ff1fff87ff9fffd7ff003f93ff1dffdfffd4fff7ffffff9fff7fffbfff9efff7ff8dbf9fff1cff8fff1fff9fffcfff87fe4406ffffffff",
+      "generatedAt": "2026-11-03T07:03:47.454Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11694819135577428
+    },
+    {
+      "id": "screens.members.agent-detail.profile.no-membership",
+      "status": "pending",
+      "imageHash": "p1:15fe15fcc01f401ec03f403685da04da8ffe07fe800f000f8007000f831f031f8003807f87ff87ffdfff1fff8003dfff83ff5fffffff0001ffff1fffffffffffcfff7fffc3ffffff87ffdfff87ff00ffc3ff0cff9fff94ffd7fffdff9fffffff9fff1fffffff8cbfffff9eff8fff1cff9fffc3ff97ffffff87fe07feffffffff",
+      "generatedAt": "2026-11-03T07:03:47.462Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11857590364699366
+    },
+    {
+      "id": "screens.members.agent-detail.profile.loading-state",
+      "status": "pending",
+      "imageHash": "p1:15fe15fcc01e4016c03f423684da04da87fe07fe820f010f800f000f831f031f8003007f87ff87ffcfff0fff800757ffd76f5fffffff0007dfffffff9fff7fffdfff7fffdfffdffff7ff82ff9fff5cffbfffd4fff7ffffff9fff1fff8fff9cbf9fff0dff8fff1cff9fff03ff9fffcfef9fffffffdfffcfff80fe01feffff3fff",
+      "generatedAt": "2026-11-03T07:03:47.477Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11165053131877778
+    },
+    {
+      "id": "screens.members.agent-detail.reminders",
+      "status": "ready",
+      "imageHash": "p1:03fc03fc401e4012401e403210001100100011005ffe7ffefffe0002fffe1ffefe7e447efe7e7ffef81e7ffee0167ffee0067ffef81e7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T04:48:53.916Z",
+      "severity": "high",
+      "summary": [
+        "The React body shows \"Loading...\" and an empty-state illustration, heading, and explanatory copy, while Android shows a populated reminder card.",
+        "Android adds a rounded, light-gray bordered reminder card containing the reminder text, clock icon, relative time, and date-time that are absent from React.",
+        "Android includes an extra outlined chat-bubble action in the header before the overflow menu; React omits this action.",
+        "Tab iconography differs: Reminders uses an alarm-clock glyph on React and a bell on Android, while the Chat tab bubble is filled on React and outlined on Android.",
+        "The selected Reminders chip is narrower and has a soft gray offset/drop shadow on Android; React uses a crisp dark outline without that shadow."
+      ],
+      "likelyCauses": [
+        "The screenshots were captured with different asynchronous loading states or seeded reminder data.",
+        "The Android agent-detail header composition includes an extra chat action.",
+        "The platforms resolve Chat and Reminders icons from different icon sets.",
+        "Android applies platform-specific elevation and sizing to the selected tab chip."
+      ],
+      "suggestedOwner": "Android agent-detail/reminders UI engineer with shared design-token and test-fixture support",
+      "suggestedFixes": [
+        "Use identical reminder fixtures on both platforms and wait for loading to settle before capture.",
+        "Make the body renderer show the same populated card or the same loading/empty-state composition on React and Android.",
+        "Add or remove the header chat-bubble action according to the approved design and align its bounds.",
+        "Standardize the Chat and Reminders icon assets and filled/outline styles across platforms.",
+        "Match the selected chip width, right inset, border, radius, and shadow treatment against the React baseline."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.03669913989819207
+    },
+    {
+      "id": "screens.members.agent-detail.workspace",
+      "status": "pending",
+      "imageHash": "p1:03e403ec401e4012401e40120400240004000400400e7ffe0ff00ff80ff05ffa7e7e41fa7e7e47fa7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.535Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03290328242934881
+    },
+    {
+      "id": "screens.members.agent-detail.apps",
+      "status": "ready",
+      "imageHash": "p1:07fc07fc401e4016401e40366200630062006300bfc05ffe9fc007fe80be4006f1fe47fecff043f28e4041f2805e400683fe401efffe4006fffe400efffe403afffe580afffe4002fffe47f2fffe43f2fffe401efffe407efffe43fefffe4002fffe4002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T04:39:30.195Z",
+      "severity": "high",
+      "summary": [
+        "Android shows a populated Connected Apps state with a rounded outer panel and nested Raft Actions and Calendar cards; React shows flat Apps and App events empty states with no app cards.",
+        "React-only Grant Access and Refresh buttons and the \"No connected apps yet\" and \"No app events yet\" messages are missing on Android.",
+        "Android-only Active badges, connection details, scope chips, manifest URL, and View service buttons are absent from React.",
+        "Android adds a divider above Connected Apps and fills the content area with bordered, rounded cards; React has no enclosing container and leaves the lower area mostly empty.",
+        "The Android header includes a chat-bubble action absent on React; the Reminders and selected Apps tab icons also use different glyphs."
+      ],
+      "likelyCauses": [
+        "The platforms were rendered with different authentication or API fixtures: React has no connected apps or events, while Android has two connected services.",
+        "React and Android are implementing different revisions of the Apps screen.",
+        "Empty-state and connected-state components are not shared or mapped consistently across platforms.",
+        "Header and navigation actions are configured independently in each implementation."
+      ],
+      "suggestedOwner": "Apps integrations frontend team for React and Android, with the shared API or test-data owner",
+      "suggestedFixes": [
+        "Use the same connected-app fixture and authentication state for both screenshots; render both platforms as empty or with the same services and timestamps.",
+        "If React is the canonical design, make Android show the Apps heading, Grant Access button, empty-state copy, App events section, Refresh button, and no service cards.",
+        "If the populated design is canonical, port Android's Connected Apps container, nested service cards, Active badges, scope chips, and View service controls to React.",
+        "Standardize header actions and tab icons, including the chat action, Reminders glyph, Apps glyph, selected-pill border, spacing, and component widths.",
+        "Add a shared visual snapshot test covering both empty and populated connected-app states."
+      ],
+      "intentional": [
+        "The populated-versus-empty difference could be intentional for different account states, but it should be confirmed and excluded from a parity comparison when states are expected to match."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.08825123884365593
+    },
+    {
+      "id": "screens.members.agent-detail.activity",
+      "status": "pending",
+      "imageHash": "p1:03fc07fc401e4016401e4036c0105010c01a4000031803c0c0fe7fe0001a0ffac5fe45f207da07f2c01e401ec7fe01f801fa4002c00e00f2dffe00fe06fa401ac01e7ffecffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.551Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06947786284279178
+    },
+    {
+      "id": "screens.members.human.profile",
+      "status": "ready",
+      "imageHash": "p1:07fe07fc43fc43fc43fc43fc81fe01fe80fe01fe037e03fe83fe03fe83fe03fefffe7ffe87fe000efffe7ffebffe3ffeeffe5ffe9ffe0ffe9ffe1ffe87fe07fe87fe1ffe87fe07fefffe7ffe87fe07fec1fe45fefffe81fafffe5ffefffe80fafffe83fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-11-02T06:15:10.654Z",
+      "severity": "high",
+      "summary": [
+        "Android renders the header and large profile avatars as lavender tiles with a black \"A\", while React uses person-outline glyphs.",
+        "React includes an outlined \"(you)\" badge beside the handle and a person detail on the top-right chat icon; Android omits both and shows a plain speech bubble.",
+        "The Description section diverges: React shows \"Owner\" and a heading-aligned pencil, while Android shows \"Product design and server administration.\" with no pencil.",
+        "The Role row differs: React has a circled question-mark icon and an \"Owner\" pill; Android has a circled information icon plus pencil and a \"Member\" pill.",
+        "Created Agents differs in state and bounds: React shows count 0 and an empty-state message, while Android shows count 2 and a rounded outlined card containing Product UX / Claude Code and Release Notes / Codex CLI rows, cyan-black icons, and green and gray status squares."
+      ],
+      "likelyCauses": [
+        "Android is using an initials-based avatar fallback instead of the shared profile icon.",
+        "Android has not implemented the same conditional \"(you)\" badge and header icon composition.",
+        "The platforms are rendering different member fixtures or API fields for description and role.",
+        "Role iconography is mapped differently between the React and Android implementations.",
+        "Created Agents is using different seed data or query state across platforms."
+      ],
+      "suggestedOwner": "Android member-profile feature team, with shared design-system and fixture/API owners as needed",
+      "suggestedFixes": [
+        "Replace the \"A\" avatar fallback in both avatar locations with the shared person-outline glyph while retaining the current tile size and color.",
+        "Add the outlined \"(you)\" badge beside the handle and restore the person detail on the header chat icon.",
+        "Align the Description value and edit-pencil presence and placement with the intended baseline.",
+        "Use consistent Role iconography and ensure the role pill reflects the same member role on both platforms.",
+        "Use a common Created Agents fixture or explicitly match the count, empty state versus populated card, row content, icons, and status colors."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3.1-Flash-Preview",
+      "error": null,
+      "metricMismatch": 0.044569003929193496
+    },
+    {
+      "id": "components.members.agent-lifecycle-actions",
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffcc01c4016c03c4036860e07fe8fbe063e821e021e835f0000820e021f800080ff87ff87ffcfff5fff8007f7ffdf7f5fffffff000fffffffff9fffffffdfff7fffc3ffdfff87ff80ff87ff0cdfc3ffdcff9ffff4ffd7ffffff9fff1fff9fff9cbfffff9fffffff1cff8fff03ff9fffefef97ffffff87fe03feffffffff",
+      "generatedAt": "2026-11-03T07:03:47.572Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2183753932569098
+    },
+    {
+      "id": "components.members.avatar-management",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000000000000000000ffff0000ffff00009fffffff9fffffff9fff9fffffff9fff807fffff807f807f807f807fffff807f807fbfff807fffff807f807f807fa07fffff807f807fffff807f807f807f807fffff807fffff807f807fffff807f807f807f807fffff807f807fffff807fefff897f807fffffffff",
+      "generatedAt": "2026-11-03T07:03:47.566Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2931012948785461
+    },
+    {
+      "id": "screens.settings.server-danger-modal",
+      "status": "pending",
+      "imageHash": "p1:ffffffff800180018000000180010001800100018000000180010001800100018001000180000001ffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffbffc7fff800100018001000180010001800100018001000180010001800100010000000080018001ffffffff",
+      "generatedAt": "2026-11-03T07:03:47.631Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2546336803445808
+    },
+    {
+      "id": "screens.home.loading",
+      "status": "pending",
+      "imageHash": "p1:0ffc0ff400000000000000004ffe4ffec7fe4ffefffe4ffecffe47fef7fe43fec3fe7ffefffe7ffefffe7ffefffe4ffecffe7ffecffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe43fefffe7ffec3fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe0ede0ff8024a8a495ffe00000000fff81fff",
+      "generatedAt": "2026-11-03T07:03:47.635Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09760265186805472
+    },
+    {
+      "id": "screens.home.channel-list",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffc0000000000000000cffe4ffecffe4ffefffedffecffe41fcc1fcc1fcfffefffec7fe43fcc1fcc3fcfffcfffecffe4ff8cff84ff8cff84ff9cff97ffefffc57fec3fe47fec7fe47fec7fe4002c003fffefffe0ffec3ff0ff28ffb0ffc8fff0ffc8ffc03fe83ff20b887ff000080081ffe8a495ffe12406ca6fffe3fff",
+      "generatedAt": "2026-11-03T07:03:47.648Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09790004185738788
+    },
+    {
+      "id": "screens.home.channel-list.dark",
+      "status": "pending",
+      "imageHash": "p1:ffffffff80018001800180018001800180018001800180018001800180038001800180018001800180038001800180018001800580058005800580078007800180018001800180018001800180018001801180018001800180018001800180018001800180038001800180018001f521e001e001f0018001ffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.653Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.13462416116444553
+    },
+    {
+      "id": "components.thread.message-row.rich-content",
+      "status": "pending",
+      "imageHash": "p1:03fc03fc07fe07fcbfff0ffe0021023200030001a002e001e006e006e000e000e000e002e07ee07ee002e002e002e002e002e002e006e00ee00ee00efffefefee03ee03ef7fefffefebef4beffbefffefffefffee03ee07ef87efdfefffefffee69ef6befffefffee002e01ee186603ee7fe00000006fffffff0ffffffff7fff",
+      "generatedAt": "2026-11-03T07:03:47.613Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16661363924925132
+    },
+    {
+      "id": "components.thread.message-row.long-inline-code",
+      "status": "pending",
+      "imageHash": "p1:cffe4ffe0fff0ffe000f000fe003e12be3ffe3ffc007c007e1ffe1bfe00fc000c000cff7efe7e007e007e00fe00fe07fe07fe0f1e121e00fe00fe01fe07fe07fe07fe3ffe3ffc2f7e26fe00fec0fe007e007e04fe003e07fe003e7ffe007e6dbe00fe7ffe003e007e003e001e01fe3ffe003e1ffe003e01fe0024002ffffffff",
+      "generatedAt": "2026-11-03T07:03:47.687Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.32298949514589326
+    },
+    {
+      "id": "components.thread.message-row.md-link-ref",
+      "status": "pending",
+      "imageHash": "p1:fffefffe03fc03fc03ff03ffffff3fff0fff00100009075e1fff1fff00030003ffffffffc003c003e003e003e23fe03fc03fc03fffffffffc007c01fe003ffffff07c01fc007e01fffffc1ffc001c1ffc001ffffc7ffc001c7ffe73fc7ffc7ffe1ffc7ffc1ffe3fffffee1ff0000ffffffff0000fffffffffff81fffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.657Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24511252456988886
+    },
+    {
+      "id": "components.thread.message-row.md-latest-release",
+      "status": "pending",
+      "imageHash": "p1:ffffffff00fe00fcffff7fffffff3fff07ff001e055f1fff3fff3fff1ffb3fffc081c001fff9e999c003c003c003c003e2fffeffc07fc001ffd1eb0be000c001ffffffffc001c01fef6ff45fc3ffc001e3ffe003ffffffe3c001c003ffffff3fc003c01fe233ffffe01f0000e01ffffffffeffff8007fffffffa1fffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.678Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2870156434258998
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-slice1",
+      "status": "pending",
+      "imageHash": "p1:637c62fc83fe03fe80030002f80ef00ef06ef06ef17ef07ef802f802f802f8fef83ef806f81ef806f806f836f81ef80ef806f802f83ef83ef812f812f802f802f806f83ef836f820f812f800f81ef806f802f80ef802f8cef8fef8faf802f802f81ef91ef80af80ef800fbfefffef802f006f006f006f006f002f002ffffffff",
+      "generatedAt": "2026-11-03T07:03:47.732Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19741513752177264
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-clarify",
+      "status": "pending",
+      "imageHash": "p1:83fc83fc2bfe6bfe9fff03ff817f03bf81038103f6fef7fff4fff7fff221f803f002f0fff02ef0fff07ee003f803f07ff081f03ff183f083f206f001f021f207f003f003f80ef021f003fc0ff20bf003f20bf003f00ef20bf08ef23ff08ef03ff002f021f046f003f01ef087f01ef0039fe0f01ffffffcfeffff8fffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.695Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20650803998261624
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-adjacent",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000ffc0ffc01fe01fc7fff7fffffffffffffff3fff3fff0fff03fd00000001077f17ff1fff1fff3fff003f003f003f003fefffffffffffffffcbffc1ffc1ffc1ffc1ffe9ffffffffffffffc207c607c003c007c083c007ffffffc7ffffffff00000000fffffffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.681Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18306426084203864
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-status606",
+      "status": "pending",
+      "imageHash": "p1:fffefffc03fe03feffffffff0fff07ff077f1fff00030003fc1ffc9fe00fe001e0dfe073e00fc27fe03be0ffe001c001e013e017e003e007e403e423e403e003e007e107e1ffe9ffe0ffc1fff3ffe01fc007c007f09ff093e083e083ffdfea8be00fe003fae3e20fe043eadfe4ffe0ffe6ffffff00000000ffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.708Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.21630307579316077
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-task607",
+      "status": "pending",
+      "imageHash": "p1:fffcfffc007c007cffffffff83ff01bf81ff01ff80270027e067f067f209e20bfe07f60bf306f183fffffffff003f003f0f7f1f7f023f023f003f003f003e003f021f021ffb3ffb3f002f003f0fff0fff002f003fcbbfc9bfc03f803fe83ff83f083f083f046f0c7f0c6f047f7ffe7fff7feffff880c0000ffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.717Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16227661227661228
+    },
+    {
+      "id": "components.members.create-agent.dialog-no-computer",
+      "status": "pending",
+      "imageHash": "p1:ffffffff8001800180018001800180018001800180018001800180018001800180018001800180018001bffdbffdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8001800180018001800180018001800180018001800180018001800180018001800180018001000180018001ffffffff",
+      "generatedAt": "2026-11-03T07:03:47.780Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1295388261028071
+    },
+    {
+      "id": "components.members.create-agent.dialog-empty",
+      "status": "pending",
+      "imageHash": "p1:03fe0bfc00000000000000000000000001f001f0ebffebffffffffff800f800783ffe1ffffffffff807fd9ffffffc0fffffdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff801fffffffffffffffffffffcfffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-11-03T07:03:47.775Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1310440042667531
+    },
+    {
+      "id": "components.members.create-agent.builtin-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-11-03T07:03:47.698Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "components.members.create-agent.pi-provider-dialog",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-11-03T07:03:47.698Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    }
+  ]
+}

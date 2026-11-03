@@ -1,29 +1,29 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 04:52:04 UTC
-Latest run: da544d25-20261103041702
-Latest commit: da544d25-20261103041702
-Commit subject: test(vt): the search pin-menu cases long-press the entity row below the wrapped filter chips
+Generated: 2026-11-03 07:03:48 UTC
+Latest run: 5468c13a-20261103070304
+Latest commit: 5468c13a-20261103070304
+Commit subject: fix(ui): thread header title uses the headline token; bottom bar height is 60 (#4181)
 Providers: react vs android
-Summary: total 95, same 0, pass 2, basic-pass 14, different 77, missing 2
-AI analysis: ready 23 / total 95, pending 72
-Visual coverage matrix: active 104 / total 124, pending 17, skipped 3
+Summary: total 94, same 0, pass 2, basic-pass 14, different 76, missing 2
+AI analysis: ready 20 / total 94, pending 74
+Visual coverage matrix: active 103 / total 123, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 95, same 0, pass 2, basic-pass 14, different 77, missing 2
+- react__android: total 94, same 0, pass 2, basic-pass 14, different 76, missing 2
 
 ## Capture Type Coverage
 
 - Components Parity (component-fixture): active 85, pending 3, total 90
-- Screens Parity (real-screen): active 19, pending 14, total 34
+- Screens Parity (real-screen): active 18, pending 14, total 33
 
 ## Provider Coverage
 
-- react: active 93, pending 13, unsupported 0
-- android: active 86, pending 18, unsupported 0
-- harmony: active 0, pending 81, unsupported 0
+- react: active 92, pending 13, unsupported 0
+- android: active 85, pending 18, unsupported 0
+- harmony: active 0, pending 80, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
@@ -57,7 +57,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.composer.states: Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. Baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button using the same component-bounds crop as the empty and selected states.
 - components.thread.message.row: Real React MessageItem vs Android rendering of shared ThreadMessageCard with matching fixture text, reply count, and task metadata.
 - tasks.card.states: Task Card States
-- screens.auth.profile-setup: React AccountIdentitySetupPage vs the KMP profile-setup gate introduced after registration/email verification.
 - components.channel.members.add-panel: Phone-width add-member view: real React ChannelMembers presentation="page" (the channel overflow drawer's members page, 390x844) after tapping the bottom-pinned Add Member entry. Android/KMP provider is the shared ChannelAddMemberPanel.
 - components.channel.settings.panel: Real React EditChannelDialog for the channel settings panel. Android/KMP provider uses the shared thread settings modal route; Harmony capture remains pending.
 - components.home.activity.results: Real React ThreadsInbox activity page vs Android rendering of shared Home Activity panel. Covers PanelHeader/back affordance, segmented filters, mark-all-read action, ConversationPreviewCard-like rows, unread/mention/task footer badges, and scroll body spacing.
@@ -115,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 5468c13a-20261103070304: react vs android, total 94, pass 2, basic-pass 14, different 76, matrix runs/5468c13a-20261103070304/component-matrix.json, page runs/5468c13a-20261103070304/
 - da544d25-20261103041702: react vs android, total 95, pass 2, basic-pass 14, different 77, matrix runs/da544d25-20261103041702/component-matrix.json, page runs/da544d25-20261103041702/
 - 4f79b778-20261102183226: react vs android, total 101, pass 1, basic-pass 16, different 81, matrix runs/4f79b778-20261102183226/component-matrix.json, page runs/4f79b778-20261102183226/
 - 2d44f513-20261102125634: react vs android, total 102, pass 2, basic-pass 9, different 86, matrix runs/2d44f513-20261102125634/component-matrix.json, page runs/2d44f513-20261102125634/
