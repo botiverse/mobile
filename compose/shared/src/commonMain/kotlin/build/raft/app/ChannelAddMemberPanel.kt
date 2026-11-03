@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.model.MemberKind
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
@@ -257,7 +258,9 @@ private fun ThreadAddMemberAvatar(
     ) {
         RaftAppAvatar(
             avatarWireValue = avatarWireValue,
-            label = member.modalAvatarLabel(),
+            // web AvatarSlot: a person is a Gravatar or, without one, the placeholder person icon,
+            // never initials (an empty label falls back to the icon).
+            label = if (member.kind.parsedMemberKindOrNull() == MemberKind.Human) "" else member.modalAvatarLabel(),
             avatarSize = ThreadAddMemberAvatarSize,
             cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
             cacheServerId = member.sourceServerId,
