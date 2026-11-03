@@ -18008,8 +18008,8 @@ internal fun ThreadPageHeader(
                 ) {
                     Text(
                         text = localizedHeaderTitle,
-                        // raft-ui `PanelTitle`: text-headline (17/22 bold).
-                        style = RaftType.PageTitle.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+                        // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
+                        style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                         color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

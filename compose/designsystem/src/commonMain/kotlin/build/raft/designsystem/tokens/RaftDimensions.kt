@@ -83,8 +83,8 @@ object RaftSize {
 
     /** raft panel heads are 56px (48px under 600px window height). */
     val PageHeaderHeight = 56.dp
-    val PageHeaderCompactHeight = 48.dp
-    val BottomBarHeight = 53.dp
+    /** raft-ui MobileNav bar, without the safe-area inset. */
+    val BottomBarHeight = 60.dp
 
     /** A status light beside text (raft-ui `Status md`, 10px since raft-design #722). */
     val StatusPixel = 10.dp

@@ -208,8 +208,8 @@ internal object RaftAppSize {
     // raft panel heads are 56px (48px under 600px window height).
     val PageHeaderHeight = 56.dp
     val PageHeaderContentHeight = PageHeaderHeight - RaftAppStroke.Default
-    val PageHeaderCompactHeight = 48.dp
-    val BottomBarHeight = 53.dp
+    // raft-ui MobileNav bar, without the safe-area inset.
+    val BottomBarHeight = 60.dp
 }
 
 // raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0); only
