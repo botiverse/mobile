@@ -3482,6 +3482,9 @@ class KmpVisualScreenshotCaptureTest {
 
     /** Clear the editable field currently showing [text] through its accessibility SetText action. */
     private fun clearEditableTextField(text: String) {
+        // As the tap helpers do: a sleeping display, the keyguard or a system dialog (a launcher
+        // ANR) takes the active window, and the fixture's field is then not in the tree read here.
+        awaitFixtureIsActiveInputWindow("the field showing \"$text\"")
         val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
         var field: android.view.accessibility.AccessibilityNodeInfo? = null
@@ -3496,7 +3499,11 @@ class KmpVisualScreenshotCaptureTest {
             if (field != null || SystemClock.uptimeMillis() >= deadline) break
             Thread.sleep(250)
         }
-        requireNotNull(field) { "No editable field showing \"$text\" to clear" }
+        requireNotNull(field) {
+            val active = uiAutomation.rootInActiveWindow
+            "No editable field showing \"$text\" to clear; activeWindowPackage=${active?.packageName} " +
+                "windows=${uiAutomation.windows.size}"
+        }
         val cleared =
             field.performAction(
                 android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
