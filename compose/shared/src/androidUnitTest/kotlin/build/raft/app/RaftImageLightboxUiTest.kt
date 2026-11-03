@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -15,12 +16,25 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.formatRaftTimestampLabel
+import build.raft.app.model.raftEpochDayForDate
+import build.raft.designsystem.components.LocalRaftFrameInsets
+import build.raft.designsystem.components.LocalRaftWindowTitleBar
+import build.raft.designsystem.components.RaftFrameInsets
+import build.raft.designsystem.components.RaftWindowTitleBar
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.pressKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -44,18 +58,33 @@ class RaftImageLightboxUiTest {
         val downloads = mutableListOf<String>()
     }
 
-    private fun ComposeUiTest.showLightbox(calls: Calls, index: Int = 0) {
+    private fun ComposeUiTest.showLightbox(
+        calls: Calls,
+        index: Int = 0,
+        items: List<RaftImageLightboxItem> = lightboxFixtureItems,
+        frameInsets: RaftFrameInsets = RaftFrameInsets.Zero,
+        topSafeArea: Dp = 0.dp,
+        timeContext: RaftTimeContext? = null,
+        titleBar: RaftWindowTitleBar = RaftWindowTitleBar.None
+    ) {
         // Compose string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         setContent {
-            RaftImageLightboxContent(
-                request = RaftImageLightboxRequest(lightboxFixtureItems, index),
-                resolveFullUrl = { null },
-                onDismiss = { calls.dismissed++ },
-                onDownload = { calls.downloads += it.id },
-                onOpenWith = {},
-                pageImage = { item, _, onContentSize -> LightboxFixtureImage(item, onContentSize) }
-            )
+            CompositionLocalProvider(
+                LocalRaftFrameInsets provides frameInsets,
+                LocalRaftWindowTitleBar provides titleBar,
+                LocalRaftTimeContextProvider provides timeContext?.let { RaftTimeContextProvider(it) }
+            ) {
+                RaftImageLightboxContent(
+                    request = RaftImageLightboxRequest(items, index),
+                    resolveFullUrl = { null },
+                    onDismiss = { calls.dismissed++ },
+                    onDownload = { calls.downloads += it.id },
+                    onOpenWith = {},
+                    topSafeArea = topSafeArea,
+                    pageImage = { item, _, onContentSize -> LightboxFixtureImage(item, onContentSize) }
+                )
+            }
         }
         mainClock.advanceTimeBy(500)
     }
@@ -132,6 +161,94 @@ class RaftImageLightboxUiTest {
             mainClock.advanceTimeBy(500)
             assertEquals(listOf("img-2"), calls.downloads)
             assertEquals(0, calls.dismissed)
+        }
+
+    /**
+     * artin 11-03: on a Mac the window's controls are drawn over the lightbox's top bar; the host
+     * reports them as frame insets, and the bar keeps its sender and its Close out of them.
+     */
+    @Test
+    fun theTopBarKeepsTheSenderAndCloseOutOfTheFrameInsets() =
+        runRobolectricComposeUiTest {
+            showLightbox(Calls(), frameInsets = RaftFrameInsets(top = 40.dp, left = 80.dp, right = 60.dp))
+            val window = onRoot().getBoundsInRoot()
+            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
+            val close = onNodeWithTagContentDescription("Close").getBoundsInRoot()
+            assertTrue(sender.top >= 40.dp, "sender below the top inset: ${sender.top}")
+            assertTrue(sender.left >= 80.dp + 16.dp, "sender right of the left inset: ${sender.left}")
+            assertTrue(close.top >= 40.dp, "Close below the top inset: ${close.top}")
+            assertTrue(close.right <= window.right - 60.dp, "Close left of the right inset: ${close.right}")
+        }
+
+    @Test
+    fun closeInsideTheFrameInsetsCloses() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            showLightbox(calls, frameInsets = RaftFrameInsets(top = 40.dp, left = 80.dp, right = 60.dp))
+            onNodeWithTagContentDescription("Close").performMouseInput { click(center) }
+            mainClock.advanceTimeBy(500)
+            assertEquals(1, calls.dismissed)
+        }
+
+    @Test
+    fun theTopBarStartsBelowTheWindowsTopSafeArea() =
+        runRobolectricComposeUiTest {
+            showLightbox(Calls(), frameInsets = RaftFrameInsets(top = 20.dp), topSafeArea = 52.dp)
+            val bar = onNodeWithTag(RaftImageLightboxTopBarTag).getBoundsInRoot()
+            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
+            assertEquals(0.dp, bar.top)
+            assertEquals(52.dp + 56.dp, bar.bottom, "the bar is its 56dp below the safe area")
+            assertTrue(sender.top >= 52.dp, "sender below the safe area: ${sender.top}")
+            // The pages start under the bar.
+            val page = onNodeWithTag(raftImageLightboxPageTag("img-1")).getBoundsInRoot()
+            assertTrue(page.top >= bar.bottom, "page under the bar: ${page.top} < ${bar.bottom}")
+        }
+
+    /** The macOS window title bar (#4193): the bar is the title bar's row, its items after the lights. */
+    @Test
+    fun underAWindowTitleBarTheBarIsItsRowAndCloseStillCloses() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            showLightbox(
+                calls,
+                frameInsets = RaftFrameInsets(top = 48.dp),
+                topSafeArea = 48.dp,
+                titleBar = RaftWindowTitleBar(height = 48.dp, startInset = 70.dp)
+            )
+            val bar = onNodeWithTag(RaftImageLightboxTopBarTag).getBoundsInRoot()
+            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
+            assertEquals(56.dp, bar.bottom, "one row with the title bar, not under it")
+            assertTrue(sender.left >= 70.dp + 16.dp, "sender after the traffic lights: ${sender.left}")
+            onNodeWithTagContentDescription("Close").performMouseInput { click(center) }
+            mainClock.advanceTimeBy(500)
+            assertEquals(1, calls.dismissed)
+        }
+
+    @Test
+    fun noInsetsKeepTheBarAtTheTopEdge() =
+        runRobolectricComposeUiTest {
+            showLightbox(Calls())
+            val sender = onNodeWithTag(RaftImageLightboxSenderTag).getBoundsInRoot()
+            assertEquals(16.dp, sender.left)
+            assertTrue(sender.top < 28.dp, "sender in the 56dp bar at the top: ${sender.top}")
+        }
+
+    /** artin 11-03: the time read "2026-11-03T03:23:35.313Z"; it is the message header's time. */
+    @Test
+    fun theTimeIsTheMessageHeadersTimeNotTheWireString() =
+        runRobolectricComposeUiTest {
+            val wire = "2026-11-03T03:23:35.313Z"
+            val context =
+                RaftTimeContext(
+                    localOffsetMinutes = 8 * 60,
+                    todayEpochDay = raftEpochDayForDate(2026, 11, 3),
+                    nowEpochMillis = 1_793_680_800_000L // 04:00Z
+                )
+            val items = listOf(lightboxFixtureItems.first().copy(timeLabel = wire))
+            showLightbox(Calls(), items = items, timeContext = context)
+            val expected = formatRaftTimestampLabel(wire, context)
+            assertNotEquals(wire, expected)
+            onNodeWithTag(RaftImageLightboxTimeTag).assertTextEquals(expected)
         }
 
     private fun ComposeUiTest.onNodeWithTagContentDescription(label: String) =

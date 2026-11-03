@@ -4,6 +4,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftFrameInsets
+import build.raft.designsystem.components.RaftWindowTitleBar
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -58,5 +62,31 @@ class RaftImageLightboxPolicyTest {
         assertEquals("Lagoon", request.items[1].senderName)
         assertEquals("14:05", request.items[1].timeLabel)
         assertNull(raftImageLightboxRequestFor(messages, "gone") { true })
+    }
+
+    @Test
+    fun theBarClearsTheSafeAreaAndTheFrameInsets() {
+        val none = raftImageLightboxBarPadding(0.dp, RaftFrameInsets.Zero)
+        assertEquals(0.dp, none.calculateTopPadding())
+        assertEquals(16.dp, none.calculateLeftPadding(LayoutDirection.Ltr))
+        assertEquals(16.dp, none.calculateRightPadding(LayoutDirection.Ltr))
+        val insets = raftImageLightboxBarPadding(20.dp, RaftFrameInsets(top = 40.dp, left = 80.dp, right = 60.dp))
+        assertEquals(40.dp, insets.calculateTopPadding(), "the further of the safe area and the top inset")
+        assertEquals(96.dp, insets.calculateLeftPadding(LayoutDirection.Ltr))
+        assertEquals(76.dp, insets.calculateRightPadding(LayoutDirection.Ltr))
+        // Physical sides: the traffic lights stay on the left in a right-to-left language.
+        assertEquals(96.dp, insets.calculateLeftPadding(LayoutDirection.Rtl))
+    }
+
+    /** The macOS window title bar (#4193): the bar covers its band, its items start after the lights. */
+    @Test
+    fun underAWindowTitleBarTheBarCoversItsBandAndStartsAfterTheLights() {
+        val titleBar = RaftWindowTitleBar(height = 48.dp, startInset = 70.dp)
+        val padding = raftImageLightboxBarPadding(48.dp, RaftFrameInsets(top = 48.dp), titleBar)
+        assertEquals(0.dp, padding.calculateTopPadding())
+        assertEquals(86.dp, padding.calculateLeftPadding(LayoutDirection.Ltr))
+        assertEquals(16.dp, padding.calculateRightPadding(LayoutDirection.Ltr))
+        // A safe area beyond the band (a status bar above it) still comes out of the top.
+        assertEquals(10.dp, raftImageLightboxBarPadding(58.dp, RaftFrameInsets.Zero, titleBar).calculateTopPadding())
     }
 }
