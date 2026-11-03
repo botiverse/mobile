@@ -50,6 +50,7 @@ import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.components.RaftDesignSystemTheme
@@ -2788,6 +2789,7 @@ private fun RaftStructuralHomeShellContent(
                                 if (draftsCount != null) {
                                     item { HomeSidebarEntryRow(RaftLucideIconName.Pencil, labels.drafts, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Drafts, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), trailing = formatHomeSavedCount(draftsCount)?.let { count -> { RaftSidebarItemMeta(count) } }, onClick = if (sidebarInteractionsEnabled) onDraftsClickWithDismiss else null) }
                                 }
+                                item(key = "entries-list-bottom") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                 inlineError?.let { error ->
                                     item {
                                         HomeInlineErrorCard(
@@ -2802,8 +2804,9 @@ private fun RaftStructuralHomeShellContent(
                             // Sections render in web's normalized sectionOrder: system and
                             // custom sections interleave (web Sidebar.tsx renders every block
                             // with CSS `order = sectionOrder.indexOf(id)`); empty sections hide.
-                            // No spacer between blocks: as on the web, a section header's own
-                            // `pt-4` and the row above's 1dp margin are the whole gap.
+                            // Between blocks, as on the web: a section header's own `pt-4`, and on a
+                            // touch screen the SidebarList's `py-2` round each section's rows
+                            // (HomeSidebarListEdge).
                             displayedSidebarSections.forEach { sidebarSection ->
                                 when (sidebarSection) {
                                     RaftHomeSidebarSection.Pinned -> {
@@ -2835,6 +2838,7 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
                                             )
                                         }
+                                        if (pinnedExpanded) item(key = "pinned-list-top:$currentServerId") { HomeSidebarListEdge(if (displayedPinned.isEmpty() && showLoadingSkeletons) HomeSidebarEmptyListHeight else HomeSidebarListEdgeInset) }
                                         // Web: while the lists load, Pinned shows neither its hint nor rows.
                                         if (pinnedExpanded && displayedPinned.isEmpty() && !showLoadingSkeletons) {
                                             item(key = "pinned-empty:$currentServerId") {
@@ -2954,6 +2958,7 @@ private fun RaftStructuralHomeShellContent(
                                                 }
                                             }
                                         }
+                                        if (pinnedExpanded && !(displayedPinned.isEmpty() && showLoadingSkeletons)) item(key = "pinned-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
                                     RaftHomeSidebarSection.JointChannels -> {
@@ -2988,6 +2993,7 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
                                             )
                                         }
+                                        if (jointChannelsExpanded) item(key = "joint-list-top:$currentServerId") { HomeSidebarListEdge(if (displayedJointChannels.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown) HomeSidebarEmptyListHeight else HomeSidebarListEdgeInset) }
                                         if (jointChannelsExpanded && displayedJointChannels.isEmpty() && !showLoadingSkeletons) {
                                             item(key = "joint-empty:$currentServerId") {
                                                 HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
@@ -3028,6 +3034,7 @@ private fun RaftStructuralHomeShellContent(
                                                 )
                                             }
                                         }
+                                        if (jointChannelsExpanded && !(displayedJointChannels.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown)) item(key = "joint-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
                                     RaftHomeSidebarSection.Channels -> {
@@ -3062,6 +3069,7 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
                                             )
                                         }
+                                        if (channelsExpanded) item(key = "channels-list-top:$currentServerId") { HomeSidebarListEdge(if (displayedChannels.isEmpty() && !loadingSkeletonRowsShown) HomeSidebarEmptyListHeight else HomeSidebarListEdgeInset) }
                                         if (channelsExpanded) {
                                             items(displayedChannels.size, key = { index -> channelLazyKeys[index] }) { index ->
                                                 val channel = displayedChannels[index]
@@ -3096,6 +3104,7 @@ private fun RaftStructuralHomeShellContent(
                                                 HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
+                                        if (channelsExpanded && !(displayedChannels.isEmpty() && !loadingSkeletonRowsShown)) item(key = "channels-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
                                     RaftHomeSidebarSection.DirectMessages -> {
@@ -3127,6 +3136,7 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
                                             )
                                         }
+                                        if (directMessagesExpanded) item(key = "dms-list-top:$currentServerId") { HomeSidebarListEdge(if (displayedDirectMessages.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown) HomeSidebarEmptyListHeight else HomeSidebarListEdgeInset) }
                                         if (directMessagesExpanded && displayedDirectMessages.isEmpty() && !showLoadingSkeletons) {
                                             item(key = "dms-empty:$currentServerId") {
                                                 HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
@@ -3168,6 +3178,7 @@ private fun RaftStructuralHomeShellContent(
                                                 HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
+                                        if (directMessagesExpanded && !(displayedDirectMessages.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown)) item(key = "dms-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
                                     // task #512: custom sections (web channel-sections port), each
@@ -3208,6 +3219,7 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
                                             )
                                         }
+                                        if (customSectionExpanded) item(key = "custom-section-list-top:$currentServerId:${customSection.id}") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                         if (customSectionExpanded && sectionRows.items.isEmpty()) {
                                             item(key = "custom-section-empty:$currentServerId:${customSection.id}") {
                                                 HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
@@ -3271,6 +3283,7 @@ private fun RaftStructuralHomeShellContent(
                                                 }
                                             }
                                         }
+                                        if (customSectionExpanded) item(key = "custom-section-list-bottom:$currentServerId:${customSection.id}") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
                                 }
                             }
@@ -7203,6 +7216,19 @@ private fun HomeSidebarSectionHeader(
             }
     )
 }
+
+/**
+ * raft-ui `SidebarList` round a section's rows on a touch screen: `py-2` above and below them (7dp
+ * here, the rows keep their own 1dp margin) and, for an expanded section with nothing in it yet,
+ * `min-h-7` (28dp). Nothing with a mouse or trackpad: the wide/desktop sidebar keeps its spacing.
+ */
+@Composable
+private fun HomeSidebarListEdge(height: Dp) {
+    if (RaftTheme.pointerInput != RaftPointerInput.Fine) Spacer(Modifier.fillMaxWidth().height(height))
+}
+
+private val HomeSidebarListEdgeInset = 7.dp
+private val HomeSidebarEmptyListHeight = 28.dp
 
 /** The section's Sort control, `arrow-down-up` (icon standard: sort is ↓↑, as on web); the sort menu opens under it. */
 @Composable
