@@ -3,7 +3,7 @@ type: improved
 area: shell
 platforms:
   - desktop
-pull_request: https://github.com/botiverse/mobile/pull/TBD
+pull_request: https://github.com/botiverse/mobile/pull/4193
 rollout: full
 ---
 
