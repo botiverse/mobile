@@ -11128,7 +11128,8 @@ private fun SharedHomeScreen(
     jointInviteStore: build.raft.app.data.SharedJointInviteStore? = null,
     secondFactorRecoveryStore: build.raft.app.data.SharedSecondFactorRecoveryStore? = null,
     topSafeAreaOverride: Dp? = null,
-    bottomContentPadding: Dp = RaftAppSpacing.Lg,
+    // web Sidebar scroll content `pb-2`: 8dp under the last section's list.
+    bottomContentPadding: Dp = RaftAppSpacing.Sm,
     listPositionServerId: String? = null,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },

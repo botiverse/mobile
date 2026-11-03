@@ -1829,7 +1829,10 @@ internal fun RaftStructuralHomeShell(
     showBottomBar: Boolean = true,
     searchAndActivityOnShellNav: Boolean = showBottomBar,
     externalFocusLossDismissEpoch: Int = 0,
-    bottomContentPadding: Dp = if (showBottomBar) RaftAppSize.BottomBarHeight + RaftAppSpacing.Md else RaftAppSpacing.Lg,
+    // web Sidebar scroll content `pb-2` under the last list. The shell's own bottom bar sits in its
+    // band below the list (a floating one is reserved separately, effectiveBottomContentPadding),
+    // so it needs no extra end space of its own.
+    bottomContentPadding: Dp = if (showBottomBar) RaftAppSpacing.Sm else RaftAppSpacing.Lg,
     outerPadding: Dp = RaftAppSpacing.Md,
     labels: RaftHomeShellLabels = RaftHomeShellLabels(),
     onServerBadgeClick: () -> Unit = {},
