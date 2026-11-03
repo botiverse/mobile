@@ -239,7 +239,7 @@ internal fun RowScope.RaftPaneGridSideColumn(
 }
 
 @Composable
-private fun RaftPaneGridAppLocals(content: @Composable () -> Unit) {
+internal fun RaftPaneGridAppLocals(content: @Composable () -> Unit) {
     val finePointer = raftPlatformHasFinePointer()
     val platform = remember(finePointer) { RaftPaneGridPlatform(finePointer = finePointer, splitterModifier = Modifier.raftNativeDispatchCapture()) }
     CompositionLocalProvider(
