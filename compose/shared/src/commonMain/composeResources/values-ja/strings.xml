@@ -86,6 +86,7 @@
     <string name="common_refreshing">更新中</string>
     <string name="common_copied">コピーしました</string>
     <string name="common_copy">コピー</string>
+    <string name="common_more_actions">その他の操作</string>
     <string name="common_play">再生</string>
     <string name="common_pause">一時停止</string>
     <string name="common_show_password">パスワードを表示</string>

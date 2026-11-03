@@ -308,9 +308,10 @@ internal fun RaftProfilePreviewCardContent(
         RaftPreviewCardDescription(description)
     }
     if (onMessage != null || onViewProfile != null) {
+        // At the card's end, as in a Popover (raft-design #939): the frameless one first, the bordered Message last.
         RaftPreviewCardActions {
-            onMessage?.let { RaftButton(text = stringResource(Res.string.member_label_message), onClick = it, variant = RaftButtonVariant.Default) }
             onViewProfile?.let { RaftButton(text = stringResource(Res.string.profile_preview_view_profile), onClick = it, variant = RaftButtonVariant.Ghost) }
+            onMessage?.let { RaftButton(text = stringResource(Res.string.member_label_message), onClick = it, variant = RaftButtonVariant.Default) }
         }
     }
 }

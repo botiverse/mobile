@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -43,6 +46,7 @@ import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -61,8 +65,24 @@ import kotlinx.coroutines.launch
 
 /** raft-ui PreviewCard metrics (preview-card.tsx, and the web's MentionLink.tsx). */
 object RaftPreviewCardDefaults {
-    /** `w-[300px]`. */
+    /** `size="profile"`, `w-[300px]`: a person's or an agent's card, and a card that asks for one step (connect an account). */
     val Width: Dp = 300.dp
+
+    /**
+     * `size="item"`, `w-[400px]` (raft-ui 0.58, raft-design #939): a card that shows an app's item
+     * (its title, with a state or details) and its buttons. Choose by what the card shows, not by
+     * its parts. Where the window is narrower, the card takes the room there is.
+     */
+    val ItemWidth: Dp = 400.dp
+
+    /** `PreviewCardTitle` in `PreviewCardBody`: an item's title wraps to at most this many lines, then ends in an ellipsis. */
+    const val ItemTitleMaxLines: Int = 2
+
+    /**
+     * An item card's buttons on its one row ([RaftPreviewCardItemActions]): the app's first two
+     * actions, or its first link; everything else is in the More menu.
+     */
+    const val ItemRowButtons: Int = 2
 
     /** `sideOffset` 6: the trigger's bottom edge to the card's top edge. */
     val SideOffset: Dp = 6.dp
@@ -585,9 +605,12 @@ fun RaftPreviewCardDescription(
 }
 
 /**
- * raft-ui `PreviewCardActions` (`flex flex-wrap gap-2 px-4 pb-3`): at most two small buttons
- * ([RaftButton] [RaftButtonSize.Md]), 8dp apart, in Title Case (Message, View Profile); never
- * pink. A button that leaves the card should [RaftPreviewCardState.dismiss] it.
+ * raft-ui `PreviewCardActions` (`flex flex-wrap items-center justify-end gap-2 px-4 pb-3`): at
+ * most two small buttons ([RaftButton] [RaftButtonSize.Md]), 8dp apart, at the card's end as in a
+ * Popover (raft-ui 0.58, raft-design #939): frameless first, the confirm (bordered) one last.
+ * Title Case (Message, View Profile); never pink. A button that leaves the card should
+ * [RaftPreviewCardState.dismiss] it. An app's item card lays its buttons out with
+ * [RaftPreviewCardItemActions] instead.
  */
 @Composable
 fun RaftPreviewCardActions(
@@ -596,8 +619,335 @@ fun RaftPreviewCardActions(
 ) {
     Row(
         modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
+}
+
+// ---------------------------------------------------------------------------
+// The item card (raft-ui 0.58 `PreviewCardContent size="item"`, raft-design #939; web
+// AppLinkChip / LinkCardActions, slock #12361): an app's item, [RaftPreviewCardDefaults.ItemWidth]
+// wide. Its parts answer, in order: which item ([RaftPreviewCardEyebrow]), what it is about
+// ([RaftPreviewCardItemTitle]), where it stands ([RaftPreviewCardMeta]), what I can do
+// ([RaftPreviewCardItemActions]), and who says so (the footer: the app and the host).
+
+/**
+ * raft-ui `PreviewCardBody` (`flex flex-col gap-1.5 px-4 pt-4 pb-3`): the id line, the title and
+ * the details row, 16dp from the card's edges, 6dp apart.
+ */
+@Composable
+fun RaftPreviewCardBody(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
+}
+
+/** raft-ui `PreviewCardEyebrow`: the app's id for the item (`botiverse/slock#10449`), `text-mono-meta` `foreground-muted`, one line. */
+@Composable
+fun RaftPreviewCardEyebrow(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    RaftText(
+        text = text,
+        modifier = modifier,
+        style = RaftTheme.typography.monoMeta,
+        color = RaftTheme.colors.foregroundMuted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/**
+ * raft-ui `PreviewCardTitle` in `PreviewCardBody`: the app's title, `text-headline` bold in ink
+ * (never `foreground-link`: the card is not a link, its buttons and the chip are), up to
+ * [RaftPreviewCardDefaults.ItemTitleMaxLines] lines, then an ellipsis. Only when it is cut off,
+ * the whole title is in a [RaftTooltip] (a pointer resting on it; a long press on touch).
+ */
+@Composable
+fun RaftPreviewCardItemTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    var cut by remember(text) { mutableStateOf(false) }
+    val title: @Composable (Modifier) -> Unit = { titleModifier ->
+        RaftText(
+            text = text,
+            modifier = titleModifier,
+            style = RaftTheme.typography.headline,
+            color = RaftTheme.colors.foreground,
+            maxLines = RaftPreviewCardDefaults.ItemTitleMaxLines,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { cut = it.hasVisualOverflow },
+        )
+    }
+    if (cut) RaftTooltip(text = text, modifier = modifier) { title(Modifier) } else title(modifier)
+}
+
+/** How a detail of [RaftPreviewCardMeta] reads. */
+enum class RaftPreviewCardDetailTone {
+    /** `foreground`. */
+    Default,
+
+    /** `foreground-muted`, the details' own colour. */
+    Muted,
+
+    /** A line the app marks as a warning ("2 checks failing"): `warning-strong`, Raft's warning colour, not the app's. */
+    Warning,
+}
+
+/** One part of an item card's details row ([RaftPreviewCardMeta]). */
+@Immutable
+sealed interface RaftPreviewCardDetail {
+    /** The item's state in the app's words (Merged): a neutral soft Badge, never a status colour. */
+    data class State(val text: String) : RaftPreviewCardDetail
+
+    /** A detail ("Martin", "+803 −498"). */
+    data class Text(
+        val text: String,
+        val tone: RaftPreviewCardDetailTone = RaftPreviewCardDetailTone.Muted,
+    ) : RaftPreviewCardDetail
+}
+
+/**
+ * Whether a "·" goes before each of [details] (web LinkCardElements): between two details on
+ * one line, but never next to the state chip, which its own fill sets apart.
+ */
+fun raftPreviewCardDetailSeparators(details: List<RaftPreviewCardDetail>): List<Boolean> =
+    details.mapIndexed { index, detail ->
+        index > 0 && detail !is RaftPreviewCardDetail.State && details[index - 1] !is RaftPreviewCardDetail.State
+    }
+
+/**
+ * raft-ui `PreviewCardMeta` (`flex flex-wrap items-center gap-x-2 gap-y-1 text-callout
+ * text-foreground-muted`): where the item stands. The state chip
+ * ([RaftPreviewCardDetail.State], a neutral soft [RaftBadge]: an app's states are its own, so
+ * never Raft's status colours or light), then the details on one line separated by "·"
+ * ([raftPreviewCardDetailSeparators]). It wraps when it runs out of room; with [wrap] false it
+ * stays on one line and the details are cut with an ellipsis.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun RaftPreviewCardMeta(
+    details: List<RaftPreviewCardDetail>,
+    modifier: Modifier = Modifier,
+    wrap: Boolean = true,
+) {
+    if (details.isEmpty()) return
+    val separators = raftPreviewCardDetailSeparators(details)
+    val parts: @Composable (oneLine: Boolean, cell: Modifier) -> Unit = { oneLine, cell ->
+        details.forEachIndexed { index, detail ->
+            if (separators[index]) RaftPreviewCardMetaText("·", RaftPreviewCardDetailTone.Muted, oneLine = true)
+            when (detail) {
+                is RaftPreviewCardDetail.State -> RaftBadge(text = detail.text, appearance = RaftBadgeAppearance.Soft)
+                is RaftPreviewCardDetail.Text -> RaftPreviewCardMetaText(detail.text, detail.tone, oneLine, cell)
+            }
+        }
+    }
+    if (wrap) {
+        FlowRow(
+            modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) { parts(false, Modifier) }
+    } else {
+        Row(
+            modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { parts(true, Modifier.weight(1f, fill = false)) }
+    }
+}
+
+@Composable
+private fun RaftPreviewCardMetaText(text: String, tone: RaftPreviewCardDetailTone, oneLine: Boolean, modifier: Modifier = Modifier) {
+    val colors = RaftTheme.colors
+    RaftText(
+        text = text,
+        modifier = modifier,
+        style = RaftTheme.typography.callout,
+        color =
+            when (tone) {
+                RaftPreviewCardDetailTone.Default -> colors.foreground
+                RaftPreviewCardDetailTone.Muted -> colors.foregroundMuted
+                RaftPreviewCardDetailTone.Warning -> colors.warningStrong
+            },
+        maxLines = if (oneLine) 1 else Int.MAX_VALUE,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** What an item card's button does (the app's `action.kind`); it decides where the button goes ([raftPreviewCardButtonLayout]). */
+enum class RaftPreviewCardButtonKind {
+    /** The app's action (Approve, Merge: `execute`): the first two take the row. */
+    Execute,
+
+    /** Reads the item again (Refresh: `read`): always in the More menu. */
+    Read,
+
+    /** Goes to a page (Open in Stamp: `navigate`): the first one takes the row when there is no action. */
+    Link,
+}
+
+/**
+ * One button an item card offers, in the app's order.
+ *
+ * - [frameless]: the app's `ghost` button (no frame); otherwise bordered (`default`, ink border,
+ *   never pink).
+ * - [leavesRaft]: a link out of Raft ends in the leaving mark (↗), in the row and in the menu;
+ *   false for a link Raft opens itself (an Artifact's viewer).
+ * - [disabledReason]: the app's reason it can't be used now; the button is disabled and says why
+ *   (in the row, a caption under the buttons and the tooltip on a long press; in the menu, the
+ *   item's second line). A link with a reason is no link: no ↗.
+ * - [enabled] false: disabled without a reason of the app's (the card is busy; say so elsewhere).
+ * - [loading]: this button's work is running.
+ */
+@Immutable
+data class RaftPreviewCardButton(
+    val label: String,
+    val kind: RaftPreviewCardButtonKind,
+    val onClick: () -> Unit,
+    val frameless: Boolean = false,
+    val leavesRaft: Boolean = kind == RaftPreviewCardButtonKind.Link,
+    val disabledReason: String? = null,
+    val enabled: Boolean = true,
+    val loading: Boolean = false,
+)
+
+/** An item card's buttons as [raftPreviewCardButtonLayout] places them: [row] left to right, then [more], the More menu's, top to bottom. */
+@Immutable
+data class RaftPreviewCardButtonLayout<T>(val row: List<T>, val more: List<T>)
+
+/**
+ * Where an item card's [buttons] (in the app's order) go (raft-design #939, web
+ * `linkCardRowLayout`, slock #12361):
+ *
+ * - The row: the app's actions ([RaftPreviewCardButtonKind.Execute]), the first
+ *   [RaftPreviewCardDefaults.ItemRowButtons]; with none, the first link instead.
+ * - In the row, the [frameless] ones first and the bordered one last, at the right end; buttons
+ *   of one kind keep the app's order.
+ * - Everything else (Refresh, the other links, any further action) in the More menu, in the
+ *   app's order: never wrapped onto a second line, never dropped.
+ */
+fun <T> raftPreviewCardButtonLayout(
+    buttons: List<T>,
+    kind: (T) -> RaftPreviewCardButtonKind,
+    frameless: (T) -> Boolean,
+): RaftPreviewCardButtonLayout<T> {
+    val executes = buttons.indices.filter { kind(buttons[it]) == RaftPreviewCardButtonKind.Execute }
+    val picked =
+        if (executes.isNotEmpty()) {
+            executes.take(RaftPreviewCardDefaults.ItemRowButtons)
+        } else {
+            buttons.indices.filter { kind(buttons[it]) == RaftPreviewCardButtonKind.Link }.take(1)
+        }
+    val row = picked.filter { frameless(buttons[it]) } + picked.filterNot { frameless(buttons[it]) }
+    val inRow = picked.toSet()
+    return RaftPreviewCardButtonLayout(
+        row = row.map { buttons[it] },
+        more = buttons.indices.filterNot { it in inRow }.map { buttons[it] },
+    )
+}
+
+/** [raftPreviewCardButtonLayout] of [RaftPreviewCardButton]s. */
+fun raftPreviewCardButtonLayout(buttons: List<RaftPreviewCardButton>): RaftPreviewCardButtonLayout<RaftPreviewCardButton> =
+    raftPreviewCardButtonLayout(buttons, kind = { it.kind }, frameless = { it.frameless })
+
+/**
+ * raft-ui `PreviewCardActions` on an item card (web `LinkCardActions`): [buttons] laid out by
+ * [raftPreviewCardButtonLayout], one group on one line at the card's end: the More menu's ⋯
+ * (a frameless [RaftIconButton] named [moreLabel]) first, then the row's buttons. Long labels
+ * are cut with an ellipsis rather than wrapping; the whole label is in each button's
+ * [RaftTooltip]. The menu opens aligned to the ⋯'s end, so it stays over the card.
+ *
+ * A row button with a `disabledReason` is disabled, and the reason (the first one) is a caption
+ * under the row, `text-footnote` `foreground-muted`, at the end under the buttons: touch has no
+ * hover to show the web's tooltip, so the reason is always in sight (it is in the long-press
+ * tooltip too). Nothing when [buttons] is empty.
+ */
+@Composable
+fun RaftPreviewCardItemActions(
+    buttons: List<RaftPreviewCardButton>,
+    modifier: Modifier = Modifier,
+    moreLabel: String = RaftTheme.strings.moreActions,
+) {
+    if (buttons.isEmpty()) return
+    val layout = remember(buttons) { raftPreviewCardButtonLayout(buttons) }
+    val reason = layout.row.firstNotNullOfOrNull { it.disabledReason }
+    Column(
+        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (layout.more.isNotEmpty()) RaftPreviewCardMoreMenu(layout.more, moreLabel)
+            layout.row.forEach { button -> RaftPreviewCardRowButton(button, Modifier.weight(1f, fill = false)) }
+        }
+        if (reason != null) {
+            RaftText(
+                text = reason,
+                modifier = Modifier.fillMaxWidth(),
+                style = RaftTheme.typography.footnote,
+                color = RaftTheme.colors.foregroundMuted,
+                textAlign = TextAlign.End,
+            )
+        }
+    }
+}
+
+/** A row button: frameless or bordered, ↗ after a link out of Raft, its label (and reason) in a tooltip. */
+@Composable
+private fun RaftPreviewCardRowButton(button: RaftPreviewCardButton, modifier: Modifier) {
+    val reason = button.disabledReason
+    RaftTooltip(text = if (reason != null) "${button.label}\n$reason" else button.label, modifier = modifier) {
+        RaftButton(
+            text = button.label,
+            onClick = button.onClick,
+            variant = if (button.frameless) RaftButtonVariant.Ghost else RaftButtonVariant.Default,
+            enabled = reason == null && button.enabled,
+            loading = button.loading,
+            trailingIcon = if (button.leavesRaft && reason == null) { { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 16.dp) } } else null,
+        )
+    }
+}
+
+/**
+ * The More menu (⋯): a frameless icon button, and a [RaftDropdownMenu] aligned to its end with
+ * [items] in the app's order. A link out of Raft ends in ↗; an item with a `disabledReason` is
+ * disabled with the reason as its second line (an item can't carry a tooltip). Choosing an item
+ * closes the menu and runs it.
+ */
+@Composable
+private fun RaftPreviewCardMoreMenu(items: List<RaftPreviewCardButton>, label: String) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        RaftIconButton(onClick = { open = true }, tooltip = label, variant = RaftButtonVariant.Ghost) {
+            RaftGlyphIcon(RaftGlyph.Ellipsis, size = 18.dp)
+        }
+        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, alignEnd = true) {
+            items.forEach { item ->
+                val reason = item.disabledReason
+                RaftMenuItem(
+                    text = item.label,
+                    onClick = {
+                        open = false
+                        item.onClick()
+                    },
+                    enabled = reason == null && item.enabled,
+                    description = reason,
+                    trailingIcon = if (item.leavesRaft && reason == null) { { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 16.dp) } } else null,
+                )
+            }
+        }
+    }
 }

@@ -1,6 +1,8 @@
 package build.raft.designsystem.screenshot
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,6 +21,17 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftPreviewCard
 import build.raft.designsystem.components.RaftPreviewCardActions
+import build.raft.designsystem.components.RaftPreviewCardBody
+import build.raft.designsystem.components.RaftPreviewCardButton
+import build.raft.designsystem.components.RaftPreviewCardButtonKind
+import build.raft.designsystem.components.RaftPreviewCardDefaults
+import build.raft.designsystem.components.RaftPreviewCardDetail
+import build.raft.designsystem.components.RaftPreviewCardDetailTone
+import build.raft.designsystem.components.RaftPreviewCardEyebrow
+import build.raft.designsystem.components.RaftPreviewCardItemActions
+import build.raft.designsystem.components.RaftPreviewCardItemTitle
+import build.raft.designsystem.components.RaftPreviewCardMeta
+import build.raft.designsystem.components.RaftPreviewCardSurface
 import build.raft.designsystem.components.RaftPreviewCardDescription
 import build.raft.designsystem.components.RaftPreviewCardHeader
 import build.raft.designsystem.components.RaftPreviewCardSeparator
@@ -37,7 +50,8 @@ import kotlin.test.Test
  * offscreen frame has no pointer to rest on it), light and dark: a profile card under an
  * @mention with room below it, and one flipped above a mention at the bottom of the window. The
  * card is 300dp, 6dp from the mention, start-aligned, on `layer-popover` with the seam ring and
- * `shadow-float`; header (large avatar, name, handle, status), hairline, description, actions.
+ * `shadow-float`; header (large avatar, name, handle, status), hairline, description, actions at
+ * the card's end. [previewCardItem]: the 400dp item card.
  */
 class PreviewCardScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -86,10 +100,75 @@ class PreviewCardScreenshotTest {
         RaftPreviewCardSeparator()
         RaftPreviewCardDescription("Reviews pull requests for the mobile app and keeps the release notes honest, even the long ones.")
         if (actions) {
+            // At the card's end (raft-design #939): the frameless one first, the bordered one last.
             RaftPreviewCardActions {
-                RaftButton(text = "Message", onClick = {}, variant = RaftButtonVariant.Default)
                 RaftButton(text = "View Profile", onClick = {}, variant = RaftButtonVariant.Ghost)
+                RaftButton(text = "Message", onClick = {}, variant = RaftButtonVariant.Default)
             }
         }
     }
+
+    /**
+     * The item card (raft-ui 0.58 `size="item"`, raft-design #939), 400dp: a pull request with
+     * its id line, a title cut at 2 lines, the neutral state chip then "·"-separated details and a
+     * warning line, and the ⋯ (Refresh, Open in Stamp ↗) before frameless Approve and the bordered
+     * Merge at the end; then a card without actions whose link takes the row, and a disabled
+     * action whose reason is a caption under the row.
+     */
+    @Test
+    fun previewCardItem() =
+        capture("preview_card_item") {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                RaftPreviewCardSurface(width = RaftPreviewCardDefaults.ItemWidth) {
+                    RaftPreviewCardBody {
+                        RaftPreviewCardEyebrow("botiverse/slock#10449")
+                        RaftPreviewCardItemTitle("refactor(i18n): one display-locale source for web and desktop, with the zh-TW catalog moved to the shared loader")
+                        RaftPreviewCardMeta(
+                            listOf(
+                                RaftPreviewCardDetail.State("Open"),
+                                RaftPreviewCardDetail.Text("Martin"),
+                                RaftPreviewCardDetail.Text("+803 −498"),
+                                RaftPreviewCardDetail.Text("2 checks failing", RaftPreviewCardDetailTone.Warning),
+                            ),
+                        )
+                    }
+                    RaftPreviewCardItemActions(
+                        listOf(
+                            RaftPreviewCardButton("Merge", RaftPreviewCardButtonKind.Execute, onClick = {}),
+                            RaftPreviewCardButton("Approve", RaftPreviewCardButtonKind.Execute, onClick = {}, frameless = true),
+                            RaftPreviewCardButton("Refresh", RaftPreviewCardButtonKind.Read, onClick = {}, frameless = true),
+                            RaftPreviewCardButton("Open in Stamp", RaftPreviewCardButtonKind.Link, onClick = {}),
+                        ),
+                    )
+                }
+                RaftPreviewCardSurface(width = RaftPreviewCardDefaults.ItemWidth) {
+                    RaftPreviewCardBody {
+                        RaftPreviewCardItemTitle("Fix the composer tray (#3654)")
+                        RaftPreviewCardMeta(listOf(RaftPreviewCardDetail.State("Merged"), RaftPreviewCardDetail.Text("Lagoon")))
+                    }
+                    RaftPreviewCardItemActions(
+                        listOf(
+                            RaftPreviewCardButton("Refresh", RaftPreviewCardButtonKind.Read, onClick = {}, frameless = true),
+                            RaftPreviewCardButton("Open in Stamp", RaftPreviewCardButtonKind.Link, onClick = {}),
+                        ),
+                    )
+                }
+                RaftPreviewCardSurface(width = RaftPreviewCardDefaults.ItemWidth) {
+                    RaftPreviewCardBody {
+                        RaftPreviewCardItemTitle("Close stale review threads")
+                        RaftPreviewCardMeta(listOf(RaftPreviewCardDetail.State("Open"), RaftPreviewCardDetail.Text("Niko")))
+                    }
+                    RaftPreviewCardItemActions(
+                        listOf(
+                            RaftPreviewCardButton(
+                                "Close",
+                                RaftPreviewCardButtonKind.Execute,
+                                onClick = {},
+                                disabledReason = "Only the author can close it",
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
 }

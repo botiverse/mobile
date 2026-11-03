@@ -15,9 +15,9 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import build.raft.app.RaftAppLinkCardView
+import build.raft.app.raftAppLinkOpenLinkButton
 import build.raft.app.data.AppLinkResult
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardPopup
 import build.raft.designsystem.components.RaftPreviewCardState
 import build.raft.designsystem.components.rememberRaftPreviewCardState
@@ -87,20 +87,18 @@ internal class RaftMarkdownAppLinkHoverCards(
             val card = (host.results[span.url] as? AppLinkResult.Card)?.takeIf { it.card != null } ?: return@forEachIndexed
             key(span) {
                 // The item card is a popover card of its own (RaftAppLinkCardView draws its surface).
-                RaftPreviewCardPopup(state = state, anchor = anchors[index], surface = false) {
+                // An item card: 400 wide (raft-ui `PreviewCardContent size="item"`, raft-design #939).
+                RaftPreviewCardPopup(state = state, anchor = anchors[index], width = RaftPreviewCardDefaults.ItemWidth, surface = false) {
                     RaftAppLinkCardView(
                         card = card,
                         onAction = {},
-                        actions = {
-                            RaftButton(
-                                text = stringResource(Res.string.thread_link_preview_open_link),
-                                onClick = {
+                        buttons =
+                            listOf(
+                                raftAppLinkOpenLinkButton {
                                     state.dismiss()
                                     uriHandler.openUri(card.url)
                                 },
-                                variant = RaftButtonVariant.Default,
-                            )
-                        },
+                            ),
                     )
                 }
             }
