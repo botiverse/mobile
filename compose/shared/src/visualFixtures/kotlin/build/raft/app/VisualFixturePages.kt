@@ -740,30 +740,6 @@ internal class ComposeUiTypographySpecimenVisualPage : BasePager() {
     }
 }
 
-@Page("compose_ui_attention_dot_visual", supportInLocal = true)
-internal class ComposeUiAttentionDotVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiAttentionDotVisualContent() } }
-    }
-}
-
-@Page("compose_ui_status_dot_visual", supportInLocal = true)
-internal class ComposeUiStatusDotVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiStatusDotVisualContent() } }
-    }
-}
-
-@Page("compose_ui_progress_bar_visual", supportInLocal = true)
-internal class ComposeUiProgressBarVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiProgressBarVisualContent() } }
-    }
-}
-
 @Page("compose_ui_skeleton_visual", supportInLocal = true)
 internal class ComposeUiSkeletonVisualPage : BasePager() {
     override fun willInit() {
@@ -772,27 +748,11 @@ internal class ComposeUiSkeletonVisualPage : BasePager() {
     }
 }
 
-@Page("compose_ui_spinner_visual", supportInLocal = true)
-internal class ComposeUiSpinnerVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSpinnerVisualContent() } }
-    }
-}
-
 @Page("compose_ui_slug_input_visual", supportInLocal = true)
 internal class ComposeUiSlugInputVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { RaftThemeProvider(theme = raftLightTheme) { UiSlugInputVisualContent() } }
-    }
-}
-
-@Page("compose_ui_section_eyebrow_visual", supportInLocal = true)
-internal class ComposeUiSectionEyebrowVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSectionEyebrowVisualContent() } }
     }
 }
 
@@ -825,14 +785,6 @@ internal class ComposeUiBadgeVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { RaftThemeProvider(theme = raftLightTheme) { UiBadgeVisualContent() } }
-    }
-}
-
-@Page("compose_ui_section_header_visual", supportInLocal = true)
-internal class ComposeUiSectionHeaderVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSectionHeaderVisualContent() } }
     }
 }
 

@@ -10,11 +10,6 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.designsystem.components.RaftTextField
-import build.raft.app.components.RaftAttentionDot
-import build.raft.app.components.RaftProgressBar
-import build.raft.app.components.RaftProgressBarTone
-import build.raft.app.components.RaftSectionHeader
-import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.components.RaftAppSelectTrigger
 import build.raft.app.components.RaftSelectionPopover
 import build.raft.app.components.RaftSelectionPopoverOption
@@ -22,9 +17,6 @@ import build.raft.app.components.RaftAppSkeleton
 import build.raft.app.components.RaftSkeletonRow
 import build.raft.app.components.RaftAppSkeletonVariant
 import build.raft.app.components.RaftSlugInput
-import build.raft.app.components.RaftAppSpinner
-import build.raft.app.components.RaftAppSpinnerSize
-import build.raft.app.components.RaftAppStatusDot
 import build.raft.app.components.RaftSurfaceListItem
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
@@ -232,74 +224,6 @@ private val UiTextSmBold
     @Composable get() = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp).withRaftFontWeight(FontWeight.Bold)
 
 @Composable
-internal fun UiAttentionDotVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(80.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftAttentionDot()
-                Text("Unread", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // web `size="sm"`: the 6px compact pixel.
-                RaftAttentionDot(size = 6.dp)
-                Text("Compact", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // web `tone="bg-presence-error"`.
-                RaftAttentionDot(color = RaftColor.PresenceError)
-                Text("Warning", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-        }
-    }
-}
-
-@Composable
-internal fun UiStatusDotVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // web `ui-status-dot`: a single `gap-3` row of four StatusDots - online (md 9px),
-        // error sm (8px), offline lg (11px), external (md). No pulse row (raft lights never
-        // animate and the web case has none).
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            RaftAppStatusDot(color = RaftColor.PresenceOnline)
-            RaftAppStatusDot(color = RaftColor.PresenceError, size = 8.dp)
-            RaftAppStatusDot(color = RaftColor.PresenceOffline, size = 11.dp)
-            RaftAppStatusDot(color = RaftColor.PresenceExternal)
-        }
-    }
-}
-
-@Composable
-internal fun UiProgressBarVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(124.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            RaftProgressBar(modifier = Modifier.width(310.dp), value = 64, label = "Downloading update", showPercent = true, tone = RaftProgressBarTone.Cyan)
-            RaftProgressBar(modifier = Modifier.width(310.dp), value = 28, label = "Verifying package", showPercent = true, tone = RaftProgressBarTone.Cyan)
-        }
-    }
-}
-
-@Composable
 internal fun UiSkeletonVisualContent() {
     Box(
         modifier =
@@ -330,38 +254,6 @@ internal fun UiSkeletonVisualContent() {
 }
 
 @Composable
-internal fun UiSpinnerVisualContent() {
-    // web: `flex items-center gap-5` of Spinner xs / sm / md / lg and an inverse sm in a
-    // `bg-black p-2` span. The span is a flex item holding an inline-flex spinner, so its
-    // content box is one 24px line with the spinner sitting on the baseline (the bottom).
-    // The spinners are pinned to the rest step 0 (top-left pixel lit), the frame web shows
-    // with `animation: none` (and raft-ui's reduced-motion rest frame).
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            RaftAppSpinner(size = RaftAppSpinnerSize.Xs, stillStep = UiSpinnerVisualStillStep)
-            RaftAppSpinner(size = RaftAppSpinnerSize.Sm, stillStep = UiSpinnerVisualStillStep)
-            RaftAppSpinner(size = RaftAppSpinnerSize.Md, stillStep = UiSpinnerVisualStillStep)
-            RaftAppSpinner(size = RaftAppSpinnerSize.Lg, stillStep = UiSpinnerVisualStillStep)
-            Box(
-                modifier = Modifier.background(Color.Black).padding(8.dp).height(24.dp),
-                contentAlignment = Alignment.BottomStart
-            ) {
-                RaftAppSpinner(size = RaftAppSpinnerSize.Sm, inverse = true, stillStep = UiSpinnerVisualStillStep)
-            }
-        }
-    }
-}
-
-private const val UiSpinnerVisualStillStep = 0
-
-@Composable
 internal fun UiSlugInputVisualContent() {
     Box(
         modifier =
@@ -383,33 +275,6 @@ internal fun UiSlugInputVisualContent() {
                 onValueChange = {},
                 modifier = Modifier.width(310.dp).alpha(0.6f)
             )
-        }
-    }
-}
-
-@Composable
-internal fun UiSectionEyebrowVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .clipToBounds()
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // web `ui-section-eyebrow`: hint "Recent Activity", ink "Applications", and a
-        // `bg-fill-muted px-2 py-1` label "Choose Avatar" that the flex column stretches to
-        // the full 310px content width. The 92px canvas is too short on both sides: web
-        // overflows and clips (`overflow: hidden`), so this lays the column out unbounded
-        // and clips at the frame rather than squashing the third row to nothing. Raise
-        // both canvases together (~112) to show the whole stack.
-        Column(Modifier.wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftAppSectionEyebrow(label = "Recent Activity")
-            RaftAppSectionEyebrow(label = "Applications", color = RaftColor.TextBlack)
-            Box(modifier = Modifier.fillMaxWidth().background(RaftColor.FillMuted).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                RaftAppSectionEyebrow(label = "Choose Avatar")
-            }
         }
     }
 }
@@ -459,31 +324,6 @@ internal fun UiSelectVisualContent() {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             RaftAppSelectTrigger(label = "Codex")
             RaftAppSelectTrigger(label = "", enabled = false)
-        }
-    }
-}
-
-@Composable
-internal fun UiSectionHeaderVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(88.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // web: SectionHeader "Applications" with `border-b border-line-seam pb-2`.
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RaftSectionHeader(
-                label = "Applications",
-                count = 3,
-                modifier = Modifier.fillMaxWidth(),
-                action = {
-                    RaftButton(text = "Add", onClick = {})
-                }
-            )
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
         }
     }
 }

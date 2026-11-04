@@ -59,25 +59,6 @@ internal data class SegmentedControlOption(
     val count: Int? = null
 )
 
-internal val RaftDisabledActionBackground: Color
-    get() = if (RaftAppThemeState.isDark) RaftColor.FillMuted else Color(0xFFFFD8E5) // raft-color: light legacy disabled fill
-internal val RaftDisabledDestructiveActionBackground: Color
-    get() = if (RaftAppThemeState.isDark) RaftColor.FillMuted else Color(0xFFFFE5E5) // raft-color: light legacy disabled fill
-internal val RaftDisabledActionBorder: Color
-    get() = if (RaftAppThemeState.isDark) RaftColor.BorderHairline else Color(0xFFB3B3B3) // raft-color: light legacy disabled edge
-internal val RaftDisabledActionShadow: Color
-    get() = if (RaftAppThemeState.isDark) RaftColor.BorderHairline else Color(0xFFB8B8B8) // raft-color: light legacy disabled shadow
-internal val RaftDisabledActionContent: Color
-    get() = if (RaftAppThemeState.isDark) RaftColor.ForegroundDisabled else RaftColor.SurfaceWhite
-internal val RaftDisabledActionContentArgb: String
-    get() = raftArgbHex(RaftDisabledActionContent)
-
-internal fun raftDisabledActionBackgroundFor(activeColor: Color): Color =
-    when (activeColor) {
-        RaftColor.AccentRed -> RaftDisabledDestructiveActionBackground
-        else -> RaftDisabledActionBackground
-    }
-
 internal enum class RaftAnchorPlacement {
     Tap,
     BottomStart,

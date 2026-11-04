@@ -64,7 +64,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import build.raft.designsystem.components.raftUnreadCountDescription
 import build.raft.designsystem.components.raftUnreadCountText
 import kotlinx.serialization.Serializable
-import build.raft.app.components.RaftAttentionDot
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusVariant
 
 @Serializable
 internal data class RaftTabItemPayload(
@@ -718,7 +719,7 @@ private fun RaftVerticalTabItem(
             )
             if (item.attentionDot) {
                 val description = stringResource(Res.string.more_row_attention_dot)
-                RaftAttentionDot(modifier = Modifier.semantics { contentDescription = description })
+                RaftStatusDot(variant = RaftStatusVariant.Accent, contentDescription = description)
             }
             if (item.opensExternally) {
                 RaftLucideIcon(

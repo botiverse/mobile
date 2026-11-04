@@ -11,6 +11,8 @@ import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftType
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -170,7 +172,7 @@ internal fun RaftAttachmentPreviewCard(
             ) {
                 if (loading) {
                     Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                        RaftUiSpinner(size = RaftAppSpinnerSize.Xs)
+                        RaftSpinner(size = RaftSpinnerSize.Xs, color = RaftColor.TextBlack)
                     }
                 } else {
                     actions.forEach { action -> RaftAttachmentPreviewCardActionButton(action) }

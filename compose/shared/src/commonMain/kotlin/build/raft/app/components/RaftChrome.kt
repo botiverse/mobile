@@ -221,32 +221,6 @@ internal fun Modifier.raftControlSurface(
 }
 
 /**
- * raft option card that shows the pick itself (raft-ui RadioGroup `appearance="none"`
- * option card): container radius, `layer-card` with a 1dp `line-hairline` edge at rest;
- * checked, the `info-soft` wash with a 1dp `line-seam` edge (raft "Selected: content").
- * Disabled is `fill-muted` with a hairline. No ink block fill, no offset shadow; it clips
- * so a press wash follows the radius.
- */
-internal fun Modifier.raftOptionSurface(
-    selected: Boolean,
-    enabled: Boolean = true,
-    radius: Dp = RaftAppRadius.Container
-): Modifier {
-    val shape = RoundedCornerShape(radius)
-    val fill =
-        when {
-            !enabled -> RaftColor.FillMuted
-            selected -> RaftColor.InfoSoft
-            else -> RaftColor.Card
-        }
-    val edge = if (selected && enabled) RaftColor.BorderSeam else RaftColor.BorderHairline
-    return this
-        .clip(shape)
-        .background(fill, shape)
-        .border(RaftAppStroke.Thin, edge, shape)
-}
-
-/**
  * The raft-ui `-soft` wash for a legacy saturated block fill (yellow / pink / cyan / lime /
  * orange / red / stone / lavender), for badges, chips and notices that used to paint the
  * solid palette colour behind an ink frame. Paper fills become `fill-muted`; any other
