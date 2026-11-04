@@ -31,7 +31,7 @@ import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
-import build.raft.app.components.RaftAppCheckbox
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -65,6 +65,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.text.TextStyle
@@ -112,6 +113,7 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -3296,8 +3298,8 @@ internal fun ThreadComposerContentLeaf(
                                 if (surface.showTaskButton) {
                                     Row(
                                         modifier = Modifier
-                                            .clickable(enabled = composerEnabled) {
-                                                val newValue = !asTask
+                                            // The whole label row is the checkbox (one target, checkbox role).
+                                            .toggleable(value = asTask, enabled = composerEnabled, role = Role.Checkbox) { newValue ->
                                                 if (onEditorAsTaskChange(editorSessionId, newValue)) {
                                                     onEvent("toggleAsTask", null, newValue, null)
                                                 }
@@ -3306,16 +3308,7 @@ internal fun ThreadComposerContentLeaf(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        RaftAppCheckbox(
-                                            checked = asTask,
-                                            onCheckedChange = { checked ->
-                                                if (onEditorAsTaskChange(editorSessionId, checked)) {
-                                                    onEvent("toggleAsTask", null, checked, null)
-                                                }
-                                            },
-                                            enabled = composerEnabled,
-                                            size = 14.dp
-                                        )
+                                        RaftCheckboxIndicator(checked = asTask, enabled = composerEnabled)
                                         // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
                                         // foreground, foreground-disabled when the composer is off.
                                         val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled

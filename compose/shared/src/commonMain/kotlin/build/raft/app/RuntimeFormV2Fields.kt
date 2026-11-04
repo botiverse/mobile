@@ -22,7 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import build.raft.app.components.RaftAppCheckbox
+import build.raft.designsystem.components.RaftCheckbox
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choices
@@ -259,7 +259,7 @@ private fun RuntimeFormV2FieldRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftAppCheckbox(
+                RaftCheckbox(
                     checked = values[field.key].booleanValue(),
                     onCheckedChange = { onChange(field.key, JsonPrimitive(it)) },
                     enabled = fieldEnabled
