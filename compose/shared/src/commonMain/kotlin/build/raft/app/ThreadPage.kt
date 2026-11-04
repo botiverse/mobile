@@ -5239,13 +5239,14 @@ private fun ThreadMembersPageScreen() {
     var createAgentName by remember(routeOwner) { mutableStateOf<String?>(null) }
     var createAgentMode by remember(routeOwner) { mutableStateOf(MembersCreateAgentMode.Managed) }
     var canCreateAgents by remember(routeOwner) { mutableStateOf(false) }
+    var serverPlan by remember(routeOwner) { mutableStateOf<String?>(null) }
     LaunchedEffect(liveOwner, routeOwner) {
         canCreateAgents = false
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
-            canCreateAgents = threadAddMemberCanCreateAgents(
-                session?.servers?.firstOrNull { it.id == routeOwner.serverId }?.toServerSummary()?.permissions
-            )
+            val server = session?.servers?.firstOrNull { it.id == routeOwner.serverId }?.toServerSummary()
+            canCreateAgents = threadAddMemberCanCreateAgents(server?.permissions)
+            serverPlan = server?.plan
         } else createAgentName = null
     }
     var addDialogVisible by remember { mutableStateOf(false) }
@@ -5536,6 +5537,8 @@ private fun ThreadMembersPageScreen() {
                     }
                 },
                 onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
+                serverPlan = serverPlan,
+                onUpgrade = { pager.openSettingsBillingPage(storeScope) },
             )
         }
         removalGate.pending?.let { confirmation ->

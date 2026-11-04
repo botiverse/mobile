@@ -35,7 +35,7 @@ import org.robolectric.shadows.ShadowDialog
  * 947bd94), in English: the entry rows without create permission (both disabled, one reason),
  * the add panel in the wide layout's supporting pane, and the Create External Agent dialog
  * opened from it (no Computer or runtime, the channel it joins said on the info wash), as the
- * phone sheet and the wide centred card, plus its submit error. Verify / record as
+ * phone sheet and the wide centred card, plus its submit error and the plan's agent limit. Verify / record as
  * [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -73,6 +73,17 @@ class CreateExternalAgentScreenshotTest {
     @Test
     fun dialogErrorDark() = captureDialog("agent.create.external.error.dark", RaftAppAppearance.Dark, failed = true)
 
+    // The plan's agent limit (web: billing capacity 2/2 on Free): the banner and a disabled Create.
+    @Test
+    fun dialogAtLimitLight() = captureDialog("agent.create.external.limit", RaftAppAppearance.Light, atLimit = true)
+
+    @Test
+    fun dialogAtLimitDark() = captureDialog("agent.create.external.limit.dark", RaftAppAppearance.Dark, atLimit = true)
+
+    @Test
+    @Config(qualifiers = "w1024dp-h768dp-mdpi")
+    fun dialogAtLimitWide() = captureDialog("agent.create.external.limit.wide", RaftAppAppearance.Light, atLimit = true)
+
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         english {
             RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -80,7 +91,7 @@ class CreateExternalAgentScreenshotTest {
             }
         }
 
-    private fun captureDialog(name: String, appearance: RaftAppAppearance, failed: Boolean = false) =
+    private fun captureDialog(name: String, appearance: RaftAppAppearance, failed: Boolean = false, atLimit: Boolean = false) =
         english {
             RaftRobolectricScreenshot.capture(
                 name,
@@ -97,6 +108,10 @@ class CreateExternalAgentScreenshotTest {
                         // A fixed name: a blank one would roll a random suggestion.
                         initialName = "mia",
                         errorMessage = if (failed) stringResource(Res.string.common_error) else null,
+                        currentAgentCount = if (atLimit) 2 else 0,
+                        maxAgents = if (atLimit) 2 else -1,
+                        limitPlanLabel = if (atLimit) "Free" else null,
+                        onUpgrade = if (atLimit) ({}) else null,
                         onDismiss = {},
                         onSubmit = {},
                     )

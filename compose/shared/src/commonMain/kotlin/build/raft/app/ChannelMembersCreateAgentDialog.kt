@@ -34,6 +34,10 @@ internal fun ChannelMembersCreateAgentDialog(
     onCreated: (MemberId) -> Unit = {},
     /** The no-computer dialog's "Add Computer"; null hides it. */
     onAddComputer: (() -> Unit)? = null,
+    /** The server's plan from the session, for the agent limit when billing can't be read. */
+    serverPlan: String? = null,
+    /** "Upgrade for more" in the agent-limit banner; null leaves it as text. */
+    onUpgrade: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val picker by remember(computersStore, owner) {
@@ -44,6 +48,20 @@ internal fun ChannelMembersCreateAgentDialog(
     val serverMembers by remember(membersStore, owner) {
         membersStore.serverMembersEntryFlow(owner)
     }.collectAsState(remember(membersStore, owner) { membersStore.currentServerMembersEntry(owner) })
+    // The plan's agent limit (web CreateAgentDialog `loadBilling`): at the limit the dialog says so
+    // and Create stays disabled. Unread billing (a 403, offline) falls back to the plan's limits.
+    var billing by remember(owner) { mutableStateOf<CreateAgentBilling?>(null) }
+    LaunchedEffect(owner) {
+        val receipt = authority.capture(owner) ?: return@LaunchedEffect
+        val loaded = loadCreateAgentBilling(authority.networkClient(receipt))
+        if (authority.isCurrent(receipt)) billing = loaded
+    }
+    val agentLimit =
+        createAgentLimit(
+            billing = billing,
+            serverPlan = serverPlan,
+            serverAgentCount = serverMembers.members.count { it.kind == build.raft.app.model.MemberKind.Agent },
+        )
     var submitting by remember(owner) { mutableStateOf(false) }
     var error by remember(owner) { mutableStateOf<String?>(null) }
     var createdId by remember(owner) { mutableStateOf<String?>(null) }
@@ -122,6 +140,10 @@ internal fun ChannelMembersCreateAgentDialog(
             onMachinesRetry = { computersStore.dispatch(SharedComputersIntent.RefreshComputerPicker(owner.serverId, DataRequestPriority.Visible)) },
             createAgentFormStore = formStore, createAgentServerId = owner.serverId,
             takenAgentNames = serverMembers.members.takenAgentNames(),
+            currentAgentCount = agentLimit.usage,
+            maxAgents = agentLimit.limit,
+            limitPlanLabel = agentLimit.planLabel,
+            onUpgrade = onUpgrade,
             onAddComputer = onAddComputer,
             onDismiss = { if (!submitting) onDismiss() }, onSubmit = { submit(it) },
         )
