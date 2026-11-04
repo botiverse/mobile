@@ -152,6 +152,7 @@ import build.raft.app.data.ForwardMessageTargetDirectoryCursor
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
+import build.raft.app.data.isForwardConversationTarget
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
@@ -308,6 +309,7 @@ import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.ForwardMessageSource
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
@@ -17011,6 +17013,34 @@ private fun ThreadPageContentContent(
                 .threadForwardPickerTargets(forwardSourceServerId, forwardSourceChannelId)
                 .map { it.toRaftForwardTargetPickerItem() }
         }
+    // slock #12621 "Threads & tasks": one GET per picker open (Visible lane), never per keystroke,
+    // never retried; a failure or an empty answer is no group.
+    val forwardConversationLoader =
+        remember(threadInstanceKey, forwardTargetRepository) {
+            forwardTargetRepository?.let(::ThreadForwardConversationTargetsLoader)
+        }
+    var forwardConversationTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
+    val forwardConversationItems =
+        remember(forwardConversationTargets, forwardSourceServerId, forwardSourceChannelId) {
+            forwardConversationTargets
+                .threadForwardConversationPickerTargets(forwardSourceServerId, forwardSourceChannelId)
+                .map { it.toRaftForwardTargetPickerItem() }
+        }
+    LaunchedEffect(forwardPickerFlow.sessionKey, forwardSourceServerId, forwardConversationLoader) {
+        val sessionKey = forwardPickerFlow.sessionKey
+        val serverId = forwardSourceServerId
+        val loader = forwardConversationLoader
+        if (sessionKey == null || serverId == null || loader == null || sessionKey.serverId != serverId.value) {
+            forwardConversationTargets = emptyList()
+            return@LaunchedEffect
+        }
+        forwardConversationTargets =
+            loader.load(
+                sessionKey = sessionKey,
+                serverId = serverId,
+                currentChannelId = payload.threadForwardConversationCurrentChannelId()
+            )
+    }
     LaunchedEffect(
         forwardPickerFlow.sessionKey,
         forwardPickerFlow.query,
@@ -17208,6 +17238,7 @@ private fun ThreadPageContentContent(
                 )
             )
         forwardTargets = emptyList()
+        forwardConversationTargets = emptyList()
         forwardDirectoryNextCursor = null
         forwardSelectedReceipts = emptyList()
         forwardNote = TextFieldValue()
@@ -18259,7 +18290,8 @@ private fun ThreadPageContentContent(
                             appending = forwardPickerFlow.appending,
                             interactive = forwardPickerFlow.rowsInteractive,
                             dismissEnabled = forwardPickerFlow.dismissEnabled,
-                            requestGeneration = forwardPickerFlow.requestGeneration
+                            requestGeneration = forwardPickerFlow.requestGeneration,
+                            conversationItems = forwardConversationItems
                         ),
                     onIntent = { intent ->
                         when (intent) {
@@ -18415,7 +18447,8 @@ private fun ThreadPageContentContent(
                                                             ThreadForwardSuccessBanner(
                                                                 target = receipt.target,
                                                                 destination = delivery.destination,
-                                                                messageId = delivery.message.id
+                                                                messageId = delivery.message.id,
+                                                                conversationContext = delivery.message.conversationContext
                                                             )
                                                     }
                                                 }
@@ -36574,7 +36607,10 @@ internal fun ThreadForwardBundleCard(
             ?: build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.FallbackFoldHeight
     val source =
         bundle.visibleSource?.let { visible ->
-            if (visible.thread && !visible.label.endsWith(" · thread")) {
+            val taskTitle = visible.taskTitle
+            if (taskTitle != null) {
+                stringResource(Res.string.thread_forward_from_task, visible.label, taskTitle)
+            } else if (visible.thread && !visible.label.endsWith(" · thread")) {
                 stringResource(Res.string.thread_forward_from_thread, visible.label)
             } else {
                 stringResource(Res.string.thread_forward_from_source, visible.label)
@@ -36739,17 +36775,22 @@ internal data class ThreadForwardOutcome(
 internal data class ThreadForwardSuccessBanner(
     val target: ForwardMessageTarget,
     val destination: ForwardMessageDestination,
-    val messageId: MessageId
+    val messageId: MessageId,
+    /** The posted message's conversation as the server answered it (slock #12620): a thread's or a task's. */
+    val conversationContext: MessageConversationContext? = null
 )
 
 internal fun ForwardMessageTarget.forwardSuccessDisplayTitle(): String =
-    when (channelKind) {
-        ConversationKind.DirectMessage -> title.trim().ifBlank { "DM" }
+    when {
+        // web `forwardDeliveryLabel`: a thread / task row's own title (`#ch › first line`).
+        isForwardConversationTarget() -> title.trim()
+        channelKind == ConversationKind.DirectMessage -> title.trim().ifBlank { "DM" }
         else -> title.trim().removePrefix("#").takeIf { it.isNotBlank() }?.let { "#$it" } ?: "#channel"
     }
 
 internal fun ThreadForwardSuccessBanner.forwardSuccessConversationIdentity(): ThreadLaunchConversationIdentity? {
     val resolvedChannelId = destination.channelId.value.trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+    if (target.isForwardConversationTarget()) return forwardConversationDestinationIdentity(resolvedChannelId)
     val resolvedKind = destination.channelKind.takeUnless { it == ConversationKind.Thread } ?: ConversationKind.Channel
     if (resolvedKind == ConversationKind.DirectMessage && target.memberId == null) return null
     return buildThreadLaunchConversationIdentity(
@@ -36770,6 +36811,48 @@ internal fun ThreadForwardSuccessBanner.forwardSuccessConversationIdentity(): Th
             }
     )
 }
+
+/**
+ * web `forwardDeliveryOpener` (slock #12621 forwardViewInChat.ts @ b088f8467e): a thread / task
+ * destination is located ONLY by the conversation the server answered for the posted message
+ * (a row's own id is its conversation channel's, not a parent message's or a task's). Without that
+ * context there is no "View in chat" rather than a guessed one.
+ */
+private fun ThreadForwardSuccessBanner.forwardConversationDestinationIdentity(
+    conversationChannelId: ChannelId
+): ThreadLaunchConversationIdentity? {
+    val context = conversationContext ?: return null
+    return when (context.channelKind) {
+        ConversationKind.Task -> {
+            if (context.parentChannelId == null || context.taskId == null) return null
+            taskConversationLaunchIdentity(conversationChannelId)
+        }
+        ConversationKind.Thread -> {
+            val parentChannelId = context.parentChannelId ?: return null
+            val parentMessageId = context.parentMessageId ?: return null
+            val parentKind = context.parentChannelKind
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = conversationChannelId,
+                threadChannelId = conversationChannelId,
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                parentSurfaceKind =
+                    if (parentKind == ConversationKind.DirectMessage) {
+                        RaftThreadSurfaceKind.DirectMessage
+                    } else {
+                        RaftThreadSurfaceKind.Channel
+                    },
+                parentChannelKind = parentKind?.toWireChannelKindOrNull()
+            )
+        }
+        else -> null
+    }
+}
+
+/** web: a thread / task row whose answer carried no conversation gets a toast without an action. */
+internal fun ThreadForwardSuccessBanner.forwardSuccessViewInChatAvailable(): Boolean =
+    !target.isForwardConversationTarget() || forwardSuccessConversationIdentity() != null
 
 internal data class ThreadForwardBatchOutcome(
     val failureCode: String? = null,
@@ -36836,7 +36919,11 @@ internal suspend fun executeThreadForwardBatch(
         receipt.postResolveFailureCode(destination)?.let {
             return ThreadForwardBatchOutcome(failureCode = it)
         }
-        if (destination.channelId == sourceChannelId && destination.serverId == frozenSourceServerId) {
+        if (
+            destination.channelId == sourceChannelId &&
+            destination.serverId == frozenSourceServerId &&
+            !receipt.allowsForwardIntoSource()
+        ) {
             return ThreadForwardBatchOutcome(failureCode = "forward_source_target_forbidden")
         }
         destinations += destination
@@ -36918,7 +37005,11 @@ internal suspend fun executeThreadForward(
     receipt.postResolveFailureCode(destination)?.let {
         return ThreadForwardOutcome(failureCode = it)
     }
-    if (destination.serverId == frozenSourceServerId && destination.channelId == sourceChannelId) {
+    if (
+        destination.serverId == frozenSourceServerId &&
+        destination.channelId == sourceChannelId &&
+        !receipt.allowsForwardIntoSource()
+    ) {
         return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
     }
     val forwarded =
@@ -36975,11 +37066,14 @@ internal fun ForwardMessageTarget.toRaftForwardTargetPickerItem(): RaftForwardTa
         cacheMemberId = memberId?.value,
         cacheServerId = serverId.value,
         visualKind = forwardTargetVisualKind(),
+        current = current && isForwardConversationTarget(),
         payload = this
     )
 
 internal fun ForwardMessageTarget.forwardTargetVisualKind(): RaftForwardTargetVisualKind =
     when {
+        kind == ForwardMessageTargetKind.ConversationThread -> RaftForwardTargetVisualKind.Thread
+        kind == ForwardMessageTargetKind.ConversationTask -> RaftForwardTargetVisualKind.Task
         kind == ForwardMessageTargetKind.RecentDirectMessage ||
             kind == ForwardMessageTargetKind.HumanDirectMessageCandidate ||
             kind == ForwardMessageTargetKind.AgentDirectMessageCandidate ->
@@ -37005,6 +37099,9 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
                     ForwardMessageTargetKind.PublicChannelUnjoined -> "Public channel"
                     ForwardMessageTargetKind.HumanDirectMessageCandidate -> "Member"
                     ForwardMessageTargetKind.AgentDirectMessageCandidate -> "Agent"
+                    // The row reads its one-line title only (web `ForwardConversationTargetTitle`).
+                    ForwardMessageTargetKind.ConversationThread,
+                    ForwardMessageTargetKind.ConversationTask -> ""
                 }
             }
     }
@@ -37376,10 +37473,13 @@ internal fun <T> RaftForwardTargetPicker(
     RaftBackHandler(enabled = state.dismissEnabled, label = "thread_forward_targets") {
         onIntent(RaftForwardTargetPickerIntent.Dismiss)
     }
-    LaunchedEffect(state.sessionKey, state.canLoadMore, state.appending, state.items.size, state.interactive) {
+    // The "Threads & tasks" group (its rows plus two section titles) sits before the Recent rows.
+    val recentListOffset = state.visibleConversationItems.size.let { if (it > 0) it + 2 else 0 }
+    LaunchedEffect(state.sessionKey, state.canLoadMore, state.appending, state.items.size, state.interactive, recentListOffset) {
         snapshotFlow {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            state.canLoadMore && state.interactive && !state.appending && lastVisible >= state.items.lastIndex - 2
+            state.canLoadMore && state.interactive && !state.appending &&
+                lastVisible >= state.items.lastIndex + recentListOffset - 2
         }.distinctUntilChanged().collect { shouldLoadMore ->
             if (shouldLoadMore) onIntent(RaftForwardTargetPickerIntent.LoadMore)
         }
@@ -37443,22 +37543,27 @@ internal fun <T> RaftForwardTargetPicker(
                 focusKey = state.sessionKey,
                 onQueryChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) }
             )
-            RaftForwardPickerEyebrow(
-                text =
-                    when {
-                        multiSelect && singleTapContinues && state.selectedKeys.isNotEmpty() ->
-                            stringResource(Res.string.thread_forward_selected, state.selectedKeys.size)
-                        state.query.isBlank() -> stringResource(Res.string.thread_forward_recent)
-                        else -> stringResource(Res.string.thread_forward_search_results)
-                    },
-                modifier = Modifier.padding(top = ForwardPickerBodyPadding)
-            )
+            val conversationItems = state.visibleConversationItems
+            if (state.forwardPickerTopEyebrowVisible(multiSelect && singleTapContinues)) {
+                RaftForwardPickerEyebrow(
+                    text =
+                        when {
+                            multiSelect && singleTapContinues && state.selectedKeys.isNotEmpty() ->
+                                stringResource(Res.string.thread_forward_selected, state.selectedKeys.size)
+                            state.query.isBlank() -> stringResource(Res.string.thread_forward_recent)
+                            else -> stringResource(Res.string.thread_forward_search_results)
+                        },
+                    modifier = Modifier.padding(top = ForwardPickerBodyPadding)
+                )
+            } else {
+                Spacer(modifier = Modifier.height(ForwardPickerBodyPadding))
+            }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                if (state.items.isEmpty() && loading) {
+                if (state.items.isEmpty() && conversationItems.isEmpty() && loading) {
                     Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                         repeat(4) { ThreadForwardSearchingSkeletonRow() }
                     }
-                } else if (state.items.isEmpty()) {
+                } else if (state.items.isEmpty() && conversationItems.isEmpty()) {
                     ThreadModalEmptyState(
                         title =
                             when {
@@ -37491,6 +37596,41 @@ internal fun <T> RaftForwardTargetPicker(
                         contentPadding = PaddingValues(bottom = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(ForwardPickerListRowGap)
                     ) {
+                        // slock #12621 layout A: "Threads & tasks" above "Recent", each under its own title.
+                        if (conversationItems.isNotEmpty()) {
+                            item(key = "forward-conversation-group-title") {
+                                RaftForwardPickerEyebrow(
+                                    text = stringResource(Res.string.thread_forward_conversations),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            items(conversationItems.size, key = { "conversation:" + conversationItems[it].rowKey }) { index ->
+                                val rowTarget = conversationItems[index]
+                                val rowGeneration = state.requestGeneration
+                                RaftForwardPickerTargetRow(
+                                    // Only the group's first row can be the conversation it was opened from.
+                                    target = if (index == 0) rowTarget else rowTarget.copy(current = false),
+                                    selected = rowTarget.stableKey in state.selectedKeys,
+                                    showCheckbox = multiSelect,
+                                    interactive = state.interactive,
+                                    onClick = {
+                                        raftForwardPickerRowTap(
+                                            state = state,
+                                            rowTarget = rowTarget,
+                                            rowGeneration = rowGeneration,
+                                            multiSelect = multiSelect,
+                                            onIntent = onIntent
+                                        )
+                                    }
+                                )
+                            }
+                            item(key = "forward-recent-group-title") {
+                                RaftForwardPickerEyebrow(
+                                    text = stringResource(Res.string.thread_forward_recent),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
                         items(state.items.size, key = { state.items[it].rowKey }) { index ->
                             // task #803: freeze the row identity at RENDER time.
                             // Re-reading targets[index] inside onClick raced list
@@ -37503,33 +37643,13 @@ internal fun <T> RaftForwardTargetPicker(
                                 showCheckbox = multiSelect,
                                 interactive = state.interactive,
                                 onClick = {
-                                    if (state.interactive) {
-                                        if (multiSelect) {
-                                            onIntent(
-                                                RaftForwardTargetPickerIntent.TargetSelected(
-                                                    item = rowTarget,
-                                                    renderGeneration = rowGeneration
-                                                )
-                                            )
-                                        } else {
-                                            // One tap is one destination: drop any earlier pick
-                                            // (back from the note step), pick this, go on.
-                                            state.selectedKeys
-                                                .filter { it != rowTarget.stableKey }
-                                                .forEach { key ->
-                                                    onIntent(RaftForwardTargetPickerIntent.RemoveSelection(key))
-                                                }
-                                            if (rowTarget.stableKey !in state.selectedKeys) {
-                                                onIntent(
-                                                    RaftForwardTargetPickerIntent.TargetSelected(
-                                                        item = rowTarget,
-                                                        renderGeneration = rowGeneration
-                                                    )
-                                                )
-                                            }
-                                            onIntent(RaftForwardTargetPickerIntent.Continue)
-                                        }
-                                    }
+                                    raftForwardPickerRowTap(
+                                        state = state,
+                                        rowTarget = rowTarget,
+                                        rowGeneration = rowGeneration,
+                                        multiSelect = multiSelect,
+                                        onIntent = onIntent
+                                    )
                                 }
                             )
                         }
@@ -37613,6 +37733,29 @@ internal fun <T> RaftForwardTargetPicker(
             }
         }
     }
+}
+
+/** One row tap of the forward picker (a Recent / search row or a "Threads & tasks" row). */
+private fun <T> raftForwardPickerRowTap(
+    state: RaftForwardTargetPickerUiState<T>,
+    rowTarget: RaftForwardTargetPickerItem<T>,
+    rowGeneration: Int,
+    multiSelect: Boolean,
+    onIntent: (RaftForwardTargetPickerIntent<T>) -> Unit
+) {
+    if (!state.interactive) return
+    if (multiSelect) {
+        onIntent(RaftForwardTargetPickerIntent.TargetSelected(item = rowTarget, renderGeneration = rowGeneration))
+        return
+    }
+    // One tap is one destination: drop any earlier pick (back from the note step), pick this, go on.
+    state.selectedKeys
+        .filter { it != rowTarget.stableKey }
+        .forEach { key -> onIntent(RaftForwardTargetPickerIntent.RemoveSelection(key)) }
+    if (rowTarget.stableKey !in state.selectedKeys) {
+        onIntent(RaftForwardTargetPickerIntent.TargetSelected(item = rowTarget, renderGeneration = rowGeneration))
+    }
+    onIntent(RaftForwardTargetPickerIntent.Continue)
 }
 
 @Composable
@@ -39100,10 +39243,11 @@ internal fun ThreadForwardSuccessToastView(
                 .padding(start = 8.dp, top = raftTopSafeAreaPadding() + 8.dp, end = 8.dp),
         contentAlignment = Alignment.TopCenter
     ) {
+        val viewInChat = banner.forwardSuccessViewInChatAvailable()
         RaftToast(
             title = stringResource(Res.string.thread_forward_success_banner, targetLabel),
-            actionLabel = stringResource(Res.string.thread_forward_view_in_chat),
-            onAction = onViewInChat,
+            actionLabel = if (viewInChat) stringResource(Res.string.thread_forward_view_in_chat) else null,
+            onAction = if (viewInChat) onViewInChat else null,
         )
     }
 }

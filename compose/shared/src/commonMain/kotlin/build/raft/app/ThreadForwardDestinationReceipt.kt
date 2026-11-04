@@ -4,6 +4,7 @@ import build.raft.app.data.ForwardMessageDestination
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRequiredAction
+import build.raft.app.data.isForwardConversationTarget
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -35,7 +36,13 @@ internal data class ThreadForwardRoutingIdentity(
     val memberId: MemberId?,
     val jointChannelId: String?,
     val channelKind: ConversationKind,
-    val requiredAction: ForwardMessageTargetRequiredAction
+    val requiredAction: ForwardMessageTargetRequiredAction,
+    /**
+     * slock #12621: the group's "Current" thread / task row, the only target that may be the
+     * conversation the forward was opened from. Frozen like the routing fields, so a tampered
+     * copy cannot lift the source-target block.
+     */
+    val currentConversation: Boolean = false
 )
 
 internal fun ForwardMessageTarget.threadForwardRoutingIdentity(): ThreadForwardRoutingIdentity =
@@ -47,7 +54,8 @@ internal fun ForwardMessageTarget.threadForwardRoutingIdentity(): ThreadForwardR
         memberId = memberId,
         jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotEmpty() },
         channelKind = channelKind,
-        requiredAction = requiredAction
+        requiredAction = requiredAction,
+        currentConversation = current && isForwardConversationTarget()
     )
 
 internal data class ThreadForwardDestinationReceipt(
@@ -136,3 +144,14 @@ internal fun ThreadForwardDestinationReceipt.postResolveFailureCode(
     }
     return null
 }
+
+/**
+ * Web parity (slock #12621): a forward may go into the thread / task the picker was opened from
+ * only through the group's "Current" row. Every other target equal to the source stays refused
+ * (`forward_source_target_forbidden`).
+ */
+internal fun ThreadForwardDestinationReceipt.allowsForwardIntoSource(): Boolean =
+    frozenRoutingIdentity.currentConversation &&
+        target.threadForwardRoutingIdentity() == frozenRoutingIdentity &&
+        (frozenRoutingIdentity.kind == ForwardMessageTargetKind.ConversationThread ||
+            frozenRoutingIdentity.kind == ForwardMessageTargetKind.ConversationTask)

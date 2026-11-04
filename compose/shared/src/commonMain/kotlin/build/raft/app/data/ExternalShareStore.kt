@@ -466,7 +466,7 @@ internal class ExternalShareStore(
                             }
                         }
                         when (val searched = final ?: return@launch) {
-                            is DataResult.Content -> DataResult.Content(ForwardMessageTargetDirectoryPage(items = searched.data))
+                            is DataResult.Content -> DataResult.Content(ForwardMessageTargetDirectoryPage(items = searched.data.externalShareTargets()))
                             is DataResult.Empty -> DataResult.Empty(searched.reason)
                             is DataResult.Error -> DataResult.Error(searched.error)
                             is DataResult.NoPermission -> DataResult.NoPermission(searched.blocker)
@@ -750,3 +750,10 @@ private fun List<ExternalShareServerOption>.normalizedExternalShareServerOptions
             slug = option.slug?.trim()?.takeIf(String::isNotBlank)
         )
     }.distinctBy { it.id }
+
+/**
+ * Share-to-Raft offers channels and DMs only: the server search's thread / task rows (slock #12620)
+ * are left out, as web's Artifact "Send to conversation" host filters `!isConversationTarget`.
+ */
+internal fun List<ForwardMessageTarget>.externalShareTargets(): List<ForwardMessageTarget> =
+    filterNot { it.isForwardConversationTarget() }

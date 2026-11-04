@@ -26,7 +26,11 @@ enum class RaftForwardTargetVisualKind {
     DirectMessage,
     PublicChannel,
     PrivateChannel,
-    JointChannel
+    JointChannel,
+    /** slock #12621: a thread destination (raft-ui `ThreadIcon` in a small IconTile). */
+    Thread,
+    /** slock #12621: a task discussion destination (lucide `list-todo`). */
+    Task
 }
 
 data class RaftForwardTargetPickerItem<T>(
@@ -39,7 +43,9 @@ data class RaftForwardTargetPickerItem<T>(
     val payload: T,
     val cacheMemberKind: build.raft.app.model.MemberKind? = null,
     val cacheMemberId: String? = null,
-    val cacheServerId: String? = null
+    val cacheServerId: String? = null,
+    /** The thread / task the picker was opened from: a trailing soft muted "Current" badge. */
+    val current: Boolean = false
 ) {
     val rowKey: String
         get() = "${visualKind.name}:$stableKey"
@@ -203,8 +209,17 @@ data class RaftForwardTargetPickerUiState<T>(
     val appending: Boolean = false,
     val interactive: Boolean = true,
     val dismissEnabled: Boolean = true,
-    val requestGeneration: Int = 0
+    val requestGeneration: Int = 0,
+    /**
+     * slock #12621 "Threads & tasks": up to 4 rows shown above Recent while the query is empty.
+     * Empty (none, or the request failed) = no group, the picker as before.
+     */
+    val conversationItems: List<RaftForwardTargetPickerItem<T>> = emptyList()
 ) {
+    /** The group shows only with an empty query (web `ForwardComposerTargetList`, not search mode). */
+    val visibleConversationItems: List<RaftForwardTargetPickerItem<T>>
+        get() = if (query.isBlank()) conversationItems else emptyList()
+
     val selectedKeys: Set<String>
         get() = selectedItems.mapTo(linkedSetOf()) { it.stableKey } + listOfNotNull(selectedKey)
 }
@@ -293,4 +308,14 @@ internal fun RaftForwardTargetVisualKind.iconName(): RaftLucideIconName? =
         RaftForwardTargetVisualKind.PublicChannel -> RaftLucideIconName.Hash
         RaftForwardTargetVisualKind.PrivateChannel -> RaftLucideIconName.Lock
         RaftForwardTargetVisualKind.JointChannel -> RaftLucideIconName.GitBranch
+        RaftForwardTargetVisualKind.Thread -> null
+        RaftForwardTargetVisualKind.Task -> RaftLucideIconName.ListTodo
     }
+
+/**
+ * web ForwardComposerMobile: the bar's section eyebrow ("Recent") is hidden while the list leads
+ * with its own "Threads & tasks" and "Recent" titles (empty query). It stays when it names the
+ * multi-select count instead.
+ */
+internal fun <T> RaftForwardTargetPickerUiState<T>.forwardPickerTopEyebrowVisible(multiSelect: Boolean): Boolean =
+    visibleConversationItems.isEmpty() || (multiSelect && selectedKeys.isNotEmpty())

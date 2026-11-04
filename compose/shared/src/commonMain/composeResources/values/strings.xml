@@ -1061,6 +1061,7 @@
     <string name="thread_forward_badge">Forwarded</string>
     <string name="thread_forward_from_source">from %1$s</string>
     <string name="thread_forward_from_thread">from %1$s · thread</string>
+    <string name="thread_forward_from_task">from %1$s · %2$s</string>
     <string name="thread_forward_open_source">Open source message</string>
     <string name="thread_forward_open_attachment">Open %1$s</string>
     <string name="thread_forward_selected">%1$d selected</string>
@@ -1077,6 +1078,8 @@
     <string name="thread_forward_selected_from">%1$d selected from %2$s</string>
     <string name="thread_forward_search_targets">Search targets</string>
     <string name="thread_forward_recent">Recent</string>
+    <string name="thread_forward_conversations">Threads &amp; tasks</string>
+    <string name="thread_forward_current_conversation">Current</string>
     <string name="thread_forward_select_multiple">Select Multiple</string>
     <string name="thread_forward_destination">Destination</string>
     <string name="thread_forward_messages_selected">%1$d messages selected</string>

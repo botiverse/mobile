@@ -548,7 +548,7 @@ private data class MessageMentionWireDto(
  * thread messages. Absent on servers that pre-date the field.
  */
 @Serializable
-private data class ConversationContextWireDto(
+internal data class ConversationContextWireDto(
     val channelType: String? = null,
     val parentMessageId: String? = null,
     val parentChannelId: String? = null,
@@ -1155,7 +1155,7 @@ private fun List<MessageMentionWireDto>?.toDomainMentions(): List<MessageMention
 // Kind strings parse through the #417 contract: unknown values become null
 // (never a guessed Channel), and the whole context is dropped when it says
 // nothing — consumers treat that the same as an old server omitting it.
-private fun ConversationContextWireDto.toDomain(): MessageConversationContext? {
+internal fun ConversationContextWireDto.toDomain(): MessageConversationContext? {
     val context = MessageConversationContext(
         channelKind = parseConversationKindOrNull(channelType),
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),

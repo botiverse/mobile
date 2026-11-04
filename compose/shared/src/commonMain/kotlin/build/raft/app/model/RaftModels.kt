@@ -630,6 +630,8 @@ data class ForwardMessageBundle(
 data class ForwardMessageSource(
     val label: String,
     val thread: Boolean = false,
+    /** A public task discussion source's title (slock #12620 `sourceTaskTitle`). */
+    val taskTitle: String? = null,
     /** Where the source opens (web `canOpenSourceLabel`): the conversation and message, or null. */
     val channelId: String? = null,
     val messageId: String? = null

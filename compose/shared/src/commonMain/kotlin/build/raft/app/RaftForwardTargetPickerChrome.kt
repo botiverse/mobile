@@ -36,9 +36,14 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckbox
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconTile
@@ -252,12 +257,18 @@ internal fun <T> RaftForwardPickerTargetRow(
                 )
             RaftForwardTargetVisualKind.PublicChannel,
             RaftForwardTargetVisualKind.PrivateChannel,
-            RaftForwardTargetVisualKind.JointChannel ->
+            RaftForwardTargetVisualKind.JointChannel,
+            RaftForwardTargetVisualKind.Task ->
                 RaftIconTile(size = RaftIconTileSize.Sm) {
                     ForwardPickerGlyph(
                         target.visualKind.iconName() ?: RaftLucideIconName.Hash,
                         RaftIconTileSize.Sm.icon
                     )
+                }
+            // web `<IconTile size="sm"><ThreadMark /></IconTile>`: raft-ui ThreadIcon.
+            RaftForwardTargetVisualKind.Thread ->
+                RaftIconTile(size = RaftIconTileSize.Sm) {
+                    RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftIconTileSize.Sm.icon)
                 }
         }
         // web `ForwardSearchTargetTitle` / `ChannelPicker` `ChannelRowContent`: a DM with an App
@@ -274,9 +285,17 @@ internal fun <T> RaftForwardPickerTargetRow(
                 color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = appBot == null)
+                modifier = Modifier.weight(1f, fill = appBot == null && !target.current)
             )
             if (appBot != null) RaftAppBotBadge(identity = appBot, botName = target.title)
+            // web `ForwardConversationTargetTitle`: the conversation the forward was opened from.
+            if (target.current) {
+                RaftBadge(
+                    text = stringResource(Res.string.thread_forward_current_conversation),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Muted
+                )
+            }
         }
     }
 }
