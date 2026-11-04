@@ -12549,13 +12549,13 @@ private fun SharedThreadRouteContentContent(
             )
         // Read through the local, not captured (this lambda is at the JVM's captured-value limit).
         val bannerHandoff = LocalRaftForegroundBannerHandoff.current
-        val assistantPanelOpen = assistantOtter?.panelOpen == true
-        SideEffect { bannerHandoff?.coveredByWindow?.value = assistantPanelOpen }
         // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
         // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
         assistantOtter?.let { otter ->
             ThreadAssistantPanelSheet(
                 otter,
+                // A phone's drawer covers the page: its banner goes over the drawer instead.
+                onCoversPageChange = { covers -> bannerHandoff?.coveredByWindow?.value = covers },
                 // The page's banner goes over the panel while it is open (threadForegroundBannerOnPage);
                 // once it is closing, the page shows it again.
                 windowOverlay = {
