@@ -542,21 +542,43 @@ fun RaftButton(
             if (leadingIcon != null) {
                 Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { leadingIcon() }
             }
-            RaftButtonLabel(text = text, trailingText = trailingText, style = textStyle, ink = look.ink)
-            if (trailingIcon != null) {
-                Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { trailingIcon() }
+            if (trailingText != null) {
+                // Label, trailing text and icon share one layout, so the icon is always drawn.
+                RaftButtonLabel(
+                    text = text,
+                    trailingText = trailingText,
+                    style = textStyle,
+                    ink = look.ink,
+                    trailingIcon = trailingIcon?.let { icon -> { Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { icon() } } },
+                )
+            } else {
+                RaftButtonLabel(text = text, trailingText = null, style = textStyle, ink = look.ink)
+                if (trailingIcon != null) {
+                    Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { trailingIcon() }
+                }
             }
         }
     }
 }
 
+/** The narrowest a label is cut to before a [RaftButton]'s trailing text (a link's domain) is cut too. */
+private val RaftButtonLabelMinWidth = 64.dp
+
 /**
  * A button's label on one line, ending in an ellipsis when it doesn't fit, then [trailingText]
- * 6dp after it at regular weight. The trailing text is measured first and kept whole (up to
- * the whole width); the label takes what is left.
+ * 6dp after it at regular weight, then [trailingIcon] 8dp after that (web link card buttons:
+ * label `truncate`, domain, ↗). The icon is always drawn; the trailing text is kept whole while
+ * the label gives way; once the label is down to [RaftButtonLabelMinWidth] (or its own width, if
+ * shorter) the trailing text ends in an ellipsis too.
  */
 @Composable
-private fun RaftButtonLabel(text: String, trailingText: String?, style: TextStyle, ink: Color) {
+private fun RaftButtonLabel(
+    text: String,
+    trailingText: String?,
+    style: TextStyle,
+    ink: Color,
+    trailingIcon: (@Composable () -> Unit)? = null,
+) {
     if (trailingText == null) {
         RaftText(text = text, style = style, color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         return
@@ -572,18 +594,29 @@ private fun RaftButtonLabel(text: String, trailingText: String?, style: TextStyl
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
+            trailingIcon?.invoke()
         },
     ) { measurables, constraints ->
         val gap = 6.dp.roundToPx()
         val loose = constraints.copy(minWidth = 0)
-        val trailing = measurables[1].measure(loose)
-        val labelMax = if (constraints.hasBoundedWidth) (constraints.maxWidth - trailing.width - gap).coerceAtLeast(0) else Constraints.Infinity
+        val icon = measurables.getOrNull(2)?.measure(loose)
+        val iconSpace = icon?.let { it.width + 8.dp.roundToPx() } ?: 0
+        val trailing =
+            if (constraints.hasBoundedWidth) {
+                val labelFloor = minOf(measurables[0].maxIntrinsicWidth(constraints.maxHeight), RaftButtonLabelMinWidth.roundToPx())
+                measurables[1].measure(loose.copy(maxWidth = (constraints.maxWidth - iconSpace - gap - labelFloor).coerceAtLeast(0)))
+            } else {
+                measurables[1].measure(loose)
+            }
+        val labelMax =
+            if (constraints.hasBoundedWidth) (constraints.maxWidth - iconSpace - trailing.width - gap).coerceAtLeast(0) else Constraints.Infinity
         val label = measurables[0].measure(loose.copy(maxWidth = labelMax))
-        val width = (label.width + gap + trailing.width).coerceIn(constraints.minWidth, constraints.maxWidth)
-        val height = maxOf(label.height, trailing.height)
+        val width = (label.width + gap + trailing.width + iconSpace).coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = maxOf(label.height, trailing.height, icon?.height ?: 0)
         layout(width, height) {
             label.placeRelative(0, (height - label.height) / 2)
             trailing.placeRelative(label.width + gap, (height - trailing.height) / 2)
+            icon?.placeRelative(label.width + gap + trailing.width + iconSpace - icon.width, (height - icon.height) / 2)
         }
     }
 }

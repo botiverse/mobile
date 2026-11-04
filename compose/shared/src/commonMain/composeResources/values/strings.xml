@@ -3654,6 +3654,7 @@
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">Latest is v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s updated %2$s</string>
+    <string name="message_card_updated">Updated %1$s</string>
     <string name="artifacts_card_open_in_new_page">Open in New Page</string>
     <string name="artifacts_card_comments_one">1 comment</string>
     <string name="artifacts_card_comments_many">%1$d comments</string>

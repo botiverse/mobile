@@ -8,6 +8,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.rwRetryAfterMillis
 import build.raft.app.data.RaftStaleReadRecovery
 import build.raft.app.data.RaftJsonParseDispatcher
+import build.raft.app.data.isOlderMessageCardRevision
 import build.raft.app.data.isRwOverloadedError
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAuthSessionBlocker
@@ -15399,6 +15400,9 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
     reactionUpdate: List<RaftThreadReactionItem>? = null,
     preserveExistingReactions: Boolean = false
 ): RaftThreadMessageItem {
+    // RFC 082 (web messageStore): the live update and the sync log's copy of a card message can
+    // cross; an older card revision never replaces the newer one held.
+    if (isOlderMessageCardRevision(held = metadata, incoming = update.metadata)) return this
     val currentAuthorId = authorId.resolvedRealtimeThreadAuthorIdOrNull()
     val incomingAuthorId = update.authorId.resolvedRealtimeThreadAuthorIdOrNull()
     // A message author is immutable. Sparse realtime patches have historically

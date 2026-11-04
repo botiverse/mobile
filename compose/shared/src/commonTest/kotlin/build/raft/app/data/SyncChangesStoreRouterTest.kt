@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.test.runTest
@@ -74,6 +75,13 @@ class SyncChangesStoreRouterTest {
             calls += "machines_reload"
             return true
         }
+
+        val messages = mutableListOf<Message>()
+
+        override suspend fun applyMessageRows(serverId: String, messages: List<Message>) {
+            calls += "message_rows"
+            this.messages += messages
+        }
     }
 
     private val targets = RecordingTargets()
@@ -119,6 +127,22 @@ class SyncChangesStoreRouterTest {
         // The roster's first load may have been read before the rows: it must not win.
         assertEquals("roster_supersede", targets.calls.first())
         assertEquals(listOf(MemberId("u-3") to MemberKind.Human), targets.rosterDeletes)
+    }
+
+    @Test
+    fun `message rows replace the message where it is held and nothing else reloads`() = runTest {
+        apply(
+            syncUpsert(1, "message", "m1", messageCardRowJson(state = "Testing", revision = 2)),
+            syncUpsert(2, "message", "m1", messageCardRowJson(state = "Ready for testing", revision = 3)),
+            // A row that doesn't read is left to the conversation's next read: no snapshot.
+            syncUpsert(3, "message", "m2", """{"id":"m2"}"""),
+        )
+        assertEquals(listOf("message_rows"), targets.calls)
+        // The page's newest row per message.
+        val message = targets.messages.single()
+        assertEquals("m1", message.id.value)
+        assertEquals("Raft App 1.19.0 (11900001) · Ready for testing", message.body)
+        assertEquals(3, readMessageCardFromMetadata(message.metadata)?.revision)
     }
 
     @Test

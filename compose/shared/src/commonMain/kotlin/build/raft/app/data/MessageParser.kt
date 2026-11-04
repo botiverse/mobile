@@ -390,6 +390,18 @@ fun parseSharedSyncMessages(
     )
 }
 
+/**
+ * One message list row (a `GET /api/messages/channel/:channelId` item), as the sync log's
+ * `message` entity carries it (RFC 082 §4.4); null when it doesn't read.
+ */
+internal fun parseSharedMessageRow(
+    row: JsonObject,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): Message? {
+    val wire = runCatching { messagesJson.decodeFromJsonElement(MessagesWireMessage.serializer(), row) }.getOrNull() ?: return null
+    return wire.toDomain(ThreadId(wire.channelId), diagnostics)
+}
+
 fun parseSharedSentMessage(
     bodyText: String,
     fallbackThreadId: ThreadId,
@@ -529,7 +541,7 @@ private fun MessagesWireMessage.toDomain(
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),
         body = content,
         messageType = resolvedMessageType,
-        metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        metadata = actionMetadata.toMessageItemMetadata(),
         attachments = attachments.map { it.toDomain() },
         randomId = randomId?.takeIf { it.isNotBlank() },
         reactions = reactions.mapNotNull { it.toDomain() }.takeIf { it.isNotEmpty() },

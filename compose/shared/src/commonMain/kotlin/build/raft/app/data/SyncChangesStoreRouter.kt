@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
 import build.raft.app.model.ServerSummary
 
 /**
@@ -53,16 +54,24 @@ internal interface RaftSyncStoreTargets {
 
     /** Forced machine list reload of the Computers store; false on failure. */
     suspend fun reloadMachines(serverId: String, reason: String): Boolean
+
+    /**
+     * `message` rows (RFC 082 §4.4): each replaces that message, by id, in the open conversation
+     * pages of the server, through their reducers (as a `message:updated` would). A page that does
+     * not hold the message changes nothing.
+     */
+    suspend fun applyMessageRows(serverId: String, messages: List<Message>)
 }
 
 /**
  * Routes pulled changes to the stores ([RaftSyncChangesSink] of the provider).
  *
- * Row-level today: `server_member`, `agent` (roster), `machine` (Computers) and a `conversation`
- * change carrying another device's Done (Activity). Signal-level (the store's existing reload, once
- * per page and only when something changed): `channel`, `sidebar_order`, `server_order`, any other
- * `conversation` change (Home + Activity) and `channel_member` (the loaded rosters of those
- * channels). A row that does not decode retakes its entity's snapshot.
+ * Row-level today: `server_member`, `agent` (roster), `machine` (Computers), `message` (the open
+ * conversation pages) and a `conversation` change carrying another device's Done (Activity).
+ * Signal-level (the store's existing reload, once per page and only when something changed):
+ * `channel`, `sidebar_order`, `server_order`, any other `conversation` change (Home + Activity) and
+ * `channel_member` (the loaded rosters of those channels). A row that does not decode retakes its
+ * entity's snapshot (a `message` row, which has none, is left to its conversation's next read).
  */
 internal class RaftSyncChangesStoreRouter(
     private val targets: RaftSyncStoreTargets,
@@ -152,6 +161,12 @@ internal class RaftSyncChangesStoreRouter(
             targets.refreshChannelMembers(serverId, memberChannels, reason)
         }
 
+        // Messages changed in place (a card message's update): replace them where they are held. A
+        // row that doesn't read is left to the next read of its conversation (there is no snapshot).
+        val messageRows = plan.upsertsOf(RaftSyncRowEntity.Message)
+        val messages = messageRows.values.mapNotNull { row -> parseSharedMessageRow(row) }
+        if (messages.isNotEmpty()) targets.applyMessageRows(serverId, messages)
+
         if (resnapshot.isNotEmpty()) {
             // Snapshots of an added channel scope: only that channel's member roster.
             val channelIds = plan.addedChannelIds.takeIf { it.isNotEmpty() && !serverRemoved }
@@ -161,7 +176,7 @@ internal class RaftSyncChangesStoreRouter(
             "sync_changes_apply serverId=$serverId rosterUpserts=${rosterUpserts.size} rosterDeletes=${rosterDeletes.size} " +
                 "machines=${machineRows.size}/${machineDeletes.size} home=$homeChanged activity=$activityChanged " +
                 "remoteDone=${conversations.remoteDone} channelMembers=${memberChannels.size} resnapshot=${resnapshot.joinToString(",") { it.wireName }.ifEmpty { "none" }} " +
-                "removedScopes=${plan.removedScopes.size}"
+                "removedScopes=${plan.removedScopes.size} messages=${messages.size}/${messageRows.size}"
         )
     }
 

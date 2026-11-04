@@ -176,6 +176,12 @@ internal data class WireActionCardMetadata(
     val executedByUserId: String? = null,
     val result: WireActionCardResult? = null,
     val presentation: WireActionCardPresentation? = null,
+    /** RFC 082 card message (`kind: "message-card"`): the card, untrusted until [parseRaftMessageCard] reads it. */
+    val card: JsonElement? = null,
+    /** RFC 082: the card's revision, 1 when posted. */
+    val revision: Int? = null,
+    /** RFC 082: when the card was posted or last replaced (ISO UTC). */
+    val updatedAt: String? = null,
 )
 
 @Serializable

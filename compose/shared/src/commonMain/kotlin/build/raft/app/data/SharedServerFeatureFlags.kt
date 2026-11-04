@@ -181,6 +181,14 @@ const val MOBILE_NAV3_STACK_FEATURE_FLAG_KEY: String = "mobile_nav3_stack_v1"
 const val INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY: String = "interactive_link_cards"
 
 /**
+ * Card messages (RFC 082; botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `MESSAGE_CARDS_FEATURE_FLAG_KEY`): per server, default off. On, a message with
+ * `actionMetadata.kind == "message-card"` draws its card in the message body; off (or unresolved),
+ * its text (the card's fallback), as before.
+ */
+const val MESSAGE_CARDS_FEATURE_FLAG_KEY: String = "message_cards"
+
+/**
  * Self-service account deletion (botiverse/slock `ACCOUNT_DELETION_FEATURE_FLAG_KEY` in
  * `packages/server/src/services/featureFlagService.ts`, default off; its routes answer 404 while off).
  * On, Settings > Account > Delete account opens the web deletion page in the Settings WebView on every
@@ -212,6 +220,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
     MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,
     INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY,
+    MESSAGE_CARDS_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
     ACCOUNT_DELETION_FEATURE_FLAG_KEY,

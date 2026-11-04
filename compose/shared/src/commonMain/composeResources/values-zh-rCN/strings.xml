@@ -3654,6 +3654,7 @@
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">最新是 v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s 更新于 %2$s</string>
+    <string name="message_card_updated">更新于 %1$s</string>
     <string name="artifacts_card_open_in_new_page">在新页面打开</string>
     <string name="artifacts_card_comments_one">1 条评论</string>
     <string name="artifacts_card_comments_many">%1$d 条评论</string>

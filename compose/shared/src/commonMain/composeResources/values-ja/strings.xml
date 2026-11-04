@@ -3654,6 +3654,7 @@
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">最新は v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s が%2$sに更新</string>
+    <string name="message_card_updated">%1$sに更新</string>
     <string name="artifacts_card_open_in_new_page">新しいページで開く</string>
     <string name="artifacts_card_comments_one">コメント 1 件</string>
     <string name="artifacts_card_comments_many">コメント %1$d 件</string>
