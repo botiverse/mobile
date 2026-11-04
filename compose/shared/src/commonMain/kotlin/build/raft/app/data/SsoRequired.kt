@@ -48,17 +48,20 @@ internal fun parseSsoRequiredError(code: Int, errorBodyText: String?): SsoRequir
  */
 internal class RaftSsoRequiredSignal {
     private val latched = atomic(false)
-    private val requests = Channel<Unit>(Channel.CONFLATED)
+    private val requests = Channel<SsoRequiredSignInRequest>(Channel.CONFLATED)
 
     /** One element per sign-in request; each is received by one collector only. */
-    val signInRequests: Flow<Unit> = requests.receiveAsFlow()
+    val signInRequests: Flow<SsoRequiredSignInRequest> = requests.receiveAsFlow()
 
-    /** Returns true when this response queued the sign-in request. */
-    fun observe(code: Int, errorBodyText: String?): Boolean {
+    /**
+     * Returns true when this response queued the sign-in request. [traceId] is the response's
+     * `X-Trace-Id`, shown with the message so the person can send it to us.
+     */
+    fun observe(code: Int, errorBodyText: String?, traceId: String? = null): Boolean {
         if (code != 403 || latched.value) return false
         parseSsoRequiredError(code, errorBodyText) ?: return false
         if (!latched.compareAndSet(expect = false, update = true)) return false
-        requests.trySend(Unit)
+        requests.trySend(SsoRequiredSignInRequest(traceId))
         return true
     }
 
@@ -73,6 +76,9 @@ internal class RaftSsoRequiredSignal {
         val Process: RaftSsoRequiredSignal = RaftSsoRequiredSignal()
     }
 }
+
+/** A request to sign in again, with the trace id of the 403 that asked for it. */
+internal data class SsoRequiredSignInRequest(val traceId: String?)
 
 /** A socket handshake error that means SSO is required: never a reason to refresh the token and retry. */
 fun isSsoRequiredSocketError(message: String?): Boolean = message?.contains(SSO_REQUIRED_ERROR_CODE) == true

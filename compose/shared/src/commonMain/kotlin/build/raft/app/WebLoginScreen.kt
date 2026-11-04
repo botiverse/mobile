@@ -62,6 +62,10 @@ internal fun WebLoginScreen(
         }
     var failed by remember { mutableStateOf(false) }
     var staleCallback by remember { mutableStateOf(false) }
+    // Why the app came back here (e.g. "Your organization requires single sign-on…"), with the trace id
+    // of the server error behind it; shown until the person starts signing in.
+    var routeMessage by remember { mutableStateOf(pager.pageData.params.authRouteMessage()) }
+    val routeTraceId = remember { pager.pageData.params.authRouteTraceId() }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, attempt) {
         // Coming back from the browser without a callback (cancelled, tab closed) re-enables the button.
@@ -111,8 +115,9 @@ internal fun WebLoginScreen(
             when {
                 failed -> stringResource(Res.string.auth_web_login_failed)
                 staleCallback -> stringResource(Res.string.auth_web_login_stale_callback)
-                else -> null
+                else -> routeMessage
             },
+        traceId = if (!failed && !staleCallback && routeMessage != null) routeTraceId else null,
         hintHost = webLoginHintHost(webUrl),
         onConsentChange = { consentAccepted = it },
         onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
@@ -122,6 +127,7 @@ internal fun WebLoginScreen(
                 if (!attempt.tryBegin()) return@startWebLoginWithConsent
                 failed = false
                 staleCallback = false
+                routeMessage = null
                 RaftWebLoginCompletion.clear()
                 scope.launch {
                     val result = runCatchingPreservingCancellation { platform.startWebLogin() }.getOrNull()
@@ -150,6 +156,7 @@ internal fun WebLoginContent(
     onOpenPrivacy: () -> Unit,
     onSignIn: () -> Unit,
     onOpenPrivateDeployment: () -> Unit,
+    traceId: String? = null,
 ) {
     AuthScaffold(
         contentScrollable = true,
@@ -158,6 +165,7 @@ internal fun WebLoginContent(
         AuthCenterMark(size = 52.dp)
         AuthFormColumn {
             AuthError(error)
+            if (error != null) RaftTraceIdNote(traceId)
             AuthTermsAgreement(
                 checked = consentAccepted,
                 onCheckedChange = onConsentChange,

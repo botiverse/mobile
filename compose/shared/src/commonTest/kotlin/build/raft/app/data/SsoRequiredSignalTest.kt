@@ -47,7 +47,7 @@ class SsoRequiredSignalTest {
         assertTrue(signal.observe(403, requiredBody))
         assertFalse(signal.observe(403, requiredBody))
 
-        val received = mutableListOf<Unit>()
+        val received = mutableListOf<SsoRequiredSignInRequest>()
         val collector = launch { signal.signInRequests.toList(received) }
         advanceUntilIdle()
         assertEquals(1, received.size, "one sign-in request")
@@ -55,6 +55,14 @@ class SsoRequiredSignalTest {
         advanceUntilIdle()
         assertEquals(1, received.size, "still one after more responses")
         collector.cancel()
+    }
+
+    @Test
+    fun theRequestCarriesTheTraceIdOfThe403() = runTest {
+        val signal = RaftSsoRequiredSignal()
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        assertTrue(signal.observe(403, requiredBody, traceId))
+        assertEquals(traceId, signal.signInRequests.first().traceId)
     }
 
     @Test
@@ -102,7 +110,7 @@ class SsoRequiredSignalTest {
 
         assertEquals(403, first.code, "the response itself is unchanged")
         assertEquals(2, executor.calls, "no retry or refresh on the 403")
-        val received = mutableListOf<Unit>()
+        val received = mutableListOf<SsoRequiredSignInRequest>()
         val collector = launch { signal.signInRequests.toList(received) }
         advanceUntilIdle()
         assertEquals(1, received.size)
