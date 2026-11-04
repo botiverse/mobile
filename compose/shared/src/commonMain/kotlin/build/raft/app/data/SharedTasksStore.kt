@@ -1936,10 +1936,16 @@ fun List<TaskSummary>.toTasksUiStateForThreadTasks(): TasksUiState =
             }
     )
 
-fun TasksContent.boardColumns(renderLimit: Int): List<TasksBoardColumn> {
+/**
+ * One column per status. [taskV2Enabled]: In Review is retired for task v2 (#wg-task-v2:f7043517,
+ * raft-design decision 0043; web slock #12884 TasksPanel): no empty In Review column, while a
+ * pre-v2 task still in it keeps the column so it stays reachable.
+ */
+fun TasksContent.boardColumns(renderLimit: Int, taskV2Enabled: Boolean = false): List<TasksBoardColumn> {
     val tasksByStatus = tasks.groupBy { it.status }
-    return TaskStatus.entries.map { status ->
+    return TaskStatus.entries.mapNotNull { status ->
         val statusTasks = tasksByStatus[status].orEmpty()
+        if (taskV2Enabled && status == TaskStatus.InReview && statusTasks.isEmpty()) return@mapNotNull null
         TasksBoardColumn(
             status = status,
             totalCount = statusTasks.size,

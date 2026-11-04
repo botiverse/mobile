@@ -8087,6 +8087,7 @@ private fun RaftAppShellReadyContent(
                             },
                             identityOptions = tasksServerMembersEntry.members,
                             timeContext = threadTimeContext,
+                            taskV2Enabled = tasksOpenTaskV2Enabled,
                             onOpenTask = open@{ task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
                                 // Task v2 (web useOpenTask): with the flag on every non-legacy task opens as its conversation.

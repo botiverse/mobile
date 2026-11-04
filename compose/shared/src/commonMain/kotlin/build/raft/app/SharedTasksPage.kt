@@ -130,7 +130,8 @@ internal fun SharedTasksScreen(
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
     identityOptions: List<MemberProfile> = emptyList(),
-    timeContext: RaftTimeContext? = null
+    timeContext: RaftTimeContext? = null,
+    taskV2Enabled: Boolean = false
 ) {
     SharedTasksPanel(
         state = state,
@@ -145,7 +146,8 @@ internal fun SharedTasksScreen(
         initialListPosition = initialListPosition,
         onListPositionSnapshot = onListPositionSnapshot,
         identityOptions = identityOptions,
-        timeContext = timeContext
+        timeContext = timeContext,
+        taskV2Enabled = taskV2Enabled
     )
 }
 
@@ -172,7 +174,9 @@ internal fun SharedTasksPanel(
      *  mirroring the React capture's "Show Done" click (task #330/#353). */
     initialPresentationOverride: TasksPresentationState? = null,
     identityOptions: List<MemberProfile> = emptyList(),
-    timeContext: RaftTimeContext? = null
+    timeContext: RaftTimeContext? = null,
+    /** The server's `task_v2_conversations_v0`: In Review is retired for its v2 tasks (web slock #12884). */
+    taskV2Enabled: Boolean = false
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -218,7 +222,8 @@ internal fun SharedTasksPanel(
                     onListPositionSnapshot = onListPositionSnapshot,
                     initialPresentationOverride = initialPresentationOverride,
                     identityOptions = identityOptions,
-                    timeContext = timeContext
+                    timeContext = timeContext,
+                    taskV2Enabled = taskV2Enabled
                 )
             is ScreenLoadState.Empty -> {
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
@@ -243,7 +248,8 @@ internal fun SharedTasksPanel(
                             initialPresentationOverride
                                 ?: TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
                         identityOptions = identityOptions,
-                        timeContext = timeContext
+                        timeContext = timeContext,
+                        taskV2Enabled = taskV2Enabled
                     )
                 } else {
                     if (showHeader) {
@@ -392,7 +398,8 @@ private fun SharedTasksLoadedBody(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
-    timeContext: RaftTimeContext?
+    timeContext: RaftTimeContext?,
+    taskV2Enabled: Boolean
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -411,7 +418,8 @@ private fun SharedTasksLoadedBody(
             onListPositionSnapshot = onListPositionSnapshot,
             initialPresentationOverride = initialPresentationOverride,
             identityOptions = identityOptions,
-            timeContext = timeContext
+            timeContext = timeContext,
+            taskV2Enabled = taskV2Enabled
         )
     }
 }
@@ -455,7 +463,8 @@ private fun SharedTasksLoadedBodyContent(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
-    timeContext: RaftTimeContext?
+    timeContext: RaftTimeContext?,
+    taskV2Enabled: Boolean
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -514,11 +523,12 @@ private fun SharedTasksLoadedBodyContent(
         if (next != presentationState) presentationState = next
     }
 
-    // boardColumns always covers every TaskStatus so the user can see empty columns
-    // (you can't drop a task into a column that doesn't exist). renderLimit = 0 means
+    // boardColumns covers every TaskStatus so the user can see empty columns
+    // (you can't drop a task into a column that doesn't exist), except In Review with
+    // task v2 on: only while a pre-v2 task is still in it. renderLimit = 0 means
     // "include all tasks per column" — pagination would be a separate feature.
-    val boardColumns = remember(visibleContent.filteredContent) {
-        visibleContent.filteredContent.boardColumns(renderLimit = 0)
+    val boardColumns = remember(visibleContent.filteredContent, taskV2Enabled) {
+        visibleContent.filteredContent.boardColumns(renderLimit = 0, taskV2Enabled = taskV2Enabled)
     }
     // For list mode we hide totally-empty status groups; otherwise the screen looks
     // like a wall of "No X tasks" headers.
@@ -947,7 +957,7 @@ private fun SharedTasksLoadedBodyContent(
             // menu interaction (Todo / In progress / …) — no modal.
             RaftTaskStatusMenuOverlay(
                 anchor = resolvedStatusAnchor,
-                items = TaskStatus.values().map { status ->
+                items = task.statusMenuChoices(taskV2Enabled).map { status ->
                     RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                 },
                 selectedId = task.status.name,

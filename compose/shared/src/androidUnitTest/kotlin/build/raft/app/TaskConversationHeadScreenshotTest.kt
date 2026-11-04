@@ -413,7 +413,7 @@ private val HeadModel =
         bar =
             TaskConversationHeaderBarModel(
                 status = TaskStatus.InProgress,
-                statusOptions = taskStatusOptions(TaskStatus.InProgress),
+                statusOptions = taskStatusOptions(TaskStatus.InProgress, inReviewRetired = true),
                 statusUpdating = false,
                 assigneeName = "Lagoon",
                 assigneeEditable = true,
