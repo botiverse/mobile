@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-04T07:42:30.629Z",
+  "generatedAt": "2026-11-04T08:10:01.638Z",
   "runId": "63a3324a-20261104074137",
   "commit": "63a3324a-20261104074137",
   "commitSubject": "Every bottom sheet has the grab handle, as raft-ui 0.57.2 (#4278)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 93,
-        "ready": 25,
-        "pending": 68
+        "ready": 30,
+        "pending": 63
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 93,
-    "ready": 25,
-    "pending": 68
+    "ready": 30,
+    "pending": 63
   },
   "componentMatrixSummary": {
     "total": 122,

@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-04 07:42:30 UTC
+Generated: 2026-11-04 08:10:01 UTC
 Latest run: 63a3324a-20261104074137
 Latest commit: 63a3324a-20261104074137
 Commit subject: Every bottom sheet has the grab handle, as raft-ui 0.57.2 (#4278)
 Providers: react vs android
 Summary: total 93, same 0, pass 1, basic-pass 7, different 77, missing 8
-AI analysis: ready 25 / total 93, pending 68
+AI analysis: ready 30 / total 93, pending 63
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
