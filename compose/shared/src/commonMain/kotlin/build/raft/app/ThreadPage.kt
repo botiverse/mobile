@@ -9,6 +9,7 @@ import build.raft.app.assistant.ThreadAssistantOtterFrameEdge
 import build.raft.app.assistant.assistantOtterDmOpenRequest
 import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
+import build.raft.app.assistant.threadForegroundBannerOnPage
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -12440,32 +12441,64 @@ private fun SharedThreadRouteContentContent(
         )
     }
 
+    // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
+    // when the assistant is ready with its DM, never on that DM or a thread in it.
+    val assistantOtterHostId = remember { newAssistantOtterHostId() }
+    val assistantOtterInSplitPane = threadInSplitDetailPane()
+    val assistantOtterReplyThread = renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+    val assistantOtter =
+        rememberThreadAssistantOtter(
+            store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) },
+            featureFlags = sharedStores.serverFeatureFlags,
+            serverMembersStore = serverMembersStore,
+            homeState = sharedHomeState,
+            serverId = currentServerId,
+            userId = currentSession?.user?.id,
+            viewerIsGuest = threadViewerIsGuest,
+            conversationChannelId =
+                if (assistantOtterReplyThread) renderedThread.parentChannelId else renderedThread.streamChannelId,
+            hostId = assistantOtterHostId,
+            wide = assistantOtterInSplitPane,
+            replyThread = assistantOtterReplyThread,
+            pageActive = active,
+        )
+    val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
+    val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
+    val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
+        foregroundBannerStore.dismiss(target.id)
+        val request = target.openRequest
+        val bannerPayload =
+            buildAppShellThreadPayload(
+                conversation = request.conversationIdentity,
+                timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
+                alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
+                originFallback = request.originFallback,
+                onWarn = bridge::logWarn
+            )
+        if (bannerPayload == null) {
+            bridge.logWarn("foreground_banner_open_rejected reason=reply_identity_incomplete")
+        } else {
+            onOpenThreadPayload(bannerPayload)
+        }
+    }
+    val onForegroundBannerDismiss: (RaftForegroundMessageBanner) -> Unit = { target -> foregroundBannerStore.dismiss(target.id) }
+
     RaftForegroundBannerHost(
-        banner = foregroundMessageBanner,
-        topSafeArea = raftTopSafeAreaPadding(),
+        banner =
+            foregroundMessageBanner?.takeIf {
+                threadForegroundBannerOnPage(
+                    inAssistantPanel = LocalThreadAssistantPanelEmbed.current != null,
+                    assistantPanelOpen = assistantOtter?.panelOpen == true,
+                )
+            },
+        topSafeArea = foregroundBannerTopSafeArea,
         serverMembersStore = serverMembersStore,
         currentServerStore = foregroundBannerCurrentServerStore,
-        currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
-        onBannerClick = { target ->
-            foregroundBannerStore.dismiss(target.id)
-            val request = target.openRequest
-            val bannerPayload =
-                buildAppShellThreadPayload(
-                    conversation = request.conversationIdentity,
-                    timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
-                    alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
-                    compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
-                    anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
-                    originFallback = request.originFallback,
-                    onWarn = bridge::logWarn
-                )
-            if (bannerPayload == null) {
-                bridge.logWarn("foreground_banner_open_rejected reason=reply_identity_incomplete")
-            } else {
-                onOpenThreadPayload(bannerPayload)
-            }
-        },
-        onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
+        currentServerIdOverride = foregroundBannerServerId,
+        onBannerClick = onForegroundBannerClick,
+        onBannerDismiss = onForegroundBannerDismiss
     ) {
         // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
         // diagnostics OFF the census session Local is NOT part of the vararg
@@ -12501,31 +12534,26 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
             )
-        // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
-        // when the assistant is ready with its DM, never on that DM or a thread in it.
-        val assistantOtterHostId = remember { newAssistantOtterHostId() }
-        val assistantOtterInSplitPane = threadInSplitDetailPane()
-        val assistantOtterReplyThread = renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread
-        val assistantOtter =
-            rememberThreadAssistantOtter(
-                store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) },
-                featureFlags = sharedStores.serverFeatureFlags,
-                serverMembersStore = serverMembersStore,
-                homeState = sharedHomeState,
-                serverId = currentServerId,
-                userId = currentSession?.user?.id,
-                viewerIsGuest = threadViewerIsGuest,
-                conversationChannelId =
-                    if (assistantOtterReplyThread) renderedThread.parentChannelId else renderedThread.streamChannelId,
-                hostId = assistantOtterHostId,
-                wide = assistantOtterInSplitPane,
-                replyThread = assistantOtterReplyThread,
-                pageActive = active,
-            )
         // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
         // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
         assistantOtter?.let { otter ->
-            ThreadAssistantPanelSheet(otter) {
+            ThreadAssistantPanelSheet(
+                otter,
+                // The page's banner goes over the panel while it is open (threadForegroundBannerOnPage);
+                // once it is closing, the page shows it again.
+                windowOverlay = {
+                    foregroundMessageBanner?.takeIf { otter.panelOpen }?.let { banner ->
+                        RaftForegroundMessageBannerView(
+                            banner = banner,
+                            topSafeArea = foregroundBannerTopSafeArea,
+                            serverMembersStore = serverMembersStore,
+                            currentServerId = foregroundBannerServerId,
+                            onClick = { onForegroundBannerClick(banner) },
+                            onDismiss = { onForegroundBannerDismiss(banner) },
+                        )
+                    }
+                },
+            ) {
                 val dmPageData =
                     remember(otter.serverId, otter.dmChannelId) {
                         val request = assistantOtterDmOpenRequest(otter.serverId, otter.dmChannelId, conversationIdentityProvider)

@@ -4,6 +4,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import build.raft.designsystem.components.RaftIconButtonSize
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -166,11 +171,14 @@ internal fun ThreadAssistantPanel(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // A finger's 44dp (`Lg`, the phone top bar's icon button): the 32dp `Md` left most of
+            // the head's height round the chevron dead, and taps there did nothing.
             RaftIconButton(
                 onClick = onCollapse,
                 tooltip = stringResource(Res.string.assistant_otter_collapse),
                 modifier = Modifier.testTag(ThreadAssistantPanelCollapseTestTag),
                 variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg,
             ) {
                 RaftGlyphIcon(RaftGlyph.ChevronDown, size = 18.dp)
             }
@@ -199,21 +207,31 @@ internal fun ColumnScope.ThreadAssistantPanelConversationMissing(name: String) {
 /**
  * The otter's panel over the page while it is open (web AssistantOtter's phone `Drawer`,
  * `--drawer-content-height: 82vh`): a [RaftDrawer] holding [ThreadAssistantPanel] with
- * [conversation] as its body. Back, a tap on the scrim and collapse close it. The conversation's
+ * [conversation] as its body. Back, a tap on the scrim and collapse close it; it slides up as it
+ * opens and back down as it closes (the drawer stays composed until that ends). The conversation's
  * composer pads for the home indicator and the keyboard itself; the drawer is its own window, so
- * the keyboard is that window's (no host IME report).
+ * the keyboard is that window's (no host IME report). [windowOverlay] is drawn over the whole
+ * drawer window: the page's notification banner while the panel is open (see
+ * [threadForegroundBannerOnPage]).
  */
 @Composable
 internal fun ThreadAssistantPanelSheet(
     otter: ThreadAssistantOtter,
+    windowOverlay: @Composable BoxScope.() -> Unit = {},
     conversation: @Composable ColumnScope.() -> Unit,
 ) {
-    if (!otter.panelOpen) return
+    // Composed from opening until the slide down has ended.
+    var shown by remember { mutableStateOf(false) }
+    if (otter.panelOpen && !shown) shown = true
+    if (!shown) return
     val close by rememberUpdatedState { otter.onPanelOpenChange(false) }
     RaftDrawer(
         onDismissRequest = { close() },
         modifier = Modifier.testTag(ThreadAssistantPanelSheetTestTag),
         clearNavigationBar = false,
+        visible = otter.panelOpen,
+        onHidden = { shown = false },
+        overlay = windowOverlay,
     ) {
         CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
             ThreadAssistantPanel(
@@ -235,6 +253,16 @@ internal fun ThreadAssistantPanelSheet(
         }
     }
 }
+
+/**
+ * Whether a conversation page draws the foreground notification banner itself. One banner shows,
+ * on top of everything: the assistant's DM inside the panel ([inAssistantPanel]) draws none (it
+ * drew a second one, placed from the panel's top), and while a page's panel is open
+ * ([assistantPanelOpen]) the page hands its banner to the panel's window
+ * ([ThreadAssistantPanelSheet] `windowOverlay`), since its own would sit under the scrim.
+ */
+internal fun threadForegroundBannerOnPage(inAssistantPanel: Boolean, assistantPanelOpen: Boolean): Boolean =
+    !inAssistantPanel && !assistantPanelOpen
 
 private val ThreadAssistantPanelHeadHeight = 56.dp
 

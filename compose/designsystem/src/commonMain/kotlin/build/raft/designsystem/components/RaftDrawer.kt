@@ -2,6 +2,7 @@ package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -31,25 +32,40 @@ import build.raft.designsystem.tokens.RaftRadius
  * a whole panel as its child (the assistant opened from its otter on a phone), where
  * [RaftSheet] is the Drawer with its standard title, body and actions.
  *
- * The window is [RaftSheet]'s: [RaftDrawerSurface] at the bottom of the window over the scrim,
- * sliding up as it opens (240ms, `ease-slide`); Back and a tap on the scrim call
- * [onDismissRequest]; it never goes under the status bar. Swipe to dismiss is not ported (as
- * [RaftSheet]): the panel keeps a close control of its own.
+ * The window is [RaftSheet]'s: [RaftDrawerSurface] at the bottom of the window over the scrim;
+ * Back and a tap on the scrim call [onDismissRequest]; it never goes under the status bar. It
+ * moves as raft-ui's drawer (drawer.recipe.ts; Motion "A scrim moves with its surface"): it
+ * slides up (240ms, `ease-slide`) once the window has drawn its first frame, with the scrim fading
+ * in alongside, and [visible] false slides it back down with the scrim fading out (180ms), then
+ * calls [onHidden]: keep it composed from opening until [onHidden]. Swipe to dismiss is not
+ * ported (as [RaftSheet]): the panel keeps a close control of its own.
  *
  * The surface is always 82% of the window tall (web `--drawer-content-height: 82vh`), at most
  * [RaftDrawerDefaults.MaxWidth] wide, and [content] fills it under the grab handle
  * ([RaftSheetGrabHandle]): it draws its own head.
  * [clearNavigationBar] false leaves the home indicator and the keyboard to [content] (a
  * conversation whose composer already pads for both); true pads the surface for them.
+ * [overlay] is drawn over the whole window, above the scrim and the surface (a notification
+ * banner that must stay on top while the drawer is open).
  */
 @Composable
 fun RaftDrawer(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     clearNavigationBar: Boolean = true,
+    visible: Boolean = true,
+    onHidden: () -> Unit = {},
+    overlay: @Composable BoxScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    RaftSheetWindow(onDismissRequest, modifier) { surfaceModifier ->
+    RaftSheetWindow(
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        slideMotion = true,
+        visible = visible,
+        onHidden = onHidden,
+        overlay = overlay,
+    ) { surfaceModifier ->
         RaftDrawerSurfaceImpl(surfaceModifier, clearNavigationBar, content)
     }
 }
