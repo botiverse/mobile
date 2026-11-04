@@ -264,7 +264,7 @@ fun RaftTooltip(
                     onDismissRequest = { if (state.isVisible) scope.launch { state.dismiss() } },
                     properties = PopupProperties(focusable = false, clippingEnabled = false),
                 ) {
-                    RaftTooltipBubble(transition, caret, label)
+                    RaftTooltipBubble(transition, caret, content = label)
                 }
             }
             Box { content() }
@@ -284,9 +284,10 @@ fun RaftTooltip(
  * [RaftTooltipMetrics.Bleed] round the bubble, which still measures and places as the bubble alone.
  */
 @Composable
-private fun RaftTooltipBubble(
+internal fun RaftTooltipBubble(
     transition: Transition<Boolean>,
     caret: Modifier,
+    maxWidth: Dp = RaftTooltipMetrics.MaxWidth,
     content: @Composable () -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -319,7 +320,7 @@ private fun RaftTooltipBubble(
                 Modifier
                     .sizeIn(
                         minWidth = RaftTooltipMetrics.MinWidth,
-                        maxWidth = RaftTooltipMetrics.MaxWidth,
+                        maxWidth = maxWidth,
                         minHeight = RaftTooltipMetrics.MinHeight,
                     )
                     .padding(horizontal = RaftTooltipMetrics.PaddingX, vertical = RaftTooltipMetrics.PaddingY),
@@ -431,7 +432,7 @@ internal fun RaftFrameInsets.toPx(density: Density): RaftFramePx =
  * ([raftTooltipClearOfFrame]). Keeps the side and the anchor's centre it ended on for
  * [raftFramedCaret]: written while the popup is laid out, so read by the bubble's first draw.
  */
-private class RaftTooltipFrameProvider(
+internal class RaftTooltipFrameProvider(
     private val inner: PopupPositionProvider,
     private val spacing: Int,
     private val frame: RaftFramePx,
@@ -471,7 +472,7 @@ private class RaftTooltipFrameProvider(
  * The caret of a tooltip above or below its anchor ([RaftTooltipFrameProvider]): Material's
  * triangle, on the edge facing the anchor and under its centre, kept on the bubble's straight edge.
  */
-private fun Modifier.raftFramedCaret(provider: RaftTooltipFrameProvider, color: Color): Modifier =
+internal fun Modifier.raftFramedCaret(provider: RaftTooltipFrameProvider, color: Color): Modifier =
     drawBehind {
         val width = RaftTooltipMetrics.CaretSize.width.toPx()
         val depth = RaftTooltipMetrics.CaretSize.height.toPx()

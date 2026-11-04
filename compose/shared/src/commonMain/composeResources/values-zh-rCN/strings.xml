@@ -583,6 +583,8 @@
     <string name="thread_error_action_unavailable">此操作已不可用</string>
     <string name="thread_error_action_unsupported">暂不支持此操作</string>
     <string name="thread_error_update_reaction">无法更新回应</string>
+    <string name="thread_reaction_reactor_you">你</string>
+    <string name="thread_reaction_hidden_more">等 %1$d 人</string>
     <string name="thread_error_comment_source">评论来源不可用</string>
     <string name="thread_error_member_not_found">未找到成员 %1$s</string>
     <string name="thread_feedback_member_added">成员已添加</string>
