@@ -7,7 +7,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ARCHIVED_NAME_COLLISION
+import build.raft.app.data.ArchivedNameCollision
+import build.raft.app.data.HomeChannelRow
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -19,11 +23,16 @@ import org.robolectric.shadows.ShadowDialog
 /** The banner alone: a short phone viewport. */
 private const val BANNER_QUALIFIERS = "w390dp-h320dp-xxhdpi"
 
+/** Channel settings' Info form with the rename's warning above the name. */
+private const val RENAME_QUALIFIERS = "w390dp-h560dp-xxhdpi"
+
 /**
  * JVM screenshots of the archived-name warning (web ArchivedNameCollisionBanner, slock #12614),
  * light and dark: Create Channel's banner for someone who may unarchive (Unarchive, Open Channel,
  * Change Name) and for someone who may not (Open Channel, Change Name), and Create Joint
- * Channel's dialog with the warning (no hint line, as on the web). Verify / record as
+ * Channel's dialog with the warning (no hint line, as on the web); and channel settings' Info
+ * form after a rename onto an archived channel's name (Unarchive and Open Channel, no Change
+ * Name), also after that Unarchive failed. Verify / record as
  * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -56,6 +65,64 @@ class ArchivedNameCollisionBannerScreenshotTest {
 
     @Test
     fun jointDark() = captureJoint("joint.create.archived-name.dark", RaftAppAppearance.Dark)
+
+    @Test
+    @Config(qualifiers = RENAME_QUALIFIERS)
+    fun renameLight() = captureRename("channel.settings.rename.archived-name", RaftAppAppearance.Light)
+
+    @Test
+    @Config(qualifiers = RENAME_QUALIFIERS)
+    fun renameDark() = captureRename("channel.settings.rename.archived-name.dark", RaftAppAppearance.Dark)
+
+    @Test
+    @Config(qualifiers = RENAME_QUALIFIERS)
+    fun renameUnarchiveFailedLight() =
+        captureRename("channel.settings.rename.archived-name.unarchive-failed", RaftAppAppearance.Light, unarchiveFailed = true)
+
+    @Test
+    @Config(qualifiers = RENAME_QUALIFIERS)
+    fun renameUnarchiveFailedDark() =
+        captureRename("channel.settings.rename.archived-name.unarchive-failed.dark", RaftAppAppearance.Dark, unarchiveFailed = true)
+
+    private fun captureRename(name: String, appearance: RaftAppAppearance, unarchiveFailed: Boolean = false) {
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+            RaftDesignSystemTheme {
+                Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(20.dp)) {
+                    ChannelInfoForm(
+                        channel =
+                            HomeChannelRow(
+                                threadId = ThreadId("ch-design"),
+                                channelId = ChannelId("ch-design"),
+                                name = "#launch-room",
+                                subtitle = "Product design reviews",
+                            ),
+                        nameEditable = true,
+                        enabled = true,
+                        status = ChannelProfileUpdateStatus.Failed,
+                        errorCode = if (unarchiveFailed) CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED else ARCHIVED_NAME_COLLISION,
+                        slackBridge = null,
+                        onSave = { _, _, _ -> },
+                        onClearStatus = {},
+                        archivedCollision =
+                            ChannelInfoArchivedCollision(
+                                collision =
+                                    ArchivedNameCollision(
+                                        archivedChannelId = ChannelId("ch-old"),
+                                        archivedChannelName = "launch-room",
+                                        archivedChannelType = "channel",
+                                        canUnarchive = true,
+                                    ),
+                                unarchiving = false,
+                                onUnarchive = {},
+                                onOpen = {},
+                                onClear = {},
+                            ),
+                        errorMessage = null,
+                    )
+                }
+            }
+        }
+    }
 
     private fun captureBanner(name: String, appearance: RaftAppAppearance, canUnarchive: Boolean) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
