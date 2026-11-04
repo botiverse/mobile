@@ -18152,8 +18152,11 @@ internal fun SettingsRouteVisualScreen() {
     // The web case's frozen clock: the Appearance preview message is sent at 20:30.
     CompositionLocalProvider(LocalSettingsAppearancePreviewTimeLabel provides "20:30") {
         if (route.destination == SettingsDestinationHome) {
+            // On a phone Settings is a page pushed from the server panel (raft-design #712), so it
+            // has Back, as the web's phone Settings does.
             SettingsHomeContent(
                 payload = appShellSettingsHomePayload(session),
+                onBack = {},
                 onSelect = {},
             )
         } else {

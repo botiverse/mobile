@@ -202,6 +202,21 @@ class DisplayComponentScreenshotTest {
         }
 
     @Test
+    fun conversationKindGlyphs() =
+        capture("conversation_kind_glyphs") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Caption("Thread, DirectMessage, Chat, Feedback: 16 at 1.5 and 2 (sidebar icon)")
+                listOf(1.5f, 2f).forEach { stroke ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        RaftConversationKindGlyph.entries.forEach { glyph ->
+                            RaftConversationKindIcon(glyph, size = 16.dp, strokeWidth = stroke)
+                        }
+                    }
+                }
+            }
+        }
+
+    @Test
     fun button() =
         capture("button") {
             val states = listOf("Rest", "Pressed", "Focused", "Disabled", "Busy")

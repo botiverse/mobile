@@ -415,11 +415,21 @@ private fun SettingsHubSidebarList(
                         title = item.title,
                         onClick = if (item.enabled) ({ onSelect(item.key) }) else null,
                         leading = {
-                            RaftLucideIcon(
-                                item.iconName,
-                                Modifier.size(build.raft.designsystem.components.raftSidebarItemIconSize()),
-                                color = raftArgbHex(build.raft.designsystem.theme.LocalRaftContentColor.current),
-                            )
+                            if (item.key == SettingsDestinationHandsFeedback) {
+                                // raft-ui `FeedbackIcon` (web settings Feedback row), at the sidebar
+                                // icon's stroke-2 in its 18-unit box.
+                                build.raft.designsystem.components.RaftConversationKindIcon(
+                                    build.raft.designsystem.components.RaftConversationKindGlyph.Feedback,
+                                    size = build.raft.designsystem.components.raftSidebarItemIconSize(),
+                                    strokeWidth = 2f,
+                                )
+                            } else {
+                                RaftLucideIcon(
+                                    item.iconName,
+                                    Modifier.size(build.raft.designsystem.components.raftSidebarItemIconSize()),
+                                    color = raftArgbHex(build.raft.designsystem.theme.LocalRaftContentColor.current),
+                                )
+                            }
                         },
                         trailing =
                             if (item.attentionDot || item.opensExternally) {
