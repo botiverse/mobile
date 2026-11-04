@@ -100,3 +100,5 @@ internal actual fun rememberRaftPngFileWriter(): RaftPngFileWriter =
     }
 
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false
+
+internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = false

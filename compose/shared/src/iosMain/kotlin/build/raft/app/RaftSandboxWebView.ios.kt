@@ -670,3 +670,5 @@ private class RaftIosWebViewScriptMessageHandler(
 
 /** WKWebView applies the safe area and the keyboard itself. */
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false
+
+internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = false

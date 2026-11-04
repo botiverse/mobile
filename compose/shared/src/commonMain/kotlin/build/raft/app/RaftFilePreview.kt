@@ -8302,7 +8302,9 @@ const val RaftFilePreviewDesktopViewportWidth = 1280
  *     been parsed yet, so creating one gets overwritten a moment later;
  *  2. pages may insert their viewport meta dynamically.
  * So this rewrites EVERY existing viewport meta, re-runs on DOMContentLoaded, and observes later
- * insertions.
+ * insertions. And 3. (the Artifact viewer's Desktop Mode, measured in Chromium): a document-start
+ * script can run before `<html>` exists, so it observes the document itself and waits rather than
+ * throwing (which used to leave only the onPageFinished re-run to widen the page).
  */
 internal fun raftFilePreviewDesktopViewportScript(
     width: Int = RaftFilePreviewDesktopViewportWidth
@@ -8322,15 +8324,19 @@ internal fun raftFilePreviewDesktopViewportScript(
         "var c='$content';" +
         "function apply(){" +
         "var ms=document.querySelectorAll('meta[name=viewport]');" +
+        // At document start there may be no element at all yet (Chromium runs document-start
+        // scripts before <html> exists): then wait for the observer instead of throwing.
         "if(ms.length===0){" +
+        "var r=document.head||document.documentElement;if(!r)return;" +
         "var m=document.createElement('meta');m.name='viewport';" +
-        "(document.head||document.documentElement).appendChild(m);ms=[m];}" +
+        "r.appendChild(m);ms=[m];}" +
         "for(var i=0;i<ms.length;i++){if(ms[i].getAttribute('content')!==c)ms[i].setAttribute('content',c);}}" +
         "apply();" +
         "if(document.readyState==='loading'){" +
         "document.addEventListener('DOMContentLoaded',apply);}" +
         "if(window.MutationObserver){" +
-        "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true});}" +
+        // The document, not its element: the element may not exist yet, and its arrival is a mutation.
+        "new MutationObserver(apply).observe(document,{childList:true,subtree:true});}" +
         "})();"
 }
 

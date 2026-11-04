@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
@@ -30,6 +31,9 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftUiMenuItem
+import build.raft.app.data.ArtifactViewerDesktopModePreferenceRepository
 import build.raft.app.data.ARTIFACT_CONTENT_DOMAIN
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
@@ -89,13 +93,15 @@ internal fun raftArtifactViewerWebViewConfig(
     url: String,
     scope: RaftArtifactViewerScope,
     injectedJavaScript: String,
+    /** Desktop Mode: the page laid out at a desktop width and fitted ([raftArtifactViewerInjectedScript]). */
+    desktopMode: Boolean = false,
 ): RaftWebViewConfig =
     RaftWebViewConfig(
         url = url,
         allowScripts = true,
         allowNavigation = true,
         domStorageEnabled = true,
-        useWideViewPort = false,
+        useWideViewPort = desktopMode,
         cacheEnabled = true,
         ephemeral = false,
         injectedJavaScript = injectedJavaScript,
@@ -219,8 +225,10 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
         settled = true
     }
     val scope = host.scope()
+    // Booted as the viewer will show it, so the kept document is not reloaded when it opens.
+    val desktopMode = raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true }
     val config =
-        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration) {
+        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode) {
             val session = snapshot.session
             if (!settled || scope == null || session == null || session.user.id.trim() != scope.accountId) {
                 null
@@ -231,7 +239,9 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
                 raftArtifactViewerWebViewConfig(
                     url = raftArtifactViewerWarmUrl(host.webBaseUrl),
                     scope = scope,
-                    injectedJavaScript = raftArtifactViewerSessionScript(scope, session, binding),
+                    injectedJavaScript =
+                        raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
+                    desktopMode = desktopMode,
                 )
             }
         }
@@ -239,6 +249,17 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
 }
 
 private const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
+
+/** The device's Desktop Mode choice; null where no app-scope store is installed (fixtures). */
+private fun raftArtifactViewerDesktopModePreference(): ArtifactViewerDesktopModePreferenceRepository? =
+    runCatching { ArtifactViewerDesktopModePreferenceRepository(build.raft.app.data.raftSharedPreferenceStore()) }.getOrNull()
+
+/** [raftArtifactViewerOffersDesktopMode] for this window (touch, narrower than a desktop). */
+@Composable
+private fun raftArtifactViewerOffersDesktopModeHere(): Boolean {
+    val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    return raftArtifactViewerOffersDesktopMode(raftPlatformHasFinePointer(), windowWidthDp)
+}
 
 private sealed interface RaftArtifactViewerBodyState {
     data object Viewing : RaftArtifactViewerBodyState
@@ -264,6 +285,11 @@ private fun RaftArtifactViewerScreen() {
     LaunchedEffect(Unit) { RaftArtifactOpenTrace.mark("page_shown") }
     fun closePage() = pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     RaftBackHandler(enabled = true, label = "artifact_viewer", blocksBackSwipe = false, onBack = ::closePage)
+    // Desktop Mode: this device's choice, offered on a touch screen narrower than a desktop.
+    val desktopModePreference = remember { raftArtifactViewerDesktopModePreference() }
+    var desktopModeChosen by remember { mutableStateOf(desktopModePreference?.read() == true) }
+    val desktopModeOffered = desktopModePreference != null && raftArtifactViewerOffersDesktopModeHere()
+    val desktopMode = desktopModeOffered && desktopModeChosen
     if (target == null) {
         RaftArtifactViewerFrame(title = stringResource(Res.string.artifacts_app_name), subtitle = null, kind = null, onBack = ::closePage, onOpenInBrowser = null) {
             RaftArtifactViewerUnavailable(onClose = ::closePage)
@@ -336,6 +362,12 @@ private fun RaftArtifactViewerScreen() {
         kind = header?.kind,
         onBack = ::closePage,
         onOpenInBrowser = { host.bridge.openUrl(pageUrl, inBrowser = true) },
+        desktopMode = desktopMode.takeIf { desktopModeOffered && bodyState == RaftArtifactViewerBodyState.Viewing },
+        onToggleDesktopMode = {
+            desktopModeChosen = !desktopModeChosen
+            desktopModePreference?.write(desktopModeChosen)
+            host.bridge.log("artifact_viewer_desktop_mode on=$desktopModeChosen")
+        },
     ) {
         when (bodyState) {
             RaftArtifactViewerBodyState.Unavailable -> RaftArtifactViewerUnavailable(onClose = ::closePage)
@@ -353,6 +385,7 @@ private fun RaftArtifactViewerScreen() {
                         scope = scope,
                         target = target,
                         pageUrl = embeddedPageUrl,
+                        desktopMode = desktopMode,
                         onStay = { next ->
                             if (raftArtifactViewerRereadsLatest(addressed, next)) latestReads += 1
                             addressed = next
@@ -370,6 +403,7 @@ private fun RaftArtifactViewerWebBody(
     scope: RaftArtifactViewerScope,
     target: ArtifactLinkTarget,
     pageUrl: String,
+    desktopMode: Boolean,
     onStay: (RaftArtifactViewerNavigation.Stay) -> Unit,
     onLeave: (RaftArtifactViewerNavigation) -> Unit,
 ) {
@@ -420,8 +454,8 @@ private fun RaftArtifactViewerWebBody(
         if (kept == null) RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl)
     }
     val injected =
-        remember(scope, session?.accessToken, binding?.webViewGeneration) {
-            session?.let { raftArtifactViewerSessionScript(scope, it, binding) }.orEmpty()
+        remember(scope, session?.accessToken, binding?.webViewGeneration, desktopMode) {
+            raftArtifactViewerInjectedScript(scope.webOrigin, session?.let { raftArtifactViewerSessionScript(scope, it, binding) }.orEmpty(), desktopMode)
         }
     LaunchedEffect(documentReady, navigated, session != null) {
         if (!documentReady || navigated || session == null) return@LaunchedEffect
@@ -453,6 +487,9 @@ private fun RaftArtifactViewerWebBody(
             allowScripts = true,
             allowNavigation = true,
             domStorageEnabled = true,
+            // Desktop Mode: Android reloads the document at its current address with the desktop
+            // viewport (the version shown stays); iOS re-zooms the page in place.
+            useWideViewPort = desktopMode,
             cacheEnabled = true,
             ephemeral = false,
             injectedJavaScript = injected,
@@ -504,36 +541,97 @@ internal fun RaftArtifactViewerFrame(
     kind: ArtifactKind?,
     onBack: () -> Unit,
     onOpenInBrowser: (() -> Unit)?,
+    /** Desktop Mode, on or off; null where it is not offered (then ↗ stays a single button). */
+    desktopMode: Boolean? = null,
+    onToggleDesktopMode: () -> Unit = {},
     /** Screenshot fixtures only (no host window there). */
     topSafeAreaOverride: androidx.compose.ui.unit.Dp? = null,
     content: @Composable () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        RaftTopPageHeader(
-            title = title,
-            subtitle = subtitle,
-            iconName = kind?.lucideIcon() ?: RaftLucideIconName.FileText,
-            backgroundColor = RaftColor.SurfaceWhite,
-            onBack = onBack,
-            topSafeAreaOverride = topSafeAreaOverride,
-            trailingContent = {
-                if (onOpenInBrowser != null) {
-                    // One action, so a button rather than a one-item menu; the embedded page keeps its own ⋮.
-                    RaftDesignSystemTheme {
-                        RaftIconButton(
-                            onClick = onOpenInBrowser,
-                            tooltip = stringResource(Res.string.artifacts_viewer_open_in_browser),
-                            variant = RaftButtonVariant.Ghost,
-                        ) {
-                            RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    val menuItems = raftArtifactViewerMenuItems(desktopMode, openInBrowser = onOpenInBrowser != null)
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            RaftTopPageHeader(
+                title = title,
+                subtitle = subtitle,
+                iconName = kind?.lucideIcon() ?: RaftLucideIconName.FileText,
+                backgroundColor = RaftColor.SurfaceWhite,
+                onBack = onBack,
+                topSafeAreaOverride = topSafeAreaOverride,
+                trailingContent = {
+                    if (menuItems.size > 1) {
+                        // Desktop Mode and Open in browser: a ⋯ menu, as the HTML attachment preview's.
+                        RaftFilePreviewOverflowMenuButton(onOpenMenu = { anchor ->
+                            menuAnchor = anchor
+                            menuOpen = true
+                        })
+                    } else if (onOpenInBrowser != null) {
+                        // One action, so a button rather than a one-item menu; the embedded page keeps its own ⋮.
+                        RaftDesignSystemTheme {
+                            RaftIconButton(
+                                onClick = onOpenInBrowser,
+                                tooltip = stringResource(Res.string.artifacts_viewer_open_in_browser),
+                                variant = RaftButtonVariant.Ghost,
+                            ) {
+                                RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
+                            }
                         }
                     }
-                }
-            },
-        )
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
+                },
+            )
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
+        }
+        val anchor = menuAnchor
+        if (menuOpen && anchor != null && menuItems.size > 1) {
+            RaftUiControlledMenu(
+                expanded = true,
+                anchor = anchor,
+                items = menuItems,
+                onSelect = { id ->
+                    menuOpen = false
+                    when (id) {
+                        RaftArtifactViewerDesktopModeActionId -> onToggleDesktopMode()
+                        RaftArtifactViewerOpenInBrowserActionId -> onOpenInBrowser?.invoke()
+                    }
+                },
+                onDismiss = { menuOpen = false },
+                width = 180.dp,
+            )
+        }
     }
 }
+
+internal const val RaftArtifactViewerDesktopModeActionId = "artifact_viewer_desktop_mode"
+internal const val RaftArtifactViewerOpenInBrowserActionId = "artifact_viewer_open_in_browser"
+
+/**
+ * The title bar's ⋯: Desktop Mode (a check mark while on: raft-ui DropdownMenu's on/off item, the
+ * label constant as in the HTML attachment preview) and Open in browser. Empty of Desktop Mode
+ * where it is not offered ([desktopMode] null).
+ */
+@Composable
+internal fun raftArtifactViewerMenuItems(desktopMode: Boolean?, openInBrowser: Boolean): List<RaftUiMenuItem> =
+    listOfNotNull(
+        desktopMode?.let {
+            RaftUiMenuItem(
+                id = RaftArtifactViewerDesktopModeActionId,
+                label = stringResource(Res.string.file_preview_desktop_mode_off),
+                icon = RaftLucideIconName.Monitor,
+                selected = it,
+            )
+        },
+        if (openInBrowser) {
+            RaftUiMenuItem(
+                id = RaftArtifactViewerOpenInBrowserActionId,
+                label = stringResource(Res.string.artifacts_viewer_open_in_browser),
+                icon = RaftLucideIconName.ArrowUpRight,
+            )
+        } else {
+            null
+        },
+    )
 
 @Composable
 internal fun RaftArtifactViewerUnavailable(onClose: () -> Unit) {

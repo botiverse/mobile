@@ -402,3 +402,31 @@ internal fun raftArtifactViewerWebBottomInsetPx(
     navigationBarBottomPx: Int,
     hostPadsWebView: Boolean,
 ): Int = if (hostPadsWebView) maxOf(imeBottomPx, navigationBarBottomPx).coerceAtLeast(0) else 0
+
+/**
+ * Desktop Mode (artin 11-03, "artifact 预览应该要支持一个桌面模式"): the viewer lays the page out at a
+ * desktop width ([RaftFilePreviewDesktopViewportWidth] CSS px, the HTML attachment preview's) and
+ * fits it to the screen, zoomable, as a phone browser's "Request desktop site" does. Offered on
+ * touch devices narrower than that width; the Compose app (a fine pointer, web `pointer: fine`) and
+ * a screen already that wide show the page as a desktop does without it.
+ */
+internal fun raftArtifactViewerOffersDesktopMode(finePointer: Boolean, windowWidthDp: Float): Boolean =
+    !finePointer && windowWidthDp > 0f && windowWidthDp < RaftFilePreviewDesktopViewportWidth
+
+/**
+ * What the viewer's WebView injects: the session writes ([raftArtifactViewerSessionScript]) and, in
+ * Desktop Mode on a host that widens through the page's viewport meta ([viaViewportMeta]: Android,
+ * whose `useWideViewPort` honours `width=`), the desktop viewport, guarded like the session (rule 1:
+ * a top-level document of the web origin only). iOS widens with `WKWebView.pageZoom` instead, live,
+ * so its script stays the same and the WebView is not rebuilt.
+ */
+internal fun raftArtifactViewerInjectedScript(
+    webOrigin: String,
+    sessionScript: String,
+    desktopMode: Boolean,
+    viaViewportMeta: Boolean = raftWebViewDesktopModeViaViewportMeta,
+): String {
+    if (!desktopMode || !viaViewportMeta) return sessionScript
+    val viewport = raftArtifactViewerGuardedScript(webOrigin, raftFilePreviewDesktopViewportScript())
+    return if (sessionScript.isBlank()) viewport else sessionScript + "\n" + viewport
+}
