@@ -601,20 +601,21 @@ final class SignedInHomeShotTests: XCTestCase {
         _ = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
             .waitForExistence(timeout: 60)
         Thread.sleep(forTimeInterval: 3)
-        let composerTop = app.textViews.firstMatch.exists ? app.textViews.firstMatch.frame.minY : app.frame.maxY
-        let candidates = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", title)).allElementsBoundByIndex
-            .filter { $0.frame.height > 10 && $0.frame.height < 260 && $0.frame.maxY < composerTop && $0.frame.minY > 120 }
-        guard let chip = candidates.last else {
-            fail("artifact-open", "no chip for \"\(title)\" in the opened message", app)
-            return
-        }
-        write("artifact-chip", ["label": chip.label, "frame": [chip.frame.minX, chip.frame.minY, chip.frame.width, chip.frame.height]])
-        tap(app, x: chip.frame.midX, y: chip.frame.midY)
-        // The viewer's WebView, then its title bar ⋯ (tooltip "More").
-        _ = app.webViews.firstMatch.waitForExistence(timeout: 60)
+        // The viewer's title bar ⋯ (tooltip "More") shows it opened; a tap that lands while the
+        // list still settles may do nothing, so up to three tries.
         let more = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "More")).firstMatch
-        guard more.waitForExistence(timeout: 60) else {
+        var opened = false
+        for attempt in 0..<3 where !opened {
+            let composerTop = app.textViews.firstMatch.exists ? app.textViews.firstMatch.frame.minY : app.frame.maxY
+            let candidates = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS %@", title)).allElementsBoundByIndex
+                .filter { $0.frame.height > 10 && $0.frame.height < 260 && $0.frame.maxY < composerTop && $0.frame.minY > 120 }
+            guard let chip = candidates.last else { Thread.sleep(forTimeInterval: 3); continue }
+            write("artifact-chip-\(attempt)", ["label": chip.label, "frame": [chip.frame.minX, chip.frame.minY, chip.frame.width, chip.frame.height]])
+            tap(app, x: chip.frame.midX, y: chip.frame.midY)
+            opened = more.waitForExistence(timeout: 45)
+        }
+        guard opened else {
             fail("artifact-open", "no ⋯ More in the Artifact viewer (Desktop Mode not offered?)", app)
             return
         }
