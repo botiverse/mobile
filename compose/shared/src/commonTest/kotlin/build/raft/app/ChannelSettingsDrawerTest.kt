@@ -119,25 +119,44 @@ class ChannelSettingsDrawerTest {
         )
     }
 
+    private fun rows(row: HomeChannelRow, canManage: Boolean, canStopAllAgents: Boolean = false) =
+        channelSettingsActionRows(
+            ChannelSettingsUiModel(
+                channel = row,
+                memberSlice = SharedServerChannelMembersSlice(channelId = row.channelId.value),
+                pinned = false,
+                muted = false,
+                permissions = channelSettingsPermissions(row, canManage),
+                writeActionsEnabled = true,
+                canStopAllAgents = canStopAllAgents,
+                showGuestAccess = false,
+            )
+        )
+
     @Test
-    fun ownerGetsInfoAndEveryAction() {
+    fun ownerGetsInfoAndEveryActionInTheWebOrder() {
         val row = channel()
         val panel = ThreadChannelSettingsPanel(channel = row, permissions = channelSettingsPermissions(row, canManage = true))
         assertTrue(panel.showsInfoForm())
         assertTrue(panel.nameEditable())
-        assertTrue(panel.allowsChannelAction("visibility"))
-        assertTrue(panel.allowsChannelAction("archive"))
-        assertTrue(panel.allowsChannelAction("delete"))
+        assertEquals(
+            listOf(
+                ChannelSettingsActionRow.MakePrivate,
+                ChannelSettingsActionRow.Archive,
+                ChannelSettingsActionRow.Leave,
+                ChannelSettingsActionRow.StopAllAgents,
+                ChannelSettingsActionRow.Delete,
+            ),
+            rows(row, canManage = true, canStopAllAgents = true)
+        )
     }
 
     @Test
-    fun memberWithoutCapabilitiesGetsNoInfoFormAndNoActions() {
+    fun memberWithoutCapabilitiesGetsNoInfoFormAndOnlyLeave() {
         val row = channel()
         val panel = ThreadChannelSettingsPanel(channel = row, permissions = channelSettingsPermissions(row, canManage = false))
         assertFalse(panel.showsInfoForm())
-        assertFalse(panel.allowsChannelAction("visibility"))
-        assertFalse(panel.allowsChannelAction("archive"))
-        assertFalse(panel.allowsChannelAction("delete"))
+        assertEquals(listOf(ChannelSettingsActionRow.Leave), rows(row, canManage = false))
     }
 
     @Test
@@ -146,33 +165,37 @@ class ChannelSettingsDrawerTest {
         val panel = ThreadChannelSettingsPanel(channel = row, permissions = channelSettingsPermissions(row, canManage = true))
         assertTrue(panel.showsInfoForm())
         assertFalse(panel.nameEditable())
-        assertFalse(panel.allowsChannelAction("visibility"))
-        assertFalse(panel.allowsChannelAction("archive"))
-        assertFalse(panel.allowsChannelAction("delete"))
+        assertEquals(emptyList<ChannelSettingsActionRow>(), rows(row, canManage = true))
     }
 
     @Test
-    fun archivedAndJointChannelsHideWhatTheWebHides() {
+    fun archivedChannelOffersOnlyUnarchiveAndJointOffersDisconnect() {
         val archived = channel(archived = true)
         val archivedPanel = ThreadChannelSettingsPanel(channel = archived, permissions = channelSettingsPermissions(archived, canManage = true))
         assertFalse(archivedPanel.showsInfoForm())
-        assertFalse(archivedPanel.allowsChannelAction("archive"))
-        assertFalse(archivedPanel.allowsChannelAction("delete"))
+        assertEquals(listOf(ChannelSettingsActionRow.Unarchive), rows(archived, canManage = true))
 
         val joint = channel(type = "joint", kind = ConversationKind.Joint)
-        val jointPanel = ThreadChannelSettingsPanel(channel = joint, permissions = channelSettingsPermissions(joint, canManage = true))
-        assertFalse(jointPanel.allowsChannelAction("visibility"))
-        assertFalse(jointPanel.allowsChannelAction("delete"))
-        assertTrue(jointPanel.allowsChannelAction("archive"))
+        assertEquals(
+            listOf(ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave, ChannelSettingsActionRow.Disconnect),
+            rows(joint, canManage = true)
+        )
     }
 
     @Test
-    fun unknownChannelKeepsWhatTheConversationOffers() {
+    fun unknownChannelKeepsTheNameForm() {
         val panel = ThreadChannelSettingsPanel()
         assertTrue(panel.showsInfoForm())
         assertTrue(panel.nameEditable())
-        assertTrue(panel.allowsChannelAction("archive"))
-        assertFalse(panel.allowsChannelAction("leave"))
+    }
+
+    @Test
+    fun membersStripHidesOnlyOnAllForAMemberWhenTheServerHidesPeople() {
+        assertTrue(channelSettingsHidesMembersStrip(channel(name = "all"), serverRole = "member", hideHumansFromMembers = true))
+        assertFalse(channelSettingsHidesMembersStrip(channel(name = "all"), serverRole = "admin", hideHumansFromMembers = true))
+        assertFalse(channelSettingsHidesMembersStrip(channel(name = "all"), serverRole = "member", hideHumansFromMembers = false))
+        assertFalse(channelSettingsHidesMembersStrip(channel(), serverRole = "member", hideHumansFromMembers = true))
+        assertFalse(channelSettingsHidesMembersStrip(null, serverRole = "member", hideHumansFromMembers = true))
     }
 
     @Test

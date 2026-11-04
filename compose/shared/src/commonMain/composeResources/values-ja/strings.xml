@@ -784,6 +784,7 @@
     <string name="channel_settings_section_detail">このチャンネルをサイドバーのどのセクションに表示するかを選びます。</string>
     <string name="channel_settings_section_create">セクションを作成…</string>
     <string name="channel_settings_collapse_detail">プレビューの高さを超えるメッセージを折りたたみ、「全文を表示」で展開できるようにします。オフにすると、このチャンネルでは常にメッセージ全体を表示します。</string>
+    <string name="channel_settings_collapse_detail_dm">プレビューの高さを超えるメッセージを折りたたみ、「全文を表示」で展開できるようにします。オフにすると、この会話では常にメッセージ全体を表示します。</string>
     <string name="channel_settings_actions">アクション</string>
     <string name="channel_settings_slack_title">Slack と連携</string>
     <string name="channel_settings_slack_detail">必要に応じて、この Raft チャンネルを、まだ連携されていない Slack チャンネル 1 つと連携できます。</string>

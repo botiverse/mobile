@@ -782,6 +782,7 @@
     <string name="channel_settings_section_detail">选择此频道在侧栏中所在的分区。</string>
     <string name="channel_settings_section_create">新建分区…</string>
     <string name="channel_settings_collapse_detail">超过预览高度的消息折叠在「显示更多」开关后。关闭后此频道的长消息始终完整显示。</string>
+    <string name="channel_settings_collapse_detail_dm">超过预览高度的消息折叠在「显示更多」开关后。关闭后此会话的长消息始终完整显示。</string>
     <string name="channel_settings_actions">操作</string>
     <string name="channel_settings_slack_title">连接到 Slack</string>
     <string name="channel_settings_slack_detail">可选择将此 Raft 频道与一个尚未占用的 Slack 频道配对。</string>

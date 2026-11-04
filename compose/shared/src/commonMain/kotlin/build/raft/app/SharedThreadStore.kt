@@ -7375,6 +7375,9 @@ internal sealed interface SharedThreadIntent {
         val description: String
     ) : SharedThreadIntent
     data object ClearChannelProfileUpdateStatus : SharedThreadIntent
+
+    /** The channel's name / description were saved elsewhere (the settings drawer's store): show them. */
+    data class ApplyChannelProfile(val channelId: String, val name: String, val description: String?) : SharedThreadIntent
     data class SelectTab(val tab: String) : SharedThreadIntent
     data class FocusMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
 
@@ -7713,6 +7716,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyChannelJoined,
             is SharedThreadIntent.UpdateChannelProfile,
             SharedThreadIntent.ClearChannelProfileUpdateStatus,
+            is SharedThreadIntent.ApplyChannelProfile,
             is SharedThreadIntent.SelectTab,
             is SharedThreadIntent.FocusMessage,
             is SharedThreadIntent.ResolveUnreadThreadParents,
@@ -7805,6 +7809,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyParentDirectoryHint -> applyParentDirectoryHint(intent)
             is SharedThreadIntent.UpdateChannelProfile -> updateChannelProfile(intent)
             SharedThreadIntent.ClearChannelProfileUpdateStatus -> clearChannelProfileUpdateStatus()
+            is SharedThreadIntent.ApplyChannelProfile -> applyChannelProfile(intent)
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
             is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
             is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
@@ -12327,6 +12332,14 @@ internal class SharedThreadStore(
             "thread_jump_to_message result=${if (loaded) "applied" else "failed"} target=${target.take(8)} " +
                 "messages=${_state.value.payload.messages.size}"
         )
+    }
+
+    private fun applyChannelProfile(intent: SharedThreadIntent.ApplyChannelProfile) {
+        val routeIdentity = _state.value.payload.resolveThreadRouteIdentity()
+        if (routeIdentity.surfaceKind != RaftThreadSurfaceKind.Channel || routeIdentity.timelineChannelId != intent.channelId) return
+        reducePayloadPatch(cachePayload = true) { payload ->
+            payload.copy(title = intent.name, subtitle = intent.description)
+        }
     }
 
     private suspend fun updateChannelProfile(intent: SharedThreadIntent.UpdateChannelProfile) {

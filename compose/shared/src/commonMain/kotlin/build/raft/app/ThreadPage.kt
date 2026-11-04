@@ -344,6 +344,8 @@ import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.ChannelSosStore
+import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
@@ -6213,7 +6215,7 @@ private fun ThreadReactionAtlasImagePreview() {
  * capture shows it (ChatPanel settings drawer, 390x844): the members strip (one person, one
  * working agent), Info with name and description unchanged, Preferences with #design in
  * Channels (Pinned for [pinned]), Notifications on All new messages and Collapse long messages
- * off, then Make Private / Archive / Delete for an owner.
+ * off, then an owner's actions: Make Private, Archive, Leave, Stop All Agents, Delete.
  */
 @Composable
 internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
@@ -6221,10 +6223,8 @@ internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
         ThreadSettingsModal(
             channelName = "design",
             subtitle = stringResource(Res.string.channel_description_design),
-            actions = channelPanelVisualSettingsActions(),
             panel = channelSettingsPanelVisualPanel(pinned),
-            onDismiss = {},
-            onOpenAction = {}
+            onDismiss = {}
         )
     }
 }
@@ -6243,6 +6243,7 @@ internal fun channelSettingsPanelVisualPanel(pinned: Boolean = false, serverId: 
     return ThreadChannelSettingsPanel(
         channel = channel,
         permissions = channelSettingsPermissions(channel, canManage = true),
+        canStopAllAgents = true,
         members =
             SharedServerChannelMembersSlice(
                 serverId = serverId,
@@ -6470,9 +6471,6 @@ private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
             kind = "human"
         )
     )
-
-private fun channelPanelVisualSettingsActions(): List<RaftThreadSettingsAction> =
-    defaultThreadSettingsChannelActionCapabilities()
 
 /**
  * release/1.12.0 vc 1120118 hotfix: payload classes for [SharedThreadRouteContent].
@@ -12703,7 +12701,43 @@ private fun SharedThreadRouteContentContent(
                 agentStatusResolver = agentStatusResolver,
                 writeActionsEnabled = renderSlice.writeActionsEnabled,
                 onHomeIntent = { intent -> sharedHomeStore?.dispatch(intent) },
-            )
+            )?.let { panel ->
+                val serverId = threadMembersServerId
+                val channelId = threadMembersChannelId
+                val homeServer = (sharedHomeState.content as? SharedHomeContentState.Content)?.snapshot?.server
+                val routeOwner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
+                panel.copy(
+                    // The settings page's store: Info with the Slack pick, Guest access and every action.
+                    storeFactory =
+                        if (serverId != null && channelId != null && routeOwner != null && routeOwner.serverId == serverId.value) {
+                            { scope ->
+                                createChannelSettingsStore(ChannelSettingsRoute(serverId, channelId), routeOwner, sharedStores, storeScope, scope) {
+                                    bridge.log("channel_settings_store drawer $it")
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    canStopAllAgents = panel.channel?.let { channelSettingsCanStopAllAgents(it, homeServer?.role) } == true,
+                    agentControlsApi = RaftAgentControlsApi(sharedStores.networkClient(storeScope)),
+                    hideMembersStrip =
+                        channelSettingsHidesMembersStrip(panel.channel, homeServer?.role, homeServer?.hideHumansFromMembers == true),
+                    onProfileSaved = { name, description ->
+                        channelId?.let { id ->
+                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelProfile(id.value, name, description))
+                            sharedHomeStore?.dispatch(SharedHomeIntent.ChannelProfileUpdated(channelId = id, name = name, description = description))
+                        }
+                    },
+                    onChannelChanged = { sharedHomeStore?.dispatch(SharedHomeIntent.Refresh) },
+                    onChannelClosed = { action, accessLost ->
+                        if (accessLost) channelId?.let { sharedStores.publishChannelAccessLost(storeScope, it) }
+                        sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                        // Leaving, deleting or archiving takes the person out of the channel (the old drawer did too).
+                        if (accessLost || action == ChannelSettingsAction.Archive) onBack()
+                    },
+                    onActionFailed = { message -> bridge.toast(message) },
+                )
+            }
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
@@ -18167,7 +18201,6 @@ private fun ThreadPageContentContent(
                     ThreadSettingsModal(
                         channelName = headerDisplay.title,
                         subtitle = headerDisplay.subtitle,
-                        actions = payload.settingsActions,
                         panel =
                             (channelSettingsPanel ?: ThreadChannelSettingsPanel(longMessageCollapse = longMessageCollapseConversationSetting))
                                 .copy(
@@ -18190,11 +18223,6 @@ private fun ThreadPageContentContent(
                         },
                         onClearUpdateStatus = onClearChannelProfileUpdateStatus,
                         onToggleActivityMute = onToggleActivityMute,
-                        onOpenAction = { actionId ->
-                            activeModal = null
-                            onClearChannelProfileUpdateStatus()
-                            onThreadEvent("settingsAction", actionId, null, null)
-                        }
                     )
                 }
             }
@@ -37905,7 +37933,7 @@ private fun ThreadDirectMessageSettingsModal(
                 Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
                 ThreadDirectMessagePreferenceRow(
                     title = stringResource(Res.string.conversation_long_message_collapse),
-                    detail = setting.preference.localizedDetail(),
+                    detail = stringResource(Res.string.channel_settings_collapse_detail_dm),
                     checked = setting.effective,
                     enabled = true,
                     onClick = { setting.onSetEnabled(!setting.effective) }
@@ -37959,12 +37987,24 @@ private fun ThreadDirectMessagePreferenceRow(
 /** web inline Save: how long "Changes saved" shows before the form is idle again. */
 private const val ThreadSettingsSavedNoticeMillis = 1500L
 
+/**
+ * The channel settings: the web's channel Settings drawer (ChannelOverflowMenu with the
+ * EditChannelDialog panel inside, raft-ui Drawer from the right), as [RaftUnifiedSideDrawer].
+ * Head: ONE line (stdrc 2026-11-03): on a phone "Settings · #name", on a wide window, where the
+ * drawer is a panel beside the page, the channel's own "#name", with × at the end.
+ *
+ * Body, in the web order: the Members strip (summary, faces, the add tile; hidden on #all where
+ * the server hides people from members), Info (Name, Description and the Slack pick with their
+ * own Cancel and Save; read only for people who can't edit), Guest access, Preferences (Move to
+ * section, Notifications, Collapse long messages), then Actions (Make Private / Public, Archive /
+ * Unarchive, Leave, Stop All Agents, Delete / Disconnect, each with the web's gate and confirm).
+ * Info, Guest access and the actions run through the settings page's store
+ * ([ThreadChannelSettingsPanel.storeFactory]), so the drawer and the page are one implementation.
+ */
 @Composable
 internal fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
-    actions: List<RaftThreadSettingsAction>,
-    initialDangerActionId: String? = null,
     panel: ThreadChannelSettingsPanel = ThreadChannelSettingsPanel(),
     activityMuteState: ThreadActivityMuteUiState? = null,
     updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
@@ -37973,44 +38013,94 @@ internal fun ThreadSettingsModal(
     onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onClearUpdateStatus: () -> Unit = {},
     onToggleActivityMute: (() -> Unit)? = null,
-    onOpenAction: (String) -> Unit
 ) {
-    var dangerAction by remember(initialDangerActionId) {
-        mutableStateOf(
-            when (initialDangerActionId) {
-                "visibility" -> ThreadSettingsDangerAction.Visibility
-                "archive" -> ThreadSettingsDangerAction.Archive
-                "delete" -> ThreadSettingsDangerAction.Delete
-                else -> null
-            }
-        )
-    }
-    val effectiveActions = actions.normalizedThreadSettingsChannelActions().map { it.localizedThreadSettingsAction() }
-    val dangerActions = effectiveActions.mapNotNull { action ->
-        when (action.id) {
-            "visibility",
-            "make-private",
-            "make_public" -> ThreadSettingsDangerAction.Visibility
-            "archive" -> ThreadSettingsDangerAction.Archive
-            "delete" -> ThreadSettingsDangerAction.Delete
-            else -> null
-        }?.takeIf { panel.allowsChannelAction(it.id) }?.let { it to action }
-    }
-    val activeDanger = dangerAction
-    // The Info form edits a Home row; without one (Home not loaded) it edits what the head shows.
-    val infoChannel =
-        panel.channel?.copy(name = channelName, subtitle = subtitle)
+    val scope = rememberCoroutineScope()
+    val store = remember(panel.storeFactory != null) { panel.storeFactory?.invoke(scope) }
+    val storeStateFlow = remember(store) { store?.state ?: MutableStateFlow<ChannelSettingsState?>(null) }
+    val storeState by storeStateFlow.collectAsState()
+    LaunchedEffect(store) { store?.dispatch(ChannelSettingsIntent.Refresh) }
+    val loaded = storeState?.channel != null
+    val row =
+        (storeState?.channel ?: panel.channel)?.copy(name = channelName, subtitle = subtitle)
             ?: HomeChannelRow(threadId = ThreadId(channelName), channelId = ChannelId(channelName), name = channelName, subtitle = subtitle)
+    val known = loaded || panel.channel != null
+    val permissions = if (loaded) storeState!!.permissions() else panel.permissions
+    val gate = panel.copy(channel = row.takeIf { known }, permissions = permissions)
+    val writeEnabled = if (store != null) storeState?.writeActionsEnabled == true else panel.writeActionsEnabled
+    val actionInFlight = storeState?.actionInFlight
+    val profileStatus = if (store != null) storeState?.profileStatus ?: ChannelProfileUpdateStatus.Idle else updateStatus
+    val profileError = if (store != null) storeState?.profileErrorCode else updateErrorCode
+    val slackBridge =
+        (if (store != null) storeState?.slackBridge else panel.slackBridge)
+            ?.takeIf { permissions != null && channelSettingsSlackBridgeApplies(row, permissions) }
+    val showGuestAccess = if (store != null) storeState?.showsGuestAccess() == true else panel.showGuestAccess
+    val model =
+        ChannelSettingsUiModel(
+            channel = row,
+            memberSlice = panel.members ?: SharedServerChannelMembersSlice(channelId = row.channelId.value),
+            pinned = false,
+            muted = activityMuteState?.muted == true,
+            permissions = permissions ?: ChannelSettingsPermissions(),
+            writeActionsEnabled = writeEnabled,
+            canStopAllAgents = panel.canStopAllAgents && !row.archived,
+            showGuestAccess = showGuestAccess,
+            actionInFlight = actionInFlight,
+        )
+    val actionRows = if (known && permissions != null) channelSettingsActionRows(model) else emptyList()
+    var confirm by remember { mutableStateOf<ChannelSettingsConfirm?>(null) }
+    var lastAction by remember { mutableStateOf<ChannelSettingsAction?>(null) }
+    var sosStore by remember { mutableStateOf<ChannelSosStore?>(null) }
     // The drawer only learns about unsaved edits from the form; a tap beside it keeps them.
     var infoDirty by remember(channelName, subtitle) { mutableStateOf(false) }
-    val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
-    val showInfoForm = panel.showsInfoForm()
-    val description = subtitle?.trim().orEmpty()
-    val showPreferences =
-        panel.section != null ||
-            panel.notificationLevelTarget != null ||
-            (activityMuteState != null && onToggleActivityMute != null) ||
-            panel.longMessageCollapse?.available == true
+    val profileSaving = profileStatus == ChannelProfileUpdateStatus.InFlight
+    val failureLabels = channelSettingsFailureLabels()
+    val errorStrings = localizedErrorPresentationStrings()
+    LaunchedEffect(storeState?.effect) {
+        val state = storeState ?: return@LaunchedEffect
+        when (val effect = state.effect) {
+            ChannelSettingsEffect.ProfileSaved ->
+                state.channel?.let { saved -> panel.onProfileSaved(saved.name.removePrefix("#"), saved.subtitle) }
+            is ChannelSettingsEffect.Updated -> {
+                confirm = null
+                panel.onChannelChanged()
+            }
+            is ChannelSettingsEffect.Failure -> {
+                confirm = null
+                if (effect.action != ChannelSettingsAction.Profile) {
+                    panel.onActionFailed(channelSettingsFailureMessage(effect, failureLabels, errorStrings))
+                }
+            }
+            ChannelSettingsEffect.Close -> {
+                confirm = null
+                onDismiss()
+                panel.onChannelClosed(lastAction, state.closedWithAccessLost)
+            }
+            null -> Unit
+        }
+        if (state.effect != null) store?.dispatch(ChannelSettingsIntent.ConsumeEffect)
+    }
+    // web inline Save: "Changes saved" shows for a moment, then the form is idle again.
+    LaunchedEffect(profileStatus) {
+        if (store != null && profileStatus == ChannelProfileUpdateStatus.Succeeded) {
+            delay(ThreadSettingsSavedNoticeMillis)
+            store.dispatch(ChannelSettingsIntent.ClearProfileStatus)
+        }
+    }
+    val callbacks =
+        ChannelSettingsCallbacks(
+            onConfirm = { confirm = it },
+            onUnarchive = {
+                lastAction = ChannelSettingsAction.Unarchive
+                store?.dispatch(ChannelSettingsIntent.Unarchive)
+            },
+            onStopAllAgents = {
+                panel.agentControlsApi?.let { api ->
+                    sosStore = ChannelSosStore(channelId = row.channelId, channelName = channelName, dataSource = api, scope = scope)
+                }
+            },
+            onSetGuestVisible = { store?.dispatch(ChannelSettingsIntent.SetGuestVisible(it)) },
+            onSetGuestJoinable = { store?.dispatch(ChannelSettingsIntent.SetGuestJoinable(it)) },
+        )
     // The drawer fills a phone; past its max width it is a panel beside the page.
     val wideWindow =
         with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } > RaftSideDrawerDefaults.MaxWidth
@@ -38023,19 +38113,20 @@ internal fun ThreadSettingsModal(
             },
         titleTrailing = if (wideWindow) null else { { ThreadSettingsPanelChannelRef(channelName) } },
         closeLabel = stringResource(Res.string.thread_settings_panel_close),
-        dismissOnOutsideTap = !infoDirty && !profileSaving,
+        dismissOnOutsideTap = !infoDirty && !profileSaving && actionInFlight == null,
         onDismiss = onDismiss
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
-            panel.members?.let { slice ->
+            val members = panel.members?.takeUnless { panel.hideMembersStrip }
+            members?.let { slice ->
                 item(key = "members") {
                     ChannelMembersSection(
                         slice = slice,
-                        fallbackCount = panel.channel?.memberCount,
-                        canAdd = panel.canAddMembers,
+                        fallbackCount = row.memberCount,
+                        canAdd = panel.canAddMembers && !row.archived,
                         agentStatusResolver = panel.agentStatusResolver,
                         onOpen = panel.onOpenMembers,
                         onAdd = panel.onAddMember,
@@ -38046,25 +38137,32 @@ internal fun ThreadSettingsModal(
             item(key = "panel") {
                 // web `channel-settings-panel`: `border-t px-4 pt-3` under the members strip.
                 Column(Modifier.fillMaxWidth()) {
-                    if (panel.members != null) RaftSeparator()
+                    if (members != null) RaftSeparator()
                     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
                         var sectionAfterFirst = false
-                        if (showInfoForm) {
+                        val description = row.subtitle?.trim().orEmpty()
+                        if (gate.showsInfoForm()) {
                             RaftFormSection(
                                 title = stringResource(Res.string.channel_settings_info),
                                 description = stringResource(Res.string.channel_settings_info_detail),
                             ) {
                                 ChannelInfoForm(
-                                    channel = infoChannel,
-                                    nameEditable = panel.nameEditable(),
-                                    enabled = panel.writeActionsEnabled && panel.channel?.archived != true,
-                                    status = updateStatus,
-                                    errorCode = updateErrorCode,
-                                    slackBridge = null,
-                                    onSave = { name, newDescription, _ ->
-                                        onSave(channelName, subtitle.orEmpty(), name, newDescription)
+                                    channel = row,
+                                    nameEditable = gate.nameEditable(),
+                                    enabled = writeEnabled && !row.archived,
+                                    status = profileStatus,
+                                    errorCode = profileError,
+                                    slackBridge = slackBridge,
+                                    onSave = { name, newDescription, slack ->
+                                        if (store != null) {
+                                            store.dispatch(ChannelSettingsIntent.UpdateProfile(name, newDescription, slack))
+                                        } else {
+                                            onSave(channelName, subtitle.orEmpty(), name, newDescription)
+                                        }
                                     },
-                                    onClearStatus = onClearUpdateStatus,
+                                    onClearStatus = {
+                                        if (store != null) store.dispatch(ChannelSettingsIntent.ClearProfileStatus) else onClearUpdateStatus()
+                                    },
                                     onDirtyChange = { infoDirty = it },
                                 )
                             }
@@ -38080,50 +38178,55 @@ internal fun ThreadSettingsModal(
                             }
                             sectionAfterFirst = true
                         }
-                        if (showPreferences) {
-                            ThreadSettingsPreferencesSection(
-                                panel = panel,
-                                activityMuteState = activityMuteState,
-                                onToggleActivityMute = onToggleActivityMute,
-                                separator = sectionAfterFirst,
+                        if (showGuestAccess) {
+                            if (sectionAfterFirst) RaftSeparator()
+                            ChannelGuestAccessSection(
+                                channel = row,
+                                enabled = writeEnabled && actionInFlight != ChannelSettingsAction.GuestAccess,
+                                onSetVisible = callbacks.onSetGuestVisible,
+                                onSetJoinable = callbacks.onSetGuestJoinable,
+                                inset = false,
                             )
                             sectionAfterFirst = true
                         }
-                        if (dangerActions.isNotEmpty()) {
-                            RaftFormSection(
-                                title = stringResource(Res.string.channel_settings_actions),
-                                separator = sectionAfterFirst
-                            ) {
-                                // web OverflowActionRow: outlined, Delete the one red row.
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    dangerActions.forEach { (danger, action) ->
-                                        ChannelActionButton(
-                                            text = action.title,
-                                            icon = action.icon,
-                                            variant =
-                                                if (danger == ThreadSettingsDangerAction.Delete) {
-                                                    RaftButtonVariant.Danger
-                                                } else {
-                                                    RaftButtonVariant.Default
-                                                },
-                                            enabled = !profileSaving,
-                                        ) { dangerAction = danger }
-                                    }
-                                }
-                            }
+                        ThreadSettingsPreferencesSection(
+                            panel = panel,
+                            activityMuteState = activityMuteState,
+                            onToggleActivityMute = onToggleActivityMute,
+                            separator = sectionAfterFirst,
+                        )
+                        if (actionRows.isNotEmpty()) {
+                            RaftSeparator()
+                            ChannelActionsSection(
+                                actions = actionRows,
+                                enabled = writeEnabled,
+                                actionInFlight = actionInFlight,
+                                callbacks = callbacks,
+                                inset = false,
+                            )
                         }
                     }
                 }
             }
         }
     }
-    if (activeDanger != null) {
-        ThreadSettingsDangerConfirm(
-            action = activeDanger,
+    val activeConfirm = confirm
+    if (activeConfirm != null) {
+        ChannelSettingsConfirmDialog(
+            confirm = activeConfirm,
             channelName = channelName,
-            onBack = { dangerAction = null },
-            onConfirm = { onOpenAction(activeDanger.id) }
+            leaveVariant = leaveChannelConfirmVariant(row, model.memberSlice),
+            busy = actionInFlight == activeConfirm.action,
+            onDismiss = { if (actionInFlight != activeConfirm.action) confirm = null },
+            onConfirm = {
+                lastAction = activeConfirm.action
+                store?.dispatch(activeConfirm.intent)
+            },
         )
+    }
+    val activeSosStore = sosStore
+    if (activeSosStore != null) {
+        ChannelSosDialog(channelName = channelName, store = activeSosStore, onClose = { sosStore = null })
     }
 }
 
