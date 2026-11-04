@@ -3985,6 +3985,18 @@ internal fun ThreadTimelineRenderConfig.formatActionCardExecutedTimeLabel(
     return context.formatTimestampLabel(value).takeIf { it.isNotBlank() }
 }
 
+/**
+ * A row's time as its header shows it in absolute mode (the clock today, else the date and the clock,
+ * in the 12/24-hour setting), or [fallback] (the compact HH:mm) without a live time context. Never the
+ * raw wire timestamp.
+ */
+internal fun threadRowTimeAccessibilityLabel(
+    timestampLabel: String,
+    fallback: String,
+    timeContext: RaftTimeContext?,
+): String? =
+    (raftAbsoluteTimestampLabel(timestampLabel, timeContext) ?: fallback.takeIf { it.isNotBlank() })
+
 internal fun formatThreadCompactTimestampLabel(
     value: String,
     timeContext: RaftTimeContext?
@@ -17693,7 +17705,12 @@ private fun ThreadPageContentContent(
                 )
             } else {
                 // Task v2: the list tells the head how far it may fold ([taskHeadConversationOverflow]).
-                CompositionLocalProvider(LocalTaskHeadScrollState provides data.taskConversationHead) {
+                // No tab pager around the list here: dragging it left shows message times
+                // (ThreadMessageTimeReveal.kt). Under the pager that drag pages to Tasks.
+                CompositionLocalProvider(
+                    LocalTaskHeadScrollState provides data.taskConversationHead,
+                    LocalThreadTimeRevealAvailable provides true,
+                ) {
                     renderThreadTabContent(
                         // Task v2 cards: the page under them is always the conversation.
                         if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
@@ -23830,6 +23847,23 @@ private fun ThreadMessagesListContent(
                 remember(taskHeadScrollState, listState.raw) {
                     Modifier.taskHeadConversationOverflow(taskHeadScrollState, listState.raw)
                 }
+            // Drag the list toward its start to see message times (ThreadMessageTimeReveal.kt): where
+            // no tab pager surrounds the list, and not while messages are being selected.
+            val timeRevealState = rememberThreadTimeRevealState(threadInstanceKey)
+            val timeReveal =
+                timeRevealState.takeIf {
+                    LocalThreadTimeRevealAvailable.current && !shareSelectionActive && !shareSelectionCaptureActive
+                }
+            val timeRevealModifier =
+                if (timeReveal != null) {
+                    Modifier.threadTimeRevealGesture(
+                        state = timeReveal,
+                        isListScrolling = { listState.isScrollInProgress },
+                        selectionShowing = { inPlaceSelectionViewportHost?.selectionShowing == true },
+                    )
+                } else {
+                    Modifier
+                }
             LazyColumn(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
@@ -23889,6 +23923,8 @@ private fun ThreadMessagesListContent(
                             }
                         }
                     )
+                    // Outside the list's scroll, so it sees every change first once it claimed.
+                    .then(timeRevealModifier)
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
                     .touchListenerWithConfiguration { type, position, touchSlop ->
@@ -24323,168 +24359,174 @@ private fun ThreadMessagesListContent(
                                 } else {
                                     null
                                 }
-                            ThreadMessageCard(
-                                message = displayMessage,
-                                messageBodyTextStyle = messageBodyTextStyle,
-                                replyMetadata = replyMetadata,
-                                sourceTasks = sourceTasks,
-                                onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
-                                hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
-                                actionCard = actionCard,
-                                messageIndex = absoluteMessageIndex,
-                                diagnosticsLogger = diagnosticsLogger,
-                                highlightedMentions = highlightedMentions,
-                                agentStatusResolver = agentStatusResolver,
-                                memberAvatarResolver = memberAvatarResolver,
-                                memberModelLabelResolver = memberModelLabelResolver,
-                                inlineReplyParticipantsById = inlineReplyParticipantsById,
-                                focused = activeFocusedMessageId == message.id,
-                                searchMatch = activeInlineSearchMessageId == message.id,
-                                popupOpen = actionMessageId == message.id || quickReactionBar?.messageId == message.id,
-                                hoverToolbar =
-                                    threadMessageHoverToolbarActions(
-                                        message = message,
-                                        capabilities =
-                                            threadMessageMenuCapabilities(
-                                                message = message,
-                                                replyMetadata = replyMetadata,
-                                                slice = renderPayload,
-                                                writeActionsEnabled = writeActionsEnabled
-                                            ),
-                                        onShowReactions = { anchor ->
-                                            quickReactionBar =
-                                                ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
-                                        },
-                                        onForward = { onForwardMessage(message.id) },
-                                        onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
-                                        onShownChange = { shown ->
-                                            if (shown) {
-                                                hoverToolbarMessageId = message.id
-                                            } else if (hoverToolbarMessageId == message.id) {
-                                                hoverToolbarMessageId = null
+                            ThreadTimeRevealRow(
+                                state = timeReveal,
+                                timeLabel = formatThreadTimeRevealLabel(message.timestampLabel, renderConfig.timeContext),
+                                continuation = renderPayload.compactConsecutiveMessages && suppressRepeatedAuthor,
+                            ) {
+                                ThreadMessageCard(
+                                    message = displayMessage,
+                                    messageBodyTextStyle = messageBodyTextStyle,
+                                    replyMetadata = replyMetadata,
+                                    sourceTasks = sourceTasks,
+                                    onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
+                                    hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
+                                    actionCard = actionCard,
+                                    messageIndex = absoluteMessageIndex,
+                                    diagnosticsLogger = diagnosticsLogger,
+                                    highlightedMentions = highlightedMentions,
+                                    agentStatusResolver = agentStatusResolver,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    memberModelLabelResolver = memberModelLabelResolver,
+                                    inlineReplyParticipantsById = inlineReplyParticipantsById,
+                                    focused = activeFocusedMessageId == message.id,
+                                    searchMatch = activeInlineSearchMessageId == message.id,
+                                    popupOpen = actionMessageId == message.id || quickReactionBar?.messageId == message.id,
+                                    hoverToolbar =
+                                        threadMessageHoverToolbarActions(
+                                            message = message,
+                                            capabilities =
+                                                threadMessageMenuCapabilities(
+                                                    message = message,
+                                                    replyMetadata = replyMetadata,
+                                                    slice = renderPayload,
+                                                    writeActionsEnabled = writeActionsEnabled
+                                                ),
+                                            onShowReactions = { anchor ->
+                                                quickReactionBar =
+                                                    ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
+                                            },
+                                            onForward = { onForwardMessage(message.id) },
+                                            onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
+                                            onShownChange = { shown ->
+                                                if (shown) {
+                                                    hoverToolbarMessageId = message.id
+                                                } else if (hoverToolbarMessageId == message.id) {
+                                                    hoverToolbarMessageId = null
+                                                }
                                             }
+                                        ),
+                                    shareSelectionActive = shareSelectionActive,
+                                    selectedForShare = message.id in selectedShareMessageIds,
+                                    onToggleShareSelection = { onToggleShareSelection(message.id) },
+                                    showSaveAction = !captureShareBounds,
+                                    // Defer this snapshot read to the avatar leaf. Reading it at the
+                                    // card boundary invalidates every visible message while anchoring.
+                                    isMessageListScrolling = { listState.isScrollInProgress },
+                                    alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
+                                    messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
+                                    compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
+                                    suppressRepeatedAuthor = suppressRepeatedAuthor,
+                                    showReplyAction = renderPayload.showReplyActions,
+                                    quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
+                                    resolvedTaskAssigneeName = linkedTaskAssigneeName,
+                                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                                    markdownTagContextSignature = markdownTagContextSignature,
+                                    activeMarkdownTagKey = activeMarkdownTagKey,
+                                    taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
+                                    taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
+                                    isMarkdownTagValid = isMarkdownTagValid,
+                                    onShowActions = { anchor ->
+                                        if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
+                                            actionMenuAnchor = anchor
+                                            actionMessageId = message.id
+                                            classicMenuOverrideMessageId = null
+                                            actionMenuFromLongPress = false
+                                            diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
                                         }
-                                    ),
-                                shareSelectionActive = shareSelectionActive,
-                                selectedForShare = message.id in selectedShareMessageIds,
-                                onToggleShareSelection = { onToggleShareSelection(message.id) },
-                                showSaveAction = !captureShareBounds,
-                                // Defer this snapshot read to the avatar leaf. Reading it at the
-                                // card boundary invalidates every visible message while anchoring.
-                                isMessageListScrolling = { listState.isScrollInProgress },
-                                alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
-                                messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
-                                compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
-                                suppressRepeatedAuthor = suppressRepeatedAuthor,
-                                showReplyAction = renderPayload.showReplyActions,
-                                quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
-                                resolvedTaskAssigneeName = linkedTaskAssigneeName,
-                                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                                markdownTagContextSignature = markdownTagContextSignature,
-                                activeMarkdownTagKey = activeMarkdownTagKey,
-                                taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
-                                taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
-                                isMarkdownTagValid = isMarkdownTagValid,
-                                onShowActions = { anchor ->
-                                    if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
-                                        actionMenuAnchor = anchor
-                                        actionMessageId = message.id
-                                        classicMenuOverrideMessageId = null
-                                        actionMenuFromLongPress = false
-                                        diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
-                                    }
-                                },
-                                onLongPressMenuOpened = {
-                                    if (actionMessageId == message.id) {
-                                        actionMenuFromLongPress = true
-                                        RaftProductEvents.messageActionSelected(
-                                            RaftMessageAction.OpenMenu,
-                                            threadMessageIsReplyInThread(
-                                                renderPayload.replyThreadSurface,
-                                                renderPayload.originMessage?.id,
-                                                message.id
-                                            )
-                                        )
-                                    }
-                                },
-                                onOpenMember = onOpenMember,
-                                onExternalAuthor = onExternalAuthor,
-                                onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                                onShowQuickReactions = { anchor ->
-                                    quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
-                                },
-                                onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                                onOpenTaskStatusMenu = { anchor ->
-                                    taskStatusMenuMessageId = message.id
-                                    taskStatusMenuAnchor = anchor
-                                },
-                                onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
-                                onShowReactionDetails = { reaction, anchor ->
-                                    reactionDetails =
-                                        ThreadReactionDetailsRequest(
-                                            emoji = reaction.emoji,
-                                            names = reaction.reactorNames,
-                                            count = reaction.count,
-                                            anchor = anchor
-                                        )
-                                },
-                                onShowAuthorDescription = { description, anchor ->
-                                    authorDescriptionPopover =
-                                        ThreadAuthorDescriptionPopoverRequest(
-                                            description = description,
-                                            anchor = anchor
-                                        )
-                                },
-                                showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
-                                onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                                timestampLabel = message.timestampLabel,
-                                compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
-                                actionCardExecutedTimeLabel =
-                                    renderConfig.formatActionCardExecutedTimeLabel(
-                                        message.threadActionCard()?.executedAt,
-                                        liveTodayEpochDay
-                                    ),
-                                onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
-                                onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                                onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
-                                onCopyLocalSendFailureDetails = {
-                                    onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
-                                },
-                                attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
-                                pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
-                                writeActionsEnabled = writeActionsEnabled,
-                                onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
-                                onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
-                                currentServerSlug = currentServerSlug,
-                                quotedPermalinkLoader = quotedPermalinkLoader,
-                                onOpenMarkdownTag = onOpenMarkdownTag,
-                                onOpenMarkdownUrl = onOpenMarkdownUrl,
-                                onMentionAuthor = onMentionAuthor,
-                                richContentEnabled = isRichContentEnabled,
-                                translation = translationUi,
-                                onToggleTranslationOriginal = {
-                                    translationStore?.setShowOriginal(
-                                        message.id,
-                                        !(translationUi?.showOriginal ?: false)
-                                    )
-                                },
-                                onRetryTranslation = {
-                                    translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
-                                },
-                                onOpenForwardBundle = onOpenForwardBundle,
-                                longMessageCollapse =
-                                    longMessageCollapseController.takeIf {
-                                        longMessageCollapseEnabled && !shareSelectionCaptureActive
                                     },
-                                onToggleLongMessage = {
-                                    toggleLongMessage(
-                                        message.id,
-                                        renderPayload.threadMessageListItemIndex(message.id)
-                                    )
-                                },
-                                longPressGestureInstanceKey =
-                                    message.messageListItemKey(duplicateMessageRandomIds)
-                            )
+                                    onLongPressMenuOpened = {
+                                        if (actionMessageId == message.id) {
+                                            actionMenuFromLongPress = true
+                                            RaftProductEvents.messageActionSelected(
+                                                RaftMessageAction.OpenMenu,
+                                                threadMessageIsReplyInThread(
+                                                    renderPayload.replyThreadSurface,
+                                                    renderPayload.originMessage?.id,
+                                                    message.id
+                                                )
+                                            )
+                                        }
+                                    },
+                                    onOpenMember = onOpenMember,
+                                    onExternalAuthor = onExternalAuthor,
+                                    onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                                    onShowQuickReactions = { anchor ->
+                                        quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                                    },
+                                    onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                                    onOpenTaskStatusMenu = { anchor ->
+                                        taskStatusMenuMessageId = message.id
+                                        taskStatusMenuAnchor = anchor
+                                    },
+                                    onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                                    onShowReactionDetails = { reaction, anchor ->
+                                        reactionDetails =
+                                            ThreadReactionDetailsRequest(
+                                                emoji = reaction.emoji,
+                                                names = reaction.reactorNames,
+                                                count = reaction.count,
+                                                anchor = anchor
+                                            )
+                                    },
+                                    onShowAuthorDescription = { description, anchor ->
+                                        authorDescriptionPopover =
+                                            ThreadAuthorDescriptionPopoverRequest(
+                                                description = description,
+                                                anchor = anchor
+                                            )
+                                    },
+                                    showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
+                                    onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
+                                    timestampLabel = message.timestampLabel,
+                                    compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
+                                    actionCardExecutedTimeLabel =
+                                        renderConfig.formatActionCardExecutedTimeLabel(
+                                            message.threadActionCard()?.executedAt,
+                                            liveTodayEpochDay
+                                        ),
+                                    onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                                    onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
+                                    onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
+                                    onCopyLocalSendFailureDetails = {
+                                        onThreadEvent("copyLocalSendFailureDetails", message.id, null, null)
+                                    },
+                                    attachmentOpenStates = if (isRichContentEnabled) attachmentOpenStates else emptyMap(),
+                                    pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
+                                    writeActionsEnabled = writeActionsEnabled,
+                                    onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                                    onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
+                                    currentServerSlug = currentServerSlug,
+                                    quotedPermalinkLoader = quotedPermalinkLoader,
+                                    onOpenMarkdownTag = onOpenMarkdownTag,
+                                    onOpenMarkdownUrl = onOpenMarkdownUrl,
+                                    onMentionAuthor = onMentionAuthor,
+                                    richContentEnabled = isRichContentEnabled,
+                                    translation = translationUi,
+                                    onToggleTranslationOriginal = {
+                                        translationStore?.setShowOriginal(
+                                            message.id,
+                                            !(translationUi?.showOriginal ?: false)
+                                        )
+                                    },
+                                    onRetryTranslation = {
+                                        translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
+                                    },
+                                    onOpenForwardBundle = onOpenForwardBundle,
+                                    longMessageCollapse =
+                                        longMessageCollapseController.takeIf {
+                                            longMessageCollapseEnabled && !shareSelectionCaptureActive
+                                        },
+                                    onToggleLongMessage = {
+                                        toggleLongMessage(
+                                            message.id,
+                                            renderPayload.threadMessageListItemIndex(message.id)
+                                        )
+                                    },
+                                    longPressGestureInstanceKey =
+                                        message.messageListItemKey(duplicateMessageRandomIds)
+                                )
+                            }
                         }
                     }
                     // read_receipts_v0 (web option C): a DM's "Read" line under its last message.
@@ -28264,6 +28306,15 @@ private fun ThreadMessageCardContent(
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
     val compactTimestampGutter = compactConsecutiveMessages
+    // Screen readers hear every row's time: a compact row without its header has no visible one
+    // (only while pressed), so its avatar slot carries it, as the header would show it.
+    val rowTimeContext = LocalRaftTimeContextProvider.current?.current
+    val rowTimeAccessibilityLabel =
+        if (showTimestampInHeader) {
+            null
+        } else {
+            threadRowTimeAccessibilityLabel(timestampLabel, compactTimestampLabel, rowTimeContext)
+        }
     val messageHasAttachments = message.attachments.isNotEmpty()
     val hasThreadAttachments = richContentEnabled && messageHasAttachments
     // The body always renders in full; a long one is clipped visually by RaftLongMessageCollapsibleBody.
@@ -28569,6 +28620,7 @@ private fun ThreadMessageCardContent(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
+                        timestampAccessibilityLabel = rowTimeAccessibilityLabel,
                         compactTimestampGutter = compactTimestampGutter,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopStart,
@@ -29159,6 +29211,7 @@ private fun ThreadMessageCardContent(
                         interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
+                        timestampAccessibilityLabel = rowTimeAccessibilityLabel,
                         compactTimestampGutter = compactTimestampGutter,
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopEnd,
@@ -31959,7 +32012,7 @@ private fun RaftThreadMessageItem.authorIdentityKey(): String =
         ?: authorName.takeIf { it.isNotBlank() }
         ?: ""
 
-private fun threadLocalEpochDay(epochMillis: Long, localOffsetMinutes: Int): Long =
+internal fun threadLocalEpochDay(epochMillis: Long, localOffsetMinutes: Int): Long =
     threadFloorDiv(epochMillis + localOffsetMinutes.toLong() * ThreadMillisPerMinute, ThreadMillisPerDay)
 
 private fun threadFloorDiv(value: Long, divisor: Long): Long {
@@ -34397,10 +34450,25 @@ private fun ThreadMessageAvatarSlot(
      * (an external author: the card is all there is to show, for a finger too).
      */
     previewCardPinOnClick: Boolean = false,
+    /**
+     * A compact row without its header: the message's time for screen readers, whether or not
+     * [showTimestamp] shows it (it shows only while the row is pressed). Null: the header has it.
+     */
+    timestampAccessibilityLabel: String? = null,
 ) {
     val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
     Box(
-        modifier = Modifier.width(slotLayout.widthDp.dp).height(slotLayout.heightDp.dp),
+        modifier =
+            Modifier
+                .width(slotLayout.widthDp.dp)
+                .height(slotLayout.heightDp.dp)
+                .then(
+                    if (!showAvatar && timestampAccessibilityLabel != null) {
+                        Modifier.clearAndSetSemantics { contentDescription = timestampAccessibilityLabel }
+                    } else {
+                        Modifier
+                    }
+                ),
         contentAlignment = timestampAlignment
     ) {
         when {

@@ -154,7 +154,22 @@ fun rememberRaftNestedHorizontalDragHost(): RaftNestedHorizontalDragHost {
 fun Modifier.raftClaimsHorizontalDragFirst(
     enabled: Boolean = true,
     claimDistancePxAt: (local: Offset, size: IntSize) -> Float,
-): Modifier = if (enabled) this then RaftNestedDragElement(claimDistancePxAt) else this
+): Modifier = if (enabled) this then RaftNestedDragElement(claimDistancePxAt, keeper = false) else this
+
+/**
+ * Content that keeps every horizontal drag that starts on it, even at its scroll end (a wide table, a
+ * display formula, a code block), registered with an enclosing list-level drag that asks for that
+ * ([LocalRaftHorizontalDragKeepers]: the thread list's drag-to-see-times). Inert elsewhere: the tab
+ * pager's own registry ([LocalRaftNestedHorizontalDrags]) never sees these.
+ */
+fun Modifier.raftKeepsHorizontalDrags(): Modifier =
+    this then RaftNestedDragElement({ _, _ -> Float.POSITIVE_INFINITY }, keeper = true)
+
+/**
+ * The registry of [raftKeepsHorizontalDrags] content for a list-level horizontal drag; it skips a
+ * gesture whose down lands in one ([RaftNestedHorizontalDrags.claimDistanceAt] > 0). Null: none.
+ */
+val LocalRaftHorizontalDragKeepers = staticCompositionLocalOf<RaftNestedHorizontalDrags?> { null }
 
 /**
  * Marks a vertical scroller ([isScrolling]: its `isScrollInProgress`) inside a horizontal scroller: a
@@ -178,27 +193,31 @@ internal fun raftScrollHoldDistance(scrolling: Boolean): Float = if (scrolling) 
 
 private data class RaftNestedDragElement(
     val claimDistancePxAt: (Offset, IntSize) -> Float,
+    val keeper: Boolean,
 ) : ModifierNodeElement<RaftNestedDragNode>() {
-    override fun create(): RaftNestedDragNode = RaftNestedDragNode(claimDistancePxAt)
+    override fun create(): RaftNestedDragNode = RaftNestedDragNode(claimDistancePxAt, keeper)
 
     override fun update(node: RaftNestedDragNode) {
         node.claimDistancePxAt = claimDistancePxAt
     }
 
     override fun InspectorInfo.inspectableProperties() {
-        name = "raftClaimsHorizontalDragFirst"
+        name = if (keeper) "raftKeepsHorizontalDrags" else "raftClaimsHorizontalDragFirst"
     }
 }
 
 private class RaftNestedDragNode(
     var claimDistancePxAt: (Offset, IntSize) -> Float,
+    private val keeper: Boolean,
 ) : Modifier.Node(), GlobalPositionAwareModifierNode, CompositionLocalConsumerModifierNode {
     private var coordinates: LayoutCoordinates? = null
     private var registry: RaftNestedHorizontalDrags? = null
     private var region: RaftNestedHorizontalDrags.Region? = null
 
     override fun onAttach() {
-        val drags = currentValueOf(LocalRaftNestedHorizontalDrags) ?: return
+        val drags =
+            (if (keeper) currentValueOf(LocalRaftHorizontalDragKeepers) else currentValueOf(LocalRaftNestedHorizontalDrags))
+                ?: return
         registry = drags
         region = drags.register(bounds = ::currentBounds, claimDistanceAt = ::claimDistanceAtRoot)
     }
