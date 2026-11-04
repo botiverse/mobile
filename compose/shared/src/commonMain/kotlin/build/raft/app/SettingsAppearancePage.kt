@@ -59,6 +59,22 @@ import kotlin.time.Clock
 internal val LocalSettingsAppearancePreviewTimeLabel = staticCompositionLocalOf<String?> { null }
 
 /**
+ * The screenshot host's device switches: the web case's fresh browser, where nothing is saved
+ * yet (Live agent activity on, Show agent model on, Hide empty sidebar sections off, the web's
+ * own default) and the app's own Activity sender avatars row does not exist. Null: the saved
+ * values and every row, as in the app.
+ */
+internal class SettingsAppearanceVisualSwitches(
+    val showLiveAgentActivity: Boolean,
+    val showAgentModelName: Boolean,
+    val hideEmptySidebarSections: Boolean,
+    val showAppOnlyRows: Boolean,
+)
+
+internal val LocalSettingsAppearanceVisualSwitches =
+    staticCompositionLocalOf<SettingsAppearanceVisualSwitches?> { null }
+
+/**
  * Settings > Appearance, in the Web's order (`AppearanceSection`): the way to this server's theme
  * ("Theme on <server>"), the "Appearance" header over the message font size card (title,
  * description, size, "Saved on this device." and a real message row as the preview), then the
@@ -202,36 +218,39 @@ private fun SettingsAppearanceDisplaySwitches(
     activitySenderAvatarsEnabled: Boolean,
     onActivitySenderAvatarsChange: (Boolean) -> Unit
 ) {
+    val visual = LocalSettingsAppearanceVisualSwitches.current
     RaftDesignSystemTheme {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             SettingsAppearanceSwitchRow(
                 title = stringResource(Res.string.settings_appearance_live_agent_activity_title),
                 description = stringResource(Res.string.settings_appearance_live_agent_activity_description),
-                checked = RaftDisplayPreferenceRuntime.showLiveAgentActivity,
+                checked = visual?.showLiveAgentActivity ?: RaftDisplayPreferenceRuntime.showLiveAgentActivity,
                 onCheckedChange = RaftDisplayPreferenceRuntime::setShowLiveAgentActivity,
                 divider = false
             )
             SettingsAppearanceSwitchRow(
                 title = stringResource(Res.string.settings_appearance_show_agent_model_title),
                 description = stringResource(Res.string.settings_appearance_show_agent_model_description),
-                checked = RaftDisplayPreferenceRuntime.showAgentModelName,
+                checked = visual?.showAgentModelName ?: RaftDisplayPreferenceRuntime.showAgentModelName,
                 onCheckedChange = RaftDisplayPreferenceRuntime::setShowAgentModelName,
                 divider = true
             )
             SettingsAppearanceSwitchRow(
                 title = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_title),
                 description = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_description),
-                checked = RaftDisplayPreferenceRuntime.hideEmptySidebarSections,
+                checked = visual?.hideEmptySidebarSections ?: RaftDisplayPreferenceRuntime.hideEmptySidebarSections,
                 onCheckedChange = RaftDisplayPreferenceRuntime::setHideEmptySidebarSections,
                 divider = true
             )
-            SettingsAppearanceSwitchRow(
-                title = stringResource(Res.string.settings_appearance_activity_sender_avatars),
-                description = stringResource(Res.string.settings_appearance_activity_sender_avatars_detail),
-                checked = activitySenderAvatarsEnabled,
-                onCheckedChange = onActivitySenderAvatarsChange,
-                divider = true
-            )
+            if (visual?.showAppOnlyRows != false) {
+                SettingsAppearanceSwitchRow(
+                    title = stringResource(Res.string.settings_appearance_activity_sender_avatars),
+                    description = stringResource(Res.string.settings_appearance_activity_sender_avatars_detail),
+                    checked = activitySenderAvatarsEnabled,
+                    onCheckedChange = onActivitySenderAvatarsChange,
+                    divider = true
+                )
+            }
         }
     }
 }
