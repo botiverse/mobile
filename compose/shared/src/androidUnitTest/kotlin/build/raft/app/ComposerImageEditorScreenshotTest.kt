@@ -19,6 +19,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.resources.*
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -29,7 +30,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The phone image editor (opened from the image viewer's ⋯ > Edit): crop mode with the
  * 1:1 aspect picked, and pen mode with the pen options open over a picture turned a quarter turn
- * with a thin and a thick stroke; Rotate joins the tools in the bottom bar. Verify / record as
+ * with a thin and a thick stroke; Rotate joins the tools in the bottom bar; the text tool's hint
+ * with a finger (tap) and with a mouse (click). Verify / record as
  * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -64,6 +66,19 @@ class ComposerImageEditorScreenshotTest {
     fun penModeDark() = capture("file.preview.image-editor.pen.dark", RaftAppAppearance.Dark) { image ->
         EditorPage(image = image, history = penHistory(), tool = RaftComposerImageEditorTool.Pencil, penOptions = true)
     }
+
+    // The text tool's hint: tap on a touch screen, click with a mouse / trackpad (a desktop window
+    // too narrow for the desktop chrome gets this page).
+    @Test
+    fun textModeTouch() = capture("file.preview.image-editor.text", RaftAppAppearance.Light) { image ->
+        EditorPage(image = image, history = RaftComposerImageEditorHistory(), tool = RaftComposerImageEditorTool.Text)
+    }
+
+    @Test
+    fun textModeMouse() =
+        capture("file.preview.image-editor.text.mouse", RaftAppAppearance.Light, RaftPointerInput.Fine) { image ->
+            EditorPage(image = image, history = RaftComposerImageEditorHistory(), tool = RaftComposerImageEditorTool.Text)
+        }
 
     private fun penHistory(): RaftComposerImageEditorHistory {
         // Canvas pixels of the turned 4:3 picture on the 390dp stage; the exact spot only matters
@@ -120,6 +135,7 @@ class ComposerImageEditorScreenshotTest {
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,
+        pointerInput: RaftPointerInput = RaftPointerInput.Touch,
         content: @Composable (ImageBitmap) -> Unit,
     ) {
         val image = testPicture()
@@ -129,7 +145,10 @@ class ComposerImageEditorScreenshotTest {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
+                RaftTheme(
+                    appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light,
+                    pointerInput = pointerInput,
+                ) {
                     content(image)
                 }
             }

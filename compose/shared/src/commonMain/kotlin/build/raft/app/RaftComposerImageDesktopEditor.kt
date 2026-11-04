@@ -223,7 +223,8 @@ internal fun RaftComposerImageDesktopTopBar(
 
 /**
  * A tool's options under the tool: centred on [anchorLeft]..[anchorRight] (root px) just below
- * the top bar, kept inside the window.
+ * the top bar, kept inside the window, in the editor's dark chrome. The option rows draw with the
+ * enclosing theme's colours (`RaftTheme.colors`), so they follow the popover, not the app.
  */
 @Composable
 internal fun RaftComposerImageDesktopToolPopover(
@@ -233,18 +234,22 @@ internal fun RaftComposerImageDesktopToolPopover(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val density = LocalDensity.current
-    // The window width is known while composing (no measure-then-move frame).
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val windowWidthPx = with(density) { maxWidth.toPx() }
-        val widthPx = with(density) { width.toPx() }
-        val centre = (anchorLeft + anchorRight) / 2f
-        val x = (centre - widthPx / 2f).coerceIn(8f, (windowWidthPx - widthPx - 8f).coerceAtLeast(8f))
-        val y = with(density) { (RaftComposerImageDesktopBarHeight - 6.dp).toPx() }
-        RaftPopoverSurface(
-            width = width,
-            contentPadding = PaddingValues(12.dp),
-            modifier = Modifier.offset { IntOffset(x.toInt(), y.toInt()) },
-            content = content,
-        )
+    // Every tool's popover wears the editor's dark chrome (the top bar's forced-dark theme),
+    // whatever the app's appearance: Pen, Text and Crop read as one family over the photo.
+    RaftDesignSystemTheme(forceDark = true) {
+        // The window width is known while composing (no measure-then-move frame).
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val windowWidthPx = with(density) { maxWidth.toPx() }
+            val widthPx = with(density) { width.toPx() }
+            val centre = (anchorLeft + anchorRight) / 2f
+            val x = (centre - widthPx / 2f).coerceIn(8f, (windowWidthPx - widthPx - 8f).coerceAtLeast(8f))
+            val y = with(density) { (RaftComposerImageDesktopBarHeight - 6.dp).toPx() }
+            RaftPopoverSurface(
+                width = width,
+                contentPadding = PaddingValues(12.dp),
+                modifier = Modifier.offset { IntOffset(x.toInt(), y.toInt()) },
+                content = content,
+            )
+        }
     }
 }

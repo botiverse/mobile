@@ -25,6 +25,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.RaftMenuItem
@@ -40,7 +41,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Edit an image of the conversation from the image viewer (artin, task #32), on a phone: the
- * viewer page with ⋯ at the bottom right and its menu open (Edit). Verify / record as
+ * viewer page with its header's ⋯ menu open (Edit, Save to Photos, Comments); there is no
+ * second ⋯ on the image. Verify / record as
  * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -63,26 +65,40 @@ class ViewerImageEditPhoneScreenshotTest {
                 remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
+                    // The viewer's header ⋯ menu as the page builds it for a conversation image.
+                    val items =
+                        listOf(
+                            raftViewerImageEditMenuItem(),
+                            RaftUiMenuItem(
+                                id = "save-to-photos",
+                                label = stringResource(Res.string.thread_image_preview_save_to_photos),
+                                icon = RaftLucideIconName.Save,
+                            ),
+                            RaftUiMenuItem(
+                                id = "comments",
+                                label = stringResource(Res.string.file_preview_action_comments),
+                                icon = RaftLucideIconName.MessageCircle,
+                            ),
+                        )
                     RaftFilePreviewPageScaffold(
                         title = "IMG_2042.jpg",
                         subtitle = "1.8 MB · image/jpeg",
                         iconName = RaftLucideIconName.Image,
                         onBack = {},
                         contentPadding = 0.dp,
+                        overflowMenuItems = items,
                     ) {
                         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                             Image(bitmap = image, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-                            RaftViewerImageMoreButton(
-                                onSelect = {},
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
-                            )
-                            // The open menu (a popup in the app), placed above the button.
-                            RaftMenuSurface(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 68.dp)) {
-                                RaftMenuItem(
-                                    text = stringResource(Res.string.common_edit),
-                                    onClick = {},
-                                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Pencil) },
-                                )
+                            // The open menu (a popup in the app), under the header's ⋯.
+                            RaftMenuSurface(Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 8.dp), width = 180.dp) {
+                                items.forEach { item ->
+                                    RaftMenuItem(
+                                        text = item.label,
+                                        onClick = {},
+                                        leadingIcon = { item.icon?.let { icon -> RaftSlotIcon(icon) } },
+                                    )
+                                }
                             }
                         }
                     }

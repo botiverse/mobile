@@ -25,6 +25,7 @@ import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -4024,6 +4025,9 @@ private fun RaftFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
+                // ⋯ > Edit (artin, task #32): the conversation that shows this image opens the
+                // editor; the edited copy goes into its composer (RaftViewerImageEdit.kt).
+                if (payload.offersViewerImageEdit()) raftViewerImageEditMenuItem() else null,
                 if (photosActionState != RaftFilePreviewPhotosActionState.Hidden) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewSaveToPhotosActionId,
@@ -4121,6 +4125,13 @@ private fun RaftFilePreviewStandalonePageContent() {
             ),
         onOverflowMenuSelect = { id ->
             when (id) {
+                RaftViewerImageMenuEditId ->
+                    if (raftPostViewerImageEditRequest(payload.viewerShownAttachmentId())) {
+                        closePreviewPage()
+                    } else {
+                        // No open conversation shows this image any more: stay here.
+                        bridge.toast(viewerImageEditUnavailableLabel)
+                    }
                 RaftFilePreviewSaveToPhotosActionId -> requestExternalSave(toPhotos = true)
                 RaftFilePreviewCommentsActionId -> openAttachmentComments()
                 RaftFilePreviewOpenWithActionId -> requestExternalOpen()
@@ -4249,26 +4260,6 @@ private fun RaftFilePreviewStandalonePageContent() {
                             imageGalleryResolutionState.resolvedPayloadByAttachmentId
                         )
                 )
-                if (payload.offersViewerImageEdit()) {
-                    // ⋯ > Edit (artin, task #32): the conversation that shows this image opens
-                    // the editor; the edited copy goes into its composer (RaftViewerImageEdit.kt).
-                    RaftViewerImageMoreButton(
-                        onSelect = { id ->
-                            if (id == RaftViewerImageMenuEditId) {
-                                if (raftPostViewerImageEditRequest(payload.viewerShownAttachmentId())) {
-                                    closePreviewPage()
-                                } else {
-                                    // No open conversation shows this image any more: stay here.
-                                    bridge.toast(viewerImageEditUnavailableLabel)
-                                }
-                            }
-                        },
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = RaftAppSpacing.Md, bottom = RaftAppSpacing.Md + raftBottomSafeAreaPadding()),
-                    )
-                }
             }
             RaftFilePreviewComposerImageActionBar(
                 payload = payload,
@@ -5042,7 +5033,9 @@ internal fun RaftFilePreviewComposerImageEditor(
                         },
                         placeholder =
                             stringResource(
-                                if (desktopChrome != null) {
+                                // Click with a mouse / trackpad (the desktop, a wide window or a
+                                // narrow one), tap on a touch screen.
+                                if (desktopChrome != null || RaftTheme.pointerInput == RaftPointerInput.Fine) {
                                     Res.string.file_preview_placeholder_click_to_add_text
                                 } else {
                                     Res.string.file_preview_placeholder_tap_to_add_text
@@ -5926,7 +5919,8 @@ internal fun RaftFilePreviewPencilOptions(
             label = stringResource(Res.string.file_preview_toolbar_erase),
             onClick = onSelectEraser,
             enabled = enabled,
-            iconColor = raftFilePreviewEditorToolIconColor(mode == RaftComposerImagePencilMode.Eraser),
+            iconColor =
+                if (mode == RaftComposerImagePencilMode.Eraser) RaftColor.AccentRedArgb else raftArgbHex(raftComposerImageOptionInk()),
             size = RaftIconButtonSize.Lg,
             iconSize = 22.dp,
         )
@@ -5934,7 +5928,7 @@ internal fun RaftFilePreviewPencilOptions(
             modifier =
                 Modifier
                     .size(width = 1.dp, height = 28.dp)
-                    .background(RaftColor.TextMutedGray.copy(alpha = 0.45f))
+                    .background(raftComposerImageOptionMuted().copy(alpha = 0.45f))
         )
         RaftComposerImagePenWidth.entries.forEach { choice ->
             RaftFilePreviewPenWidthChoice(
@@ -5956,7 +5950,7 @@ internal fun RaftFilePreviewPencilOptions(
             modifier =
                 Modifier
                     .size(width = 1.dp, height = 28.dp)
-                    .background(RaftColor.TextMutedGray.copy(alpha = 0.45f))
+                    .background(raftComposerImageOptionMuted().copy(alpha = 0.45f))
         )
         RaftComposerImageEditorPenColors.forEachIndexed { index, color ->
             RaftFilePreviewColorSwatch(
@@ -5998,7 +5992,7 @@ internal fun RaftFilePreviewPenWidthChoice(
                 .semantics { contentDescription = label }
                 .border(
                     width = if (selected) RaftAppStroke.Strong else 0.dp,
-                    color = if (selected) RaftColor.BorderBlack else Color.Transparent,
+                    color = if (selected) RaftTheme.colors.lineStrong else Color.Transparent,
                     shape = CircleShape,
                 ),
         contentAlignment = Alignment.Center,
@@ -6007,7 +6001,7 @@ internal fun RaftFilePreviewPenWidthChoice(
             modifier =
                 Modifier
                     .size(dotSize)
-                    .background(RaftColor.TextBlack, CircleShape)
+                    .background(raftComposerImageOptionInk(), CircleShape)
         )
     }
 }
@@ -6049,7 +6043,7 @@ internal fun RaftFilePreviewColorSwatch(
                     .background(color)
                     .border(
                         width = if (selected) RaftAppStroke.Strong else RaftAppStroke.Thin,
-                        color = RaftColor.BorderBlack,
+                        color = RaftTheme.colors.lineStrong,
                     )
         )
     }
@@ -6156,7 +6150,7 @@ private fun RaftFilePreviewBorderlessIconButton(
     label: String,
     onClick: () -> Unit,
     enabled: Boolean,
-    iconColor: String = RaftColor.TextBlackArgb,
+    iconColor: String = raftArgbHex(raftComposerImageOptionInk()),
     size: RaftIconButtonSize = RaftIconButtonSize.Lg,
     iconSize: androidx.compose.ui.unit.Dp = 22.dp,
     modifier: Modifier = Modifier,
@@ -6173,11 +6167,23 @@ private fun RaftFilePreviewBorderlessIconButton(
         // The undo / redo glyph keeps its 22dp in the 32dp (`Md`, 18dp glyph) box.
         RaftLucideIcon(
             name = icon,
-            color = if (enabled) iconColor else RaftColor.TextMutedGrayArgb,
+            color = if (enabled) iconColor else raftArgbHex(raftComposerImageOptionMuted()),
             modifier = Modifier.requiredSize(iconSize),
         )
     }
 }
+
+/*
+ * The editor's option rows (pen, text colours, crop) draw with the enclosing theme, so the same
+ * rows sit on the phone's bottom bar (the app's appearance) and in the desktop popovers (the
+ * editor's dark chrome). Under the app's own theme these are RaftColor.TextBlack / TextMutedGray.
+ */
+@Composable
+private fun raftComposerImageOptionInk(): Color = RaftTheme.colors.foreground
+
+@Composable
+private fun raftComposerImageOptionMuted(): Color =
+    if (RaftTheme.isDark) RaftTheme.colors.foregroundMuted else build.raft.app.designtokens.RaftUiPalette.neutral500
 
 internal fun raftFilePreviewEditorToolIconColor(selected: Boolean): String =
     if (selected) RaftColor.AccentRedArgb else RaftColor.TextBlackArgb
