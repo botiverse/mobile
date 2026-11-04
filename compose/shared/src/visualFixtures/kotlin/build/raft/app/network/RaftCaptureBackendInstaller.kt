@@ -1,13 +1,14 @@
 package build.raft.app.network
 
-import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.RAFT_AUTH_SESSION_RECORD_KEY
 import build.raft.app.data.RaftAppScopeApiEnvironment
 import build.raft.app.data.RaftSharedAuthSessionKeyValueStoreProvider
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
-import kotlinx.coroutines.runBlocking
+import build.raft.app.data.StoredAuthSession
+import kotlinx.serialization.json.Json
 
 /**
- * PROTOTYPE capture backend (see [RaftCaptureBackend]): a fabricated signed-in session on a
+ * iOS native navigation capture backend (see [RaftCaptureBackend]): a fabricated signed-in session on a
  * capture-only environment (nothing resolves there: realtime stays offline) and the in-process
  * fake server [RaftCaptureFakeServer] as the HTTP executor.
  */
@@ -21,11 +22,22 @@ internal val raftCaptureBackendInstaller: (() -> Unit)? = {
             webUrl = "https://capture.raft.invalid",
         )
     )
-    val store = KeyValueAuthSessionStore(RaftSharedAuthSessionKeyValueStoreProvider.create().store)
-    runBlocking { store.saveSession(RaftCaptureFakeServer.session()) }
+    // The fabricated session is written as the committed session record, synchronously and before
+    // any auth-session store of this process has loaded it (the host installs this at launch), so
+    // no session lock and no runBlocking (#3823): the app reads it as a stored sign-in.
+    RaftSharedAuthSessionKeyValueStoreProvider.create().store.putString(
+        RAFT_AUTH_SESSION_RECORD_KEY,
+        captureSessionJson.encodeToString(StoredAuthSession.serializer(), RaftCaptureFakeServer.session()),
+    )
     RaftCaptureBackend.executorFactory = { RaftCaptureFakeServer.executor }
     RaftCaptureBackend.pageDataProvider = { target -> build.raft.app.raftCaptureScriptPageData(target) }
     // The capture's labels say it is fake data; the environment chip would cover the bar's buttons.
     build.raft.app.setRaftEnvironmentIndicatorHiddenForCapture(true)
     println("RAFT_CAPTURE installed base=${RaftCaptureFakeServer.BaseUrl}")
+}
+
+/** The auth-session store's record encoding (AuthSessionStore.kt authSessionStoreJson). */
+private val captureSessionJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
 }
