@@ -21788,8 +21788,6 @@ private fun ThreadMessagesListContent(
     // Product analytics: the open menu came from a long press (not the reaction "+" chip), so its
     // chosen items are `message_action_selected` with surface long_press.
     var actionMenuFromLongPress by remember(threadInstanceKey) { mutableStateOf(false) }
-    // task #569: long-press on a reaction chip shows who reacted.
-    var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
     var authorDescriptionPopover by remember(threadInstanceKey) {
         mutableStateOf<ThreadAuthorDescriptionPopoverRequest?>(null)
     }
@@ -24328,15 +24326,7 @@ private fun ThreadMessagesListContent(
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
                         onExternalAuthor = onExternalAuthor,
-                        onShowReactionDetails = { reaction, anchor ->
-                            reactionDetails =
-                                ThreadReactionDetailsRequest(
-                                    emoji = reaction.emoji,
-                                    names = reaction.reactorNames,
-                                    count = reaction.count,
-                                    anchor = anchor
-                                )
-                        },
+                        showReactionReactors = true,
                         onShowAuthorDescription = { description, anchor ->
                             authorDescriptionPopover =
                                 ThreadAuthorDescriptionPopoverRequest(
@@ -24741,15 +24731,7 @@ private fun ThreadMessagesListContent(
                                         taskStatusMenuAnchor = anchor
                                     },
                                     onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
-                                    onShowReactionDetails = { reaction, anchor ->
-                                        reactionDetails =
-                                            ThreadReactionDetailsRequest(
-                                                emoji = reaction.emoji,
-                                                names = reaction.reactorNames,
-                                                count = reaction.count,
-                                                anchor = anchor
-                                            )
-                                    },
+                                    showReactionReactors = true,
                                     onShowAuthorDescription = { description, anchor ->
                                         authorDescriptionPopover =
                                             ThreadAuthorDescriptionPopoverRequest(
@@ -25114,12 +25096,6 @@ private fun ThreadMessagesListContent(
             ) {
                 unreadThreadPill(earliest)
             }
-        }
-        reactionDetails?.let { details ->
-            ThreadReactionDetailsTooltip(
-                details = details,
-                onDismiss = { reactionDetails = null }
-            )
         }
         authorDescriptionPopover?.let { request ->
             ThreadAuthorDescriptionPopover(
@@ -28207,7 +28183,8 @@ private class ThreadMessageCardCallbacks(
     val onOpenTask: (String) -> Unit,
     val onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     val onToggleReaction: (String) -> Unit,
-    val onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)?,
+    /** Reaction chips name who reacted (long press / hover). */
+    val showReactionReactors: Boolean,
     val onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit,
     val onOpenAttachment: (String) -> Unit,
     val onDownloadAttachment: (String) -> Unit,
@@ -28273,7 +28250,7 @@ fun ThreadMessageCard(
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     onToggleReaction: (String) -> Unit,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    showReactionReactors: Boolean = false,
     onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {},
@@ -28381,7 +28358,7 @@ fun ThreadMessageCard(
                 onOpenTask = onOpenTask,
                 onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                 onToggleReaction = onToggleReaction,
-                onShowReactionDetails = onShowReactionDetails,
+                showReactionReactors = showReactionReactors,
                 onOpenCommentHost = onOpenCommentHost,
                 onOpenAttachment = onOpenAttachment,
                 onDownloadAttachment = onDownloadAttachment,
@@ -28452,7 +28429,7 @@ private fun ThreadMessageCardContent(
     val onOpenTask = callbacks.onOpenTask
     val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
     val onToggleReaction = callbacks.onToggleReaction
-    val onShowReactionDetails = callbacks.onShowReactionDetails
+    val showReactionReactors = callbacks.showReactionReactors
     val onOpenCommentHost = callbacks.onOpenCommentHost
     val onOpenAttachment = callbacks.onOpenAttachment
     val onDownloadAttachment = callbacks.onDownloadAttachment
@@ -29537,7 +29514,7 @@ private fun ThreadMessageCardContent(
                                             onOpenReplies = { onOpenThread(message.id) },
                                             showReactionAddAction = showReactionAddAction,
                                             onToggleReaction = onToggleReaction,
-                                            onShowReactionDetails = onShowReactionDetails,
+                                            showReactionReactors = showReactionReactors,
                                             onShowQuickReactions =
                                                 if (quickReactionsEnabled) onShowQuickReactions else null
                                         )
@@ -30839,7 +30816,7 @@ private fun ThreadReactionChip(
     reaction: RaftThreadReactionItem,
     interactionIdentity: Any = "reaction:${reaction.emoji}",
     onClick: (() -> Unit)? = null,
-    onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
+    showReactors: Boolean = false
 ) {
     // raft-ui MessageReactionChip (gap 6): the design-system chip draws; the gestures stay here.
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
@@ -30857,44 +30834,61 @@ private fun ThreadReactionChip(
             interactionSource = hoverInteractionSource
         )
     }
-    if (onLongPress != null) {
-        // task #569: tap keeps toggling the reaction; long-press surfaces the
-        // reactor tooltip. Both live on one gesture detector so the long
-        // press cannot fire a toggle. The anchor is reported in root pixels
-        // (same contract as the message long-press menu).
-        val rootAnchor =
-            remember(interactionIdentity) { RaftLiveRootAnchorRef(identity = interactionIdentity) }
+    if (showReactors) {
+        // task #569: tap keeps toggling the reaction; a long press (or a mouse hover) shows who
+        // reacted in raft-ui's reaction tooltip under the chip, as web MessageItem's hover tooltip.
+        // Both live on one gesture detector so the long press cannot fire a toggle.
+        var tooltipOpen by remember(interactionIdentity) { mutableStateOf(false) }
+        val reactors =
+            threadReactionTooltipNames(
+                reaction = reaction,
+                // The session's user id (the action-card host already carries it; no new capture).
+                viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId,
+                youLabel = stringResource(Res.string.thread_reaction_reactor_you)
+            )
         val gestureOwner =
             rememberRaftGestureOwner(
                 surface = "thread-reaction-chip",
                 semanticIdentity = interactionIdentity,
-                callbacks = ThreadReactionChipGestureCallbacks(onClick, onLongPress, rootAnchor)
+                callbacks = ThreadReactionChipGestureCallbacks(onClick) { tooltipOpen = true }
             )
-        Box(
-            modifier = Modifier
-                .raftCaptureLiveRootAnchor(rootAnchor)
-                .raftGesturePointerInput(gestureOwner, onClick != null) { owner ->
-                    var gesture: RaftGestureSession<ThreadReactionChipGestureCallbacks>? = null
-                    detectTapGestures(
-                        onPress = {
-                            gesture = owner.beginGesture()
-                            tryAwaitRelease()
-                        },
-                        onTap = {
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
-                        },
-                        onLongPress = { localOffset ->
-                            (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
-                                callbacks.rootAnchor
-                                    .resolve(RaftPopoverLocalPoint.Exact(localOffset))
-                                    ?.let { anchor -> callbacks.onLongPress?.invoke(anchor) }
-                            }
-                        }
-                    )
+        build.raft.designsystem.components.RaftMessageReactionTooltip(
+            names = reactors.visibleNames,
+            moreLabel =
+                reactors.hiddenCount.takeIf { it > 0 }?.let { hidden ->
+                    stringResource(Res.string.thread_reaction_hidden_more, hidden)
                 },
-            contentAlignment = Alignment.Center
+            open = tooltipOpen,
+            onDismissRequest = { tooltipOpen = false },
+            emptyContent = {
+                // web: the bare emoji when no reactor is known.
+                ThreadQuickReactionGlyph(
+                    threadDisplayReactionEmoji(reaction.emoji),
+                    modifier = Modifier.size(build.raft.designsystem.components.RaftMessageReactionGlyphSize)
+                )
+            }
         ) {
-            chipContent(null)
+            Box(
+                modifier = Modifier
+                    .raftGesturePointerInput(gestureOwner, onClick != null) { owner ->
+                        var gesture: RaftGestureSession<ThreadReactionChipGestureCallbacks>? = null
+                        detectTapGestures(
+                            onPress = {
+                                gesture = owner.beginGesture()
+                                tryAwaitRelease()
+                            },
+                            onTap = {
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick?.invoke()
+                            },
+                            onLongPress = {
+                                (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onLongPress?.invoke()
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                chipContent(null)
+            }
         }
     } else if (onClick != null) {
         // The design-system chip owns the tap (a toggle, with its hover / press overlay).
@@ -30906,37 +30900,8 @@ private fun ThreadReactionChip(
 
 private data class ThreadReactionChipGestureCallbacks(
     val onClick: (() -> Unit)?,
-    val onLongPress: ((RaftPopoverAnchor) -> Unit)?,
-    val rootAnchor: RaftLiveRootAnchorRef
+    val onLongPress: () -> Unit
 )
-
-// task #569: everything the tooltip needs, captured at long-press time.
-internal data class ThreadReactionDetailsRequest(
-    val emoji: String,
-    val names: List<String>,
-    val count: Int,
-    val anchor: RaftPopoverAnchor
-)
-
-// Label formatting for the reactor tooltip: first N names + "+K" for the
-// rest (mobile pendant of the web hover tooltip). Falls back to a bare count
-// when the payload carries no names (older servers).
-internal fun threadReactionDetailsLabel(
-    names: List<String>,
-    count: Int,
-    maxNames: Int = ThreadReactionDetailsMaxNames
-): String {
-    val clean = names.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-    if (clean.isEmpty()) {
-        return if (count == 1) "1 person" else "$count people"
-    }
-    val shown = clean.take(maxNames)
-    val hidden = maxOf(count, clean.size) - shown.size
-    val joined = shown.joinToString(", ")
-    return if (hidden > 0) "$joined +$hidden" else joined
-}
-
-internal const val ThreadReactionDetailsMaxNames = 4
 
 // raft-ui MessageReactionAddButton (gap 6): the design-system chip draws and owns the tap.
 @Composable
@@ -30972,63 +30937,6 @@ private fun ThreadReactionAddChip(
         }
     )
 }
-
-// task #569: who-reacted tooltip, long-press pendant of the web hover
-// tooltip. Reuses the anchored-popover infra (viewport clamping, outside-tap
-// dismiss with the long-press activation window, Back participation).
-@Composable
-private fun ThreadReactionDetailsTooltip(
-    details: ThreadReactionDetailsRequest,
-    onDismiss: () -> Unit
-) {
-    val density = LocalDensity.current
-    val label = threadReactionDetailsLabel(details.names, details.count)
-    val estimatedSize =
-        with(density) {
-            Size(
-                width =
-                    (ThreadReactionDetailsGlyphSize + ThreadReactionDetailsHorizontalPadding * 2 + 10.dp).toPx() +
-                        label.length * ThreadReactionDetailsLabelCharWidth.toPx(),
-                height = ThreadReactionDetailsHeight.toPx()
-            )
-        }
-    RaftAnchoredPopover(
-        anchor = details.anchor,
-        contentSize = estimatedSize,
-        onDismiss = onDismiss,
-        verticalPlacement = RaftFloatingVerticalPlacement.Auto
-    ) {
-        Row(
-            modifier = Modifier
-                .raftLookOverlaySurface()
-                .raftFloatingContentClickTarget()
-                .height(ThreadReactionDetailsHeight)
-                .padding(horizontal = ThreadReactionDetailsHorizontalPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            ThreadQuickReactionGlyph(
-                threadDisplayReactionEmoji(details.emoji),
-                modifier = Modifier.size(ThreadReactionDetailsGlyphSize)
-            )
-            Text(
-                text = label,
-                // raft-ui MessageReaction tooltip: text-footnote font-medium (13/18 500).
-                style = RaftType.Footnote.withRaftFontWeight(FontWeight.Medium),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-private val ThreadReactionDetailsHeight = 28.dp
-private val ThreadReactionDetailsGlyphSize = 15.dp
-private val ThreadReactionDetailsHorizontalPadding = 8.dp
-// Rough per-character width at 12sp bold caption — only used to pre-size the
-// popover for viewport clamping; the row itself wraps its real content.
-private val ThreadReactionDetailsLabelCharWidth = 7.dp
 
 internal data class ThreadAuthorDescriptionPopoverRequest(
     val description: String,
@@ -32699,7 +32607,7 @@ internal fun ThreadMessageFooterMeta(
     onOpenReplies: (() -> Unit)? = null,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    showReactionReactors: Boolean = false,
     /**
      * The "+" beside the reactions opens the quick reaction bar at the chip (web
      * `handleMobileReactionAddClick` opens its quick strip there); null when the message can't be
@@ -32785,10 +32693,7 @@ internal fun ThreadMessageFooterMeta(
                         reaction = reaction,
                         interactionIdentity = "thread_reaction:${message.id}:${reaction.emoji}",
                         onClick = onToggleReaction?.let { callback -> { callback(reaction.emoji) } },
-                        onLongPress =
-                            onShowReactionDetails?.let { callback ->
-                                { anchor -> callback(reaction, anchor) }
-                            }
+                        showReactors = showReactionReactors
                     )
                 }
             }
@@ -34583,7 +34488,7 @@ private fun ThreadOriginCard(
     writeActionsEnabled: Boolean = false,
     onShowQuickReactions: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit = { _, _ -> },
     onOpenTaskStatusMenu: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    showReactionReactors: Boolean = false,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
     onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
@@ -34698,7 +34603,7 @@ private fun ThreadOriginCard(
                                 onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                 onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                                 onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
-                                onShowReactionDetails = onShowReactionDetails,
+                                showReactionReactors = showReactionReactors,
                                 onShowAuthorDescription = onShowAuthorDescription,
                                 showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },

@@ -583,6 +583,8 @@
     <string name="thread_error_action_unavailable">Action is no longer available</string>
     <string name="thread_error_action_unsupported">Action is not supported yet</string>
     <string name="thread_error_update_reaction">Unable to update reaction</string>
+    <string name="thread_reaction_reactor_you">You</string>
+    <string name="thread_reaction_hidden_more">+%1$d more</string>
     <string name="thread_error_comment_source">Comment source unavailable</string>
     <string name="thread_error_member_not_found">No member found for %1$s</string>
     <string name="thread_feedback_member_added">Member added</string>

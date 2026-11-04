@@ -585,6 +585,8 @@
     <string name="thread_error_action_unavailable">このアクションは利用できなくなりました</string>
     <string name="thread_error_action_unsupported">このアクションはまだサポートされていません</string>
     <string name="thread_error_update_reaction">リアクションを更新できませんでした</string>
+    <string name="thread_reaction_reactor_you">あなた</string>
+    <string name="thread_reaction_hidden_more">ほか %1$d 人</string>
     <string name="thread_error_comment_source">コメントソースを利用できません</string>
     <string name="thread_error_member_not_found">%1$s に一致するメンバーが見つかりません</string>
     <string name="thread_feedback_member_added">メンバーを追加しました</string>
