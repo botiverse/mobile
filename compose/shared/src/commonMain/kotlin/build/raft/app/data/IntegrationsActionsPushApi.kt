@@ -55,6 +55,15 @@ internal interface RaftIntegrationsActionsPushApi {
     suspend fun denyIntegrationRequest(requestId: String): HomeNetworkResponse
     suspend fun revokeIntegrationGrant(grantId: String): HomeNetworkResponse
     suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse
+
+    /** `GET /api/integrations/agents/:agentId/events` (`clientId`, `before` optional). */
+    suspend fun agentAppEvents(agentId: MemberId, clientId: String?, before: String?): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
+    /** `GET /api/integrations/agents/:agentId/events/:eventId`. */
+    suspend fun agentAppEvent(agentId: MemberId, eventId: String): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
     suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse
@@ -89,6 +98,16 @@ internal class RaftIntegrationsActionsPushNetworkApi(
 
     override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Visible, "integrations/agents/${agentId.value}")
+
+    override suspend fun agentAppEvents(agentId: MemberId, clientId: String?, before: String?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "integrations/agents/${agentId.value}/events",
+            query = listOfNotNull(clientId?.let { "clientId" to it }, before?.let { "before" to it })
+        )
+
+    override suspend fun agentAppEvent(agentId: MemberId, eventId: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Visible, "integrations/agents/${agentId.value}/events/$eventId")
 
     override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/execute", method = "POST", bodyText = body)
@@ -179,6 +198,30 @@ internal class RaftIntegrationsActionsPushApiClient(
 
     suspend fun agentIntegrations(agentId: MemberId): DataResult<AgentIntegrationsPage> =
         transport.agentIntegrations(agentId).mapAgentIntegrations(agentId)
+
+    /** The events apps sent to an agent, newest first ([AgentAppEventPage.nextCursor]: older ones). */
+    suspend fun agentAppEvents(agentId: MemberId, clientId: String?, before: String?): DataResult<AgentAppEventPage> {
+        val response = transport.agentAppEvents(agentId, clientId, before)
+        if (!response.isSuccessful) return response.agentIntegrationsFailure()
+        return response.mapApiBody("agent_app_events_contract_mismatch", AgentAppEventListDto.serializer()) { wire ->
+            AgentAppEventPage(
+                events = wire.events.map { it.toAgentAppEvent() ?: return@mapApiBody null },
+                nextCursor = wire.nextCursor?.takeIf { it.isNotBlank() }
+            )
+        }
+    }
+
+    /** One event with its payload (app-supplied JSON, shown as inert text). */
+    suspend fun agentAppEvent(agentId: MemberId, eventId: String): DataResult<AgentAppEventDetail> {
+        val response = transport.agentAppEvent(agentId, eventId)
+        if (!response.isSuccessful) return response.agentIntegrationsFailure()
+        return response.mapApiBody("agent_app_event_contract_mismatch", AgentAppEventDetailDto.serializer()) { wire ->
+            AgentAppEventDetail(
+                eventId = wire.id.takeIf { it.isNotBlank() } ?: return@mapApiBody null,
+                payloadText = agentAppEventPayloadJson.encodeToString(JsonElement.serializer(), wire.payload ?: JsonObject(emptyMap()))
+            )
+        }
+    }
 
     suspend fun executeAction(messageId: MessageId, body: String): DataResult<ActionCardResult> =
         transport.executeAction(messageId, body).mapActionCard("action_execute_contract_mismatch")
@@ -410,9 +453,22 @@ private fun HomeNetworkResponse.mapPushCommand(contractCode: String): DataResult
 
 private fun HomeNetworkResponse.mapAgentIntegrations(agentId: MemberId): DataResult<AgentIntegrationsPage> {
     val contractCode = "agent_integrations_contract_mismatch"
-    if (!isSuccessful) {
-        val serverMessage = agentIntegrationsServerErrorTextOrNull()
-        return when (code) {
+    if (!isSuccessful) return agentIntegrationsFailure()
+    return mapApiBody(
+        contractCode,
+        ListSerializer(IntegrationOverviewItemDto.serializer())
+    ) { wire ->
+        AgentIntegrationsPage(
+            agentId = agentId,
+            items = wire.map { it.toAgentAppLoginItem() ?: return@mapApiBody null }
+        )
+    }
+}
+
+/** A non-2xx answer from an `/api/integrations/agents/:agentId…` read: 401 / 403 / the rest. */
+private fun HomeNetworkResponse.agentIntegrationsFailure(): DataResult<Nothing> {
+    val serverMessage = agentIntegrationsServerErrorTextOrNull()
+    return when (code) {
             401 ->
                 DataResult.NoPermission(
                     PermissionBlocker(
@@ -438,16 +494,6 @@ private fun HomeNetworkResponse.mapAgentIntegrations(agentId: MemberId): DataRes
                     )
                 )
         }
-    }
-    return mapApiBody(
-        contractCode,
-        ListSerializer(IntegrationOverviewItemDto.serializer())
-    ) { wire ->
-        AgentIntegrationsPage(
-            agentId = agentId,
-            items = wire.map { it.toAgentAppLoginItem() ?: return@mapApiBody null }
-        )
-    }
 }
 
 /** Exact non-2xx envelope for `GET /api/integrations/agents/:agentId`. */
@@ -519,6 +565,58 @@ private data class ActionCardFormIssueDto(
     val code: String,
     val message: JsonElement? = null,
 )
+
+/** slock shared `AgentAppEventListResponse`. */
+@Serializable
+private data class AgentAppEventListDto(
+    val events: List<AgentAppEventDto> = emptyList(),
+    val nextCursor: String? = null
+)
+
+/** slock shared `AgentAppEventSummary` (the fields the Apps tab shows). */
+@Serializable
+private data class AgentAppEventDto(
+    val id: String = "",
+    val app: AgentAppEventAppDto? = null,
+    val kind: String = "",
+    val summary: String = "",
+    val status: String = "",
+    val createdAt: String = ""
+)
+
+@Serializable
+private data class AgentAppEventAppDto(
+    val clientId: String = "",
+    val name: String = ""
+)
+
+/** slock shared `AgentAppEventDetail`: the summary plus the app's `payload`. */
+@Serializable
+private data class AgentAppEventDetailDto(
+    val id: String = "",
+    val payload: JsonElement? = null
+)
+
+private fun AgentAppEventDto.toAgentAppEvent(): AgentAppEvent? {
+    val app = app ?: return null
+    if (id.isBlank() || app.clientId.isBlank()) return null
+    return AgentAppEvent(
+        id = id,
+        appClientId = app.clientId,
+        appName = app.name,
+        kind = kind,
+        summary = summary,
+        status = AgentAppEventStatus.entries.firstOrNull { it.wireValue == status },
+        createdAt = createdAt
+    )
+}
+
+/** Web `JSON.stringify(payload, null, 2)`. */
+@OptIn(ExperimentalSerializationApi::class)
+private val agentAppEventPayloadJson = Json {
+    prettyPrint = true
+    prettyPrintIndent = "  "
+}
 
 @Serializable
 private data class AgentIntegrationsErrorDto(

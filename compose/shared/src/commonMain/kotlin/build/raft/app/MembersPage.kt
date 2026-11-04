@@ -102,6 +102,7 @@ import build.raft.app.data.AgentSkillPathGroup
 import build.raft.app.data.AgentSkillSummary
 import build.raft.app.data.AgentSkillsSnapshot
 import build.raft.app.data.AgentWorkspaceChildrenSnapshot
+import build.raft.app.data.AgentAppEventPage
 import build.raft.app.data.AgentWorkspaceTreeSnapshot
 import build.raft.app.data.AgentProfileUpdateRequest
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -419,7 +420,7 @@ internal enum class MembersAgentDetailTab(
     Chat("Chat", RaftLucideIconName.Message),
     Reminders("Reminders", RaftLucideIconName.AlarmClock),
     Workspace("Workspace", RaftLucideIconName.FolderOpen),
-    Apps("Apps", RaftLucideIconName.Link2)
+    Apps("Apps", RaftLucideIconName.AppWindow)
 }
 
 @Composable
@@ -4800,6 +4801,12 @@ internal fun MemberDetailPageContent(
                             agentWorkspaceChildrenLoader = { agentId, dirPath ->
                                 provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
                             },
+                            agentAppEventsLoader = { agentId, clientId, before ->
+                                provider.memberRepository.getAgentAppEvents(DataRequestPriority.Visible, agentId, clientId, before)
+                            },
+                            agentAppEventLoader = { agentId, eventId ->
+                                provider.memberRepository.getAgentAppEvent(DataRequestPriority.Visible, agentId, eventId)
+                            },
                             onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
                             onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
                             onReportAgentIssue = agentDetailActions::reportIssue,
@@ -5134,6 +5141,8 @@ private fun MemberDetailVisualSeedContent(
             agentWorkspaceChildrenLoader = { _, _ ->
                 DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
             },
+            // The shared fixture's agent has no app events (web: "No app events yet").
+            agentAppEventsLoader = { _, _, _ -> DataResult.Content(AgentAppEventPage(events = emptyList(), nextCursor = null)) },
             onCopyAgentDiagnostics = {},
             onReportAgentIssue = {
                 DataResult.Content(
@@ -6146,6 +6155,9 @@ private class MembersAgentDetailCallbacks(
     val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction, AgentArchiveWorkspaceChoice) -> DataResult<AgentLifecycleActionResult>)?,
     val agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     val agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
+    /** The Apps tab's App events (web AgentAppEventsSection); null hides nothing, it just loads none. */
+    val agentAppEventsLoader: MembersAgentAppEventsLoader? = null,
+    val agentAppEventLoader: MembersAgentAppEventLoader? = null,
     val onCopyAgentDiagnostics: (String) -> Unit,
     val onCopyAgentIssueReference: (String) -> Unit = onCopyAgentDiagnostics,
     val onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?,
@@ -6260,6 +6272,8 @@ private fun MembersDetailContent(
     val onPickAgentAvatarFile = agentCallbacks.onPickAgentAvatarFile
     val onAgentLifecycleAction = agentCallbacks.onAgentLifecycleAction
     val agentWorkspaceTreeLoader = agentCallbacks.agentWorkspaceTreeLoader
+    val agentAppEventsLoader = agentCallbacks.agentAppEventsLoader
+    val agentAppEventLoader = agentCallbacks.agentAppEventLoader
     val agentWorkspaceChildrenLoader = agentCallbacks.agentWorkspaceChildrenLoader
     val onCopyAgentDiagnostics = agentCallbacks.onCopyAgentDiagnostics
     val onCopyAgentIssueReference = agentCallbacks.onCopyAgentIssueReference
@@ -7077,9 +7091,12 @@ private fun MembersDetailContent(
                                         )
                                     MembersAgentDetailTab.Apps ->
                                         MembersAgentAppsTab(
+                                            agentId = member.id,
                                             detail = detail,
                                             timeContext = timeContext,
                                             onOpenUrl = onOpenUrl,
+                                            appEventsLoader = agentAppEventsLoader,
+                                            appEventLoader = agentAppEventLoader,
                                             // Web AgentAppAccessTab: `px-5`.
                                             modifier = Modifier.padding(horizontal = MembersAgentProfileInset)
                                         )
@@ -12361,15 +12378,38 @@ private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
 
 @Composable
 private fun MembersAgentAppsTab(
+    agentId: MemberId,
     detail: AgentDetailSnapshot?,
     timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit,
+    appEventsLoader: MembersAgentAppEventsLoader?,
+    appEventLoader: MembersAgentAppEventLoader?,
     modifier: Modifier = Modifier
+) {
+    // Web AgentAppAccessTab (`stack-y-6`): the Apps section, then App events.
+    // Not in the app yet: Grant Access (its picker, scopes and MCP connection), MCP App rows,
+    // pending requests and Revoke.
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        MembersAgentAppsSection(detail = detail, timeContext = timeContext, onOpenUrl = onOpenUrl)
+        MembersAgentAppEventsSection(
+            agentId = agentId,
+            loader = appEventsLoader,
+            detailLoader = appEventLoader,
+            timeContext = timeContext
+        )
+    }
+}
+
+@Composable
+private fun MembersAgentAppsSection(
+    detail: AgentDetailSnapshot?,
+    timeContext: RaftTimeContext,
+    onOpenUrl: (String) -> Unit
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     // Web AgentAppAccessTab's Apps section (`stack-y-3`): the eyebrow, its description, then the
-    // apps or the hint. The web's Grant Access form and App events list are not in the app.
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // apps or the hint.
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             MembersDetailSectionTitle(stringResource(Res.string.member_section_connected_apps))
             RaftText(

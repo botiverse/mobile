@@ -969,6 +969,27 @@ class RealMemberRepository(
         return integrationsApiClient.agentIntegrations(agentId).map { it.toSnapshot() }
     }
 
+    override suspend fun getAgentAppEvents(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        clientId: String?,
+        before: String?
+    ): DataResult<AgentAppEventPage> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return integrationsApiClient.agentAppEvents(agentId, clientId, before)
+    }
+
+    override suspend fun getAgentAppEvent(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        eventId: String
+    ): DataResult<AgentAppEventDetail> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank() || eventId.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return integrationsApiClient.agentAppEvent(agentId, eventId)
+    }
+
     override suspend fun startAgent(
         priority: DataRequestPriority,
         agentId: MemberId

@@ -138,7 +138,7 @@ fun RaftTabStrip(
                         // The canvas and seam run edge to edge; the tabs start past the
                         // horizontal safe area (and scroll under it, like any content).
                         .raftSafeAreaHorizontalPadding()
-                        .padding(horizontal = 16.dp, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
+                        .padding(horizontal = RaftTabStripInset, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
                     variant = variant,
                     content = content,
                 )
@@ -148,6 +148,9 @@ fun RaftTabStrip(
         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
     }
 }
+
+/** A [RaftTabStrip]'s side padding (raft-ui ConversationPanelTabs `px-4`), also its reveal inset. */
+private val RaftTabStripInset = 16.dp
 
 /** How far a scrolling tab strip fades at an edge with more tabs past it. */
 private val RaftEdgeFadeWidth = RaftFade.Edge
@@ -236,7 +239,9 @@ fun RaftTab(
     val select = Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
     val target = if (variant == RaftTabsVariant.Default) Modifier.raftTouchTarget(enabled, source, onClick) else Modifier
     val strip = LocalRaftTabStripScroll.current
-    val reveal = if (strip != null) Modifier.raftRevealInStripWhen(selected, strip) else Modifier
+    // raft-ui useTabsRowOverflow: the selected tab is revealed with the row's own padding round
+    // it, so the last tab lands at the strip's end (no fade left over it), not 8dp short.
+    val reveal = if (strip != null) Modifier.raftRevealInStripWhen(selected, strip, room = RaftTabStripInset) else Modifier
     when (variant) {
         RaftTabsVariant.Default -> RaftStickerItem(text, selected, enabled, source, modifier.then(reveal).then(target).then(select), icon = icon)
         RaftTabsVariant.Underline -> RaftUnderlineTab(text, selected, enabled, source, modifier.then(reveal).then(select), icon)

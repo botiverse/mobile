@@ -1583,6 +1583,17 @@
     <string name="member_hint_chat_audit_only">アクティビティ／監査履歴としてここに表示されます。これらの行は意図的に会話への直接リンクにはなっていません。</string>
     <string name="member_hint_no_scheduled_reminders">このエージェントはまだ何もスケジュールしていません。エージェントがスケジュールすると、リマインダーがリアルタイムでここに表示されます。</string>
     <string name="member_hint_connected_apps">このエージェントが利用できる連携アプリです。</string>
+    <string name="member_app_events_title">アプリのイベント</string>
+    <string name="member_app_events_hint">アプリからこのエージェントに送信されたイベントです。有効期限が切れてから 30 日間保持されます。</string>
+    <string name="member_app_events_refresh">更新</string>
+    <string name="member_app_events_all_apps">すべてのアプリ</string>
+    <string name="member_app_events_empty">アプリのイベントはまだありません</string>
+    <string name="member_app_events_load_more">さらに読み込む</string>
+    <string name="member_app_events_load_failed">アプリのイベントを読み込めませんでした</string>
+    <string name="member_app_event_load_failed">イベントを読み込めませんでした</string>
+    <string name="member_app_event_status_delivered">配信済み</string>
+    <string name="member_app_event_status_queued">待機中</string>
+    <string name="member_app_event_status_expired">期限切れ</string>
     <string name="member_error_profile_open">プロフィールを開けませんでした</string>
     <string name="member_notice_member_id_copied">メンバー ID をコピーしました</string>
     <string name="member_notice_diagnostics_copied">エージェント診断情報をコピーしました</string>

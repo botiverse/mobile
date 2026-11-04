@@ -450,6 +450,8 @@ class RaftInteractiveSemanticsTest {
             waitForIdle()
             val right = onNodeWithText("Billing").fetchSemanticsNode().boundsInRoot.right / density.density
             assertTrue(right <= 220f, "the selected tab ends at ${right}dp, inside the 220dp strip")
+            // raft-ui reveals it with the row's 16dp padding: the last tab sits at the strip's end.
+            assertTrue(right <= 204.5f, "the last tab keeps the 16dp end padding (ends at ${right}dp)")
         }
 
     /**
