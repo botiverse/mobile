@@ -29,6 +29,8 @@ internal fun SettingsDetailShell(
     trailingContent: (@Composable () -> Unit)? = null,
     /** In place of the title (and subtitle) column, e.g. a title with its counts beside it. */
     titleContent: (@Composable RowScope.() -> Unit)? = null,
+    // PROTOTYPE (native nav bar): [trailingContent] as bar buttons.
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
     content: @Composable () -> Unit
 ) {
     // The wide Settings detail pane (SettingsWideListDetail): the list beside it is the way back,
@@ -48,7 +50,8 @@ internal fun SettingsDetailShell(
                 { trailingContent() }
             } else {
                 null
-            }
+            },
+            nativeActions = nativeActions,
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()
