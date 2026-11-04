@@ -15,10 +15,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The DM settings drawer (web ChannelOverflowMenu for a DM): the name with its "Direct message"
- * tag, then Preferences (Move to section, Mute for a DM with an App bot, Collapse long messages).
- * On a phone it fills the window: Friday on Pinned in light and dark, and a DM with a person at
- * home in Direct Messages, which has no Mute. Verify / record as [RaftRobolectricScreenshot].
+ * The DM settings (web ChannelOverflowMenu for a DM): the name with its "Direct message" tag,
+ * then Preferences (Move to section, Mute for a DM with an App bot, Collapse long messages). On a
+ * phone they are a pushed page with Back at the start of the head and no × (ThreadSettingsPage.kt):
+ * Friday on Pinned in light and dark, and a DM with a person at home in Direct Messages, which has
+ * no Mute. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -64,7 +65,8 @@ private fun captureDmSettings(
     appearance,
     reportDir = "build/reports/home-screenshots",
     activities = activities,
-    root = { channelSettingsDrawerWindow() },
+    // The wide drawer is its own window; the phone's page is in the activity's.
+    root = { activity -> channelSettingsDrawerWindow() ?: activity.window.decorView },
 ) {
     val pager =
         remember {

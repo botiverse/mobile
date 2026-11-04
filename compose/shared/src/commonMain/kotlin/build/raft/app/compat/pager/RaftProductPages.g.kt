@@ -49,6 +49,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_thread" to { build.raft.app.ComposeThreadPage() },
         "compose_thread_forward_bundle_page" to { build.raft.app.ComposeThreadForwardBundlePage() },
         "compose_thread_members" to { build.raft.app.ComposeThreadMembersPage() },
+        "compose_thread_settings" to { build.raft.app.ComposeThreadSettingsPage() },
         "compose_typography_probe" to { build.raft.app.RaftTypographyProbePage() },
         "router" to { build.raft.app.ComposeRoutePager() },
     )

@@ -126,6 +126,7 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
         AuthenticatedProductRoute.ThreadMembers,
         AuthenticatedProductRoute.ChannelSettings,
+        AuthenticatedProductRoute.ThreadSettings,
         AuthenticatedProductRoute.JointChannelConnections,
         AuthenticatedProductRoute.ThreadForwardBundle,
         // No `drafts` route in the shared page_viewed registry yet.
