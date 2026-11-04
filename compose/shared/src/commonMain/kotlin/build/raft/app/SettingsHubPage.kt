@@ -358,7 +358,16 @@ internal fun SettingsHomeContent(
                 backgroundColor = SettingsHomeHeaderBackground,
                 applyTopSafeArea = applyTopSafeArea,
                 onBack = onBack,
-                contentStartPadding = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftMainTabHeaderStartPadding,
+                // The web page is a list column (raft-ui `listColumnMargin`, 20px at every width),
+                // so its head's margin is 20: Back's arrow box lands on it (the button 9dp in),
+                // the title follows the phone head's 8dp gap; with no Back the title starts on it.
+                contentStartPadding =
+                    if (onBack != null) {
+                        SettingsHomeHeaderMargin - (RaftBackButtonDefaults.Size - RaftBackButtonDefaults.IconSize) / 2
+                    } else {
+                        SettingsHomeHeaderMargin
+                    },
+                contentSpacing = SettingsHomeHeaderGap,
                 titleStyle = RaftMainTabHeaderTitleStyle,
                 nativeOnTitleClick = onHeaderClick,
             )
@@ -384,6 +393,12 @@ internal fun SettingsHomeContent(
 /** The Settings home head's fill: the canvas, like every Settings page head (web PanelHeader). */
 internal val SettingsHomeHeaderBackground: Color
     get() = RaftColor.Canvas
+
+/** The web Settings list column's margin (raft-ui `listColumnMargin`), its head's too. */
+private val SettingsHomeHeaderMargin = 20.dp
+
+/** raft-ui panel head on a phone: `max-md:gap-2`. */
+private val SettingsHomeHeaderGap = 8.dp
 
 private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
     RaftTabItemPayload(
