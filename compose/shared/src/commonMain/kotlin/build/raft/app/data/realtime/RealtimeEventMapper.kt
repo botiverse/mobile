@@ -83,6 +83,7 @@ import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
+import build.raft.app.model.UserProfileUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.SyncResumeResponse
@@ -347,6 +348,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ServerAppearanceUpdatedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
                     ?.let { ServerAppearanceUpdated(ServerId(it.serverId), it.theme, it.themeDecor) }
+            RealtimeSocketEvents.UserProfileUpdated ->
+                decodeOrNull(UserProfileUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ServerFeaturesChanged ->
                 decodeOrNull(ServerFeaturesChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -910,6 +913,30 @@ private data class ServerAppearanceUpdatedDto(
     val theme: String? = null,
     val themeDecor: Boolean? = null,
 )
+
+/** `user:profile-updated` (botiverse/slock d311e6f0f9 `userProfileUpdatedEventSchema`, a strict object). */
+@Serializable
+private data class UserProfileUpdatedDto(
+    val serverId: String,
+    val userId: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val gravatarHash: String,
+) {
+    fun toDomain(): UserProfileUpdated? {
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val user = userId.trim().takeIf { it.isNotEmpty() } ?: return null
+        return UserProfileUpdated(
+            serverId = ServerId(server),
+            userId = MemberId(user),
+            name = name,
+            displayName = displayName,
+            avatarUrl = avatarUrl,
+            gravatarHash = gravatarHash,
+        )
+    }
+}
 
 @Serializable
 private data class ServerPlanUpdatedDto(

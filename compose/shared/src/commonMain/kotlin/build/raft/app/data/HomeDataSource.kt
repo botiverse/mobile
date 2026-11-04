@@ -348,6 +348,9 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ActivityChanged -> false
         // The member's theme lives on the stored server (process realtime owner); Home's rows do not change.
         is build.raft.app.model.ServerAppearanceUpdated -> false
+        // A person's new name / avatar is patched into the member directory (and the signed-in user's
+        // own record) in place; Home rows read their faces and names from there, so no reload.
+        is build.raft.app.model.UserProfileUpdated -> false
         // Notification levels, account settings and retractions change no Home row; the notification
         // level store and the platform tray handle them.
         is build.raft.app.model.NotificationLevelChanged,

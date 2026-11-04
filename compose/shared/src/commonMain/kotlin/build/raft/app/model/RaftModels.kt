@@ -1129,6 +1129,23 @@ data class ServerAppearanceUpdated(
 ) : RealtimeEvent
 
 /**
+ * `user:profile-updated` (botiverse/slock d311e6f0f9 #12688, `packages/shared/src/actorResolveContract.ts`
+ * `userProfileUpdatedEventSchema`, sent by `services/userProfileEvents.ts`): the person [userId]
+ * changed their name or avatar. Exactly the public profile a server's member list shows (never
+ * email), sent per server to the viewers who may see them in [serverId]'s member list. Clients
+ * patch that one member in place; the member list is not read again.
+ */
+@Serializable
+data class UserProfileUpdated(
+    val serverId: ServerId,
+    val userId: MemberId,
+    val name: String,
+    val displayName: String?,
+    val avatarUrl: String?,
+    val gravatarHash: String,
+) : RealtimeEvent
+
+/**
  * `server:features-changed` (botiverse/slock `packages/shared/src/featuresChanged.ts`
  * `ServerFeaturesChangedEvent`, sent by `services/featureFlagChangeNotifier.ts`): this Server's
  * feature flags may have changed. A refetch signal, not values: [keys] is only a hint (never

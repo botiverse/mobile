@@ -16778,6 +16778,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is ServerFeaturesChanged -> "server_features_changed"
         is ActivityChanged -> "activity_changed"
         is ServerAppearanceUpdated -> "appearance_updated"
+        is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
         is ComputerRestartDone -> "computer_restart_done"
         is AgentCreated -> "agent_created"
         is SyncResumeResponse -> "sync_resume"
@@ -16817,6 +16818,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is ServerDeleted,
         is ServerPlanUpdated,
         is ServerAppearanceUpdated,
+        is build.raft.app.model.UserProfileUpdated,
         is AgentCreated -> "realtime_membership_apply"
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
@@ -16967,6 +16969,7 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerFeaturesChanged -> serverId
         is ActivityChanged -> serverId
         is ServerAppearanceUpdated -> serverId
+        is build.raft.app.model.UserProfileUpdated -> serverId
         else -> null
     }
 

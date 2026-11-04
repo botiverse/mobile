@@ -95,6 +95,7 @@ object RealtimeSocketEvents {
     const val ServerPlanUpdated = GeneratedRealtimeContract.SocketEvent.ServerPlanUpdated
     const val ServerFeaturesChanged = GeneratedRealtimeContract.SocketEvent.ServerFeaturesChanged
     const val AppearanceUpdated = GeneratedRealtimeContract.SocketEvent.AppearanceUpdated
+    const val UserProfileUpdated = GeneratedRealtimeContract.SocketEvent.UserProfileUpdated
     const val ActivityChanged = GeneratedRealtimeContract.SocketEvent.ActivityChanged
     const val AnnouncementNew = GeneratedRealtimeContract.SocketEvent.AnnouncementNew
     const val ReminderFired = GeneratedRealtimeContract.SocketEvent.ReminderFired

@@ -958,6 +958,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is ServerFeaturesChanged -> "server_features_changed"
     is ActivityChanged -> "activity_changed"
     is ServerAppearanceUpdated -> "appearance_updated"
+    is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
     is ComputerRestartDone -> "computer_restart_done"
     is ServerNotificationPreferencesChanged -> "server_notification_prefs_updated"
     is AgentCreated -> "agent_created"

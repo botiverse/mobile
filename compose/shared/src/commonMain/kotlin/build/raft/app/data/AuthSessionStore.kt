@@ -1620,3 +1620,31 @@ private fun StoredAuthUser.accountServerSelectionKey(): String? {
         }
     }.joinToString(separator = "")
 }
+
+/**
+ * Applies an accepted `user:profile-updated` (botiverse/slock #12688) to the stored user when it names
+ * the account the realtime grant belongs to ([principalId]): its name, display name and avatar follow a
+ * change made on another device or tab, as web patches its signed-in user. Writes only on change.
+ * Returns whether the stored user changed.
+ */
+internal suspend fun RaftAuthSessionStore.applyRealtimeUserProfileUpdated(
+    principalId: String,
+    event: build.raft.app.model.UserProfileUpdated,
+): Boolean {
+    val userId = event.userId.value.trim()
+    if (userId.isEmpty() || principalId.trim() != userId) return false
+    fun StoredAuthUser.patched(): StoredAuthUser =
+        copy(name = event.name, displayName = event.displayName, avatarUrl = event.avatarUrl)
+    // The same profile (this device's own edit, already saved) writes nothing.
+    val stored = readSession()?.user ?: return false
+    if (stored.id != userId || stored.patched() == stored) return false
+    var changed = false
+    updateMetadata(expectedAccountId = userId) { latest ->
+        if (latest.user.id != userId) return@updateMetadata latest
+        val next = latest.user.patched()
+        if (next == latest.user) return@updateMetadata latest
+        changed = true
+        latest.copy(user = next)
+    }
+    return changed
+}
