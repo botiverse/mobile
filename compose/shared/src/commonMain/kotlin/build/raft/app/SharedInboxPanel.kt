@@ -611,6 +611,9 @@ internal fun SharedHomeActivityScreen(
     CompositionLocalProvider(
         LocalActivityAvatarSource provides activityAvatarSource,
         LocalRaftMemberAppBotResolver provides activityAppBotResolver,
+        // An Artifact row opens the in-app viewer from the Activity tab's child page, whose own
+        // page data has no shell scope (RaftArtifactViewerPage.kt).
+        LocalRaftArtifactOpenStoreScope provides storeScope,
     ) {
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
