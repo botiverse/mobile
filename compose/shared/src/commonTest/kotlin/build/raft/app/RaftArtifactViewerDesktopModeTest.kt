@@ -16,17 +16,24 @@ class RaftArtifactViewerDesktopModeTest {
 
     @Test
     fun offeredOnTouchScreensNarrowerThanADesktop() {
-        assertTrue(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 390f))
+        assertTrue(raftArtifactViewerOffersDesktopMode(viaViewportMeta = true, finePointer = false, windowWidthDp = 390f))
         // A tablet, either way round, is still narrower than the desktop width.
-        assertTrue(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 1024f))
-        assertTrue(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = RaftFilePreviewDesktopViewportWidth - 1f))
+        assertTrue(raftArtifactViewerOffersDesktopMode(viaViewportMeta = true, finePointer = false, windowWidthDp = 1024f))
+        assertTrue(raftArtifactViewerOffersDesktopMode(viaViewportMeta = true, finePointer = false, windowWidthDp = RaftFilePreviewDesktopViewportWidth - 1f))
         // Already as wide as the desktop layout: nothing to widen.
-        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = RaftFilePreviewDesktopViewportWidth.toFloat()))
-        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 1366f))
+        assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = true, finePointer = false, windowWidthDp = RaftFilePreviewDesktopViewportWidth.toFloat()))
+        assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = true, finePointer = false, windowWidthDp = 1366f))
         // The Compose app (mouse and keyboard) is a desktop at any window width.
-        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = true, windowWidthDp = 390f))
+        assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = true, finePointer = true, windowWidthDp = 390f))
         // Not measured yet.
-        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 0f))
+        assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = true, finePointer = false, windowWidthDp = 0f))
+    }
+
+    @Test
+    fun notOfferedWhereTheHostCannotWidenThroughTheViewportMeta() {
+        // iOS (pageZoom path): a blank ~0.3x strip on device (1.19.2 TestFlight), so no menu item.
+        assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = false, finePointer = false, windowWidthDp = 390f))
+        assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = false, finePointer = false, windowWidthDp = 1024f))
     }
 
     @Test
