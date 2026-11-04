@@ -1,6 +1,7 @@
 package build.raft.app.nav
 
 import build.raft.app.CHANNEL_SETTINGS_PAGE
+import build.raft.app.THREAD_SETTINGS_PAGE
 import build.raft.app.HOME_DRAFTS_PAGE
 import build.raft.app.HOME_SEARCH_PAGE
 import build.raft.app.JOINT_CHANNEL_CONNECTIONS_PAGE
@@ -152,6 +153,7 @@ class RaftStackPageAllowlistTest {
                 THREAD_PAGE, // channel, DM, thread, task conversation; its Files tab is the files list
                 THREAD_MEMBERS_PAGE,
                 CHANNEL_SETTINGS_PAGE,
+                THREAD_SETTINGS_PAGE, // a phone's channel / DM settings
                 JOINT_CHANNEL_CONNECTIONS_PAGE,
                 THREAD_FORWARD_BUNDLE_PAGE,
                 RAFT_FILE_PREVIEW_PAGE, // preview or file detail

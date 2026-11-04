@@ -6233,13 +6233,14 @@ private fun ThreadReactionAtlasImagePreview() {
  * off, then an owner's actions: Make Private, Archive, Leave, Stop All Agents, Delete.
  */
 @Composable
-internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
+internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false, asPage: Boolean = rememberThreadSettingsOpensAsPage()) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
             subtitle = stringResource(Res.string.channel_description_design),
             panel = channelSettingsPanelVisualPanel(pinned),
-            onDismiss = {}
+            onDismiss = {},
+            asPage = asPage,
         )
     }
 }
@@ -6315,7 +6316,12 @@ internal fun channelSettingsPanelVisualPanel(pinned: Boolean = false, serverId: 
  * does not let you mute: no Mute row (web `canToggleActivityMute`).
  */
 @Composable
-internal fun DirectMessageSettingsPanelVisualScreen(pinned: Boolean = true, mutable: Boolean = true) {
+internal fun DirectMessageSettingsPanelVisualScreen(
+    pinned: Boolean = true,
+    mutable: Boolean = true,
+    // A phone shows the page, a wide window the drawer, as the conversation opens them.
+    asPage: Boolean = rememberThreadSettingsOpensAsPage(),
+) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadDirectMessageSettingsDrawer(
             name = if (mutable) "Friday" else "Alice Chen",
@@ -6348,6 +6354,7 @@ internal fun DirectMessageSettingsPanelVisualScreen(pinned: Boolean = true, muta
             onToggleActivityMute = {},
             onMoveSection = {},
             onCreateSection = { _, _ -> },
+            asPage = asPage,
         )
     }
 }
@@ -12720,6 +12727,51 @@ private fun SharedThreadRouteContentContent(
             }
         val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(false) } }
         val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(true) } }
+        // What the settings drawer (and the phone's settings page) do beyond the members strip and
+        // the preferences: Info with the Slack pick, Guest access and every action through the
+        // settings page's store, then what follows them. [onLeave] leaves the conversation after
+        // Leave, Delete, Disconnect or Archive.
+        fun completeChannelSettingsPanel(
+            panel: ThreadChannelSettingsPanel,
+            homeContent: SharedHomeContentState,
+            onLeave: () -> Unit,
+        ): ThreadChannelSettingsPanel {
+            val serverId = threadMembersServerId
+            val channelId = threadMembersChannelId
+            val homeServer = (homeContent as? SharedHomeContentState.Content)?.snapshot?.server
+            val routeOwner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
+            return panel.copy(
+                // The settings page's store: Info with the Slack pick, Guest access and every action.
+                storeFactory =
+                    if (serverId != null && channelId != null && routeOwner != null && routeOwner.serverId == serverId.value) {
+                        { scope ->
+                            createChannelSettingsStore(ChannelSettingsRoute(serverId, channelId), routeOwner, sharedStores, storeScope, scope) {
+                                bridge.log("channel_settings_store drawer $it")
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                canStopAllAgents = panel.channel?.let { channelSettingsCanStopAllAgents(it, homeServer?.role) } == true,
+                agentControlsApi = RaftAgentControlsApi(sharedStores.networkClient(storeScope)),
+                hideMembersStrip =
+                    channelSettingsHidesMembersStrip(panel.channel, homeServer?.role, homeServer?.hideHumansFromMembers == true),
+                onProfileSaved = { name, description ->
+                    channelId?.let { id ->
+                        threadViewModel.dispatch(SharedThreadIntent.ApplyChannelProfile(id.value, name, description))
+                        sharedHomeStore?.dispatch(SharedHomeIntent.ChannelProfileUpdated(channelId = id, name = name, description = description))
+                    }
+                },
+                onChannelChanged = { sharedHomeStore?.dispatch(SharedHomeIntent.Refresh) },
+                onChannelClosed = { action, accessLost ->
+                    if (accessLost) channelId?.let { sharedStores.publishChannelAccessLost(storeScope, it) }
+                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                    // Leaving, deleting or archiving takes the person out of the channel (the old drawer did too).
+                    if (accessLost || action == ChannelSettingsAction.Archive) onLeave()
+                },
+                onActionFailed = { message -> bridge.toast(message) },
+            )
+        }
         // The settings drawer beyond the name form and actions (web ChannelOverflowMenu): the
         // members strip, Move to section, Notifications and Collapse long messages.
         val channelSettingsPanel =
@@ -12735,43 +12787,78 @@ private fun SharedThreadRouteContentContent(
                 writeActionsEnabled = renderSlice.writeActionsEnabled,
                 onHomeIntent = { intent -> sharedHomeStore?.dispatch(intent) },
                 directMessage = renderedThread.surfaceKind == RaftThreadSurfaceKind.DirectMessage,
-            )?.let { panel ->
-                val serverId = threadMembersServerId
-                val channelId = threadMembersChannelId
-                val homeServer = (sharedHomeState.content as? SharedHomeContentState.Content)?.snapshot?.server
-                val routeOwner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
-                panel.copy(
-                    // The settings page's store: Info with the Slack pick, Guest access and every action.
-                    storeFactory =
-                        if (serverId != null && channelId != null && routeOwner != null && routeOwner.serverId == serverId.value) {
-                            { scope ->
-                                createChannelSettingsStore(ChannelSettingsRoute(serverId, channelId), routeOwner, sharedStores, storeScope, scope) {
-                                    bridge.log("channel_settings_store drawer $it")
-                                }
-                            }
-                        } else {
-                            null
-                        },
-                    canStopAllAgents = panel.channel?.let { channelSettingsCanStopAllAgents(it, homeServer?.role) } == true,
-                    agentControlsApi = RaftAgentControlsApi(sharedStores.networkClient(storeScope)),
-                    hideMembersStrip =
-                        channelSettingsHidesMembersStrip(panel.channel, homeServer?.role, homeServer?.hideHumansFromMembers == true),
-                    onProfileSaved = { name, description ->
-                        channelId?.let { id ->
-                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelProfile(id.value, name, description))
-                            sharedHomeStore?.dispatch(SharedHomeIntent.ChannelProfileUpdated(channelId = id, name = name, description = description))
-                        }
-                    },
-                    onChannelChanged = { sharedHomeStore?.dispatch(SharedHomeIntent.Refresh) },
-                    onChannelClosed = { action, accessLost ->
-                        if (accessLost) channelId?.let { sharedStores.publishChannelAccessLost(storeScope, it) }
-                        sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
-                        // Leaving, deleting or archiving takes the person out of the channel (the old drawer did too).
-                        if (accessLost || action == ChannelSettingsAction.Archive) onBack()
-                    },
-                    onActionFailed = { message -> bridge.toast(message) },
-                )
+            )?.let { panel -> completeChannelSettingsPanel(panel, sharedHomeState.content, onLeave = onBack) }
+        // A phone's settings page (ThreadSettingsPage.kt) reads this conversation through its link:
+        // the same stores and callbacks as the drawer above, as live sources.
+        val settingsPageLinkKey = "thread-settings:$threadInstanceKey"
+        val settingsPageLink = remember(settingsPageLinkKey) { ThreadSettingsPageLink() }
+        DisposableEffect(settingsPageLinkKey, settingsPageLink) {
+            ThreadSettingsPageLinks.register(settingsPageLinkKey, settingsPageLink)
+            onDispose { ThreadSettingsPageLinks.unregister(settingsPageLinkKey, settingsPageLink) }
+        }
+        // Leave, Delete, Disconnect or Archive on the page: the conversation goes once it is back on screen.
+        var leaveAfterSettingsPage by remember(settingsPageLinkKey) { mutableStateOf(false) }
+        LaunchedEffect(leaveAfterSettingsPage, active) {
+            if (leaveAfterSettingsPage && active) {
+                leaveAfterSettingsPage = false
+                onBack()
             }
+        }
+        val settingsPageMembers =
+            remember(serverMembersStore, threadMembersServerId, threadMembersChannelId) {
+                if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+                    serverMembersStore.channelMemberSliceFlow(serverId = threadMembersServerId, channelId = threadMembersChannelId)
+                } else {
+                    null
+                }
+            }
+        val settingsPageRenderSlices = remember(threadViewModel) { threadViewModel.renderSliceFlow() }
+        val settingsPageSources =
+            ThreadSettingsPageSources(
+                directMessage = renderedThread.surfaceKind == RaftThreadSurfaceKind.DirectMessage,
+                title = headerDisplayModel.title,
+                channelKind = headerDisplayModel.channelKind,
+                subtitle = headerDisplayModel.subtitle,
+                renderSlices = settingsPageRenderSlices,
+                initialRenderSlice = renderSlice,
+                homeState = sharedHomeStateFlow,
+                hasHomeStore = sharedHomeStore != null,
+                onHomeIntent = { intent -> sharedHomeStore?.dispatch(intent) },
+                projections = directoryConversationProjectionFlow,
+                initialProjections = directoryConversationProjections,
+                selectProjection = { projections ->
+                    conversationDirectoryLookupIds.firstNotNullOfOrNull { id ->
+                        projections[id]?.takeIf { projection -> headerProjectionInput.acceptsForDisplay(projection) }
+                    }
+                },
+                serverId = threadMembersServerId,
+                channelId = threadMembersChannelId,
+                members = settingsPageMembers ?: MutableStateFlow(threadChannelMembersSlice),
+                initialMembers = threadChannelMembersSlice,
+                agentStatusResolver = agentStatusResolver,
+                collapseServerId = currentSession?.currentServerId,
+                collapseConversationId = payload.longMessageCollapseConversationId(),
+                completePanel = { panel, homeContent, onLeave -> completeChannelSettingsPanel(panel, homeContent, onLeave) },
+                onOpenMembers = { add ->
+                    val serverId = threadMembersServerId
+                    val channelId = threadMembersChannelId
+                    if (serverId != null && channelId != null) onOpenMembersPager(renderedThread, serverId, channelId, storeScope, add)
+                },
+                onLeaveConversation = { leaveAfterSettingsPage = true },
+            )
+        SideEffect { settingsPageLink.sources = settingsPageSources }
+        val openSettingsPage: () -> Boolean = {
+            val serverId = threadMembersServerId
+            val channelId = threadMembersChannelId
+            serverId != null && channelId != null &&
+                pager.openRaftPage(
+                    pageName = THREAD_SETTINGS_PAGE,
+                    pageData = threadSettingsPageData(settingsPageLinkKey, serverId, channelId),
+                    storeScopeOverride = storeScope,
+                    authenticatedRouteAuthorityRequired = true,
+                    onMissingScope = { bridge.logWarn("thread_settings_page_open_skip reason=missing_scope") },
+                )
+        }
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
@@ -12842,6 +12929,7 @@ private fun SharedThreadRouteContentContent(
             onSuggestionDemandChanged = { composerSuggestionDemand = it },
             activityMuteState = activityMuteState?.takeIf { renderSlice.writeActionsEnabled },
             activityMutedIndicatorVisible = activityMutedIndicatorVisible,
+            onOpenSettingsPage = openSettingsPage,
             onToggleActivityMute =
                 activityMuteState?.takeIf { renderSlice.writeActionsEnabled }?.let { muteState ->
                     {
@@ -16208,6 +16296,7 @@ private class ThreadPageContentCallbacks(
     val onSelectedTabChanged: (RaftThreadTab) -> Unit,
     val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     val onToggleActivityMute: (() -> Unit)?,
+    val onOpenSettingsPage: (() -> Boolean)?,
     val onOpenTaskSummary: (TaskSummary, String) -> Unit,
     val onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     val onFilesAuthRequired: (String?) -> Unit,
@@ -16292,6 +16381,8 @@ fun ThreadPageContent(
     activityMuteState: ThreadActivityMuteUiState? = null,
     activityMutedIndicatorVisible: Boolean = false,
     onToggleActivityMute: (() -> Unit)? = null,
+    // A phone: opens the settings as a pushed page; false (or null) keeps the drawer.
+    onOpenSettingsPage: (() -> Boolean)? = null,
     conversationPinState: ThreadConversationPinUiState? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
@@ -16429,6 +16520,7 @@ fun ThreadPageContent(
                 onSelectedTabChanged = onSelectedTabChanged,
                 onSuggestionDemandChanged = onSuggestionDemandChanged,
                 onToggleActivityMute = onToggleActivityMute,
+                onOpenSettingsPage = onOpenSettingsPage,
                 onOpenTaskSummary = onOpenTaskSummary,
                 onTasksIntent = onTasksIntent,
                 onFilesAuthRequired = onFilesAuthRequired,
@@ -16537,6 +16629,7 @@ private fun ThreadPageContentContent(
     val activityMuteState = data.activityMuteState
     val activityMutedIndicatorVisible = data.activityMutedIndicatorVisible
     val onToggleActivityMute = callbacks.onToggleActivityMute
+    val onOpenSettingsPage = callbacks.onOpenSettingsPage
     val conversationPinState = data.conversationPinState
     val forwardServerId = data.forwardServerId
     val forwardTargetRepository = data.forwardTargetRepository
@@ -16674,6 +16767,8 @@ private fun ThreadPageContentContent(
         onTasksIntent(SharedTasksRouteIntent.Start)
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // A phone opens the settings as a pushed page (ThreadSettingsPage.kt); a wide window as the drawer.
+    val settingsOpensAsPage = rememberThreadSettingsOpensAsPage()
     LaunchedEffect(channelProfileUpdateStatus, activeModal) {
         if (channelProfileUpdateStatus == ChannelProfileUpdateStatus.Succeeded) {
             // web inline Save: the drawer stays open and Save reads "Changes saved" for a moment.
@@ -17554,7 +17649,8 @@ private fun ThreadPageContentContent(
                     onShowSettings = {
                         if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
                             onThreadEvent("openChannelSettings", null, null, null)
-                        } else {
+                        } else if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) {
+                            // A wide window, or a page that could not open: the drawer.
                             activeModal = "settings"
                         }
                     },
@@ -37974,8 +38070,11 @@ internal fun ThreadDirectMessageSettingsDrawer(
     onToggleActivityMute: (() -> Unit)?,
     onMoveSection: (List<ChannelSectionMove>) -> Unit,
     onCreateSection: (name: String, emoji: String?) -> Unit,
+    // A phone: a pushed page with Back in place of the drawer's × (ThreadSettingsPage.kt).
+    asPage: Boolean = false,
 ) {
-    RaftUnifiedSideDrawer(
+    ThreadSettingsSurface(
+        asPage = asPage,
         title = name,
         titleTrailing = threadSettingsDirectMessageTag(),
         closeLabel = stringResource(Res.string.thread_dm_settings_close),
@@ -38050,6 +38149,8 @@ internal fun ThreadSettingsModal(
     onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onClearUpdateStatus: () -> Unit = {},
     onToggleActivityMute: (() -> Unit)? = null,
+    // A phone: a pushed page with Back in place of the drawer's × (ThreadSettingsPage.kt).
+    asPage: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val store = remember(panel.storeFactory != null) { panel.storeFactory?.invoke(scope) }
@@ -38141,7 +38242,8 @@ internal fun ThreadSettingsModal(
     // The drawer fills a phone; past its max width it is a panel beside the page.
     val wideWindow =
         with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } > RaftSideDrawerDefaults.MaxWidth
-    RaftUnifiedSideDrawer(
+    ThreadSettingsSurface(
+        asPage = asPage,
         title =
             if (wideWindow) {
                 "#$channelName"

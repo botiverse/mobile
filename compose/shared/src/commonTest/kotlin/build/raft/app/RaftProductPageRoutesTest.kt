@@ -129,6 +129,7 @@ class RaftProductPageRoutesTest {
         listOf(
             AuthenticatedProductRoute.ThreadMembers,
             AuthenticatedProductRoute.ChannelSettings,
+            AuthenticatedProductRoute.ThreadSettings,
             AuthenticatedProductRoute.ThreadForwardBundle,
             AuthenticatedProductRoute.FilePreview,
         ).forEach { assertNull(page(it), it.name) }

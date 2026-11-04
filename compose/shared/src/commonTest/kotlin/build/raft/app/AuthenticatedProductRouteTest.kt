@@ -12,6 +12,8 @@ class AuthenticatedProductRouteTest {
                 THREAD_PAGE,
                 THREAD_MEMBERS_PAGE,
                 CHANNEL_SETTINGS_PAGE,
+                // A phone's channel / DM settings, pushed over the conversation.
+                THREAD_SETTINGS_PAGE,
                 JOINT_CHANNEL_CONNECTIONS_PAGE,
                 THREAD_FORWARD_BUNDLE_PAGE,
                 HOME_SEARCH_PAGE,

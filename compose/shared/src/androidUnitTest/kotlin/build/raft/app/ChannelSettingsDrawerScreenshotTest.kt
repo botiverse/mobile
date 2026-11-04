@@ -16,10 +16,11 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
 
 /**
- * The channel settings drawer opened from a conversation (web ChannelOverflowMenu settings
- * drawer), the #design fixture of `components.channel.settings.panel`: the members strip, Info
- * with its own Save, Preferences (Move to section, Notifications, Collapse long messages) and
- * Actions, on a phone in light and dark. Tall enough to show the whole body. Reports land in
+ * The channel settings opened from a conversation (web ChannelOverflowMenu settings drawer), the
+ * #design fixture of `components.channel.settings.panel`: the members strip, Info with its own
+ * Save, Preferences (Move to section, Notifications, Collapse long messages) and Actions, on a
+ * phone in light and dark. On a phone they are a pushed page: Back at the start of the head, no
+ * × (ThreadSettingsPage.kt). Tall enough to show the whole body. Reports land in
  * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -38,8 +39,9 @@ class ChannelSettingsDrawerScreenshotTest {
     @Test
     fun channelSettingsDrawerPinnedLight() = capture("channel.settings.drawer.pinned", RaftAppAppearance.Light, pinned = true)
 
+    // A page in the activity's own window, not the drawer's.
     private fun capture(name: String, appearance: RaftAppAppearance, pinned: Boolean = false) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities, root = { channelSettingsDrawerWindow() }) {
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
