@@ -241,8 +241,8 @@ class ThreadMessageMenuParityTest {
     fun theClassicMenuWidensForTheAddReactionSlot() {
         val withoutAdd = threadMessageMenuWidthDp(showReactionActions = true)
         val withAdd = threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true)
-        // One more 28dp button and its 4dp gap, so the quick emojis are not squeezed or clipped.
-        assertEquals(withoutAdd + 32f, withAdd)
+        // One more 36dp button and its 2dp gap, so the quick emojis are not squeezed or clipped.
+        assertEquals(withoutAdd + 38f, withAdd)
         assertEquals(threadMessageMenuWidthDp(showReactionActions = false), threadMessageMenuWidthDp(false, showAddReactionAction = true))
     }
 

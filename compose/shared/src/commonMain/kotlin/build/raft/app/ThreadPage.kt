@@ -586,6 +586,9 @@ import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 import kotlin.math.ceil
 import kotlin.random.Random
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.offsetAt
 import kotlin.time.TimeMark
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -25064,6 +25067,7 @@ private fun ThreadMessagesListContent(
                                     onThreadEvent("downloadAttachment", null, attachmentId, null)
                                 }
                             },
+                        timeContext = LocalRaftTimeContextProvider.current?.current,
                         diagnosticsLogger = diagnosticsLogger
                     )
                 }
@@ -32605,15 +32609,19 @@ internal data class ThreadMessageMenuAction(
 
 // Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
 // popup, 36dp `min-h-9` rows with 16dp icons (MenuItem forces `size-4` in `foreground-muted`
-// whatever size a caller passes; raft-design iconography.md: menus are 16px), and a `h-9 gap-1 px-2` quick-reaction
-// row of seven 28dp (`size-7`) buttons -- 7 * 28 + 6 * 4 + 2 * 8 = 236dp, which with
-// the popup's `p-1.5` makes the menu 248dp wide whenever the reaction row shows.
+// whatever size a caller passes; raft-design iconography.md: menus are 16px), and raft-ui's
+// `MessageReactionQuickRow` (`gap-0.5 px-0.75`) of 36dp (`size-9`) buttons with 22px drawings
+// -- with Add Reaction 8 * 36 + 7 * 2 + 2 * 3 = 308dp, which sets the menu's width (web
+// `MESSAGE_CONTEXT_MENU_WIDTH`), and so how far left of the screen edge it opens.
 private val ThreadMessageMenuMinWidth = 240.dp
 private val ThreadMessageMenuRowHeight = 36.dp
 private val ThreadMessageMenuReactionRowHeight = 36.dp
-private val ThreadMessageMenuReactionButtonSize = 28.dp
-private val ThreadMessageMenuReactionGap = 4.dp
-private val ThreadMessageMenuReactionPaddingHorizontal = 8.dp
+private val ThreadMessageMenuReactionButtonSize = 36.dp
+private val ThreadMessageMenuReactionGlyphSize = 22.dp
+private val ThreadMessageMenuReactionGap = 2.dp
+private val ThreadMessageMenuReactionPaddingHorizontal = 3.dp
+// raft-ui `ContextMenuLabel` (`pt-2 pb-1`, caption 16 line): the message's sent-at date.
+private val ThreadMessageMenuSentAtLabelHeight = 28.dp
 // Web places a touch context menu's top-left corner at the press point
 // (`placeTouchMessageContextMenu`), clamped 8px inside the viewport.
 private val ThreadMessageMenuViewportGap = 8.dp
@@ -32634,7 +32642,8 @@ internal fun threadMessageMenuWidthDp(showReactionActions: Boolean, showAddReact
 
 internal fun threadMessageMenuContentHeightDp(
     actionGroups: List<String>,
-    showReactionActions: Boolean
+    showReactionActions: Boolean,
+    showSentAtLabel: Boolean = false
 ): Float {
     // The popover chooses above/below before drawing its content. Feeding it a
     // generic first-frame estimate and replacing that with onGloballyPositioned
@@ -32655,10 +32664,36 @@ internal fun threadMessageMenuContentHeightDp(
         } else {
             0f
         }
+    val sentAtLabelHeight = if (showSentAtLabel) ThreadMessageMenuSentAtLabelHeight.value else 0f
     return effectiveRowCount * ThreadMessageMenuRowHeight.value +
         groupDividerCount * separatorHeight +
         reactionHeaderHeight +
+        sentAtLabelHeight +
         RaftMetrics.PopupPadding.value * 2
+}
+
+/**
+ * The date and time [message] was sent, as web `MessageItem` opens its context menu with
+ * (`formatMediumDateTime(message.createdAt)`: medium date, short time in the reader's 12/24-hour
+ * choice, e.g. "Jun 22, 2026, 10:30"), in [timeContext]'s zone (the device's without one). On a
+ * touch screen it is the only place a merged message's time shows. Null when the message has no
+ * readable time (a local send that has not been stamped).
+ */
+@Composable
+internal fun threadMessageSentAtLabel(message: RaftThreadMessageItem, timeContext: RaftTimeContext?): String? {
+    val epochMillis =
+        message.createdAtEpochMillis
+            ?: parseRaftTimestampEpochMillisOrNull(message.timestampLabel, timeContext?.localOffsetMinutes ?: 0)
+            ?: return null
+    val offsetMinutes =
+        timeContext?.localOffsetMinutes
+            ?: (
+                TimeZone.currentSystemDefault()
+                    .offsetAt(Instant.fromEpochMilliseconds(epochMillis))
+                    .totalSeconds / 60
+            )
+    return taskHeadDateTime(epochMillis, offsetMinutes)
+        .localized(timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour)
 }
 
 internal fun shouldShowThreadFollowAction(
@@ -33102,9 +33137,15 @@ private fun ThreadMessageActionMenu(
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: (() -> Unit)? = null,
     onDownloadVideo: (() -> Unit)? = null,
+    /**
+     * The reader's zone and 12/24-hour choice for the menu's sent-at date. Passed in, not read
+     * here, because the app-shell path composes the menu in another page that has no thread clock.
+     */
+    timeContext: RaftTimeContext? = null,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
+    val sentAtLabel = threadMessageSentAtLabel(message, timeContext)
     val actions =
         remember(
             message,
@@ -33188,7 +33229,8 @@ private fun ThreadMessageActionMenu(
         with(density) {
             threadMessageMenuContentHeightDp(
                 actionGroups = actions.map { it.group },
-                showReactionActions = showReactionActions
+                showReactionActions = showReactionActions,
+                showSentAtLabel = sentAtLabel != null
             ).dp.toPx()
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
@@ -33214,7 +33256,7 @@ private fun ThreadMessageActionMenu(
             "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
         },
         shellItems = shellItems,
-        shellContentKey = showReactionActions to showAddReaction,
+        shellContentKey = Triple(showReactionActions, showAddReaction, sentAtLabel),
         keepsHostKeyboard = true,
         shellContent = { onSelected ->
             // The shell host composes this in its own page. Decode the reaction atlas
@@ -33235,7 +33277,9 @@ private fun ThreadMessageActionMenu(
                     modifier = Modifier,
                     // Like the emojis: called straight into this page, which closes the menu and
                     // opens the picker at the menu's anchor.
-                    onAddReaction = if (showAddReaction) onAddReaction else null
+                    onAddReaction = if (showAddReaction) onAddReaction else null,
+                    // Formatted here: the shell's page has no thread time context to read.
+                    sentAtLabel = sentAtLabel
                 )
             }
         },
@@ -33265,7 +33309,8 @@ private fun ThreadMessageActionMenu(
                 reactionAtlasImage = reactionAtlasImage,
                 onReact = onReact,
                 modifier = Modifier,
-                onAddReaction = if (showAddReaction) onAddReaction else null
+                onAddReaction = if (showAddReaction) onAddReaction else null,
+                sentAtLabel = sentAtLabel
             )
         }
     )
@@ -33736,7 +33781,9 @@ internal fun ThreadMessageMenuChrome(
     onReact: (String) -> Unit,
     modifier: Modifier = Modifier,
     /** Ends the reaction header with Add Reaction (web `reaction-add-any`); null: no such button. */
-    onAddReaction: (() -> Unit)? = null
+    onAddReaction: (() -> Unit)? = null,
+    /** Opens the menu with the message's sent-at date ([threadMessageSentAtLabel]); null: none. */
+    sentAtLabel: String? = null
 ) {
     // task #11 (artin: 统一两套菜单): the action rows render through the shared
     // design-system menu surface ([RaftUiMenuSurface]) — press wash, row metrics and icon specs
@@ -33763,12 +33810,14 @@ internal fun ThreadMessageMenuChrome(
                     ThreadMessageReactionRow(
                         reactionAtlasImage = reactionAtlasImage,
                         onReact = onReact,
+                        glyphSize = ThreadMessageMenuReactionGlyphSize,
                         onAddReaction = onAddReaction
                     )
                 }
             } else {
                 null
-            }
+            },
+        label = sentAtLabel
     )
 }
 
@@ -33790,7 +33839,7 @@ private fun ThreadMessageReactionRow(
      */
     onAddReaction: (() -> Unit)? = null
 ) {
-    // web `reaction-quick-row`: `flex h-9 items-center gap-1 px-2`.
+    // web `reaction-quick-row` (raft-ui MessageReactionQuickRow): `gap-0.5 px-0.75`, `size-9` buttons.
     Row(
         modifier = Modifier
             .fillMaxWidth()

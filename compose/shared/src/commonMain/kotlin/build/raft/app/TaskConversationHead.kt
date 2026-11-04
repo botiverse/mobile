@@ -109,6 +109,8 @@ import build.raft.app.data.valueOrNull
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.formatRaftClock
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForRenderedAvatar
@@ -1166,6 +1168,11 @@ internal data class TaskHeadDateTime(val year: Int, val month: Int, val day: Int
 internal fun taskHeadDateTime(iso: String?, timeContext: RaftTimeContext?): TaskHeadDateTime? {
     val offsetMinutes = timeContext?.localOffsetMinutes ?: 0
     val epochMillis = parseRaftTimestampEpochMillisOrNull(iso, offsetMinutes) ?: return null
+    return taskHeadDateTime(epochMillis, offsetMinutes)
+}
+
+/** [epochMillis] seen at [offsetMinutes] from UTC. */
+internal fun taskHeadDateTime(epochMillis: Long, offsetMinutes: Int): TaskHeadDateTime {
     val local = epochMillis + offsetMinutes * 60_000L
     val dayMillis = 86_400_000L
     val days = local.floorDiv(dayMillis)
@@ -1184,7 +1191,7 @@ internal fun taskHeadDateTime(iso: String?, timeContext: RaftTimeContext?): Task
 }
 
 @Composable
-internal fun TaskHeadDateTime.localized(): String {
+internal fun TaskHeadDateTime.localized(timeFormat: String = RaftTimeFormat24Hour): String {
     val months =
         listOf(
             Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
@@ -1192,7 +1199,8 @@ internal fun TaskHeadDateTime.localized(): String {
             Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
             Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
         )
-    val time = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
+    // web `formatMediumDateTime` follows the reader's 12/24-hour choice; `formatMediumDateTime24` is 24-hour.
+    val time = formatRaftClock(hour, minute, second = null, timeFormat = timeFormat)
     return stringResource(Res.string.task_head_medium_date_time, stringResource(months[month - 1]), day, year, time)
 }
 
