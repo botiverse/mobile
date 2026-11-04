@@ -10390,6 +10390,10 @@ private fun SharedMembersScreen(
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
     var refreshing by remember { mutableStateOf(false) }
+    // Hands afae9ebb: the agent just created here, until its profile is opened (see the effect
+    // beside MembersAdaptiveWorkspace). The app shell's Members (Settings and the server menu)
+    // creates through this screen, not MembersPage, so task #399's jump never reached it.
+    var createdAgentToOpen by remember(currentServerId) { mutableStateOf<MemberProfile?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val routeScope = rememberCoroutineScope()
     val agentPanelTabOrderState by agentPanelTabOrderStore.state.collectAsState()
@@ -10635,6 +10639,9 @@ private fun SharedMembersScreen(
                         }
                     state = nextState
                     (nextState as? SharedMembersUiState.Content)?.let(onContentLoaded)
+                    // Stage the jump inside submit, before the dialog's teardown cancels this
+                    // coroutine (the same ordering as MembersPage, task #399 / #3140).
+                    createdAgentToOpen = profile
                     // The row above is only a stand-in: replace it with the server's record. Re-entering
                     // the page seeds the store from this cached content, so without a forced refresh the
                     // stand-in was served as a cache hit indefinitely (task #148, HuaTuo 23bc896b).
@@ -10669,6 +10676,71 @@ private fun SharedMembersScreen(
                     build.raft.app.data.raftSharedPreferenceStore()
                 )
             }
+            val openMemberDetail: (MemberProfile) -> Unit = { member ->
+                onForegroundActivity("open_member")
+                if (showMemberSplit) {
+                    // Resolve local fallback now, never from a later selected server.
+                    val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
+                    selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toRaftMemberDetailPayload()
+                } else routeScope.launch {
+                    val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+                    val accessMode = identity.memberDetailAccessMode(serverId)
+                    val launchPayload =
+                        if (
+                            member.kind == MemberKind.Agent &&
+                                accessMode.allowsPrivateAgentSurfaces &&
+                                (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                        ) {
+                            loadAgentPanelTabOrderForSharedMembers()
+                                ?.also { order ->
+                                    agentPanelTabOrderStore.applyLoaded(
+                                        serverId = serverId,
+                                        order = order,
+                                        source = "shared_members_detail_open_preload",
+                                        logger = raftLogger("SlockAgentPanelTabOrder")
+                                    )
+                                }
+                                ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                                ?: membersPayload
+                        } else {
+                            membersPayload
+                        }
+                    val pageData =
+                        launchPayload.toMemberDetailPageData(
+                            identity
+                        )
+                    if (pageData == null) {
+                        bridge.toast(openProfileFailedMessage)
+                        bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
+                    } else {
+                        val seedMember =
+                            member.copy(
+                                serverId =
+                                    member.serverId
+                                        ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                            )
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
+                        pager.openRaftPage(
+                            pageName = MEMBER_DETAIL_PAGE,
+                            pageData = pageData,
+                            storeScopeOverride = storeScope,
+                            onMissingScope = {
+                                bridge.toast(openProfileFailedMessage)
+                                bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                            }
+                        )
+                    }
+                }
+            }
+            // Hands afae9ebb: land on the just-created agent's profile, as MembersPage and the thread
+            // member panel do. Runs after the stand-in row is in state; cleared at once so returning
+            // to the list does not reopen it.
+            LaunchedEffect(createdAgentToOpen) {
+                val created = createdAgentToOpen ?: return@LaunchedEffect
+                createdAgentToOpen = null
+                bridge.log("members_create_agent_open_profile memberId=${created.id.value} source=app_shell")
+                openMemberDetail(created)
+            }
             MembersAdaptiveWorkspace(
                 split = showMemberSplit,
                 selected = selectedDetail != null,
@@ -10683,62 +10755,7 @@ private fun SharedMembersScreen(
                         paneLayout = paneLayout,
                         onAddHuman = { onForegroundActivity("add_human") },
                         agentStatusResolver = agentStatusResolver,
-                        onOpenMemberDetail = { member ->
-                            onForegroundActivity("open_member")
-                            if (showMemberSplit) {
-                                // Resolve local fallback now, never from a later selected server.
-                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
-                                selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toRaftMemberDetailPayload()
-                            } else routeScope.launch {
-                                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
-                                val accessMode = identity.memberDetailAccessMode(serverId)
-                                val launchPayload =
-                                    if (
-                                        member.kind == MemberKind.Agent &&
-                                            accessMode.allowsPrivateAgentSurfaces &&
-                                            (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
-                                    ) {
-                                        loadAgentPanelTabOrderForSharedMembers()
-                                            ?.also { order ->
-                                                agentPanelTabOrderStore.applyLoaded(
-                                                    serverId = serverId,
-                                                    order = order,
-                                                    source = "shared_members_detail_open_preload",
-                                                    logger = raftLogger("SlockAgentPanelTabOrder")
-                                                )
-                                            }
-                                            ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
-                                            ?: membersPayload
-                                    } else {
-                                        membersPayload
-                                    }
-                                val pageData =
-                                    launchPayload.toMemberDetailPageData(
-                                        identity
-                                    )
-                                if (pageData == null) {
-                                    bridge.toast(openProfileFailedMessage)
-                                    bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
-                                } else {
-                                    val seedMember =
-                                        member.copy(
-                                            serverId =
-                                                member.serverId
-                                                    ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-                                        )
-                                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                                    pager.openRaftPage(
-                                        pageName = MEMBER_DETAIL_PAGE,
-                                        pageData = pageData,
-                                        storeScopeOverride = storeScope,
-                                        onMissingScope = {
-                                            bridge.toast(openProfileFailedMessage)
-                                            bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
-                                        }
-                                    )
-                                }
-                            }
-                        },
+                        onOpenMemberDetail = openMemberDetail,
                         canCreateAgents = membersPayload.canCreateAgents,
                         createAgent = MembersCreateAgentInputs(
                             createAgentSubmit = createAgentSubmit,
