@@ -36,9 +36,12 @@ class RaftMenuLayoutTest {
 
         // Short labels keep the caller's 140dp, like web's min-w-[140px].
         assertEquals(140.dp, raftLookBaseMenuWidth(items("Todo", "Done"), fixedWidth = 140.dp, minWidth = 136.dp))
-        // Bold "In Progress" plus row chrome and the trailing check does not fit 140dp.
-        val inProgress = raftLookBaseMenuWidth(items("Todo", "In Progress", "Done"), fixedWidth = 140.dp, minWidth = 136.dp)
-        assertTrue(inProgress > 140.dp, "status menu should grow past 140dp, was $inProgress")
+        // Bold "In Progress" plus the row chrome and the trailing check in a p-1 popup is 137dp:
+        // it fits 140dp, as on the web.
+        assertEquals(140.dp, raftLookBaseMenuWidth(items("Todo", "In Progress", "Done"), fixedWidth = 140.dp, minWidth = 136.dp))
+        // A longer label does not fit 140dp: the menu grows.
+        val longer = raftLookBaseMenuWidth(items("Todo", "Waiting for Review", "Done"), fixedWidth = 140.dp, minWidth = 136.dp)
+        assertTrue(longer > 140.dp, "status menu should grow past 140dp, was $longer")
         // Growth is capped at the menu max width.
         assertEquals(280.dp, raftLookBaseMenuWidth(items("x".repeat(80)), fixedWidth = 140.dp, minWidth = 136.dp))
         // Without a caller width the raft min-w-60 estimate applies.

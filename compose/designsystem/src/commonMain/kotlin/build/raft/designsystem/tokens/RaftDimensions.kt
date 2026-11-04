@@ -49,6 +49,38 @@ object RaftStroke {
     val Strong = 2.dp
 }
 
+/**
+ * raft-ui 0.60 menu metrics (dropdown-menu.tsx, context-menu.tsx; a Select or Combobox list
+ * shares the option axis). Every popup menu in the app reads these, so a change on the web
+ * lands here once.
+ * - [Padding]: the popup's inset round its rows (`p-1`).
+ * - [SeparatorInset]: the space above and below a separator (`my-1`); the rule bleeds
+ *   through [Padding] to both edges (`-mx-1`).
+ * - [OptionHeight]: one line of an item (`min-h-option`, 36px); the text keeps the same
+ *   space above and below (`py-option-inset`).
+ * - [ItemPaddingHorizontal] / [ItemGap]: an item's sides and the room between its icon,
+ *   label and trailing marks (`px-2.5`, `gap-2.5`).
+ * - [ItemRadius] / [Radius]: an item's highlight (`rounded-chip`) and the popup's corners
+ *   (`rounded-container`).
+ * - [LabelPaddingTop] / [LabelPaddingBottom]: a group label (`px-2.5 pt-2 pb-1`).
+ */
+object RaftMenuMetrics {
+    val Padding = 4.dp
+    val SeparatorInset = 4.dp
+    val OptionHeight = 36.dp
+    val ItemPaddingHorizontal = 10.dp
+    val ItemGap = 10.dp
+    val IconSize = 16.dp
+    val ItemRadius = RaftRadius.Chip
+    val Radius = RaftRadius.Container
+    val MinWidth = 240.dp
+    val LabelPaddingTop = 8.dp
+    val LabelPaddingBottom = 4.dp
+
+    /** From the trigger to the popup (`sideOffset ?? 6`). */
+    val SideOffset = 6.dp
+}
+
 object RaftSpacing {
     val Xxs = 2.dp
     val Xs = 4.dp
