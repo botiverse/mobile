@@ -80,12 +80,16 @@ object RaftMessageMultiSelectToolbarDefaults {
  * `BottomOffset` (plus the safe area) above the bottom, no wider than that room.
  *
  * [label] names the toolbar for screen readers ("Selected message actions").
+ *
+ * [leading] goes before the count, 8dp from it: a thread's select-all [RaftCheckbox] (the web's
+ * SelectModeToolbar, botiverse/slock #12681). A channel's toolbar has none.
  */
 @Composable
 fun RaftMessageMultiSelectToolbar(
     count: String,
     modifier: Modifier = Modifier,
     label: String? = null,
+    leading: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
     val d = RaftMessageMultiSelectToolbarDefaults
@@ -95,6 +99,7 @@ fun RaftMessageMultiSelectToolbar(
         contentPadding = PaddingValues(start = d.PaddingStart, top = d.PaddingY, end = d.PaddingEnd, bottom = d.PaddingY),
         gap = d.CountGap,
     ) {
+        leading?.invoke()
         RaftText(
             text = count,
             style = RaftTheme.typography.control.copy(fontWeight = FontWeight.Bold),
