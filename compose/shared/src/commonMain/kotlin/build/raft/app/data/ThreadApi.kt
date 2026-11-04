@@ -65,6 +65,20 @@ internal interface RaftThreadApi {
         attachmentIds: List<String> = emptyList(),
         randomId: String? = null
     ): ThreadApiResult<ThreadMessagesPage>
+
+    /**
+     * [sendMessage] carrying structured `mentions` (Slack-bridge `external` picks). Only the network
+     * implementation sends them; a fake without an override sends the plain message.
+     */
+    suspend fun sendMessageWithMentions(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+        mentions: List<ThreadSendMessageMention>,
+    ): ThreadApiResult<ThreadMessagesPage> =
+        sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds, randomId = randomId)
     suspend fun executePendingMentionActions(
         action: String,
         resolutionIds: List<String>
@@ -175,6 +189,27 @@ internal class RaftThreadApiClient(
             asTask = asTask,
             attachmentIds = attachmentIds,
             randomId = randomId
+        ).mapThreadSendBody(
+            contractCode = "thread_send_contract_mismatch",
+            diagnosticsLogger = diagnosticsLogger,
+            parseDispatcher = parseDispatcher
+        )
+
+    override suspend fun sendMessageWithMentions(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+        mentions: List<ThreadSendMessageMention>,
+    ): ThreadApiResult<ThreadMessagesPage> =
+        transport.sendMessageWithMentions(
+            channelId = channelId,
+            body = body,
+            asTask = asTask,
+            attachmentIds = attachmentIds,
+            randomId = randomId,
+            mentions = mentions,
         ).mapThreadSendBody(
             contractCode = "thread_send_contract_mismatch",
             diagnosticsLogger = diagnosticsLogger,
@@ -349,6 +384,31 @@ internal class NetworkRaftThreadApi(
                     attachmentIds = attachmentIds,
                     asTask = asTask,
                     randomId = randomId
+                )
+        )
+
+    override suspend fun sendMessageWithMentions(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>,
+        randomId: String?,
+        mentions: List<ThreadSendMessageMention>,
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "messages",
+            method = "POST",
+            bodyText =
+                buildSharedThreadSendMessageBody(
+                    ThreadSendMessageRequestBody(
+                        channelId = channelId,
+                        content = body,
+                        attachmentIds = attachmentIds,
+                        asTask = asTask,
+                        randomId = randomId?.takeIf { it.isNotBlank() },
+                        mentions = mentions,
+                    )
                 )
         )
 
@@ -909,13 +969,27 @@ private fun AttachmentCommentAnchorDto.toAnchorLabel(): String? {
     return label?.takeIf { it.isNotBlank() }?.take(80)
 }
 
+/**
+ * One structured mention of `POST /messages` `mentions[]` (botiverse/slock `routes/messages.ts`
+ * `parseStructuredMentions` / `messageService.StructuredMentionInput`): `type` user | agent | external,
+ * `id` the actor's UUID (`external`: the `external_actor_projections.id` of a Slack participant), `name`
+ * the handle as typed after `@`. Web sends the same `{ type, id, name }` (`MessageInput.tsx`).
+ */
+@Serializable
+data class ThreadSendMessageMention(
+    val type: String,
+    val id: String,
+    val name: String,
+)
+
 @Serializable
 data class ThreadSendMessageRequestBody(
     val channelId: String,
     val content: String,
     val attachmentIds: List<String> = emptyList(),
     val asTask: Boolean = false,
-    val randomId: String? = null
+    val randomId: String? = null,
+    val mentions: List<ThreadSendMessageMention> = emptyList(),
 )
 
 @Serializable
@@ -933,6 +1007,17 @@ private data class ThreadSendMessageRequestBodyWithRandomId(
     val attachmentIds: List<String> = emptyList(),
     val asTask: Boolean = false,
     val randomId: String
+)
+
+/** A send with structured mentions; the body without them stays byte-identical to before. */
+@Serializable
+private data class ThreadSendMessageRequestBodyWithMentions(
+    val channelId: String,
+    val content: String,
+    val attachmentIds: List<String> = emptyList(),
+    val asTask: Boolean = false,
+    val randomId: String? = null,
+    val mentions: List<ThreadSendMessageMention>,
 )
 
 @Serializable
@@ -960,6 +1045,18 @@ internal fun buildSharedThreadSendMessageBody(
 
 fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): String {
     val randomId = request.randomId?.takeIf { it.isNotBlank() }
+    if (request.mentions.isNotEmpty()) {
+        return threadApiJson.encodeToString(
+            ThreadSendMessageRequestBodyWithMentions(
+                channelId = request.channelId,
+                content = request.content,
+                attachmentIds = request.attachmentIds,
+                asTask = request.asTask,
+                randomId = randomId,
+                mentions = request.mentions,
+            )
+        )
+    }
     return if (randomId == null) {
         threadApiJson.encodeToString(
             ThreadSendMessageRequestBodyWithoutRandomId(

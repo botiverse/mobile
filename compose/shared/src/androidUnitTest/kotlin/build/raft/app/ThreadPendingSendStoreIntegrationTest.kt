@@ -372,6 +372,58 @@ class ThreadPendingSendStoreIntegrationTest {
         }
     }
 
+    /**
+     * Task #73 (Tenny's rule 3): a journaled send keeps its structured `mentions` and every resend
+     * carries that exact list — the Slack participant picked in the composer, never re-resolved by name.
+     */
+    @Test
+    fun aResentJournaledSendCarriesItsOwnMentionList() = runTest {
+        withDatabase { path ->
+            val identity = identity()
+            val routePayload = basePayload()
+            val mentions =
+                listOf(
+                    build.raft.app.data.ThreadSendMessageMention(
+                        type = "external",
+                        id = "7f8e2a3b-0c1d-4e5f-8a9b-0c1d2e3f4a5b",
+                        name = "yezi",
+                    )
+                )
+            val orphan = pendingMessage("local-send-mention", "random-mention", createdAt = 10L, mentions = mentions)
+
+            val first = open(path, FakeThreadApi(), identity)
+            first.store.accept(SharedThreadIntent.Start(routePayload))
+            val route = first.store.state.value.payload.resolveThreadRouteIdentity()
+            assertTrue(
+                first.store.admitLocalSend(
+                    message = orphan,
+                    expectedProvenance = requireNotNull(first.dataSource.currentReplyCacheProvenance()),
+                    expectedRoute = route
+                )
+            )
+            assertEquals(
+                mentions,
+                first.journal.restore(identity.toProvenance(), route).single().pendingSendContext?.mentions,
+                "the journal keeps the mention list with the send",
+            )
+            first.scope.cancel()
+            first.driver.close()
+
+            val api =
+                FakeThreadApi(bodyText = latestPageWithDelivered("random-mention")).apply {
+                    sendResponseBody = sentMessageResponse("random-mention")
+                }
+            val second = open(path, api, identity, threadParseDispatcher = Dispatchers.Unconfined)
+            second.store.accept(SharedThreadIntent.Start(routePayload))
+
+            assertEquals(1, api.sendMessageCalls, "the adoption resends exactly once")
+            assertEquals("random-mention", api.lastRandomId)
+            assertEquals(mentions, api.lastMentions, "the resend carries the journaled mention list as is")
+            second.scope.cancel()
+            second.driver.close()
+        }
+    }
+
     @Test
     fun emptyJournalIsSafeAndRowsRestoreInCreatedOrder() = runTest {
         withDatabase { path ->
@@ -514,7 +566,12 @@ class ThreadPendingSendStoreIntegrationTest {
             canSend = true,
         )
 
-    private fun pendingMessage(localId: String, randomId: String, createdAt: Long? = null): RaftThreadMessageItem =
+    private fun pendingMessage(
+        localId: String,
+        randomId: String,
+        createdAt: Long? = null,
+        mentions: List<build.raft.app.data.ThreadSendMessageMention> = emptyList(),
+    ): RaftThreadMessageItem =
         RaftThreadMessageItem(
             id = localId,
             authorId = "u1",
@@ -529,6 +586,7 @@ class ThreadPendingSendStoreIntegrationTest {
                     body = "pending body",
                     streamChannelId = "channel-1",
                     randomId = randomId,
+                    mentions = mentions,
                 ),
             createdAtEpochMillis = createdAt,
         )

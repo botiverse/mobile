@@ -46,6 +46,13 @@ internal fun String.isCanonicalIdentityHandle(): Boolean {
     return codePointIndex > 0
 }
 
+/** One code point of a Raft `@handle` (`[\p{L}\p{N}_-]`, slock `RAFT_REF_USER_NAME_PATTERN`). */
+internal fun Int.isRaftHandleCodePoint(): Boolean =
+    this == '_'.code ||
+        this == '-'.code ||
+        inUnicodeRanges(AUTH_UNICODE_LETTER_RANGES) ||
+        inUnicodeRanges(AUTH_UNICODE_NUMBER_RANGES)
+
 private fun Int.inUnicodeRanges(encodedRanges: String): Boolean {
     var low = 0
     var high = encodedRanges.length / AUTH_UNICODE_RANGE_WIDTH - 1

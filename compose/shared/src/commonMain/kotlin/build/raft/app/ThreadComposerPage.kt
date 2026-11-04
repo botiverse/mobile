@@ -1447,7 +1447,7 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
                 selectionEnd = currentContext.selectionEnd,
                 triggerStart = currentContext.triggerStart,
                 replacement = "@${member.handle} "
-            ) ?: return false
+            )?.copy(mention = member.composerStructuredMentionOrNull()) ?: return false
         onCommit(edit)
         return true
     }
@@ -2961,6 +2961,8 @@ internal fun ThreadComposerContentLeaf(
                     selectionEnd = nextFieldValue.selection.end
                 )
                 onEvent("change", edit.text, asTask, null)
+                // After the text: the draft keeps a mention only while its `@handle` is in the text.
+                edit.mention?.let { mention -> onEvent(ThreadComposerSelectMentionEvent, encodeThreadComposerMentionEvent(mention), asTask, null) }
             }
         )
         if (suggestionPresentation == null) {
@@ -4022,6 +4024,8 @@ internal fun ComposerMemberSuggestionRow(
         when (member.kind) {
             MemberKind.Human -> stringResource(Res.string.composer_mention_actor_human)
             MemberKind.Agent -> stringResource(Res.string.composer_mention_actor_agent)
+            // web `MentionCandidateBody`: a Slack participant's kind tag is the provider badge.
+            MemberKind.External -> stringResource(Res.string.channel_bridge_provider_slack)
             else -> null
         }
     val muted = !inChannel
@@ -5236,8 +5240,36 @@ private fun ComposerTextChip(
 
 internal data class RaftComposerSuggestionEdit(
     val text: String,
-    val cursor: Int
+    val cursor: Int,
+    /** The structured mention a picked Slack participant adds (`POST /messages` `mentions[]`). */
+    val mention: build.raft.app.data.ThreadSendMessageMention? = null,
 )
+
+/** Composer event carrying a picked structured mention ([encodeThreadComposerMentionEvent]). */
+internal const val ThreadComposerSelectMentionEvent = "selectMention"
+
+private val ThreadComposerMentionEventJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+internal fun encodeThreadComposerMentionEvent(mention: build.raft.app.data.ThreadSendMessageMention): String =
+    ThreadComposerMentionEventJson.encodeToString(build.raft.app.data.ThreadSendMessageMention.serializer(), mention)
+
+internal fun decodeThreadComposerMentionEvent(value: String?): build.raft.app.data.ThreadSendMessageMention? =
+    value?.let {
+        runCatching {
+            ThreadComposerMentionEventJson.decodeFromString(build.raft.app.data.ThreadSendMessageMention.serializer(), it)
+        }.getOrNull()
+    }
+
+/**
+ * Only a Slack participant (`MemberKind.External`) becomes a structured mention, as web sends it
+ * (`{ type: "external", id: <projection id>, name: <handle> }`). People and agents keep the
+ * server's name resolution (this PR does not change how their mentions are sent).
+ */
+internal fun RaftComposerMemberItem.composerStructuredMentionOrNull(): build.raft.app.data.ThreadSendMessageMention? {
+    if (kind != MemberKind.External) return null
+    val id = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return build.raft.app.data.ThreadSendMessageMention(type = ComposerStructuredMentionExternalType, id = id, name = handle)
+}
 
 internal fun applyRaftComposerSuggestionEdit(
     text: String,

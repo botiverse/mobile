@@ -5,6 +5,7 @@ import build.raft.app.isConversationAccessLost
 import build.raft.app.base.putIfAbsent
 import build.raft.app.parseExternalAgentTimestampOrNull
 import build.raft.app.model.AvatarReference
+import build.raft.app.composerMentionHandle
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
@@ -3310,13 +3311,14 @@ class SharedServerMembersStore internal constructor(
         when (result) {
             is DataResult.Content -> {
                 val serverMembers = currentServerMembers(ServerId(serverId))
-                val channelMembers =
+                val channelSnapshot =
                     mentionChannelId?.let { channelId ->
                         loadChannelMembersBestEffort(
                             serverId = serverId,
                             mentionChannelId = channelId
                         )
-                    }.orEmpty()
+                    }
+                val channelMembers = channelSnapshot?.members.orEmpty()
                 val suggestions =
                     if (mentionChannelId == null) {
                         serverMembers.toServerMembersMemberSuggestions()
@@ -3329,7 +3331,7 @@ class SharedServerMembersStore internal constructor(
                                 localServerId = serverId,
                                 inMentionChannel = true
                             )
-                        )
+                        ) + channelSnapshot?.externalMembers.orEmpty().toExternalMemberMentionSuggestions(serverId)
                     }
                 setMemberSuggestionSlice(
                     scope = suggestionScope,
@@ -3337,19 +3339,21 @@ class SharedServerMembersStore internal constructor(
                 )
             }
             is DataResult.Empty -> {
-                val channelMembers =
+                val channelSnapshot =
                     mentionChannelId?.let { channelId ->
                         loadChannelMembersBestEffort(
                             serverId = serverId,
                             mentionChannelId = channelId
                         )
-                    }.orEmpty()
+                    }
                 setMemberSuggestionSlice(
                     scope = suggestionScope,
                     slice =
                         loadedMemberSuggestionSlice(
                             scope = suggestionScope,
-                            suggestions = channelMembers.toServerMembersMemberSuggestions(localServerId = serverId),
+                            suggestions =
+                                channelSnapshot?.members.orEmpty().toServerMembersMemberSuggestions(localServerId = serverId) +
+                                    channelSnapshot?.externalMembers.orEmpty().toExternalMemberMentionSuggestions(serverId),
                             preserveExistingOnEmpty = preserveExistingOnEmpty
                         )
                 )
@@ -3395,7 +3399,9 @@ class SharedServerMembersStore internal constructor(
                     slice =
                         loadedMemberSuggestionSlice(
                             scope = suggestionScope,
-                            suggestions = result.data.members.toServerMembersMemberSuggestions(localServerId = serverId),
+                            suggestions =
+                                result.data.members.toServerMembersMemberSuggestions(localServerId = serverId) +
+                                    result.data.externalMembers.toExternalMemberMentionSuggestions(serverId),
                             preserveExistingOnEmpty = preserveExistingOnEmpty
                         )
                 )
@@ -3417,7 +3423,7 @@ class SharedServerMembersStore internal constructor(
     private suspend fun loadChannelMembersBestEffort(
         serverId: String,
         mentionChannelId: String
-    ): List<MemberProfile> {
+    ): ChannelMemberSnapshot? {
         val result =
             runCatchingPreservingCancellation {
                 loadChannelMembers(
@@ -3430,24 +3436,24 @@ class SharedServerMembersStore internal constructor(
                     "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
                         "channelId=$mentionChannelId result=exception message=${throwable.message.orEmpty()}"
                 )
-                return emptyList()
+                return null
             }
         return when (result) {
-            is DataResult.Content -> result.data.members
-            is DataResult.Empty -> emptyList()
+            is DataResult.Content -> result.data
+            is DataResult.Empty -> null
             is DataResult.Error -> {
                 logger(
                     "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
                         "channelId=$mentionChannelId result=error code=${result.error.code}"
                 )
-                emptyList()
+                null
             }
             is DataResult.NoPermission -> {
                 logger(
                     "shared_server_members_suggestions_channel_members_result serverId=$serverId " +
                         "channelId=$mentionChannelId result=no_permission code=${result.blocker.code}"
                 )
-                emptyList()
+                null
             }
         }
     }
@@ -4528,3 +4534,36 @@ private suspend fun applyChannelMembersUpdatedTo(
 private fun SharedServerChannelMembersSlice.isHeldForMembersUpdated(): Boolean =
     status == SharedServerMembersLoadStatus.InFlight ||
         (status == SharedServerMembersLoadStatus.Loaded && !storedStandIn)
+
+/**
+ * Slack-bridge participants of the mention channel as @ suggestions (web `MessageInput.tsx`
+ * `channelExternalMembers` candidates): the token web builds, the Slack badge plus workspace as the
+ * description, the projection id as [SharedMembersMemberSuggestion.memberId] (the structured mention
+ * id). Same `GET /channels/:id/members` answer the channel rows came from; no extra request.
+ */
+internal fun List<ChannelExternalMemberProfile>.toExternalMemberMentionSuggestions(
+    localServerId: String?,
+): List<SharedMembersMemberSuggestion> =
+    mapNotNull { external ->
+        val id = external.id.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val handle = external.composerMentionHandle() ?: return@mapNotNull null
+        SharedMembersMemberSuggestion(
+            displayName = external.displayName.trim().ifBlank { handle },
+            handle = handle,
+            inMentionChannel = true,
+            sourceServerId = localServerId,
+            isLocalServer = true,
+            kind = MemberKind.External,
+            description =
+                listOfNotNull(
+                    external.providerLabel(),
+                    external.workspaceName?.trim()?.takeIf { it.isNotBlank() },
+                ).joinToString(" · ").takeIf { it.isNotBlank() },
+            avatarWireValue = external.avatarUrl?.trim()?.takeIf { it.isNotBlank() },
+            avatarLabel = external.avatarLabel,
+            memberId = id,
+        )
+    }.distinctBy { it.memberId }
+
+private fun ChannelExternalMemberProfile.providerLabel(): String =
+    provider?.trim()?.takeIf { it.isNotEmpty() }?.let { if (it.equals("slack", ignoreCase = true)) "Slack" else it } ?: "Slack"

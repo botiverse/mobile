@@ -231,8 +231,8 @@ class SharedThreadComposerDraftStoreTest {
         scheduler.runPending()
 
         assertEquals("abc", persistence.read(draftKey)?.text)
-        // One save: text, asTask, attachments, sources, editedAt and the active index.
-        assertEquals(6, storage.writeCount)
+        // One save: text, asTask, attachments, sources, mentions, editedAt and the active index.
+        assertEquals(7, storage.writeCount)
         assertEquals(1, scheduler.executedTaskCount)
     }
 
@@ -255,12 +255,12 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.Flush)
 
         assertEquals("persist on blur", persistence.read(draftKey)?.text)
-        // One save: text, asTask, attachments, sources, editedAt and the active index.
-        assertEquals(6, storage.writeCount)
+        // One save: text, asTask, attachments, sources, mentions, editedAt and the active index.
+        assertEquals(7, storage.writeCount)
 
         scheduler.runPending()
 
-        assertEquals(6, storage.writeCount)
+        assertEquals(7, storage.writeCount)
         assertEquals(0, scheduler.executedTaskCount)
     }
 

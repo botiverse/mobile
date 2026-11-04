@@ -8,6 +8,7 @@ import build.raft.app.data.MviPersistSlice
 import build.raft.app.data.MviPersistSliceTransitionSnapshot
 import build.raft.app.data.MviStoreRuntime
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.TaskSummary
 import androidx.lifecycle.ViewModel
@@ -61,6 +62,11 @@ internal data class SharedThreadComposerDraftState(
     val nextAttachmentAdmissionGeneration: Long = 0L,
     val attachmentAdmissionsByLocalId: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
     val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
+    /**
+     * Structured `mentions` picked from the @ suggestions (Slack participants, `type: external`),
+     * kept only while their `@handle` is still in [seedText]; sent and journaled as recorded.
+     */
+    val structuredMentions: List<ThreadSendMessageMention> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
@@ -95,7 +101,8 @@ internal data class SharedThreadComposerPersistedDraft(
     val text: String = "",
     val asTask: Boolean = false,
     val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
-    val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList()
+    val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
+    val structuredMentions: List<ThreadSendMessageMention> = emptyList(),
 )
 
 @Serializable
@@ -220,14 +227,16 @@ internal class SharedThreadComposerDraftPersistenceTransaction(
         text: String,
         asTask: Boolean,
         uploadedAttachments: List<SharedThreadComposerAttachment>,
-        externalShareSources: List<SharedThreadComposerExternalShareSource>
+        externalShareSources: List<SharedThreadComposerExternalShareSource>,
+        structuredMentions: List<ThreadSendMessageMention>? = null,
     ): Set<String> = owner.saveInTransaction(
         transaction = this,
         key = key,
         text = text,
         asTask = asTask,
         uploadedAttachments = uploadedAttachments,
-        externalShareSources = externalShareSources
+        externalShareSources = externalShareSources,
+        structuredMentions = structuredMentions,
     )
 
     internal fun clear(key: String): Set<String> = owner.clearInTransaction(this, key)
@@ -719,7 +728,7 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     internal fun storageKeysForDraft(key: String): Set<String> =
-        setOf(textKey(key), asTaskKey(key), attachmentsKey(key), sourcesKey(key), editedAtKey(key))
+        setOf(textKey(key), asTaskKey(key), attachmentsKey(key), sourcesKey(key), mentionsKey(key), editedAtKey(key))
 
     fun read(key: String): SharedThreadComposerPersistedDraft? = lock.withLock {
         val text = store.getString(textKey(key)) ?: return@withLock null
@@ -727,7 +736,8 @@ internal class SharedThreadComposerDraftPersistence(
             text = text,
             asTask = store.getString(asTaskKey(key)) == "true",
             uploadedAttachments = readUploadedAttachments(key),
-            externalShareSources = readExternalShareSources(key)
+            externalShareSources = readExternalShareSources(key),
+            structuredMentions = readStructuredMentions(key),
         )
     }
 
@@ -747,7 +757,9 @@ internal class SharedThreadComposerDraftPersistence(
         text: String,
         asTask: Boolean,
         uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
-        externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList()
+        externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
+        /** Null keeps what is stored (a caller that does not own the mention list). */
+        structuredMentions: List<ThreadSendMessageMention>? = null,
     ) {
         var durableSnapshot: SharedThreadComposerDraftStorageSnapshot? = null
         var mutation: SharedThreadComposerDraftNonTransactionalMutation? = null
@@ -765,7 +777,8 @@ internal class SharedThreadComposerDraftPersistence(
                         text = text,
                         asTask = asTask,
                         uploadedAttachments = uploadedAttachments,
-                        externalShareSources = externalShareSources
+                        externalShareSources = externalShareSources,
+                        structuredMentions = structuredMentions,
                     )
                     transactionOwned = true
                     return@withLock
@@ -781,7 +794,8 @@ internal class SharedThreadComposerDraftPersistence(
                     text = text,
                     asTask = asTask,
                     uploadedAttachments = uploadedAttachments,
-                    externalShareSources = externalShareSources
+                    externalShareSources = externalShareSources,
+                    structuredMentions = structuredMentions,
                 )
                 mutation =
                     SharedThreadComposerDraftNonTransactionalMutation(
@@ -816,7 +830,8 @@ internal class SharedThreadComposerDraftPersistence(
         text: String,
         asTask: Boolean,
         uploadedAttachments: List<SharedThreadComposerAttachment>,
-        externalShareSources: List<SharedThreadComposerExternalShareSource>
+        externalShareSources: List<SharedThreadComposerExternalShareSource>,
+        structuredMentions: List<ThreadSendMessageMention>? = null,
     ): Set<String> = lock.withLock {
         checkOwnsTransitionLocked(transaction)
         saveUnlocked(
@@ -824,7 +839,8 @@ internal class SharedThreadComposerDraftPersistence(
             text = text,
             asTask = asTask,
             uploadedAttachments = uploadedAttachments,
-            externalShareSources = externalShareSources
+            externalShareSources = externalShareSources,
+            structuredMentions = structuredMentions,
         ).also { refs -> transaction.deferRetirement(key, refs) }
     }
 
@@ -843,9 +859,12 @@ internal class SharedThreadComposerDraftPersistence(
         text: String,
         asTask: Boolean,
         uploadedAttachments: List<SharedThreadComposerAttachment>,
-        externalShareSources: List<SharedThreadComposerExternalShareSource>
+        externalShareSources: List<SharedThreadComposerExternalShareSource>,
+        structuredMentions: List<ThreadSendMessageMention>? = null,
     ): Set<String> {
         val previous = readUnlocked(key)
+        val persistedMentions =
+            (structuredMentions ?: previous?.structuredMentions.orEmpty()).visibleStructuredMentionsIn(text)
         val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
         val persistedSources = externalShareSources.validExternalShareComposerSources()
         safeDiagnostics(
@@ -886,6 +905,11 @@ internal class SharedThreadComposerDraftPersistence(
                 sourcesKey(key),
                 persistedSources.takeIf { it.isNotEmpty() }
                     ?.let { sources -> ComposerDraftJson.encodeToString(sources) }
+            )
+            store.putString(
+                mentionsKey(key),
+                persistedMentions.takeIf { it.isNotEmpty() }
+                    ?.let { mentions -> ComposerDraftJson.encodeToString(mentions) }
             )
             // Drafts (drafts_section_v0): the text's last edit, beside the draft's other rows. A save
             // that leaves the text as it was (a flush, an attachment change) keeps the old time; a
@@ -1247,7 +1271,8 @@ internal class SharedThreadComposerDraftPersistence(
             text = text,
             asTask = store.getString(asTaskKey(key)) == "true",
             uploadedAttachments = readUploadedAttachments(key),
-            externalShareSources = readExternalShareSources(key)
+            externalShareSources = readExternalShareSources(key),
+            structuredMentions = readStructuredMentions(key),
         )
     }
 
@@ -1264,6 +1289,7 @@ internal class SharedThreadComposerDraftPersistence(
             store.putString(asTaskKey(key), null)
             store.putString(attachmentsKey(key), null)
             store.putString(sourcesKey(key), null)
+            store.putString(mentionsKey(key), null)
             store.putString(editedAtKey(key), null)
             removeActiveKey(key)
         } catch (error: Throwable) {
@@ -1313,6 +1339,14 @@ internal class SharedThreadComposerDraftPersistence(
     private fun attachmentsKey(key: String): String = "$DraftStoragePrefix$key$AttachmentsSuffix"
     private fun sourcesKey(key: String): String = "$DraftStoragePrefix$key$SourcesSuffix"
     private fun editedAtKey(key: String): String = "$DraftStoragePrefix$key$EditedAtSuffix"
+    private fun mentionsKey(key: String): String = "$DraftStoragePrefix$key$MentionsSuffix"
+
+    private fun readStructuredMentions(key: String): List<ThreadSendMessageMention> =
+        store.getString(mentionsKey(key))
+            ?.let { encoded ->
+                runCatching { ComposerDraftJson.decodeFromString<List<ThreadSendMessageMention>>(encoded) }.getOrNull()
+            }
+            .orEmpty()
 
     private fun readExternalShareSources(key: String): List<SharedThreadComposerExternalShareSource> =
         store.getString(sourcesKey(key))
@@ -1410,13 +1444,15 @@ internal class SharedThreadComposerDraftPersistence(
         const val AsTaskSuffix = ":asTask"
         const val AttachmentsSuffix = ":attachments"
         const val SourcesSuffix = ":externalShareSources"
+        /** Structured @ mentions picked in this draft (Slack participants), as sent on `POST /messages`. */
+        const val MentionsSuffix = ":mentions"
         /** Epoch millis of the text's last edit (Drafts); absent on drafts saved before it existed. */
         const val EditedAtSuffix = ":editedAt"
         private val ComposerDraftJson = Json { ignoreUnknownKeys = true }
 
         /** Every row one draft key owns (the active index aside). */
         fun draftRowKeys(key: String): List<String> =
-            listOf(TextSuffix, AsTaskSuffix, AttachmentsSuffix, SourcesSuffix, EditedAtSuffix)
+            listOf(TextSuffix, AsTaskSuffix, AttachmentsSuffix, SourcesSuffix, MentionsSuffix, EditedAtSuffix)
                 .map { suffix -> "$DraftStoragePrefix$key$suffix" }
     }
 }
@@ -1695,7 +1731,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                                 seedText = persistedDraft.text,
                                 seedAsTask = persistedDraft.asTask,
                                 uploadedAttachments = persistedDraft.uploadedAttachments,
-                                externalShareSources = persistedDraft.externalShareSources
+                                externalShareSources = persistedDraft.externalShareSources,
+                                structuredMentions = persistedDraft.structuredMentions.visibleStructuredMentionsIn(persistedDraft.text),
                             )
                         }
                         ?: reduced
@@ -1753,14 +1790,16 @@ internal class SharedThreadComposerDraftPersistSlice(
                                 text = next.seedText,
                                 asTask = next.seedAsTask,
                                 uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments(),
-                                externalShareSources = next.externalShareSources
+                                externalShareSources = next.externalShareSources,
+                                structuredMentions = next.structuredMentions,
                             )
                             persistence.clear(fallbackSourceKey)
                             refreshActiveDraftRecords(reason = "StartFallbackRestore")
                         }
                     }
                 }
-            is SharedThreadComposerDraftIntent.Change ->
+            is SharedThreadComposerDraftIntent.Change,
+            is SharedThreadComposerDraftIntent.SelectMention ->
                 next.draftKey?.takeIf { isCurrentAccount(next) }?.let { key ->
                     schedulePendingWrite(key, next)
                 }
@@ -1989,7 +2028,8 @@ internal class SharedThreadComposerDraftPersistSlice(
             text = state.seedText,
             asTask = state.seedAsTask,
             uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
-            externalShareSources = state.externalShareSources
+            externalShareSources = state.externalShareSources,
+            structuredMentions = state.structuredMentions,
         )
         refreshActiveDraftRecords(reason = reason)
     }
@@ -2362,6 +2402,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.Change -> "Change"
         is SharedThreadComposerDraftIntent.SetOriginalImage -> "SetOriginalImage"
         is SharedThreadComposerDraftIntent.InsertMention -> "InsertMention"
+        is SharedThreadComposerDraftIntent.SelectMention -> "SelectMention"
         is SharedThreadComposerDraftIntent.AppendQuote -> "AppendQuote"
         SharedThreadComposerDraftIntent.RequestFocus -> "RequestFocus"
         SharedThreadComposerDraftIntent.Flush -> "Flush"
@@ -2404,6 +2445,8 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
     data class SetOriginalImage(val enabled: Boolean) : SharedThreadComposerDraftIntent
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
+    /** A Slack participant picked from the @ suggestions; its `@handle` is already in the text. */
+    data class SelectMention(val mention: ThreadSendMessageMention) : SharedThreadComposerDraftIntent
     /** Appends a Markdown quote after the current draft (Reply on a partial text selection). */
     data class AppendQuote(val quote: String) : SharedThreadComposerDraftIntent
     /** Put the caret in the composer (an edited image was just added from the image viewer). */
@@ -2413,7 +2456,9 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class RestoreAfterFailure(
         val seedText: String,
         val seedAsTask: Boolean,
-        val failureLabel: String
+        val failureLabel: String,
+        /** The failed send's own mention list, restored as-is (never re-resolved by name). */
+        val structuredMentions: List<ThreadSendMessageMention> = emptyList(),
     ) : SharedThreadComposerDraftIntent
     data object CompleteInlineSendFailure : SharedThreadComposerDraftIntent
     data class CompleteSend(
@@ -2591,6 +2636,9 @@ internal class SharedThreadComposerDraftStore(
                     current.copy(
                         seedText = nextText,
                         seedAsTask = intent.seedAsTask ?: current.seedAsTask,
+                        // Deleting a picked `@handle` drops its structured mention (web
+                        // `setSelectedMentions(prev.filter(mentionStillAppears))`).
+                        structuredMentions = current.structuredMentions.visibleStructuredMentionsIn(nextText),
                         sending = false,
                         failureLabel = null,
                         externalShareSources =
@@ -2608,6 +2656,15 @@ internal class SharedThreadComposerDraftStore(
                 }
             is SharedThreadComposerDraftIntent.SetOriginalImage ->
                 current.copy(originalImage = intent.enabled)
+            is SharedThreadComposerDraftIntent.SelectMention ->
+                if (
+                    intent.mention in current.structuredMentions ||
+                    !composerStructuredMentionStillAppears(current.seedText, intent.mention.name)
+                ) {
+                    current
+                } else {
+                    current.copy(structuredMentions = current.structuredMentions + intent.mention)
+                }
             is SharedThreadComposerDraftIntent.InsertMention ->
                 current.copy(
                     seedText = current.seedText.withInsertedThreadMention(intent.handle),
@@ -2681,6 +2738,7 @@ internal class SharedThreadComposerDraftStore(
                     focusRequestShowsKeyboard = false,
                     sending = true,
                     failureLabel = null,
+                    structuredMentions = emptyList(),
                     // Keep the choice until the send attempt reaches a terminal completion.
                     originalImage = current.originalImage,
                     removedAttachmentIds = emptySet(),
@@ -2698,6 +2756,7 @@ internal class SharedThreadComposerDraftStore(
                 current.copy(
                     seedText = intent.seedText,
                     seedAsTask = intent.seedAsTask,
+                    structuredMentions = intent.structuredMentions.visibleStructuredMentionsIn(intent.seedText),
                     syncNonce = current.syncNonce + 1,
                     editorCommandNonce = current.editorCommandNonce + 1,
                     editorCommand =
@@ -2717,6 +2776,7 @@ internal class SharedThreadComposerDraftStore(
                 current.copy(
                     seedText = if (shouldClearComposer) "" else current.seedText,
                     seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
+                    structuredMentions = if (shouldClearComposer) emptyList() else current.structuredMentions,
                     syncNonce = current.syncNonce + 1,
                     sending = false,
                     failureLabel = null,
@@ -2738,6 +2798,7 @@ internal class SharedThreadComposerDraftStore(
                 current.copy(
                     seedText = if (shouldClearComposer) "" else current.seedText,
                     seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
+                    structuredMentions = if (shouldClearComposer) emptyList() else current.structuredMentions,
                     syncNonce = current.syncNonce + 1,
                     sending = false,
                     failureLabel = null,
