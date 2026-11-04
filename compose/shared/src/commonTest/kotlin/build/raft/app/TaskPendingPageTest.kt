@@ -34,8 +34,12 @@ class TaskPendingPageTest {
         val model = pending.taskConversationHeadModel(pending.taskPendingHeaderState(), TaskConversationDetailsState(), false, members, null)
         assertTrue(model.bar.statusEditable)
         assertTrue(model.bar.assigneeEditable)
-        // Web: every status, from any status, for everyone (the server has no transition table).
-        assertEquals(TaskStatus.entries.toList(), model.bar.statusOptions.map(TaskStatusOption::status))
+        // Web: every status, from any status, for everyone (the server has no transition table),
+        // but In Review, retired for a task with its own conversation (web slock #12884).
+        assertEquals(
+            listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Closed),
+            model.bar.statusOptions.map(TaskStatusOption::status),
+        )
         // The same bar the conversation page shows for this task once its conversation exists.
         val conversation = pending.copy(conversationChannelId = ChannelId("conv-1"), conversationAnchored = true)
         val conversationBar =

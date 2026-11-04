@@ -22,11 +22,23 @@ internal data class TaskStatusOption(val status: TaskStatus, val reopensToTodo: 
 /**
  * Web `getTaskStatusOptions`: every status, from any status, for members and admins alike (the
  * server has no transition table: slock `taskService.getTaskStatusTransitionError` only refuses the
- * current status). Closed -> Todo reads "Reopen to Todo".
+ * current status). Closed -> Todo reads "Reopen to Todo". [inReviewRetired]: see [taskStatusChoices].
  */
-internal fun taskStatusOptions(current: TaskStatus): List<TaskStatusOption> =
-    TaskStatus.entries.map { status ->
+internal fun taskStatusOptions(current: TaskStatus, inReviewRetired: Boolean): List<TaskStatusOption> =
+    taskStatusChoices(current, inReviewRetired).map { status ->
         TaskStatusOption(status = status, reopensToTodo = current == TaskStatus.Closed && status == TaskStatus.Todo)
+    }
+
+/**
+ * The statuses a task's status menu offers. In Review is retired for task v2 (#wg-task-v2:f7043517,
+ * raft-design decision 0043; web slock #12884 `getTaskStatusOptions`): a task that opens as its own
+ * conversation ([inReviewRetired], web `opensAsTaskConversation(task, taskV2)`) is not offered it —
+ * the server stores In Progress when asked for it — unless the task is still in it, where it stays as
+ * the current option. A legacy task, or any task with task v2 off, keeps every status.
+ */
+internal fun taskStatusChoices(current: TaskStatus, inReviewRetired: Boolean): List<TaskStatus> =
+    TaskStatus.entries.filter { status ->
+        !(inReviewRetired && status == TaskStatus.InReview && current != TaskStatus.InReview)
     }
 
 /**

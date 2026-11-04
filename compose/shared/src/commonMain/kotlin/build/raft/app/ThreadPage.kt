@@ -188,6 +188,7 @@ import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
+import build.raft.app.data.taskStatusChoices
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
@@ -17632,6 +17633,7 @@ private fun ThreadPageContentContent(
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
                         timeContext = payload.toRaftTimeCapabilities().staticContext(),
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         onOpenTask = { task -> onOpenTaskSummary(task, "tasks_panel") },
                         onIntent = onTasksIntent
                     )
@@ -25561,7 +25563,15 @@ private fun ThreadMessagesListContent(
                 if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
                     RaftTaskStatusMenuOverlay(
                         anchor = resolvedTaskStatusAnchor,
-                        items = ThreadTaskStatusMenuItems,
+                        // A task on a message is never a legacy orphan: with task v2 on it opens as
+                        // its own conversation, so In Review is retired (web `opensAsTaskConversation`).
+                        items =
+                            threadTaskStatusMenuItems(
+                                taskStatusChoices(
+                                    selectedStatus.status,
+                                    inReviewRetired = linkedTasksProjection.taskV2Enabled
+                                )
+                            ),
                         selectedId = selectedStatus.key,
                         onDismiss = { taskStatusMenuMessageId = null },
                         onSelect = { selectedId ->
@@ -25576,6 +25586,7 @@ private fun ThreadMessagesListContent(
                 } else {
                     ThreadTaskDetailDialog(
                         task = linkedTask,
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         assigneeOptions = taskAssigneeOptions,
                         agentStatusResolver = agentStatusResolver,
                         onDismiss = { taskStatusMenuMessageId = null },
@@ -32954,12 +32965,12 @@ internal fun RaftThreadScreenPayload.threadBeginningReplyCount(): Int? =
     originMessage?.replyCount?.coerceAtLeast(0)
 
 /** The task status choices, labelled in the app's language (`tasks_status_*`), keyed by status. */
-private val ThreadTaskStatusMenuItems: List<RaftBaseMenuItem>
-    @Composable
-    get() =
-        SharedTaskStatusChipMetas.map { option ->
-            RaftBaseMenuItem(id = option.key, label = option.status.localizedLabel())
-        }
+@Composable
+private fun threadTaskStatusMenuItems(statuses: List<TaskStatus>): List<RaftBaseMenuItem> =
+    statuses.map { status ->
+        val option = status.sharedTaskStatusChipMeta()
+        RaftBaseMenuItem(id = option.key, label = option.status.localizedLabel())
+    }
 
 internal fun threadTaskStatusChipClickIdentity(
     message: RaftThreadMessageItem,
@@ -36226,6 +36237,7 @@ private fun ThreadTasksTab(
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     timeContext: RaftTimeContext? = null,
+    taskV2Enabled: Boolean = false,
     onOpenTask: (TaskSummary) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
@@ -36249,6 +36261,7 @@ private fun ThreadTasksTab(
         identityOptions = identityOptions,
         draftProjection = draftProjection,
         timeContext = timeContext,
+        taskV2Enabled = taskV2Enabled,
         onOpenTask = if (openTaskEnabled) {
             onOpenTask
         } else {
@@ -38991,6 +39004,7 @@ private fun ThreadStateActionMessage(
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun ThreadTaskDetailDialog(
     task: TaskSummary,
+    taskV2Enabled: Boolean,
     assigneeOptions: List<MemberProfile>,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     onDismiss: () -> Unit,
@@ -39157,7 +39171,7 @@ private fun ThreadTaskDetailDialog(
     statusMenuAnchor?.let { anchor ->
         RaftTaskStatusMenuOverlay(
             anchor = anchor,
-            items = ThreadTaskStatusMenuItems,
+            items = threadTaskStatusMenuItems(task.statusMenuChoices(taskV2Enabled)),
             selectedId = statusMeta.key,
             onDismiss = { statusMenuAnchor = null },
             onSelect = { selectedId ->
