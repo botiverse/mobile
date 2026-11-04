@@ -737,9 +737,8 @@
     <string name="thread_settings_pin_detail">Keep it in Pinned on Home.</string>
     <string name="thread_settings_actions_title">Channel actions</string>
     <string name="thread_settings_actions_detail">Membership, visibility, conversion, archive, and destructive controls.</string>
-    <string name="thread_dm_settings_title">DM Settings</string>
-    <string name="thread_dm_settings_mute_person">Mute</string>
-    <string name="thread_dm_settings_mute_person_detail">Nothing in this conversation notifies you, not even @mentions. Only affects you.</string>
+    <string name="thread_dm_settings_badge">Direct message</string>
+    <string name="thread_dm_settings_close">Close conversation settings</string>
     <string name="thread_settings_name">Name</string>
     <string name="thread_settings_name_placeholder">e.g. ai-research</string>
     <string name="thread_settings_description">Description</string>

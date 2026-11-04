@@ -13,12 +13,12 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import org.robolectric.shadows.ShadowDialog
 
 /**
- * The DM settings (web ChannelPreferencesSection for a DM, slock #12622): Move to section on
- * Pinned and at home in Direct Messages, then Mute and Collapse long messages, on a phone in
- * light and dark. Verify / record as [RaftRobolectricScreenshot].
+ * The DM settings drawer (web ChannelOverflowMenu for a DM): the name with its "Direct message"
+ * tag, then Preferences (Move to section, Mute for a DM with an App bot, Collapse long messages).
+ * On a phone it fills the window: Friday on Pinned in light and dark, and a DM with a person at
+ * home in Direct Messages, which has no Mute. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -28,32 +28,49 @@ class DirectMessageSettingsScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun dmSettingsPinnedLight() = capture("dm.settings.pinned", RaftAppAppearance.Light, pinned = true)
+    fun dmSettingsPinnedLight() = captureDmSettings(activities, "dm.settings.pinned", RaftAppAppearance.Light, pinned = true)
 
     @Test
-    fun dmSettingsPinnedDark() = capture("dm.settings.pinned.dark", RaftAppAppearance.Dark, pinned = true)
+    fun dmSettingsPinnedDark() = captureDmSettings(activities, "dm.settings.pinned.dark", RaftAppAppearance.Dark, pinned = true)
 
     @Test
-    fun dmSettingsHomeLight() = capture("dm.settings.home", RaftAppAppearance.Light, pinned = false)
+    fun dmSettingsPersonAtHomeLight() =
+        captureDmSettings(activities, "dm.settings.home", RaftAppAppearance.Light, pinned = false, mutable = false)
+}
 
-    private fun capture(name: String, appearance: RaftAppAppearance, pinned: Boolean) =
-        RaftRobolectricScreenshot.capture(
-            name,
-            appearance,
-            reportDir = "build/reports/home-screenshots",
-            activities = activities,
-            root = { activity -> dialogWindow() ?: activity.window.decorView },
-        ) {
-            val pager =
-                remember {
-                    object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
-                }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftDesignSystemTheme { DirectMessageSettingsPanelVisualScreen(pinned = pinned) }
-            }
+/** The same drawer on a wide window: a panel beside the page, the head still name and tag. */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w1280dp-h1000dp-mdpi")
+class DirectMessageSettingsWideScreenshotTest {
+    @get:org.junit.Rule
+    val activities = RobolectricComposeActivityRule()
+
+    @Test
+    fun dmSettingsWideLight() = captureDmSettings(activities, "dm.settings.wide", RaftAppAppearance.Light, pinned = true)
+
+    @Test
+    fun dmSettingsWideDark() = captureDmSettings(activities, "dm.settings.wide.dark", RaftAppAppearance.Dark, pinned = true)
+}
+
+private fun captureDmSettings(
+    activities: RobolectricComposeActivityRule,
+    name: String,
+    appearance: RaftAppAppearance,
+    pinned: Boolean,
+    mutable: Boolean = true,
+) = RaftRobolectricScreenshot.capture(
+    name,
+    appearance,
+    reportDir = "build/reports/home-screenshots",
+    activities = activities,
+    root = { channelSettingsDrawerWindow() },
+) {
+    val pager =
+        remember {
+            object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
         }
-
-    /** A dialog in its own window: that window, its content measured to it (as [channelSettingsDrawerWindow]). */
-    private fun dialogWindow(): android.view.View? =
-        if (ShadowDialog.getLatestDialog() == null) null else channelSettingsDrawerWindow()
+    CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+        RaftDesignSystemTheme { DirectMessageSettingsPanelVisualScreen(pinned = pinned, mutable = mutable) }
+    }
 }
