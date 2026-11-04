@@ -5,7 +5,6 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -59,8 +58,9 @@ import kotlinx.coroutines.launch
  * - The whole list answers one drag: every message row slides toward its start by the same amount, up to
  *   [ThreadTimeRevealGutterWidth] (64dp, then a rubber band), avatar included, and its time (the clock
  *   in the person's 12/24-hour setting, [formatThreadTimeRevealLabel]) slides in at the end edge. On
- *   release everything springs back; nothing stays open. Date dividers, system rows and the
- *   thread's origin card stay put (the day comes from the dividers).
+ *   release everything springs back; nothing stays open. The rows follow the finger from its down, not
+ *   from the claim: a 40dp drag moves them 40dp, the whole gutter shows at 64dp (web parity). Date
+ *   dividers, system rows and the thread's origin card stay put (the day comes from the dividers).
  * - On whether compact consecutive messages is on or off alike; the drag is the same gesture everywhere.
  * - Touch only ([raftIsTouchLike] at the down): a mouse or trackpad keeps the hover toolbar, Compose 版
  *   gets nothing new.
@@ -97,8 +97,9 @@ import kotlinx.coroutines.launch
  * composed while [ThreadTimeRevealState.active] is true, which flips twice per gesture. The LazyColumn
  * itself is never translated (its scroll clip would cut the gutter off).
  *
- * Reduced motion: rows don't move; the labels fade in at the end edge over the row's surface and fade
- * out on release.
+ * Reduced motion: rows don't move. The times fade in only on compact continuation rows, in their start
+ * gutter where the pressed (desktop hover) time sits ([LocalThreadTimeRevealGutter]); an author row's
+ * header already shows its time. Nothing overlaps a header or the body. They fade out on release.
  */
 
 /** How far rows slide, and the width the time shows in. */
@@ -122,7 +123,7 @@ internal fun threadTimeRevealRubberBandPx(overPx: Float, limitPx: Float): Float 
 private const val ThreadTimeRevealRubberBandResistance = 0.55f
 
 /**
- * The rows' slide for a finger [dragPx] toward the start since the claim: 1:1 up to [gutterPx], then
+ * The rows' slide for a finger [dragPx] toward the start since its down: 1:1 up to [gutterPx], then
  * rubber-banded (at most half the gutter more). Never toward the end.
  */
 internal fun threadTimeRevealOffsetPx(dragPx: Float, gutterPx: Float): Float =
@@ -155,6 +156,12 @@ internal fun formatThreadTimeRevealLabel(value: String, timeContext: RaftTimeCon
  * list is not inside the tab pager). Default false.
  */
 internal val LocalThreadTimeRevealAvailable = staticCompositionLocalOf { false }
+
+/**
+ * Under reduced motion, a continuation row's reveal: its avatar slot fades the compact time in while
+ * [ThreadTimeRevealState.active] (ThreadMessageAvatarSlot). Null: no gutter time (moving rows, author rows).
+ */
+internal val LocalThreadTimeRevealGutter = staticCompositionLocalOf<ThreadTimeRevealState?> { null }
 
 @Stable
 internal class ThreadTimeRevealState {
@@ -200,10 +207,13 @@ internal class ThreadTimeRevealState {
 private const val ThreadTimeRevealFadeOutMillis = 150
 
 @Composable
-internal fun rememberThreadTimeRevealState(key: Any?): ThreadTimeRevealState {
+internal fun rememberThreadTimeRevealState(
+    key: Any?,
+    reducedMotion: Boolean = rememberRaftReducedMotion(),
+): ThreadTimeRevealState {
     val state = remember(key) { ThreadTimeRevealState() }
     state.gutterPx = with(LocalDensity.current) { ThreadTimeRevealGutterWidth.toPx() }
-    state.reducedMotion = rememberRaftReducedMotion()
+    state.reducedMotion = reducedMotion
     return state
 }
 
@@ -269,6 +279,7 @@ internal fun Modifier.threadTimeRevealGesture(
                         startsInEdgeZone = activitySwipeStartsInEdgeZone(downX, widthPx, startEdgePx, endEdgePx, isLtr),
                     )
                 val longPressTimeout = viewConfiguration.longPressTimeoutMillis
+                var claimX = down.position.x
                 // Main pass until the claim: the rows and their scrollers (a wide table) decide first.
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Main)
@@ -285,23 +296,25 @@ internal fun Modifier.threadTimeRevealGesture(
                         ActivitySwipeDragDecision.Undecided -> Unit
                         ActivitySwipeDragDecision.Release -> return@awaitEachGesture
                         ActivitySwipeDragDecision.Claim -> {
+                            claimX = change.position.x
                             change.consume()
                             break
                         }
                     }
                 }
                 state.begin()
-                var drag = 0f
+                // The rows track the finger from its down, not from the claim (web parity: a 40dp drag
+                // moves them 40dp): the claim distance already travelled shows at once.
+                fun dragSinceDown(x: Float): Float = if (isLtr) down.position.x - x else x - down.position.x
                 try {
+                    state.follow(scope, threadTimeRevealOffsetPx(dragSinceDown(claimX), state.gutterPx))
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         val change = event.changes.firstOrNull { it.id == down.id }
                         // Only this finger: a second one is left to whatever else it starts.
                         change?.consume()
                         if (change == null || !change.pressed) break
-                        val dx = change.position.x - change.previousPosition.x
-                        drag = (drag + if (isLtr) -dx else dx).coerceAtLeast(0f)
-                        state.follow(scope, threadTimeRevealOffsetPx(drag, state.gutterPx))
+                        state.follow(scope, threadTimeRevealOffsetPx(dragSinceDown(change.position.x), state.gutterPx))
                     }
                 } finally {
                     // Also on cancellation (pointer input reset): never leave rows slid.
@@ -314,7 +327,9 @@ internal fun Modifier.threadTimeRevealGesture(
 /**
  * One message row under the reveal: [content] slides toward the start by the list's offset, and
  * [timeLabel] slides in at the end edge, aligned with the row's first line ([continuation]: a compact
- * row without its author header). Without a reveal ([state] null), just [content].
+ * row without its author header). Under reduced motion nothing slides and only a [continuation] row
+ * shows its time, in its own avatar gutter ([LocalThreadTimeRevealGutter]). Without a reveal ([state]
+ * null), just [content].
  */
 @Composable
 internal fun ThreadTimeRevealRow(
@@ -332,14 +347,19 @@ internal fun ThreadTimeRevealRow(
         // Clipped only while slid: the row's own overflow (a located glow) is untouched at rest.
         Modifier.graphicsLayer { clip = state.offset.value > 0f }
     ) {
+        val reducedMotion = state.reducedMotion
         Box(
             Modifier.graphicsLayer {
-                translationX = if (state.reducedMotion) 0f else direction * state.offset.value
+                translationX = if (reducedMotion) 0f else direction * state.offset.value
             }
         ) {
-            CompositionLocalProvider(LocalRaftHorizontalDragKeepers provides state.keepers, content = content)
+            CompositionLocalProvider(
+                LocalRaftHorizontalDragKeepers provides state.keepers,
+                LocalThreadTimeRevealGutter provides state.takeIf { reducedMotion && continuation },
+                content = content,
+            )
         }
-        ThreadTimeRevealLabelSlot(state, timeLabel, continuation, direction)
+        if (!reducedMotion) ThreadTimeRevealLabelSlot(state, timeLabel, continuation, direction)
     }
 }
 
@@ -363,11 +383,10 @@ private fun BoxScope.ThreadTimeRevealLabelSlot(
                 .graphicsLayer {
                     alpha = state.fraction
                     // Rides with the row's end edge: at the end once the gutter is open, then with the rubber band.
-                    translationX = if (state.reducedMotion) 0f else -direction * (state.gutterPx - state.offset.value)
+                    translationX = -direction * (state.gutterPx - state.offset.value)
                 }
                 // Shown only mid-drag; the row's own semantics carry its time (the tag is for tests).
                 .clearAndSetSemantics { testTag = ThreadTimeRevealLabelTestTag }
-                .then(if (state.reducedMotion) Modifier.background(RaftColor.Canvas) else Modifier)
                 .padding(end = ThreadTimeRevealLabelEndPadding),
         contentAlignment = Alignment.CenterEnd,
     ) {

@@ -465,6 +465,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftPointerHover
@@ -524,6 +525,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -34457,6 +34459,12 @@ private fun ThreadMessageAvatarSlot(
     timestampAccessibilityLabel: String? = null,
 ) {
     val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
+    // Reduced-motion drag-to-see-times (ThreadMessageTimeReveal.kt): a continuation row's time fades in
+    // here, where the pressed (desktop hover) time sits. Only this slot reads `active`.
+    val gutterReveal = LocalThreadTimeRevealGutter.current
+    val gutterTimeShowing =
+        gutterReveal != null && gutterReveal.active && !showAvatar && compactTimestampGutter &&
+            !slotLayout.timestampVisible && timestampLabel.isNotBlank()
     Box(
         modifier =
             Modifier
@@ -34464,7 +34472,11 @@ private fun ThreadMessageAvatarSlot(
                 .height(slotLayout.heightDp.dp)
                 .then(
                     if (!showAvatar && timestampAccessibilityLabel != null) {
-                        Modifier.clearAndSetSemantics { contentDescription = timestampAccessibilityLabel }
+                        Modifier.clearAndSetSemantics {
+                            contentDescription = timestampAccessibilityLabel
+                            // Tests only: the revealed time has no semantics of its own.
+                            if (gutterTimeShowing) testTag = ThreadTimeRevealLabelTestTag
+                        }
                     } else {
                         Modifier
                     }
@@ -34506,7 +34518,7 @@ private fun ThreadMessageAvatarSlot(
                         )
                     }
                 }
-            slotLayout.timestampVisible ->
+            slotLayout.timestampVisible || gutterTimeShowing ->
                 Text(
                     text = timestampLabel,
                     style =
@@ -34518,12 +34530,24 @@ private fun ThreadMessageAvatarSlot(
                         ),
                     color = RaftColor.TextBlack.copy(alpha = 0.38f),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = if (slotLayout.timestampVisible) TextOverflow.Ellipsis else TextOverflow.Visible,
+                    softWrap = slotLayout.timestampVisible,
                     textAlign = timestampTextAlign,
                     modifier =
-                        Modifier
-                            .width(slotLayout.widthDp.dp)
-                            .align(timestampAlignment)
+                        if (!slotLayout.timestampVisible && gutterReveal != null) {
+                            // The whole clock: it may run a few dp into the gap before the body, never cut.
+                            Modifier
+                                .align(timestampAlignment)
+                                .wrapContentWidth(
+                                    align = if (timestampTextAlign == TextAlign.End) Alignment.End else Alignment.Start,
+                                    unbounded = true,
+                                )
+                                .graphicsLayer { alpha = gutterReveal.fraction }
+                        } else {
+                            Modifier
+                                .width(slotLayout.widthDp.dp)
+                                .align(timestampAlignment)
+                        }
                 )
         }
     }

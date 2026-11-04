@@ -54,7 +54,10 @@ class ThreadMessageTimeRevealScreenshotTest {
 
     @Test fun midDragDark() = capture("thread.time-reveal.mid-drag.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    /** Reduced motion, fully revealed: rows still, the two continuation rows' times in their start gutter. */
+    @Test fun reducedMotionLight() = capture("thread.time-reveal.reduced-motion", RaftAppAppearance.Light, reducedMotion = true)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, reducedMotion: Boolean = false) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val clock = remember { RaftTimeContextProvider(ScreenshotTimeContext) }
             CompositionLocalProvider(
@@ -62,7 +65,7 @@ class ThreadMessageTimeRevealScreenshotTest {
                 LocalRaftTimeContextProvider provides clock,
             ) {
                 RaftDesignSystemTheme {
-                    val reveal = rememberThreadTimeRevealState(Unit)
+                    val reveal = rememberThreadTimeRevealState(Unit, reducedMotion = reducedMotion)
                     LaunchedEffect(reveal) {
                         reveal.begin()
                         reveal.offset.snapTo(reveal.gutterPx)

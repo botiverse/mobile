@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -67,7 +68,11 @@ class ThreadMessageTimeRevealUiTest {
 
     private class Harness(val reveal: ThreadTimeRevealState, val list: LazyListState, val menus: MutableList<String>)
 
-    private fun ComposeUiTest.show(messages: List<RaftThreadMessageItem>, compact: Boolean = false): Harness {
+    private fun ComposeUiTest.show(
+        messages: List<RaftThreadMessageItem>,
+        compact: Boolean = false,
+        reducedMotion: Boolean = false,
+    ): Harness {
         var harness: Harness? = null
         setContent {
             val clock = remember { RaftTimeContextProvider(TimeContextForRows) }
@@ -76,7 +81,7 @@ class ThreadMessageTimeRevealUiTest {
                 LocalRaftTimeContextProvider provides clock,
             ) {
                 RaftDesignSystemTheme {
-                    val reveal = rememberThreadTimeRevealState(Unit)
+                    val reveal = rememberThreadTimeRevealState(Unit, reducedMotion = reducedMotion)
                     val list = rememberLazyListState()
                     val menus = remember { mutableListOf<String>() }
                     harness = remember { Harness(reveal, list, menus) }
@@ -101,7 +106,7 @@ class ThreadMessageTimeRevealUiTest {
             }
             waitForIdle()
             assertTrue(h.reveal.active, "a clear leftward drag claims")
-            // 100dp of drag, the claim's 16dp not counted: past the 64dp gutter, rubber-banded.
+            // 100dp of drag since the down: past the 64dp gutter, rubber-banded.
             val offset = h.reveal.offset.value
             assertTrue(offset > 64f && offset < 96f, "offset $offset")
             assertEquals(4, revealedLabels())
@@ -110,6 +115,78 @@ class ThreadMessageTimeRevealUiTest {
             assertEquals(0f, h.reveal.offset.value)
             assertFalse(h.reveal.active)
             assertEquals(0, revealedLabels())
+        }
+
+    @Test
+    fun rowsTrackTheFingerFromItsDown() =
+        runRobolectricComposeUiTest {
+            val h = show(messages(3))
+            val body = onNodeWithText("message body 1", useUnmergedTree = true)
+            val restX = body.fetchSemanticsNode().positionInRoot.x
+            onNodeWithTag(LIST).performTouchInput {
+                down(center)
+                repeat(4) { moveBy(Offset(-10f, 0f)) }
+            }
+            waitForIdle()
+            assertTrue(h.reveal.active)
+            // 40dp of drag moves the rows 40dp (the claim's distance included), not 40dp minus the claim.
+            assertEquals(40f, h.reveal.offset.value, 0.5f)
+            assertEquals(restX - 40f, body.fetchSemanticsNode().positionInRoot.x, 0.5f)
+            onNodeWithTag(LIST).performTouchInput {
+                repeat(3) { moveBy(Offset(-8f, 0f)) }
+            }
+            waitForIdle()
+            // 64dp: the whole gutter, no rubber band yet.
+            assertEquals(64f, h.reveal.offset.value, 0.5f)
+            onNodeWithTag(LIST).performTouchInput { up() }
+            waitForIdle()
+            assertEquals(0f, h.reveal.offset.value)
+        }
+
+    @Test
+    fun reducedMotionShowsTimesOnlyInContinuationGutters() =
+        runRobolectricComposeUiTest {
+            val h = show(messages(3), compact = true, reducedMotion = true)
+            val first = onNodeWithText("message body 0", useUnmergedTree = true)
+            val second = onNodeWithText("message body 1", useUnmergedTree = true)
+            val firstX = first.fetchSemanticsNode().positionInRoot.x
+            val secondX = second.fetchSemanticsNode().positionInRoot.x
+            onNodeWithTag(LIST).performTouchInput {
+                down(center)
+                repeat(10) { moveBy(Offset(-10f, 0f)) }
+            }
+            waitForIdle()
+            assertTrue(h.reveal.active)
+            // Rows don't move.
+            assertEquals(firstX, first.fetchSemanticsNode().positionInRoot.x)
+            assertEquals(secondX, second.fetchSemanticsNode().positionInRoot.x)
+            // Only the two continuation rows (09:01, 09:02); the group's first row has its header time.
+            val labels = onAllNodesWithTag(ThreadTimeRevealLabelTestTag, useUnmergedTree = true).fetchSemanticsNodes()
+            assertEquals(
+                listOf("09:01", "09:02"),
+                labels.map { it.config[SemanticsProperties.ContentDescription].single() },
+            )
+            // In the start gutter, before the body text: no overlap.
+            labels.forEach { assertTrue(it.boundsInRoot.right <= secondX, "label ${it.boundsInRoot} vs body $secondX") }
+            onNodeWithTag(LIST).performTouchInput { up() }
+            waitForIdle()
+            assertFalse(h.reveal.active)
+            assertEquals(0, revealedLabels())
+        }
+
+    @Test
+    fun reducedMotionWithoutCompactRowsShowsNoExtraTimes() =
+        runRobolectricComposeUiTest {
+            val h = show(messages(3), compact = false, reducedMotion = true)
+            onNodeWithTag(LIST).performTouchInput {
+                down(center)
+                repeat(10) { moveBy(Offset(-10f, 0f)) }
+            }
+            waitForIdle()
+            assertTrue(h.reveal.active)
+            // Every row is a group's first, its header shows the time.
+            assertEquals(0, revealedLabels())
+            onNodeWithTag(LIST).performTouchInput { up() }
         }
 
     @Test
