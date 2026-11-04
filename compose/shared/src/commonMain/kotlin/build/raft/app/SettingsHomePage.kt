@@ -17147,11 +17147,15 @@ internal fun SettingsRowVisualContent() {
 }
 
 @Composable
-internal fun SettingsPageVisualContent() {
+internal fun SettingsPageVisualContent(
+    // PROTOTYPE (native nav): a pushed page with its safe area and a working Back.
+    protoVariant: String? = null,
+    protoOnBack: (() -> Unit)? = null,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val variant =
         remember(pager.pageData.params.toString()) {
-            pager.pageData.params.optString("variant", "account").ifBlank { "account" }
+            protoVariant ?: pager.pageData.params.optString("variant", "account").ifBlank { "account" }
         }
     if (variant == "server-danger-modal") {
         SettingsServerDangerModalVisualContent()
@@ -17164,15 +17168,15 @@ internal fun SettingsPageVisualContent() {
     Box(
         modifier =
             Modifier
-                .width(390.dp)
+                .then(if (protoOnBack != null) Modifier.fillMaxSize() else Modifier.width(390.dp))
                 .background(RaftColor.SurfaceWhite)
     ) {
         SettingsDetailShell(
             title = spec.title,
             subtitle = settingsVisualHeaderSubtitle(spec.variant),
             iconName = spec.iconName,
-            applyTopSafeArea = false,
-            onBack = {}
+            applyTopSafeArea = protoOnBack != null,
+            onBack = protoOnBack ?: {}
         ) {
             SettingsVisualPageBody(spec)
         }
@@ -17829,17 +17833,20 @@ private val homeActivityVisualDraftProjection =
     ).toSharedThreadComposerDraftProjection()
 
 @Composable
-internal fun HomeSavedVisualContent() {
+internal fun HomeSavedVisualContent(
+    // PROTOTYPE (native nav): a pushed full-screen page with a working Back.
+    protoOnBack: (() -> Unit)? = null,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
-    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+    Box(modifier = if (protoOnBack != null) Modifier.fillMaxSize() else Modifier.width(342.dp).height(620.dp)) {
         SharedHomeSavedPanel(
             state = homeSavedVisualState.copy(refreshing = params.optBoolean("task797Refreshing", false)),
             onIntent = {},
-            onClose = {},
+            onClose = protoOnBack ?: {},
             onOpenItem = {},
             bottomContentPadding = 12.dp,
-            includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false)
+            includeTopSafeArea = protoOnBack != null || params.optBoolean("task797IncludeTopSafeArea", false)
         )
     }
 }
@@ -17868,7 +17875,11 @@ internal fun HomeActivityVisualContent() {
  * `segment` picks all / unread / mentions / pinned.
  */
 @Composable
-internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
+internal fun RaftActivityTabVisualContent(
+    stale: Boolean = false,
+    // PROTOTYPE (native nav): the whole screen with its safe area, the host draws the tab bar.
+    protoFullScreen: Boolean = false,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val segment =
         remember(pager.pageData.params.toString()) {
@@ -17877,7 +17888,11 @@ internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
     val filter =
         build.raft.app.data.InboxFilter.entries.firstOrNull { (it.scopeWireValue ?: it.wireValue) == segment }
             ?: build.raft.app.data.InboxFilter.All
-    Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite)) {
+    Column(
+        modifier =
+            (if (protoFullScreen) Modifier.fillMaxSize() else Modifier.width(390.dp).height(844.dp))
+                .background(RaftColor.SurfaceWhite)
+    ) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             SharedHomeActivityScreen(
                 state =
@@ -17890,7 +17905,7 @@ internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
                 onIntent = {},
                 onOpenItem = {},
                 onClose = null,
-                includeTopSafeArea = false,
+                includeTopSafeArea = protoFullScreen,
                 activityTaskStatusBadgesEnabled = true,
                 draftProjection = homeActivityVisualDraftProjection,
                 foregroundEpoch = 0L,
@@ -17898,7 +17913,7 @@ internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
                 modifier = Modifier.fillMaxSize()
             )
         }
-        RaftBottomTabBar(
+        if (!protoFullScreen) RaftBottomTabBar(
             items =
                 appShellPhoneBottomTabs(
                     selectedTab = "activity",

@@ -28,6 +28,20 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) UIColor *raftInitialBackgroundColor;
 
 /**
+ * PROTOTYPE (native nav bar): the page's head is the navigation controller's real
+ * UINavigationBar (the CMP page publishes title / actions through RaftNativeNavBarBridge)
+ * instead of a Compose header, and back is the system interactive pop gesture. Set by
+ * `RaftPageControllerFactory` before the view loads.
+ */
+@property (nonatomic, assign) BOOL raftUsesNativeNavBar;
+/** PROTOTYPE: no head on screen publishes (a shell tab with its own Compose head): bar hidden. */
+@property (nonatomic, assign) BOOL raftNativeNavBarHeadHidden;
+/** PROTOTYPE: keeps the Swift RaftNativeNavBarHost alive with the page. */
+@property (nonatomic, strong, nullable) id raftNativeNavBarHost;
+/** PROTOTYPE: called after layout / appearance (reason), for the large-title scroll mirror. */
+@property (nonatomic, copy, nullable) void (^raftNativeNavBarLayoutHook)(NSString *reason);
+
+/**
  * @param pageName the page name (the former Kuikly `@Page` name)
  * @param pageData the page's pageData; host context keys are added when missing
  */

@@ -5666,7 +5666,8 @@ internal fun ThreadMembersPageContent(
         ) {
         LazyColumn(
             state = rosterListState,
-            modifier = Modifier.fillMaxSize(),
+            // PROTOTYPE (native nav bar): drives the host's large title.
+            modifier = Modifier.fillMaxSize().raftNativeNavBarPrimaryList(rosterListState),
             contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers && !membersLoading) 0.dp else bottomSafeArea),
         ) {
             if (membersFailed) {
@@ -5786,6 +5787,17 @@ internal fun ThreadMembersPageContent(
         }
     }
     }
+}
+
+/** PROTOTYPE (native nav): the conversation's Chat / Tasks / Files strip, for the proto fixture page. */
+@Composable
+internal fun ThreadNativeNavProtoModeTabs() {
+    RaftTopTabBar(
+        items = RaftThreadTab.entries.map { it.toRaftTabSpec().toTopTabBarItem() },
+        selectedKey = RaftThreadTab.Chat.toString(),
+        onSelectedKeyChange = {},
+        itemKeyPrefix = "thread-tab"
+    )
 }
 
 @Composable
@@ -18400,8 +18412,90 @@ internal fun ThreadPageHeader(
                     emptyList()
                 },
         )
+    // PROTOTYPE (native nav bar): the conversation's buttons on the system bar: Members (with its
+    // count) first, then the Duo column's actions (the header's Search / Settings / Open in
+    // Channel and its ⋯ rows: Focus mode, Search in Task, View in Channel, Mark as Unread,
+    // Follow), then the ⋯'s notification level row. The bar keeps two buttons, the rest in ⋯.
+    val nativeSideActions =
+        if (showActions && LocalRaftNativeNavBarScript.current != null) {
+            threadHeaderSideColumnActions(
+                payload = payload,
+                surfaceKind = headerDisplay.surfaceKind,
+                taskConversation = taskConversation,
+                onOpenSearch = onOpenSearch,
+                onShowSettings = onShowSettings,
+                onOpenInChannel = onOpenInChannel,
+                onToggleFocusMode = onToggleFocusMode,
+                focusModeActive = focusModeActive,
+                threadFollowed = threadFollowed,
+                onToggleThreadFollow = onToggleThreadFollow,
+                onMarkThreadUnread = onMarkThreadUnread,
+                onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+            )
+        } else {
+            emptyList()
+        }
+    val nativeLevelTarget = notificationLevelTarget.whenLevelsSupported()
+    val nativeLevelLabel = rememberRaftNotificationLevelMenuLabel(nativeLevelTarget)
+    var nativeLevelDialogOpen by remember { mutableStateOf(false) }
+    if (nativeLevelDialogOpen && nativeLevelTarget != null) {
+        RaftNotificationLevelDialog(target = nativeLevelTarget, onDismiss = { nativeLevelDialogOpen = false })
+    }
+    val membersLabel = stringResource(Res.string.settings_members_title)
+    val nativeNavBarActions =
+        if (!showActions) {
+            emptyList()
+        } else {
+            buildList {
+                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage) {
+                    add(
+                        RaftNativeNavBarAction(
+                            "members",
+                            membersLabel,
+                            "person.2",
+                            onShowMembers,
+                            badge = payload.membersCount.takeIf { it > 0 },
+                            priority = Int.MAX_VALUE,
+                        )
+                    )
+                }
+                addAll(nativeSideActions.toRaftNativeNavBarActions())
+                if (nativeLevelTarget != null) {
+                    add(
+                        RaftNativeNavBarAction(
+                            NOTIFICATION_LEVEL_MENU_ITEM_ID,
+                            nativeLevelLabel,
+                            "bell",
+                            { nativeLevelDialogOpen = true },
+                            placement = RaftNativeNavBarPlacement.Overflow,
+                        )
+                    )
+                }
+            }
+        }
     RaftTopPageHeader(
         title = localizedHeaderTitle,
+        nativeSubtitle = headerSubtitle,
+        nativeActions = nativeNavBarActions,
+        // PROTOTYPE: the channel glyph / DM avatar and the refresh spinner in the host's title view.
+        nativeTitleExtras =
+            RaftNativeNavBarTitleExtras(
+                leading =
+                    when {
+                        headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
+                            RaftNativeNavBarTitleLeading.Avatar(
+                                label = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
+                                imageUrl =
+                                    (resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue)
+                                        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+                                fillArgb = raftArgbHex(raftAvatarFallbackFill(headerDisplay.dmPeerIdentity?.kind)),
+                            )
+                        payload.showModeTabs ->
+                            RaftNativeNavBarTitleLeading.Channel(headerDisplay.channelKind, headerDisplay.channelOnPublicPage)
+                        else -> null
+                    },
+                refreshing = payload.backgroundRefreshing,
+            ),
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
         contentStartPadding =

@@ -40,6 +40,10 @@ import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.LocalRaftNativeTabBarBridge
+import build.raft.app.LocalRaftNativeNavBar
+import build.raft.app.LocalRaftNativeNavBarScript
+import build.raft.app.RaftNativeNavBarHostIdPageDataKey
+import build.raft.app.RaftNativeNavBarRegistry
 import build.raft.app.RaftNativeTabBarHostIdPageDataKey
 import build.raft.app.RaftNativeTabBarRegistry
 import build.raft.app.RaftSideActionHostIdPageDataKey
@@ -209,6 +213,14 @@ fun RaftPagerHost(
                 RaftSideActionHostRegistry.bridgeFor(pager.pageData.params.optString(RaftSideActionHostIdPageDataKey))
             }
         )
+    // PROTOTYPE: the host-drawn UINavigationBar registered for this page (iOS), if any. A child
+    // page (an app-shell tab) has none of its own and publishes into its host page's bar.
+    val ownNativeNavBar =
+        remember(pager) {
+            RaftNativeNavBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeNavBarHostIdPageDataKey))
+        }
+    val inheritedNativeNavBar = LocalRaftNativeNavBar.current
+    val inheritedNativeNavBarScript = LocalRaftNativeNavBarScript.current
     CompositionLocalProvider(
         LocalViewModelStoreOwner provides viewModelStoreOwner,
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
@@ -219,6 +231,9 @@ fun RaftPagerHost(
                 RaftNativeTabBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeTabBarHostIdPageDataKey))
             },
         LocalRaftSideActionHost provides sideActionHost,
+        // PROTOTYPE: the host-drawn UINavigationBar registered for this page (iOS), if any.
+        LocalRaftNativeNavBar provides (ownNativeNavBar?.takeIf { it.hostDrawsBar } ?: inheritedNativeNavBar.takeIf { ownNativeNavBar == null }),
+        LocalRaftNativeNavBarScript provides (ownNativeNavBar ?: inheritedNativeNavBarScript),
     ) {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {

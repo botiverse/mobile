@@ -226,6 +226,17 @@ private fun raftHostWindowIdEnsuringObserver(): String {
 }
 
 /**
+ * PROTOTYPE (native nav bar): the host's live top inset even while the status bar is hidden
+ * (landscape iPhone), where it is the host bar's height; null without a live host snapshot.
+ */
+@Composable
+internal fun raftNativeNavBarLiveTop(): Dp? {
+    val windowId = raftHostWindowIdEnsuringObserver()
+    val live = RaftHostWindowInsets.current(windowId) ?: return null
+    return resolveRaftLiveTopSafeArea(live, LocalDensity.current.density)
+}
+
+/**
  * The top inset a page header keeps: the host's top safe area, and at least
  * [RaftSideColumnTopInset] while a system side column replaces the top band (iPhone Duo held
  * sideways: the camera sits in the column, so the safe area has no top and a header would start

@@ -36,7 +36,33 @@ import shared
             hostPageData[RaftIosTabBarController.hostIdPageDataKey] = hostId
             nativeTabBar = (hostId, bridge)
         }
+        // PROTOTYPE (native nav bar): pages whose head is the real UINavigationBar.
+        hostPageData.removeValue(forKey: RaftNativeNavBarHostIdPageDataKeyName)
+        var nativeNavBar: (hostId: String, bridge: RaftNativeNavBarBridge)?
+        let usesNativeNavBar = RaftNativeNavProto.usesNativeNavBar(pageName: pageName)
+        if usesNativeNavBar || RaftNativeNavProto.scriptsPage(pageName: pageName) {
+            let hostId = UUID().uuidString
+            let bridge = RaftNativeNavBarBridge()
+            // Prototype off in a capture: the bridge only lets the script scroll the page's list.
+            bridge.hostDrawsBar = usesNativeNavBar
+            RaftNativeNavBarRegistry.shared.register(hostId: hostId, bridge: bridge)
+            hostPageData[RaftNativeNavBarHostIdPageDataKeyName] = hostId
+            nativeNavBar = (hostId, bridge)
+        }
         let container = RaftPageViewController(pageName: pageName, pageData: hostPageData)
+        if let nativeNavBar = nativeNavBar {
+            container.raftUsesNativeNavBar = usesNativeNavBar
+            let navHost = RaftNativeNavBarHost(
+                controller: container,
+                bridge: nativeNavBar.bridge,
+                hostId: nativeNavBar.hostId,
+                largeTitle: usesNativeNavBar && RaftNativeNavProto.usesLargeTitle(pageName: pageName)
+            )
+            container.raftNativeNavBarHost = navHost
+            if usesNativeNavBar {
+                navHost.attach()
+            }
+        }
         // Before the page's first composition: the last painted canvas, else the resolved app
         // theme's canvas (the stored Light/Dark/System choice), so nothing flashes white.
         container.raftInitialBackgroundColor =
