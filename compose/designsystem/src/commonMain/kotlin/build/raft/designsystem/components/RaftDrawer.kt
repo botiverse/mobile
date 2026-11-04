@@ -1,17 +1,24 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -30,7 +37,8 @@ import build.raft.designsystem.tokens.RaftRadius
  * [RaftSheet]): the panel keeps a close control of its own.
  *
  * The surface is always 82% of the window tall (web `--drawer-content-height: 82vh`), at most
- * [RaftDrawerDefaults.MaxWidth] wide, and [content] fills it: it draws its own head.
+ * [RaftDrawerDefaults.MaxWidth] wide, and [content] fills it under the grab handle
+ * ([RaftSheetGrabHandle]): it draws its own head.
  * [clearNavigationBar] false leaves the home indicator and the keyboard to [content] (a
  * conversation whose composer already pads for both); true pads the surface for them.
  */
@@ -73,7 +81,29 @@ private fun RaftDrawerSurfaceImpl(
                 .fillMaxHeight()
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog, 0.dp)
                 .then(if (clearNavigationBar) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier),
-            content = content,
+        ) {
+            RaftSheetGrabHandle()
+            content()
+        }
+    }
+}
+
+/**
+ * raft-ui `DrawerSwipeHandle` (0.57.2, raft-design #944): every bottom sheet has a grab handle at
+ * its top edge (Drawer Rules: "Give every bottom sheet a grab handle"; Shape: round ends, as the
+ * iOS grabber and Material's drag handle). A 16dp strip (`h-4`) holding a 36 x 4dp bar in
+ * `line-seam` with round ends, 6dp from the top (`before:top-1.5 before:h-1 before:w-9`),
+ * centred. It is drawn only, with no semantics (`aria-hidden`). Swipe to dismiss is not ported:
+ * the sheet keeps its ×, Back or a button, never only the gesture (Drawer Accessibility).
+ */
+@Composable
+internal fun RaftSheetGrabHandle(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().height(RaftDrawerDefaults.GrabHandleHeight), contentAlignment = Alignment.TopCenter) {
+        Box(
+            Modifier
+                .padding(top = 6.dp)
+                .size(width = 36.dp, height = 4.dp)
+                .background(RaftTheme.colors.lineSeam, CircleShape),
         )
     }
 }
@@ -82,4 +112,7 @@ private fun RaftDrawerSurfaceImpl(
 object RaftDrawerDefaults {
     /** The widest the drawer gets: [RaftSheet]'s 448dp, so a wide window keeps a phone-wide sheet. */
     val MaxWidth = 448.dp
+
+    /** [RaftSheetGrabHandle]'s strip at the top of every bottom sheet (`h-4`). */
+    val GrabHandleHeight = 16.dp
 }

@@ -240,6 +240,9 @@ fun RaftDialog(
  * width up to 448dp, `layer-popover` with the dialog radius on its top corners, the
  * `line-seam` ring and `shadow-float`, at least 256dp tall.
  *
+ * - Grab handle ([RaftSheetGrabHandle], raft-ui 0.57.2): every bottom sheet starts with it,
+ *   a 36 x 4dp `line-seam` bar in a 16dp strip; the header then starts 8dp under it (`pt-2`).
+ *
  * - Header: [title] (`text-headline` bold) and [description] (`text-callout`
  *   `foreground-muted`, one or two sentences), 16dp padding, 4dp apart.
  * - [content] under it, 16dp at the sides. It scrolls in the sheet: no `Modifier.weight` and
@@ -314,8 +317,10 @@ internal fun RaftSheetSurfaceImpl(
                 // keyboard), the content clears the home indicator and the keyboard.
                 .then(if (clearNavigationBar) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier),
         ) {
+            RaftSheetGrabHandle()
+            // `pt-2` under the handle (drawer.recipe `side: "down"` header), `pb-2`.
             Column(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (headerAction != null || onClose != null) {
