@@ -107,6 +107,7 @@ object GeneratedRealtimeContract {
         const val ServerPlanUpdated = "server:plan-updated"
         const val ServerFeaturesChanged = "server:features-changed"
         const val AppearanceUpdated = "appearance:updated"
+        const val UserProfileUpdated = "user:profile-updated"
         const val ActivityChanged = "activity:changed"
         const val AnnouncementNew = "announcement:new"
         const val ReminderFired = "reminder:fired"
@@ -150,6 +151,7 @@ object GeneratedRealtimeContract {
             ServerPlanUpdated,
             ServerFeaturesChanged,
             AppearanceUpdated,
+            UserProfileUpdated,
             ActivityChanged,
             AnnouncementNew,
             ReminderFired,

@@ -267,5 +267,6 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerFeaturesChanged -> serverId
         is ActivityChanged -> serverId
         is ServerAppearanceUpdated -> serverId
+        is build.raft.app.model.UserProfileUpdated -> serverId
         else -> null
     }

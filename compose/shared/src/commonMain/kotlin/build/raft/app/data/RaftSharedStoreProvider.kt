@@ -54,6 +54,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
+import build.raft.app.model.UserProfileUpdated
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RaftServerThemeLook
 import build.raft.app.model.SyncResumeResponse
@@ -624,6 +625,17 @@ internal class RaftSharedStoreProvider private constructor(
             channelId = channelId,
             stores = ::allServerMembersStores,
         )
+    }
+
+    /**
+     * Realtime `user:profile-updated` (botiverse/slock #12688): the person is patched in place in every
+     * members store (their faces and names in messages, member lists, Home rows and profile cards read
+     * from there), and in the stored user when it is the grant's own account ([principalId]), so the
+     * account's own profile follows a change made on another device. No network read.
+     */
+    internal suspend fun applyUserProfileUpdated(principalId: String, event: UserProfileUpdated) {
+        allServerMembersStores().forEach { store -> store.applyUserProfileUpdated(event) }
+        authStore.applyRealtimeUserProfileUpdated(principalId, event)
     }
 
     /** Realtime `agent:deleted` for the current account: its cached detail page (memory and disk) goes. */
@@ -3528,6 +3540,9 @@ internal class RaftSharedStoreProvider private constructor(
                         owner.installServerAppearanceSink { principalId, event ->
                             authStore.applyRealtimeServerAppearance(principalId, event)
                         }
+                        owner.installUserProfileUpdatedSink { principalId, event ->
+                            provider.applyUserProfileUpdated(principalId, event)
+                        }
                         owner.installAgentActivitySubscribedSink { serverId, event ->
                             provider.agentActivitySubscriptions.onSubscribed(serverId, event.agentIds)
                         }
@@ -3876,6 +3891,14 @@ internal class SharedRealtimeDomainEventOwner(
         serverAppearanceSink = sink
     }
 
+    // `user:profile-updated`: a person's new name / avatar, patched in place into the member stores and,
+    // when it is the grant's own account, its stored user. Process entry only, like the appearance sink.
+    private var userProfileUpdatedSink: (suspend (principalId: String, event: UserProfileUpdated) -> Unit)? = null
+
+    fun installUserProfileUpdatedSink(sink: suspend (principalId: String, event: UserProfileUpdated) -> Unit) {
+        userProfileUpdatedSink = sink
+    }
+
     // `agent:activity:subscribed` answers this process's own subscribe on the grant's server socket.
     private var agentActivitySubscribedSink: ((serverId: String, event: AgentActivitySubscribed) -> Unit)? = null
 
@@ -4018,6 +4041,10 @@ internal class SharedRealtimeDomainEventOwner(
             }
             if (acceptedEvent is ServerNotificationPreferencesChanged && acceptedEvent.serverId.value == serverId) {
                 serverNotificationPreferencesSink?.invoke(grant.principalId, serverId, acceptedEvent)
+            }
+            // Sent per server room: it names the connection's server.
+            if (acceptedEvent is UserProfileUpdated && acceptedEvent.serverId.value == serverId) {
+                userProfileUpdatedSink?.invoke(grant.principalId, acceptedEvent)
             }
             // Unified notification levels and account settings (slock docs/contracts/notifications.md
             // §2.3): the process stores the channel / thread menus, the badge and the settings page read.

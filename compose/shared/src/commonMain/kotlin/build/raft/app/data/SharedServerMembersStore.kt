@@ -18,6 +18,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.model.UserProfileUpdated
 import build.raft.app.model.avatarSlotResolution
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.hidesHumanDirectoryForViewer
@@ -1729,6 +1730,78 @@ class SharedServerMembersStore internal constructor(
             logger(
                 "shared_server_members_sync_apply serverId=$key upserts=${accepted.size} deletes=${deletes.size}"
             )
+        }
+        return changed
+    }
+
+    /**
+     * Realtime `user:profile-updated` (botiverse/slock #12688): the person [UserProfileUpdated.userId]
+     * changed their name or avatar. That one person is patched in place wherever this store holds
+     * them for [UserProfileUpdated.serverId] (the server roster, the profile cache, loaded channel
+     * member lists) and their saved avatar reference follows; every other member keeps its object and
+     * nothing is read from the network. A server whose roster is not held is left for its next load.
+     * Returns whether anything changed.
+     */
+    internal suspend fun applyUserProfileUpdated(event: UserProfileUpdated): Boolean {
+        val key = event.serverId.value.normalizedServerMembersId() ?: return false
+        val userKey = event.userId.value.normalizedServerMembersId() ?: return false
+        fun MemberProfile.isPerson(): Boolean = kind == MemberKind.Human && id.value.trim() == userKey
+        fun MemberProfile.patched(): MemberProfile = withUserProfileUpdate(event)
+        val binding = currentDirectoryOwnerBinding(ServerId(key))
+        val durableEpoch = durableStore?.epoch
+        var changed = false
+        val persisted =
+            mutex.withLock {
+                val current = _state.value
+                val entry = current.entriesByServerId[key]
+                val nextMembers = entry?.members?.map { member -> if (member.isPerson()) member.patched() else member }
+                val cache = current.profileCacheByServerId[key]
+                val nextCache = cache?.mapValues { (_, profile) -> if (profile.isPerson()) profile.patched() else profile }
+                val nextSlices =
+                    current.channelMemberSlices.mapValues { (scope, slice) ->
+                        if (scope.serverId != key || slice.members.none { it.isPerson() }) {
+                            slice
+                        } else {
+                            slice.copy(members = slice.members.map { member -> if (member.isPerson()) member.patched() else member })
+                        }
+                    }
+                val entryChanged = entry != null && nextMembers != entry.members
+                val cacheChanged = cache != null && nextCache != cache
+                val slicesChanged = nextSlices != current.channelMemberSlices
+                if (!entryChanged && !cacheChanged && !slicesChanged) return@withLock null
+                changed = true
+                _state.value =
+                    current.copy(
+                        entriesByServerId =
+                            if (entryChanged && entry != null && nextMembers != null) {
+                                current.entriesByServerId + (key to entry.copy(members = nextMembers))
+                            } else {
+                                current.entriesByServerId
+                            },
+                        profileCacheByServerId =
+                            if (cacheChanged && nextCache != null) {
+                                current.profileCacheByServerId + (key to nextCache)
+                            } else {
+                                current.profileCacheByServerId
+                            },
+                        channelMemberSlices = nextSlices,
+                    )
+                val person =
+                    nextMembers?.firstOrNull { it.isPerson() }
+                        ?: nextCache?.get(userKey)
+                        ?: nextSlices.values.firstNotNullOfOrNull { slice -> slice.members.firstOrNull { it.isPerson() } }
+                // The event carries the whole public profile: no avatar here means the person has none.
+                person?.let { recordDurableAvatarRefs(key, listOf(it), authoritativeAbsence = true) }
+                entry
+                    ?.takeIf { entryChanged && binding != null && it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded }
+                    ?.server
+                    ?.let { server -> MemberSnapshot(server = server, members = nextMembers.orEmpty()) }
+            }
+        if (persisted != null && binding != null && durableEpoch != null) {
+            durableStore?.write(binding.durableKey(), persisted, durableEpoch)
+        }
+        if (changed) {
+            logger("shared_server_members_profile_updated serverHash=${key.raftAvatarDiagnosticsHash()} memberHash=${userKey.raftAvatarDiagnosticsHash()}")
         }
         return changed
     }
@@ -4567,3 +4640,19 @@ internal fun List<ChannelExternalMemberProfile>.toExternalMemberMentionSuggestio
 
 private fun ChannelExternalMemberProfile.providerLabel(): String =
     provider?.trim()?.takeIf { it.isNotEmpty() }?.let { if (it.equals("slack", ignoreCase = true)) "Slack" else it } ?: "Slack"
+
+/**
+ * This person's row with the public profile of a `user:profile-updated`, mapped as a member-list row
+ * maps it (`WireServerMember.toMemberProfile`): the label is the display name, else the name; the
+ * handle is the name; the avatar is the uploaded one, else none (the Gravatar then shows).
+ */
+internal fun MemberProfile.withUserProfileUpdate(event: UserProfileUpdated): MemberProfile {
+    val label = event.displayName?.takeIf { it.isNotBlank() } ?: event.name
+    return copy(
+        displayName = label,
+        handle = event.name,
+        gravatarHash = event.gravatarHash.takeIf { it.isNotBlank() },
+        avatar = AvatarReference.fromWireValue(event.avatarUrl),
+        avatarLabel = label.toRaftAvatarLabel(),
+    )
+}
