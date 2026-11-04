@@ -17,9 +17,10 @@ class RaftLucideIconCatalogTest {
     }
 
     @Test
-    fun membersAppsIconUsesGeneratedLink2Icon() {
-        assertEquals(RaftLucideIconName.Link2, MembersAgentDetailTab.Apps.iconName)
-        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.Link2.wireName))
+    fun membersAppsIconUsesTheWebAppWindowIcon() {
+        // Web AgentDetailPanel AGENT_PANEL_TABS: the Apps tab is lucide AppWindow.
+        assertEquals(RaftLucideIconName.AppWindow, MembersAgentDetailTab.Apps.iconName)
+        assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.AppWindow.wireName))
     }
 
     @Test

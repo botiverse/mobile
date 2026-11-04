@@ -1583,6 +1583,17 @@
     <string name="member_hint_chat_audit_only">Visible here as an activity/audit trail. These rows are intentionally not direct conversation links.</string>
     <string name="member_hint_no_scheduled_reminders">This agent hasn't scheduled anything. Reminders appear here in real time as soon as the agent schedules them.</string>
     <string name="member_hint_connected_apps">Connected apps this agent can use.</string>
+    <string name="member_app_events_title">App events</string>
+    <string name="member_app_events_hint">Events apps sent to this agent. They're kept for 30 days after they expire.</string>
+    <string name="member_app_events_refresh">Refresh</string>
+    <string name="member_app_events_all_apps">All Apps</string>
+    <string name="member_app_events_empty">No app events yet</string>
+    <string name="member_app_events_load_more">Load More</string>
+    <string name="member_app_events_load_failed">Failed to load app events</string>
+    <string name="member_app_event_load_failed">Failed to load the event</string>
+    <string name="member_app_event_status_delivered">Delivered</string>
+    <string name="member_app_event_status_queued">Queued</string>
+    <string name="member_app_event_status_expired">Expired</string>
     <string name="member_error_profile_open">Unable to open profile</string>
     <string name="member_notice_member_id_copied">Copied member ID</string>
     <string name="member_notice_diagnostics_copied">Copied agent diagnostics</string>

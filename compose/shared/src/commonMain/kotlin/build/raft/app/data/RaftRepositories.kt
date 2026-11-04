@@ -459,6 +459,21 @@ interface MemberRepository {
         agentId: MemberId
     ): DataResult<AgentAppLoginSnapshot> =
         DataResult.Empty(EmptyReason.NoMembers)
+    /** Web AgentAppAccessTab › App events: a page of the events apps sent to the agent. */
+    suspend fun getAgentAppEvents(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        clientId: String?,
+        before: String?
+    ): DataResult<AgentAppEventPage> =
+        DataResult.Empty(EmptyReason.NoMembers)
+    /** One app event with its payload. */
+    suspend fun getAgentAppEvent(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        eventId: String
+    ): DataResult<AgentAppEventDetail> =
+        DataResult.Empty(EmptyReason.NoMembers)
     suspend fun startAgent(
         priority: DataRequestPriority,
         agentId: MemberId
