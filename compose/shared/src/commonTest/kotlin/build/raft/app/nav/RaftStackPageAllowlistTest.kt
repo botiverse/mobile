@@ -61,7 +61,7 @@ class RaftStackPageAllowlistTest {
         // One rule per settingsPage value (SettingsNativeDetailPage), trimmed like the page reads it.
         val keys =
             listOf(
-                "language-region", "appearance", "notifications", "theme", "mobile", "server", "about",
+                "language-region", "appearance", "notifications", "theme", "server-notifications", "mobile", "server", "about",
                 "developer", "open-source-licenses", "api-environment", "diagnostics",
                 "local-feature-overrides", "local-feature-override",
             )
