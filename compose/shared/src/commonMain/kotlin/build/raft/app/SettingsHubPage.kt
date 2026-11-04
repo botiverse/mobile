@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.components.RaftAttentionDot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -335,20 +338,10 @@ internal fun SettingsHomeContent(
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             item {
-                Spacer(Modifier.height(RaftAppSpacing.Md))
-            }
-            item {
-                RaftVerticalTabBar(
+                SettingsHubSidebarList(
                     items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
-                    showSelection = false,
                     onSelect = onSelect,
-                    modifier = Modifier.padding(start = RaftAppSpacing.Md),
-                    sectionStartPadding = 0.dp,
-                    itemStartPadding = 0.dp
                 )
-            }
-            item {
-                Spacer(Modifier.height(RaftAppSpacing.Md))
             }
             item {
                 Spacer(Modifier.height(bottomContentPadding))
@@ -368,3 +361,62 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
         attentionDot = attentionDot,
         opensExternally = opensExternally,
     )
+
+/**
+ * web `SettingsSidebarList` on a phone: each group under a raft-ui SidebarGroupLabel, its rows a
+ * list of raft-ui SidebarItems (`flex-col gap-0.5 py-2`): 44dp touch rows, the glyph in its icon
+ * box, the label in body semibold, a ↗ on a row that leaves Raft and the attention pixel on one
+ * with something new. 8dp from the screen edges, as the Home list.
+ */
+@Composable
+private fun SettingsHubSidebarList(
+    items: List<RaftTabItemPayload>,
+    onSelect: (String) -> Unit,
+) {
+    val groups = remember(items) {
+        val out = mutableListOf<Pair<String?, MutableList<RaftTabItemPayload>>>()
+        items.forEach { item ->
+            if (out.isEmpty() || out.last().first != item.section) out += item.section to mutableListOf()
+            out.last().second += item
+        }
+        out
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        groups.forEach { (section, rows) ->
+            if (section != null) build.raft.designsystem.components.RaftSidebarGroupLabel(section)
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                rows.forEach { item ->
+                    build.raft.designsystem.components.RaftSidebarItem(
+                        title = item.title,
+                        onClick = if (item.enabled) ({ onSelect(item.key) }) else null,
+                        leading = {
+                            RaftLucideIcon(
+                                item.iconName,
+                                Modifier.size(build.raft.designsystem.components.raftSidebarItemIconSize()),
+                                color = raftArgbHex(build.raft.designsystem.theme.LocalRaftContentColor.current),
+                            )
+                        },
+                        trailing =
+                            if (item.attentionDot || item.opensExternally) {
+                                {
+                                    if (item.attentionDot) RaftAttentionDot()
+                                    if (item.opensExternally) {
+                                        RaftLucideIcon(
+                                            RaftLucideIconName.ArrowUpRight,
+                                            Modifier.size(14.dp),
+                                            color = raftArgbHex(RaftColor.ForegroundHint),
+                                        )
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                    )
+                }
+            }
+        }
+    }
+}
