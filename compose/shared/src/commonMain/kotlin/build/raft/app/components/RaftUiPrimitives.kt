@@ -34,46 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-internal fun RaftSectionHeader(
-    label: String,
-    modifier: Modifier = Modifier,
-    count: Int? = null,
-    action: (@Composable () -> Unit)? = null,
-    iconName: RaftLucideIconName? = null
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            iconName?.let {
-                RaftLucideIcon(
-                    it,
-                    modifier = Modifier.size(16.dp),
-                    color = raftArgbHex(RaftColor.ForegroundHint)
-                )
-            }
-            RaftAppSectionEyebrow(label = label, modifier = Modifier)
-            count?.takeIf { it >= 0 }?.let {
-                // raft section count: Space Mono 12/16, hint ink.
-                Text(
-                    text = it.toString(),
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                    color = RaftColor.ForegroundHint,
-                    maxLines = 1
-                )
-            }
-        }
-        action?.invoke()
-    }
-}
-
-@Composable
 internal fun RaftSurfaceListItem(
     modifier: Modifier = Modifier,
     selected: Boolean = false,

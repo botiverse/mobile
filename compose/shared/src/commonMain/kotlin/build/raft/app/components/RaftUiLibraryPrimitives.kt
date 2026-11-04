@@ -214,25 +214,6 @@ internal fun RaftUiCheckboxLabelRow(
 }
 
 @Composable
-internal fun RaftUiStatusDot(
-    color: Color,
-    modifier: Modifier = Modifier,
-    size: Dp = 10.dp,
-    pulsing: Boolean = false
-) {
-    RaftAppStatusDot(modifier = modifier, size = size, color = color, pulsing = pulsing)
-}
-
-@Composable
-internal fun RaftUiSpinner(
-    modifier: Modifier = Modifier,
-    size: RaftAppSpinnerSize = RaftAppSpinnerSize.Sm,
-    inverse: Boolean = false
-) {
-    RaftAppSpinner(modifier = modifier, size = size, inverse = inverse)
-}
-
-@Composable
 internal fun RaftUiSegmentedControl(
     items: List<RaftUiSegmentedItem>,
     selectedValue: String,

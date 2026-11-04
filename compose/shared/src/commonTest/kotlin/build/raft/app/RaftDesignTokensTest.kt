@@ -1,10 +1,5 @@
 package build.raft.app
 
-import build.raft.app.components.RaftSpinnerActiveSweepAngle
-import build.raft.app.components.RaftSpinnerPixelRestAlpha
-import build.raft.app.components.RaftAppSpinnerSize
-import build.raft.app.components.raftAppSpinnerLitCell
-import build.raft.app.components.raftSpinnerStepAt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.em
@@ -138,32 +133,6 @@ class RaftDesignTokensTest {
         // Web LoginPage Button size="xl": text-body 16/24.
         assertEquals(RaftType.Body.fontSize, largeStyle.fontSize)
         assertEquals(RaftType.Body.lineHeight, largeStyle.lineHeight)
-    }
-
-    @Test
-    fun brutalSpinnerActiveArcMatchesReactRingTopCap() {
-        assertEquals(46f, RaftSpinnerActiveSweepAngle)
-    }
-
-    @Test
-    fun raftSpinnerSizesMatchRaftUiPixelGrid() {
-        // raft-ui Spinner `--spinner-pixel` / `--spinner-gap` per size.
-        assertEquals(listOf(4f to 1.5f, 5f to 2f, 6f to 2f, 8f to 3f), RaftAppSpinnerSize.entries.map { it.pixel.value to it.gap.value })
-        assertEquals(12f, RaftAppSpinnerSize.Sm.extent.value)
-        assertEquals(19f, RaftAppSpinnerSize.Lg.extent.value)
-    }
-
-    @Test
-    fun raftSpinnerStepsClockwiseEveryQuarterSecond() {
-        // raft-spinner-pixel: 1s steps(1); delays 0 / .25 / .75 / .5s on cells TL, TR, BL, BR.
-        assertEquals(listOf(0, 0, 1, 2, 3, 0), listOf(0, 249, 250, 500, 999, 1000).map(::raftSpinnerStepAt))
-        assertEquals(listOf(0, 1, 3, 2), (0 until 4).map(::raftAppSpinnerLitCell))
-        assertEquals(0, raftAppSpinnerLitCell(4))
-        // The canvas redraws only when the derived step changes: four times per 1s cycle.
-        val stepChanges = (1 until 1000).count { raftSpinnerStepAt(it) != raftSpinnerStepAt(it - 1) }
-        assertEquals(3, stepChanges)
-        assertEquals(0, raftSpinnerStepAt(1000))
-        assertEquals(0.2f, RaftSpinnerPixelRestAlpha)
     }
 
     private fun Any?.raftFontName(): String? =

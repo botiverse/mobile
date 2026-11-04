@@ -2,7 +2,8 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.components.RaftAttentionDot
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusVariant
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -422,7 +423,7 @@ private fun SettingsHubSidebarList(
                         trailing =
                             if (item.attentionDot || item.opensExternally) {
                                 {
-                                    if (item.attentionDot) RaftAttentionDot()
+                                    if (item.attentionDot) RaftStatusDot(variant = RaftStatusVariant.Accent)
                                     if (item.opensExternally) {
                                         RaftLucideIcon(
                                             RaftLucideIconName.ArrowUpRight,

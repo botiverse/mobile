@@ -47,7 +47,7 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import build.raft.app.data.SharedUpdateDownloadProgress
-import build.raft.app.components.RaftProgressBar
+import build.raft.designsystem.components.RaftProgressBar
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
@@ -431,7 +431,8 @@ internal fun AppUpdateSummary(
             )
             // Unknown response length has no fabricated percentage/bar fill.
             if (percent != null) {
-                RaftProgressBar(value = percent, label = label, showPercent = true)
+                val shown = percent.coerceIn(0, 100)
+                RaftProgressBar(value = shown / 100f, modifier = Modifier.fillMaxWidth(), label = label, valueText = "$shown%")
             } else {
                 Text(text = label, style = RaftType.Caption, color = RaftColor.TextMutedGray)
             }
