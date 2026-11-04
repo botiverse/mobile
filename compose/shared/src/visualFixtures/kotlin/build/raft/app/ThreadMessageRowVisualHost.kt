@@ -342,8 +342,6 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
     }
 }
 private val ThreadMessageMenuVisualViewportWidth = 390.dp
-private const val THREAD_MESSAGE_MENU_VISUAL_CREATED_AT_EPOCH_MILLIS = 1_782_095_400_000L
-private const val THREAD_MESSAGE_MENU_VISUAL_OFFSET_MINUTES = 480
 private val ThreadMessageMenuVisualViewportHeight = 844.dp
 
 @Composable
@@ -622,16 +620,7 @@ internal fun ThreadMessageVisualScreenContent() {
         )
         return
     }
-    val baseMessage =
-        payload.toThreadTimelineSlice().messages.firstOrNull()?.let { first ->
-            // web threadMessageMenuFixture: `createdAt: "2026-06-22T02:30:00.000Z"`, the time the
-            // menu's sent-at date reads.
-            if (menuVariant.isNotBlank() && first.createdAtEpochMillis == null) {
-                first.copy(createdAtEpochMillis = THREAD_MESSAGE_MENU_VISUAL_CREATED_AT_EPOCH_MILLIS)
-            } else {
-                first
-            }
-        }
+    val baseMessage = payload.toThreadTimelineSlice().messages.firstOrNull()
     val message =
         remember(baseMessage, menuVariant, interactionProbe) {
             if (
@@ -993,17 +982,11 @@ internal fun ThreadMessageVisualScreenContent() {
                             payload.showReactionActions,
                             showAddReactionAction = payload.showReactionActions
                         ).dp.toPx() }
-                // web fixtureData.json's viewer reads times in Asia/Shanghai (UTC+8).
-                val menuSentAtLabel =
-                    message?.let {
-                        threadMessageSentAtLabel(it, RaftTimeContext(localOffsetMinutes = THREAD_MESSAGE_MENU_VISUAL_OFFSET_MINUTES))
-                    }
                 val menuHeightPx =
                     with(density) {
                         threadMessageMenuContentHeightDp(
                             actionGroups = menuActions.map { it.group },
-                            showReactionActions = payload.showReactionActions,
-                            showSentAtLabel = menuSentAtLabel != null
+                            showReactionActions = payload.showReactionActions
                         ).dp.toPx()
                     }
                 val viewportGapPx = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() }
@@ -1029,8 +1012,7 @@ internal fun ThreadMessageVisualScreenContent() {
                         onReact = {},
                         modifier = Modifier,
                         // The reaction header ends with Add Reaction (web `reaction-add-any`).
-                        onAddReaction = if (payload.showReactionActions) ({}) else null,
-                        sentAtLabel = menuSentAtLabel
+                        onAddReaction = if (payload.showReactionActions) ({}) else null
                     )
                 }
             }
