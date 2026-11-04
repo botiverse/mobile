@@ -10,6 +10,7 @@ import build.raft.app.data.reportedSourceMessageId
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.commentHostTypeOrNull
@@ -24,6 +25,7 @@ import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
+import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
@@ -788,6 +790,8 @@ private data class AgentActivityDto(
     val serverSeq: Long? = null,
     /** Shared `WakeCrashLoopActivityDiagnostic`, sent with detailKind `wake_crash_loop_blocked`. */
     val wakeCrashLoop: WakeCrashLoopDto? = null,
+    /** Shared `SpawnFailureActivityDiagnostic`, sent with detailKind `runtime_unavailable`. */
+    val spawnFailure: SpawnFailureDto? = null,
     /** Shared `ToolStuckActivityDiagnostic`, on every frame while the agent is stuck on a tool call. */
     val toolStuck: ToolStuckDto? = null,
 )
@@ -827,6 +831,20 @@ internal fun ToolStuckDto?.toAgentToolStuck(
  * The fields of shared `WakeCrashLoopActivityDiagnostic` the client shows (botiverse/slock
  * 24873fd5be37 packages/shared/src/index.ts; `lastExitReason` from #10860, absent on older servers).
  */
+/** The fields of shared `SpawnFailureActivityDiagnostic` the client shows (botiverse/slock task #1123, #1242). */
+@Serializable
+internal data class SpawnFailureDto(
+    val reason: String? = null,
+    val lookupReason: String? = null,
+)
+
+/** The start-failure carrier of a `runtime_unavailable` status (web agentStore); null for any other kind or without a reason. */
+internal fun SpawnFailureDto?.toAgentSpawnFailure(detailKind: String?): AgentSpawnFailure? {
+    if (this == null || detailKind?.trim() != AgentActivityDetailKindRuntimeUnavailable) return null
+    val failureReason = reason?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return AgentSpawnFailure(reason = failureReason, lookupReason = lookupReason?.trim()?.takeIf { it.isNotEmpty() })
+}
+
 @Serializable
 internal data class WakeCrashLoopDto(
     val earlyExitCount: Int? = null,
@@ -1353,6 +1371,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         activityToolName = projectedActivity.toolName,
         serverSeq = serverSeq,
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(projectedActivity.detailKind),
+        spawnFailure = spawnFailure.toAgentSpawnFailure(projectedActivity.detailKind),
         toolStuck =
             toolStuck.toAgentToolStuck(
                 // The server stamps the frame with its own clock in epoch ms.

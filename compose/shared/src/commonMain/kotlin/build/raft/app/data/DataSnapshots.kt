@@ -934,6 +934,10 @@ data class AgentDetailSummary(
     val activityDetailKind: String? = null,
     /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
     val wakeCrashLoop: build.raft.app.model.AgentWakeCrashLoop? = null,
+    /** Why the last start failed, with [activityDetailKind] `runtime_unavailable` (web `activityState.spawnFailure`). */
+    val spawnFailure: build.raft.app.model.AgentSpawnFailure? = null,
+    /** `lastRuntimeError.message`: the runtime error the server kept (web `agent.lastRuntimeError`); null when none. */
+    val lastRuntimeErrorMessage: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: build.raft.app.model.AgentToolStuck? = null
 )

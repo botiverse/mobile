@@ -2,10 +2,13 @@ package build.raft.app.data
 
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentToolStuck
+import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
 import build.raft.app.data.realtime.ToolStuckDto
+import build.raft.app.data.realtime.SpawnFailureDto
 import build.raft.app.data.realtime.WakeCrashLoopDto
+import build.raft.app.data.realtime.toAgentSpawnFailure
 import build.raft.app.data.realtime.toAgentToolStuck
 import build.raft.app.data.realtime.toAgentWakeCrashLoop
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
@@ -632,6 +635,10 @@ internal data class AgentSummary(
     val activityDetailKind: String? = null,
     /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
+    /** Why the last start failed, with [activityDetailKind] `runtime_unavailable`. */
+    val spawnFailure: AgentSpawnFailure? = null,
+    /** `lastRuntimeError.message`: the runtime error the server kept for the agent; null when none. */
+    val lastRuntimeErrorMessage: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: AgentToolStuck? = null
 )
@@ -669,6 +676,8 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         lastSeenAt = lastSeenAt,
         activityDetailKind = activityDetailKind,
         wakeCrashLoop = wakeCrashLoop,
+        spawnFailure = spawnFailure,
+        lastRuntimeErrorMessage = lastRuntimeErrorMessage,
         toolStuck = toolStuck
     )
 internal data class AgentCommandResult(val ok: Boolean)
@@ -885,8 +894,18 @@ private data class AgentWireDto(
     val activityDetailKind: String? = null,
     /** Shared `WakeCrashLoopActivityDiagnostic`, sent with `activityDetailKind` `wake_crash_loop_blocked`. */
     val wakeCrashLoop: WakeCrashLoopDto? = null,
+    /** Shared `SpawnFailureActivityDiagnostic`, sent with `activityDetailKind` `runtime_unavailable`. */
+    val spawnFailure: SpawnFailureDto? = null,
+    /** Shared `AgentRuntimeErrorState`: the runtime error the server kept (web `agent.lastRuntimeError`). */
+    val lastRuntimeError: AgentLastRuntimeErrorWireDto? = null,
     /** Shared `ToolStuckActivityDiagnostic`, served with any activity while the agent is stuck. */
     val toolStuck: ToolStuckDto? = null,
+)
+
+/** The field of shared `AgentRuntimeErrorState` the client reads. */
+@Serializable
+private data class AgentLastRuntimeErrorWireDto(
+    val message: String? = null,
 )
 
 @Serializable
@@ -941,6 +960,8 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         activityDetailKind = activityDetailKind?.trim()?.takeIf { it.isNotEmpty() },
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind),
+        spawnFailure = spawnFailure.toAgentSpawnFailure(activityDetailKind),
+        lastRuntimeErrorMessage = lastRuntimeError?.message?.trim()?.takeIf { it.isNotEmpty() },
         toolStuck = toolStuck.toAgentToolStuck()
     )
 }
