@@ -963,7 +963,9 @@ internal class ChannelSettingsStore(
         if (
             mutableState.value.status != ChannelSettingsLoadStatus.Content ||
             !mutableState.value.writeActionsEnabled ||
-            mutableState.value.actionInFlight != null
+            mutableState.value.actionInFlight != null ||
+            // An Unarchive from the archived-name warning is running: it leaves settings when done.
+            mutableState.value.collisionUnarchiving
         ) {
             return
         }
@@ -1073,7 +1075,9 @@ internal class ChannelSettingsStore(
         if (
             mutableState.value.status != ChannelSettingsLoadStatus.Content ||
             !mutableState.value.writeActionsEnabled ||
-            mutableState.value.actionInFlight != null
+            mutableState.value.actionInFlight != null ||
+            // An Unarchive from the archived-name warning is running: it leaves settings when done.
+            mutableState.value.collisionUnarchiving
         ) {
             return
         }
