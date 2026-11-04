@@ -94,6 +94,11 @@ internal fun RaftChipLoadingIndicator(
 internal fun RaftAnchoredMetaChip(
     label: String,
     iconName: RaftLucideIconName?,
+    /**
+     * A second label [contentSpacing] after [label] (raft-ui TaskChip's assignee beside its
+     * number): it gives way first, truncating while [label] stays whole.
+     */
+    secondaryLabel: String? = null,
     color: Color,
     onClick: ((RaftPopoverAnchor) -> Unit)?,
     onClickWithoutAnchor: (() -> Unit)? = null,
@@ -235,13 +240,26 @@ internal fun RaftAnchoredMetaChip(
                     fill = iconFillArgb
                 )
             }
+            val labelStyle =
+                RaftType.Caption.withRaftFontWeight(labelFontWeight).copy(fontSize = labelFontSize, lineHeight = labelLineHeight)
+            val labelColor = if (contentColor == RaftColor.TextBlack) raftInkOnFill(color, contentColor) else contentColor
             Text(
                 text = label,
-                style = RaftType.Caption.withRaftFontWeight(labelFontWeight).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
-                color = if (contentColor == RaftColor.TextBlack) raftInkOnFill(color, contentColor) else contentColor,
+                style = labelStyle,
+                color = labelColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            secondaryLabel?.let { secondary ->
+                Text(
+                    text = secondary,
+                    style = labelStyle,
+                    color = labelColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+            }
             trailingIconName?.let {
                 RaftLucideIcon(
                     it,

@@ -38,6 +38,7 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
 import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
+import build.raft.app.markdown.withRaftWebTextBreaks
 import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
 import build.raft.app.markdown.raftMarkdownInlineCodeEdgeStyle
@@ -608,8 +609,9 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     )
 
                     // Token Types
-                    MarkdownTokenTypes.TEXT -> append(child.getUnescapedTextInNode(content))
-                    RaftMarkdownTokenTypes.REFERENCE -> append(child.getUnescapedTextInNode(content))
+                    // Slock: wrap where the web does (after a hyphen, never after a slash).
+                    MarkdownTokenTypes.TEXT -> append(child.getUnescapedTextInNode(content).withRaftWebTextBreaks(child))
+                    RaftMarkdownTokenTypes.REFERENCE -> append(child.getUnescapedTextInNode(content).withRaftWebTextBreaks(child))
                     GFMTokenTypes.GFM_AUTOLINK -> if (insideCodeSpan || child.parent == MarkdownElementTypes.LINK_TEXT) {
                         // Code spans are verbatim (task #493): no linkification.
                         append(child.getUnescapedTextInNode(content))

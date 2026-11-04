@@ -897,6 +897,7 @@ internal fun raftMarkdownAnnotator(
                 onOpenAction = onOpenAction,
                 resolveActionLabel = resolveActionLabel,
                 allowLocalFallback = child.type != RaftMarkdownTokenTypes.REFERENCE,
+                plainText = { plain -> plain.withRaftWebTextBreaks(child) },
             )
         },
         inlineContent = {
@@ -1081,7 +1082,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegmentOrText(
             resolveActionLabel = resolveActionLabel
         )
     ) {
-        append(text)
+        append(text.withRaftWebTextBreaks())
     }
 }
 
@@ -1126,6 +1127,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
     onOpenAction: (RaftRichTextAction) -> Unit,
     resolveActionLabel: ((RaftRichTextAction) -> String?)?,
     allowLocalFallback: Boolean = true,
+    /** The text between the refs, as appended (web line breaks: [withRaftWebTextBreaks]). */
+    plainText: (String) -> String = { it.withRaftWebTextBreaks() },
 ): Boolean {
     val documentTokens = rendererInput.raftRefTokensStartingInRange(documentOffset, documentOffset + text.length)
     val localTokens =
@@ -1157,7 +1160,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
                 .coerceAtMost(text.length)
         if (relativeStart < cursor || relativeStart !in text.indices) return@forEach
         if (relativeStart > cursor) {
-            append(text.substring(cursor, relativeStart))
+            append(plainText(text.substring(cursor, relativeStart)))
         }
         appendRaftRichTextToken(
             token = token,
@@ -1167,7 +1170,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
         )
         cursor = relativeEndExclusive
     }
-    if (cursor < text.length) append(text.substring(cursor))
+    if (cursor < text.length) append(plainText(text.substring(cursor)))
     return true
 }
 
@@ -1209,7 +1212,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             withRaftInlineBox(boxStyle) {
                 val fontSizeStyle = raftMarkdownRichTextTagFontSizeStyle(token.chrome)
                 val appendChipText: AnnotatedString.Builder.() -> Unit = {
-                    append(label)
+                    // One box on the web (`inline-flex … truncate`): the label never wraps inside.
+                    append(label.withRaftInlineChipGlue())
                     if (busy) {
                         // A word joiner keeps the label and the spinner on one line.
                         append(RaftMarkdownTaskChipWordJoiner)
