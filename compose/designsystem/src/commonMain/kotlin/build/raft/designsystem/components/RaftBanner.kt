@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -153,6 +154,7 @@ fun RaftBanner(
     action: (@Composable RowScope.() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     pending: Boolean = false,
+    content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -202,6 +204,17 @@ fun RaftBanner(
             textStyle = text,
             action = actionContent,
             modifier = Modifier.weight(1f),
+            content =
+                content?.let { block ->
+                    {
+                        CompositionLocalProvider(
+                            LocalRaftContentColor provides colors.foreground,
+                            LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor),
+                        ) {
+                            Column(Modifier.fillMaxWidth(), content = block)
+                        }
+                    }
+                },
         )
         // raft-ui 0.19 BannerClose: a banner with no button may close with a frameless × at the
         // end of the first line (an action and a close never share a banner).
@@ -243,6 +256,7 @@ private fun RaftBannerBody(
     textStyle: TextStyle,
     action: (@Composable () -> Unit)?,
     modifier: Modifier,
+    content: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     SubcomposeLayout(modifier) { constraints ->
@@ -284,7 +298,12 @@ private fun RaftBannerBody(
                 inline -> maxOf(textHeight, titleHeight + lastLineCenter.toInt() + actionPlaceable.height / 2)
                 else -> textHeight + actionTop + actionPlaceable.height
             }
-        layout(width, height) {
+        // A [content] block (a confirmation field) sits under everything, full width, `stack-y-4`.
+        val contentPlaceable = content?.let { subcompose("content", it).first().measure(loose) }
+        val contentGap = 16.dp.roundToPx()
+        val totalHeight = height + (contentPlaceable?.let { contentGap + it.height } ?: 0)
+        layout(width, totalHeight) {
+            contentPlaceable?.place(0, height + contentGap)
             titlePlaceable?.place(0, 0)
             descriptionPlaceable.place(0, titleHeight)
             if (actionPlaceable != null) {

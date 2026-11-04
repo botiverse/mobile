@@ -57,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -493,39 +494,47 @@ internal fun SettingsServerDeleteConfirmationDialog(
                             enabled = !deleteBusy,
                         )
                     }
-                    SettingsServerDeleteWarningBanner(serverName = resolvedName)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(Res.string.settings_server_delete_type_prefix) + " ",
-                            // Web DeleteServerConfirmDialog: text-footnote font-semibold (13/18 600),
-                            // the slug in <code> font-mono text-mono-code (13/20).
-                            style = RaftType.Footnote.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextMutedGray),
-                            color = RaftColor.TextMutedGray
-                        )
-                        Text(
-                            resolvedSlug,
-                            // The slug to type: a long press copies it (not the "server-slug" stand-in).
-                            modifier = Modifier.raftCopyable(expectedServerSlug),
-                            style = RaftTheme.typography.monoCode.copy(color = RaftColor.TextBlack),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            stringResource(Res.string.settings_server_delete_confirm_suffix),
-                            style = RaftType.Footnote.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextMutedGray),
-                            color = RaftColor.TextMutedGray
+                    // web DeleteServerConfirmDialog: the confirmation (its label, then the slug field)
+                    // sits inside the destructive message, under the warning (`stack-y-4`, `mb-2`).
+                    SettingsServerDeleteWarningBanner(serverName = resolvedName) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                stringResource(Res.string.settings_server_delete_type_prefix) + " ",
+                                // Web DeleteServerConfirmDialog: text-footnote font-semibold (13/18 600),
+                                // the slug in <code> font-mono text-mono-code (13/20).
+                                style = RaftType.Footnote.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack),
+                                color = RaftColor.TextBlack
+                            )
+                            Text(
+                                resolvedSlug,
+                                // The slug to type: a long press copies it (not the "server-slug" stand-in).
+                                // `<code class="rounded-sticker bg-fill-muted px-1">`.
+                                modifier =
+                                    Modifier
+                                        .raftCopyable(expectedServerSlug)
+                                        .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker))
+                                        .padding(horizontal = 4.dp),
+                                style = RaftTheme.typography.monoCode.copy(color = RaftColor.TextBlack),
+                                color = RaftColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                stringResource(Res.string.settings_server_delete_confirm_suffix),
+                                style = RaftType.Footnote.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack),
+                                color = RaftColor.TextBlack
+                            )
+                        }
+                        SettingsServerSlugInput(
+                            value = confirmationSlug,
+                            placeholder = resolvedSlug,
+                            enabled = !deleteBusy,
+                            onValueChange = onConfirmationSlugChange
                         )
                     }
-                    SettingsServerSlugInput(
-                        value = confirmationSlug,
-                        placeholder = resolvedSlug,
-                        enabled = !deleteBusy,
-                        onValueChange = onConfirmationSlugChange
-                    )
                     errorMessage?.takeIf { it.isNotBlank() }?.let {
                         SettingsServerDeleteWarningBanner(serverName = null, text = it)
                     }
@@ -554,7 +563,8 @@ internal fun SettingsServerDeleteConfirmationDialog(
 @Composable
 private fun SettingsServerDeleteWarningBanner(
     serverName: String?,
-    text: String? = null
+    text: String? = null,
+    content: (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)? = null
 ) {
     val fallbackName = stringResource(Res.string.settings_server_this_server)
     val prefix = stringResource(Res.string.settings_server_delete_warning_prefix)
@@ -572,7 +582,8 @@ private fun SettingsServerDeleteWarningBanner(
     RaftBanner(
         description = message,
         status = RaftBannerStatus.Destructive,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        content = content
     )
 }
 
