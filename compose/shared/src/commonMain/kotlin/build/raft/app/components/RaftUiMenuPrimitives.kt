@@ -245,7 +245,7 @@ private fun RaftSelectionOptionRow(
     }
 }
 
-/** raft-ui `Separator` (1dp `--line-hairline`). [inset] mirrors a menu's `-mx-1.5 my-1.5`. */
+/** raft-ui `Separator` (1dp `--line-hairline`). [verticalSpacing] mirrors a menu's `my-1`. */
 @Composable
 internal fun RaftLookSeparator(modifier: Modifier = Modifier, verticalSpacing: Dp = 0.dp) {
     Box(
@@ -533,7 +533,7 @@ internal fun RaftUiControlledMenu(
     if (!expanded) return
     val density = LocalDensity.current
     val effectiveRowCount = items.size.coerceAtLeast(1)
-    // raft overlays float on a shadow that takes no layout space; the list sits in a p-1.5 popup.
+    // raft overlays float on a shadow that takes no layout space; the list sits in a p-1 popup.
     val chromeHeight = RaftMetrics.PopupPadding * 2
     // raft: the surface turns the legacy 40dp row into `min-h-9` and widens to `min-w-60`.
     val measuredRowHeight = if (rowHeight == 40.dp) RaftMetrics.MenuRowHeight else rowHeight

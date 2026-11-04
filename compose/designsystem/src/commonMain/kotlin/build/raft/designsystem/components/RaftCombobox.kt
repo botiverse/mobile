@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftMenuMetrics
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -983,7 +984,7 @@ internal fun RaftComboboxOptionRow(
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = 36.dp)
+            .heightIn(min = RaftOptionHeight)
             .then(
                 if (nav != null) {
                     Modifier
@@ -994,11 +995,11 @@ internal fun RaftComboboxOptionRow(
                     Modifier
                 },
             )
-            .raftStateOverlay(overlay, RaftRadius.Chip)
+            .raftStateOverlay(overlay, RaftMenuMetrics.ItemRadius)
             .raftPointerHover(source)
             .selectable(selected = selected, interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = raftOptionInset(labelStyle)),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = RaftMenuMetrics.ItemPaddingHorizontal, vertical = raftOptionInset(labelStyle)),
+        horizontalArrangement = Arrangement.spacedBy(RaftMenuMetrics.ItemGap),
         verticalAlignment = if (description != null) Alignment.Top else Alignment.CenterVertically,
     ) {
         if (leading != null) {

@@ -135,7 +135,7 @@ internal fun RaftFilterPopover(
 // raft-ui Combobox / Select popup (web search filters): overlay surface (container radius,
 // popover layer, seam ring, float shadow), min 220dp wide; a `py-1.5 pl-4 pr-1.5` header
 // with the caption-bold hint label over a hairline; an `h-10 px-3` search row with its own
-// hairline; a `p-1.5` list (max 256dp) of 36dp control-radius rows in callout medium ink,
+// hairline; a `p-1` list (max 256dp) of 36dp control-radius rows in callout medium ink,
 // the selected row bold with a trailing 16dp check. No row dividers, no selected fill.
 private val RaftFilterHeaderHeight = 28.dp
 private val RaftFilterSearchHeight = 40.dp

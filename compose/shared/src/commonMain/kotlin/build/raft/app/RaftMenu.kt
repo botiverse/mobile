@@ -234,10 +234,10 @@ internal fun RaftTaskStatusMenuPanel(
 
 /**
  * raft-ui DropdownMenu / Select popup for [RaftBaseMenuOverlay]: overlay surface (container
- * radius, popover layer, seam ring, float shadow) with a `p-1.5` inset; 36dp control-radius
+ * radius, popover layer, seam ring, float shadow) with a `p-1` inset; 36dp control-radius
  * rows (`px-2.5`, `gap-2.5`) in callout medium ink with a 16dp muted-ink icon; the selected
  * row is bold with a trailing 16dp check (no selected fill, no uppercase); `dividerBefore`
- * is the menu's full-bleed `-mx-1.5 my-1.5` hairline. Rows are the design-system
+ * is the menu's full-bleed `-mx-1 my-1` hairline. Rows are the design-system
  * [RaftMenuItem] (BrandSoft press wash). The brutal colour / label tuning
  * parameters of the overlay do not apply here.
  */
@@ -314,7 +314,7 @@ internal fun RaftLookBaseMenuPanel(
                 }
             }
             val selected = item.id == selectedId || item.checked
-            // Rows sit in the popup's 6dp side inset; separators bleed through it.
+            // Rows sit in the popup's side inset; separators bleed through it.
             Box(modifier = Modifier.padding(horizontal = RaftMetrics.PopupPadding).fillMaxWidth()) {
                 RaftMenuItem(
                     text = item.label,

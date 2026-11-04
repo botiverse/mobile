@@ -11,6 +11,7 @@ import build.raft.app.resources.stringResource
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftMenuSurface
+import build.raft.designsystem.tokens.RaftMenuMetrics
 import build.raft.app.RaftColor
 import build.raft.app.raftArgbHex
 import build.raft.app.RaftLucideIcon
@@ -666,7 +667,7 @@ internal fun RaftUiSelectTrigger(
 
 /**
  * The design-system menu popup ([RaftMenuSurface]: container radius, popover layer, seam ring,
- * float shadow, `p-1.5`, at least `min-w-60`) with a [RaftMenuItem] per item: a spinner in
+ * float shadow, `p-1`, at least `min-w-60`) with a [RaftMenuItem] per item: a spinner in
  * place of the icon while [RaftUiMenuItem.loading], the check on a selected row without
  * trailing text, the trailing text as the mono shortcut, a [RaftMenuSeparator] before
  * [RaftUiMenuItem.dividerBefore]. A tap selects an enabled item, then dismisses. A [header]
@@ -738,7 +739,7 @@ internal fun RaftUiPopupSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    // raft popup: container radius, popover layer, seam ring, float shadow, 6dp inset.
+    // raft popup: container radius, popover layer, seam ring, float shadow, `p-1` inset.
     Column(modifier = modifier.raftLookOverlaySurface().padding(RaftMetrics.PopupPadding)) {
         content()
     }
@@ -747,7 +748,7 @@ internal fun RaftUiPopupSurface(
 @Composable
 internal fun RaftUiSurfaceLabel(text: String, modifier: Modifier = Modifier) {
     // raft menu group label: px-2.5 pt-2 pb-1, caption 12/16 bold hint ink, no rule.
-    Box(modifier = modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp)) {
+    Box(modifier = modifier.fillMaxWidth().padding(start = RaftMetrics.MenuItemPaddingHorizontal, end = RaftMetrics.MenuItemPaddingHorizontal, top = RaftMetrics.MenuLabelPaddingTop, bottom = RaftMetrics.MenuLabelPaddingBottom)) {
         Text(
             text = text,
             style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
@@ -766,7 +767,7 @@ internal fun RaftUiMenuRow(
     highlighted: Boolean = false,
     disabled: Boolean = false
 ) {
-    // raft menu item: min 36dp, control radius, px-2.5, callout 14/20 medium; the
+    // raft menu item: min 36dp, chip radius, px-2.5, callout 14/20 medium; the
     // highlighted row is `--brand-soft`; shortcut text is mono 12/16 hint.
     Row(
         modifier =
@@ -775,10 +776,10 @@ internal fun RaftUiMenuRow(
                 .height(RaftMetrics.MenuRowHeight)
                 .background(
                     if (highlighted && !disabled) RaftColor.BrandSoft else Color.Transparent,
-                    RoundedCornerShape(RaftAppRadius.Control)
+                    RoundedCornerShape(RaftMenuMetrics.ItemRadius)
                 )
-                .padding(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = RaftMetrics.MenuItemPaddingHorizontal),
+        horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(

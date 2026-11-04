@@ -32650,8 +32650,8 @@ internal fun threadMessageMenuContentHeightDp(
     // later makes an edge-adjacent menu visibly jump between placements. This
     // surface has fixed row/header/divider metrics, so compute the final height
     // up front and keep the first rendered position authoritative.
-    // raft-ui menu (RaftUiMenuSurface): `p-1.5` popup inset on
-    // both edges, a hairline separator with a 6dp inset either side between groups and
+    // raft-ui menu (RaftUiMenuSurface): `p-1` popup inset on
+    // both edges, a hairline separator with a `my-1` inset either side between groups and
     // under the reaction header; the seam ring is drawn over the content and the float
     // shadow takes no layout space.
     val effectiveRowCount = actionGroups.size.coerceAtLeast(1)

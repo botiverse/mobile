@@ -6,6 +6,7 @@ import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppStroke
 import build.raft.app.isAmbient
+import build.raft.designsystem.tokens.RaftMenuMetrics
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.foundation.background
@@ -46,25 +47,25 @@ internal object RaftMetrics {
     val FieldPaddingHorizontal = 12.dp
     /** Checkbox / radio (`size-5`). */
     val CheckboxSize = 20.dp
-    /** Menu / select / selection rows (`min-h-9`). */
-    val MenuRowHeight = 36.dp
-    /** Menu / select popup padding (`p-1.5`). */
-    val PopupPadding = 6.dp
-    /** Vertical inset on each side of a menu separator (`my-1.5`). */
-    val MenuSeparatorInset = 6.dp
+    /** Menu / select / selection rows (`min-h-option`, 36dp). */
+    val MenuRowHeight = RaftMenuMetrics.OptionHeight
+    /** Menu / select popup padding (`p-1`, 4dp). */
+    val PopupPadding = RaftMenuMetrics.Padding
+    /** Vertical inset on each side of a menu separator (`my-1`, 4dp). */
+    val MenuSeparatorInset = RaftMenuMetrics.SeparatorInset
     /** Menu item horizontal padding (`px-2.5`). */
-    val MenuItemPaddingHorizontal = 10.dp
+    val MenuItemPaddingHorizontal = RaftMenuMetrics.ItemPaddingHorizontal
     /** Menu item icon-to-label gap (`gap-2.5`). */
-    val MenuItemGap = 10.dp
+    val MenuItemGap = RaftMenuMetrics.ItemGap
     /** Menu item icon (`[&>svg]:size-4`). */
-    val MenuIconSize = 16.dp
+    val MenuIconSize = RaftMenuMetrics.IconSize
     /** DropdownMenu / ContextMenu popup minimum width (`min-w-60`). */
-    val MenuMinWidth = 240.dp
+    val MenuMinWidth = RaftMenuMetrics.MinWidth
     /** DropdownMenu default side offset (`sideOffset ?? 6`). */
-    val MenuSideOffset = 6.dp
+    val MenuSideOffset = RaftMenuMetrics.SideOffset
     /** Menu group label padding (`px-2.5 pt-2 pb-1`). */
-    val MenuLabelPaddingTop = 8.dp
-    val MenuLabelPaddingBottom = 4.dp
+    val MenuLabelPaddingTop = RaftMenuMetrics.LabelPaddingTop
+    val MenuLabelPaddingBottom = RaftMenuMetrics.LabelPaddingBottom
     /** Status / attention pixel beside text (`size-2.5`, raft-design #722). */
     val StatusSize = 10.dp
     /** `--elevation-float`: 0 12px 32px -12px (offset, blur, spread). */

@@ -83,7 +83,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftMenuMetrics
 import build.raft.designsystem.tokens.RaftStroke
 
 // Menus, and the list of a Select (dropdown-menu.tsx, select.tsx). States > Selected:
@@ -99,10 +99,10 @@ internal object RaftPopupInsets {
 }
 
 /**
- * raft-ui 0.8.0 DropdownMenu / Select popup surface: `layer-popover`, container radius,
+ * raft-ui DropdownMenu / Select popup surface: `layer-popover`, container radius,
  * a 1dp `line-seam` ring and `shadow-float`, as wide as its widest row but at least
  * [minWidth] (240dp for a menu), or exactly [width] (a select's list: its trigger's
- * width), 6dp padding round the [content] rows. [header] sits flush above the padded
+ * width), [RaftMenuMetrics.Padding] (4dp, `p-1`) round the [content] rows. [header] sits flush above the padded
  * rows, edge to edge (a [RaftMenuSearchField]). Provides `layer-popover` as the surface.
  *
  * Without a [width], the surface sizes itself by `IntrinsicSize.Max`, which asks every
@@ -114,7 +114,7 @@ internal object RaftPopupInsets {
 @Composable
 fun RaftMenuSurface(
     modifier: Modifier = Modifier,
-    minWidth: Dp = 240.dp,
+    minWidth: Dp = RaftMenuMetrics.MinWidth,
     width: Dp? = null,
     header: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -126,8 +126,8 @@ fun RaftMenuSurface(
             .then(if (width != null) Modifier.width(width) else Modifier.widthIn(min = minWidth).width(IntrinsicSize.Max)),
     ) {
         header?.invoke()
-        // raft-ui 0.20 "inside a frame": the highlighted item sits 4dp inside the popup.
-        Column(Modifier.padding(4.dp), content = content)
+        // raft-ui "inside a frame": the highlighted item sits 4dp inside the popup.
+        Column(Modifier.padding(RaftMenuMetrics.Padding), content = content)
     }
 }
 
@@ -145,7 +145,7 @@ internal fun RaftPopoverChrome(
     val colors = RaftTheme.colors
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
-            modifier.raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Container),
+            modifier.raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftMenuMetrics.Radius),
             content = content,
         )
     }
@@ -197,7 +197,7 @@ fun RaftMenuItem(
     val ink = if (enabled) colors.foreground else colors.foregroundDisabled
     val iconInk = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
     // raft-ui 0.20: an item embedded in the popup's frame wears radius-chip (6dp).
-    val shape = RoundedCornerShape(RaftRadius.Chip)
+    val shape = RoundedCornerShape(RaftMenuMetrics.ItemRadius)
     val nav = LocalRaftMenuNav.current
     val entry = remember(nav) { RaftMenuNav.Entry() }
     entry.text = text
@@ -238,8 +238,8 @@ fun RaftMenuItem(
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { if (checked) selected = true }
             .then(if (divider) Modifier.padding(top = RaftStroke.Hairline) else Modifier)
-            .padding(horizontal = 10.dp, vertical = raftOptionInset(labelStyle)),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = RaftMenuMetrics.ItemPaddingHorizontal, vertical = raftOptionInset(labelStyle)),
+        horizontalArrangement = Arrangement.spacedBy(RaftMenuMetrics.ItemGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leadingIcon != null) {
@@ -280,25 +280,30 @@ fun RaftMenuItem(
 fun RaftMenuLabel(text: String, modifier: Modifier = Modifier) {
     RaftText(
         text,
-        modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
+        modifier.padding(
+            start = RaftMenuMetrics.ItemPaddingHorizontal,
+            end = RaftMenuMetrics.ItemPaddingHorizontal,
+            top = RaftMenuMetrics.LabelPaddingTop,
+            bottom = RaftMenuMetrics.LabelPaddingBottom,
+        ),
         style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.Bold),
         color = RaftTheme.colors.foregroundHint,
     )
 }
 
-/** A `line-hairline` rule between groups of rows, 6dp above and below, across the whole popup. */
+/** A `line-hairline` rule between groups of rows, 4dp above and below (`my-1`), across the whole popup. */
 @Composable
 fun RaftMenuSeparator(modifier: Modifier = Modifier) {
     val color = RaftTheme.colors.lineHairline
     Box(
         modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = RaftMenuMetrics.SeparatorInset)
             .height(RaftStroke.Hairline)
-            // `-mx-1.5`: drawn through the surface's 6dp padding to both edges. Drawn, not
+            // `-mx-1`: drawn through the surface's padding to both edges. Drawn, not
             // measured, so the rule never asks for width (the popup hugs its rows).
             .drawBehind {
-                val bleed = 6.dp.toPx()
+                val bleed = RaftMenuMetrics.Padding.toPx()
                 drawRect(color, topLeft = Offset(-bleed, 0f), size = Size(size.width + bleed * 2, size.height))
             },
     )
@@ -697,4 +702,4 @@ internal fun raftOptionInset(style: TextStyle): Dp {
     return ((RaftOptionHeight - line) / 2).coerceAtLeast(0.dp)
 }
 
-internal val RaftOptionHeight = 36.dp
+internal val RaftOptionHeight = RaftMenuMetrics.OptionHeight
