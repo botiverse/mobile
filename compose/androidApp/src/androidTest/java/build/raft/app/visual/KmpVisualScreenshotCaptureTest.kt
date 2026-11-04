@@ -1125,11 +1125,10 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureThreadMessageBodyLongPressOpensActionsWithoutOpeningThread() {
         // The fixture reports both outcomes as launch-unique log tokens. The old oracle counted
-        // brand-yellow pixels in the top band, but the quick-reaction emoji are yellow too: once
-        // #4275 dropped the menu's date row, the reaction row rose into that band and the menu
-        // alone read as an opened thread (run 41784346875: yellowBefore=36 yellowAfter=137).
+        // brand-yellow pixels in the top band, but the quick-reaction emoji in that band are yellow
+        // too: once #4266 enlarged the reaction row (36dp buttons, 22dp drawings) the menu alone
+        // read as an opened thread (run 41784346875: yellowBefore=36 yellowAfter=137).
         val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
-        val longPressReadyToken = "thread_body_long_press_ready_$launchTokenSuffix"
         val longPressMenuVisibleToken = "thread_body_long_press_menu_visible_$launchTokenSuffix"
         val threadOpenedToken = "thread_body_long_press_thread_opened_$launchTokenSuffix"
         captureKmpComponentCase(
@@ -1139,7 +1138,6 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-long-press")
                     .put("visualFixture", "default")
-                    .put("longPressReadyToken", longPressReadyToken)
                     .put("longPressMenuVisibleToken", longPressMenuVisibleToken)
                     .put("threadOpenedToken", threadOpenedToken),
             crop = FULL_VIEWPORT_CROP,
@@ -1154,14 +1152,7 @@ class KmpVisualScreenshotCaptureTest {
                     after = captureAfterLongPressRendered(
                         label = "components.thread.message-body-long-press",
                         before = before,
-                        longPress = {
-                            longPressDisplayDp(
-                                x = 300f,
-                                y = 70f,
-                                inputReadyCaseId = "components.thread.message-body-long-press",
-                                inputReadyToken = longPressReadyToken,
-                            )
-                        },
+                        longPress = { longPressDisplayDp(x = 300f, y = 70f) },
                         rendered = { _, _, changedRatio ->
                             changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
                                 logcatContainsToken(longPressMenuVisibleToken)
