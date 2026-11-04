@@ -14,8 +14,15 @@ import kotlin.test.assertNull
 
 /** Web `liveAgentActivity.ts` behaviour (raft-design people-and-agents/working-agents.md). */
 class RaftLiveAgentActivityTest {
-    private fun agent(id: String, status: AgentStatus = AgentStatus.Working, name: String = id.uppercase()) =
-        RaftWorkingAgent(agentId = id, name = name, avatarWireValue = "pixel:random:$id", status = status)
+    private fun agent(
+        id: String,
+        status: AgentStatus = AgentStatus.Working,
+        name: String = id.uppercase(),
+        signal: RaftLiveAgentSignal? = null,
+    ) = RaftWorkingAgent(agentId = id, name = name, avatarWireValue = "pixel:random:$id", status = status, signal = signal)
+
+    /** A detailed `agent:activity` frame (heartbeats included). */
+    private fun frame(seq: Long) = RaftLiveAgentSignal(serverSeq = seq, coarse = false)
 
     private fun List<RaftLiveAgentActivityItem>.ids() = map { it.agentId }
 
@@ -96,6 +103,75 @@ class RaftLiveAgentActivityTest {
         advanceTimeBy(RaftLiveAgentIdleGraceMillis + 100)
         runCurrent()
         assertEquals(emptyList(), seen.last())
+        job.cancel()
+    }
+
+    /**
+     * Web `LIVE_AGENT_ACTIVITY_VISIBLE_MS`: a row from a detailed frame leaves 90 s after the last
+     * frame; a heartbeat (a new seq) restarts the window; the registry still holding the old fact
+     * does not bring it back, a new frame does (at the end).
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun aDetailedRowLeavesNinetySecondsAfterItsLastFrame() = runTest {
+        val working = MutableStateFlow(listOf(agent("niko", signal = frame(1)), agent("kirby")))
+        val seen = mutableListOf<List<String>>()
+        val job = launch { liveAgentActivityFlow(working, now = { currentTime }).collect { seen += it.ids() } }
+        runCurrent()
+        assertEquals(listOf("niko", "kirby"), seen.last())
+
+        // The daemon's 60 s heartbeat.
+        advanceTimeBy(60_000)
+        working.value = listOf(agent("niko", signal = frame(2)), agent("kirby"))
+        runCurrent()
+        advanceTimeBy(RaftLiveAgentActivityVisibleMillis - 1)
+        runCurrent()
+        assertEquals(listOf("niko", "kirby"), seen.last(), "still within 90 s of the heartbeat")
+
+        // No frame since: the safety net drops it, though its fact still says working.
+        advanceTimeBy(100)
+        runCurrent()
+        assertEquals(listOf("kirby"), seen.last(), "90 s without a frame")
+        working.value = listOf(agent("niko", signal = frame(2)), agent("kirby", AgentStatus.Thinking))
+        runCurrent()
+        assertEquals(listOf("kirby"), seen.last(), "the old fact is no new signal")
+
+        // A new frame is a new start, at the end.
+        working.value = listOf(agent("niko", signal = frame(3)), agent("kirby", AgentStatus.Thinking))
+        runCurrent()
+        assertEquals(listOf("kirby", "niko"), seen.last())
+        job.cancel()
+    }
+
+    /**
+     * No timeout without a heartbeat to expect: a coarse `agent:activity_state` (Web
+     * `heldUntilChange`) and a fact that is no frame (a REST projection) stay until they change. A
+     * reconnect's carried-over fact (seq dropped) is no signal: the detailed row's window runs on.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun onlyDetailedFramesExpireAndAReconnectDoesNotRestartTheWindow() = runTest {
+        val working =
+            MutableStateFlow(
+                listOf(
+                    agent("coarse", signal = RaftLiveAgentSignal(serverSeq = 7, coarse = true)),
+                    agent("projected"),
+                    agent("detailed", signal = frame(1)),
+                )
+            )
+        var latest = emptyList<RaftLiveAgentActivityItem>()
+        val job = launch { liveAgentActivityFlow(working, now = { currentTime }).collect { latest = it } }
+        runCurrent()
+        advanceTimeBy(50_000)
+        // Reconnect: the registry carries the facts over without their seq.
+        working.value = working.value.map { it.copy(signal = it.signal?.takeIf { s -> s.coarse }) }
+        runCurrent()
+        advanceTimeBy(RaftLiveAgentActivityVisibleMillis - 50_000 + 100)
+        runCurrent()
+        assertEquals(listOf("coarse", "projected"), latest.ids(), "the detailed row left 90 s after its frame")
+        advanceTimeBy(10 * 60_000)
+        runCurrent()
+        assertEquals(listOf("coarse", "projected"), latest.ids())
         job.cancel()
     }
 }

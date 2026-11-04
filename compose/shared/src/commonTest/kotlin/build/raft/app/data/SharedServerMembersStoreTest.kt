@@ -1190,7 +1190,8 @@ class SharedServerMembersStoreTest {
         fun fact(id: String, status: AgentStatus) =
             MemberPresenceUpdated(memberId = MemberId(id), presence = status.presence, kind = MemberKind.Agent, agentStatus = status, serverSeq = 1L)
         store.applyPresence(ServerId("server-1"), fact("niko", AgentStatus.Working))
-        store.applyPresence(ServerId("server-1"), fact("kirby", AgentStatus.Thinking))
+        // agent:activity_state: a coarse frame.
+        store.applyPresence(ServerId("server-1"), fact("kirby", AgentStatus.Thinking).copy(coarseState = true))
         store.applyPresence(ServerId("server-1"), fact("idle", AgentStatus.Online))
         store.applyPresence(ServerId("server-1"), fact("ext", AgentStatus.Working))
         store.applyPresence(ServerId("server-1"), fact("bot", AgentStatus.Working))
@@ -1203,6 +1204,11 @@ class SharedServerMembersStoreTest {
             working.map { it.agentId to it.status }
         )
         assertEquals("Niko", working.first().name)
+        // The frame behind each fact, for the 90 s safety net.
+        assertEquals(
+            listOf(RaftLiveAgentSignal(serverSeq = 1L, coarse = false), RaftLiveAgentSignal(serverSeq = 1L, coarse = true)),
+            working.map { it.signal }
+        )
         assertEquals(emptyList(), store.workingAgentsFlow(ServerId("server-2")).first())
     }
 

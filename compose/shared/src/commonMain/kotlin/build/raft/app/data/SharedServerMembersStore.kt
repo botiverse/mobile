@@ -908,6 +908,8 @@ class SharedServerMembersStore internal constructor(
                     name = profile.displayName.ifBlank { profile.handle },
                     avatarWireValue = profile.avatarWireValueForRenderedAvatar(),
                     status = fact.agentStatus ?: return@mapNotNull null,
+                    // Realtime frames carry a seq; a REST projection or a reconnect's carried fact has none.
+                    signal = fact.serverSeq?.let { RaftLiveAgentSignal(serverSeq = it, coarse = fact.coarseState) },
                 )
             }
         }.distinctUntilChanged()

@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,6 +32,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -47,6 +52,8 @@ import build.raft.app.model.MemberKind
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftPanelAction
 import build.raft.designsystem.components.RaftPopoverSurface
+import build.raft.designsystem.motion.RaftMotion
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.flow.StateFlow
@@ -170,16 +177,49 @@ internal fun RaftWorkingFaces(items: List<RaftLiveAgentActivityItem>, modifier: 
     val step = face - RaftWorkingFacesOverlap
     Box(modifier.width(face + step * (items.size - 1).coerceAtLeast(0)).height(face)) {
         items.forEachIndexed { index, item ->
-            Box(Modifier.offset(x = step * index).zIndex(index.toFloat())) {
-                RaftMemberAvatar(
+            // Keyed by agent: a face already shown keeps its place (and does not come in again).
+            key(item.agentId) {
+                Box(Modifier.offset(x = step * index).zIndex(index.toFloat()).raftWorkingFaceEntrance()) {
+                    RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(kind = MemberKind.Agent, memberId = item.agentId, serverId = null),
                     label = item.name,
                     avatarSize = face,
                     carriedAvatarWireValue = item.avatarWireValue,
-                    resolver = EmptyRaftMemberAvatarResolver,
-                )
+                        resolver = EmptyRaftMemberAvatarResolver,
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * A face that joins the stack slides in from [Offset] toward the start and fades in, over
+ * [DurationMillis] on the DS slide curve (Web `WorkingFaces`: `motion-safe:transition-[opacity,translate]
+ * duration-200 ease-slide starting:-translate-x-1 starting:opacity-0`; DS: 180-220ms). It leaves
+ * at once, as on the Web; with reduced motion it simply appears.
+ */
+internal object RaftWorkingFaceEntrance {
+    const val DurationMillis: Int = 200
+
+    /** Web `-translate-x-1` (0.25rem): a physical left shift, in RTL too. */
+    val Offset: Dp = 4.dp
+
+    val Spec: TweenSpec<Float> = tween(durationMillis = DurationMillis, easing = RaftMotion.EaseSlide)
+
+    /** Alpha and horizontal shift (dp) at [progress] 0 (start) to 1 (in place). */
+    fun frame(progress: Float): Pair<Float, Float> = progress to (progress - 1f) * Offset.value
+}
+
+@Composable
+private fun Modifier.raftWorkingFaceEntrance(): Modifier {
+    val reducedMotion = rememberRaftReducedMotion()
+    val progress = remember { Animatable(if (reducedMotion) 1f else 0f) }
+    LaunchedEffect(progress) { progress.animateTo(1f, RaftWorkingFaceEntrance.Spec) }
+    return graphicsLayer {
+        val (alpha, shift) = RaftWorkingFaceEntrance.frame(progress.value)
+        this.alpha = alpha
+        translationX = shift.dp.toPx()
     }
 }
 
