@@ -672,8 +672,10 @@ internal fun RaftUiSelectTrigger(
  * trailing text, the trailing text as the mono shortcut, a [RaftMenuSeparator] before
  * [RaftUiMenuItem.dividerBefore]. A tap selects an enabled item, then dismisses. A [header]
  * (the message menu's reaction bar) sits above a separator. An empty list shows one disabled
- * "No actions available" row. [rowHeight], [shadowOffset] and [showDividers] are ignored:
- * raft menu rows are 36dp, cast no shadow and only draw explicit separators.
+ * "No actions available" row. A [label] (raft-ui `ContextMenuLabel`, e.g. the message menu's
+ * sent-at date) opens the popup above everything, with no separator under it. [rowHeight],
+ * [shadowOffset] and [showDividers] are ignored: raft menu rows are 36dp, cast no shadow and
+ * only draw explicit separators.
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -686,12 +688,14 @@ internal fun RaftUiMenuSurface(
     showDividers: Boolean = false,
     onSelect: (String) -> Unit = {},
     onDismiss: () -> Unit = {},
-    header: (@Composable () -> Unit)? = null
+    header: (@Composable () -> Unit)? = null,
+    label: String? = null
 ) {
     RaftMenuSurface(
         modifier = modifier.raftFloatingContentClickTarget(),
         width = width?.let(::raftMenuWidth)
     ) {
+        label?.let { RaftUiSurfaceLabel(it) }
         header?.let { content ->
             Box(modifier = Modifier.fillMaxWidth()) { content() }
             RaftMenuSeparator()

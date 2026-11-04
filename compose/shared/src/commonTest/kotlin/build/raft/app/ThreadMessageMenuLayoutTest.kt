@@ -70,9 +70,34 @@ class ThreadMessageMenuLayoutTest {
     }
 
     @Test
+    fun contentHeightCountsTheSentAtDateLabel() {
+        // raft-ui ContextMenuLabel: pt-2 + 16 line + pb-1 = 28 above the reaction header.
+        val withoutDate =
+            threadMessageMenuContentHeightDp(actionGroups = listOf("copy", "message"), showReactionActions = true)
+        assertEquals(
+            withoutDate + 28f,
+            threadMessageMenuContentHeightDp(
+                actionGroups = listOf("copy", "message"),
+                showReactionActions = true,
+                showSentAtLabel = true
+            )
+        )
+    }
+
+    @Test
+    fun sentAtDateReadsTheInstantInTheReadersZone() {
+        // web fixture: createdAt 2026-06-22T02:30Z, viewer in Asia/Shanghai -> "Jun 22, 2026, 10:30".
+        assertEquals(TaskHeadDateTime(2026, 6, 22, 10, 30), taskHeadDateTime(1_782_095_400_000L, offsetMinutes = 480))
+        // Behind UTC the same instant is still the evening before.
+        assertEquals(TaskHeadDateTime(2026, 6, 21, 22, 30), taskHeadDateTime(1_782_095_400_000L, offsetMinutes = -240))
+    }
+
+    @Test
     fun menuWidthIsMinW60OrTheQuickReactionRow() {
-        // 7 x 28 (size-7) + 6 x 4 (gap-1) + 2 x 8 (px-2) + 2 x 6 (p-1.5) = 248.
-        assertEquals(248f, threadMessageMenuWidthDp(showReactionActions = true))
+        // raft-ui MessageReactionQuickRow: 7 x 36 (size-9) + 6 x 2 (gap-0.5) + 2 x 3 (px-0.75)
+        // + 2 x 6 (p-1.5) = 282; with Add Reaction 8 x 36 + 7 x 2 + 6 + 12 = 320.
+        assertEquals(282f, threadMessageMenuWidthDp(showReactionActions = true))
+        assertEquals(320f, threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true))
         assertEquals(240f, threadMessageMenuWidthDp(showReactionActions = false))
     }
 
