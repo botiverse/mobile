@@ -29,6 +29,97 @@ internal fun agentRuntimeLookupDisplayForReason(reason: String?): AgentRuntimeLo
 
 private val AgentRuntimeNotLoggedInPattern = Regex("is not logged in", RegexOption.IGNORE_CASE)
 private val AgentRuntimeNotInstalledPattern = Regex("not installed", RegexOption.IGNORE_CASE)
+private val AgentRuntimeAuthFailedPattern =
+    Regex("(?:auth(?:entication|orization)? (?:failed|error|invalid)|invalid api key|unauthorized)", RegexOption.IGNORE_CASE)
+
+/**
+ * Web `RuntimeErrorKind` (classifyRuntimeError.ts): the runtime errors told in the app's own words.
+ * [ToolArgsInvalid] comes only from the typed diagnostic, never from the message text.
+ */
+internal enum class AgentRuntimeErrorKind {
+    NotLoggedIn,
+    NotInstalled,
+    AuthFailed,
+    ToolArgsInvalid,
+}
+
+/** Web `classifyRuntimeError`: only these stable patterns, in this order; anything else is null. */
+internal fun agentClassifyRuntimeError(message: String): AgentRuntimeErrorKind? =
+    when {
+        AgentRuntimeNotLoggedInPattern.containsMatchIn(message) -> AgentRuntimeErrorKind.NotLoggedIn
+        AgentRuntimeNotInstalledPattern.containsMatchIn(message) -> AgentRuntimeErrorKind.NotInstalled
+        AgentRuntimeAuthFailedPattern.containsMatchIn(message) -> AgentRuntimeErrorKind.AuthFailed
+        else -> null
+    }
+
+/**
+ * Web AgentDetailPanel `typedRuntimeErrorErrKind`: the kept error's typed diagnostic (#688), read
+ * only when it has both a class and a reason.
+ */
+internal fun agentTypedRuntimeErrorKind(errorClass: String?, errorReason: String?): AgentRuntimeErrorKind? {
+    if (errorClass.isNullOrBlank() || errorReason.isNullOrBlank()) return null
+    return when {
+        errorReason == "auth_failed" || errorClass == "AuthError" -> AgentRuntimeErrorKind.AuthFailed
+        errorReason == "model_tool_args_invalid" || errorClass == "ToolArgumentParseError" -> AgentRuntimeErrorKind.ToolArgsInvalid
+        else -> null
+    }
+}
+
+/** What the agent page's error notice says (web AgentDetailPanel `activityErrorText`). */
+internal sealed interface AgentRuntimeErrorDisplay {
+    /** A runtime "not installed": how the start's lookup ended, with the runtime's name. */
+    data class Lookup(val display: AgentRuntimeLookupDisplay, val runtimeName: String) : AgentRuntimeErrorDisplay
+
+    /** A known runtime error in the app's words (web `RUNTIME_ERROR_LABEL_ID`). */
+    data class Known(val kind: AgentRuntimeErrorKind) : AgentRuntimeErrorDisplay
+
+    /** Anything else: "Error: [detail]", or "Error" without one (web `formatActivityText(..., "error", raw)`). */
+    data class Raw(val detail: String) : AgentRuntimeErrorDisplay
+}
+
+/**
+ * Web AgentDetailPanel `activityErrorText`, from [runtimeError] (the live error, or the one the
+ * server kept): the typed diagnostic first, then the message patterns; a "not installed" says how
+ * the start's lookup ended; anything else keeps the server's own text.
+ */
+internal fun agentRuntimeErrorDisplay(
+    runtimeError: String,
+    typedErrorClass: String?,
+    typedErrorReason: String?,
+    spawnFailure: AgentSpawnFailure?,
+    runtimeName: String?,
+): AgentRuntimeErrorDisplay {
+    val kind =
+        agentTypedRuntimeErrorKind(typedErrorClass, typedErrorReason)
+            ?: runtimeError.takeIf { it.isNotBlank() }?.let(::agentClassifyRuntimeError)
+    if (kind == AgentRuntimeErrorKind.NotInstalled && runtimeName != null) {
+        val lookup =
+            agentRuntimeLookupDisplayForReason(spawnFailure?.takeIf { it.reason == "runtime_not_found" }?.lookupReason)
+        return AgentRuntimeErrorDisplay.Lookup(lookup, runtimeName)
+    }
+    if (kind != null) return AgentRuntimeErrorDisplay.Known(kind)
+    return AgentRuntimeErrorDisplay.Raw(membersAgentActivityErrorDisplayDetail(runtimeError))
+}
+
+/** The notice's text for [display], in the web's words. */
+@Composable
+internal fun agentRuntimeErrorDisplayText(display: AgentRuntimeErrorDisplay): String =
+    when (display) {
+        is AgentRuntimeErrorDisplay.Lookup -> agentRuntimeLookupErrorText(display.display, display.runtimeName)
+        is AgentRuntimeErrorDisplay.Known ->
+            when (display.kind) {
+                AgentRuntimeErrorKind.NotLoggedIn -> stringResource(Res.string.agent_runtime_error_not_logged_in)
+                AgentRuntimeErrorKind.NotInstalled -> stringResource(Res.string.agent_runtime_error_not_installed)
+                AgentRuntimeErrorKind.AuthFailed -> stringResource(Res.string.agent_runtime_error_auth_failed)
+                AgentRuntimeErrorKind.ToolArgsInvalid -> stringResource(Res.string.agent_runtime_error_tool_args_invalid)
+            }
+        is AgentRuntimeErrorDisplay.Raw ->
+            if (display.detail.isBlank()) {
+                stringResource(Res.string.agent_activity_error)
+            } else {
+                stringResource(Res.string.agent_activity_error_with_detail, display.detail)
+            }
+    }
 
 /**
  * Web AgentDetailPanel `startLookupDisplay`: when the agent's error is the runtime "not installed"

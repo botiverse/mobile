@@ -938,6 +938,9 @@ data class AgentDetailSummary(
     val spawnFailure: build.raft.app.model.AgentSpawnFailure? = null,
     /** `lastRuntimeError.message`: the runtime error the server kept (web `agent.lastRuntimeError`); null when none. */
     val lastRuntimeErrorMessage: String? = null,
+    /** `lastRuntimeError.errorClass` / `errorReason`: its typed diagnostic (web `typedRuntimeError`), when it has one. */
+    val lastRuntimeErrorClass: String? = null,
+    val lastRuntimeErrorReason: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: build.raft.app.model.AgentToolStuck? = null
 )

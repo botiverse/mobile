@@ -1427,6 +1427,12 @@
     <string name="agent_runtime_lookup_timeout">检查此 Computer 上的 %1$s 超时。请重试，或查看此 Computer 的状态。</string>
     <string name="agent_runtime_lookup_permission_denied">无法检查此 Computer 上的 %1$s：权限被拒绝。请检查那台机器的权限后重试。</string>
     <string name="agent_runtime_lookup_unresolved">无法确认此 Computer 上是否有 %1$s。请重试，或查看此 Computer 的状态。</string>
+    <string name="agent_runtime_error_not_logged_in">该运行时未在此计算机上登录</string>
+    <string name="agent_runtime_error_not_installed">该运行时未安装在此计算机上</string>
+    <string name="agent_runtime_error_auth_failed">运行时身份验证失败</string>
+    <string name="agent_runtime_error_tool_args_invalid">模型输出的工具参数格式无效，Codex 拒绝了该次工具调用；可更换模型</string>
+    <string name="agent_activity_error">错误</string>
+    <string name="agent_activity_error_with_detail">错误：%1$s</string>
     <string name="member_state_profile_loading">正在加载 Agent 资料…</string>
     <string name="member_state_profile_unavailable">Agent 资料元数据不可用。</string>
     <string name="member_state_profile_refreshing">正在刷新 Agent 资料…</string>

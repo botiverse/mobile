@@ -337,6 +337,10 @@ private val RaftBannerInlineActionMinWidth = 452.dp
  * resolves by itself, such as data that refreshes once the server recovers, the 12dp spinner
  * takes the icon's place, centred in the 16dp icon column on the first line. It is decorative;
  * the message says what waits. Use it with [RaftBannerStatus.Info]: waiting is not a problem.
+ *
+ * [messageTooltip] puts the whole message in a [RaftTooltip] on it (a pointer over it, or a long
+ * press), for a message clamped to [maxLines] (slock's agent error notice: `line-clamp-2` inside a
+ * Tooltip with the same text).
  */
 @Composable
 fun RaftPanelNotice(
@@ -346,10 +350,28 @@ fun RaftPanelNotice(
     maxLines: Int = 2,
     stackActions: Boolean = false,
     pending: Boolean = false,
+    messageTooltip: Boolean = false,
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val seam = colors.lineSeam
+    val messageText: @Composable (Modifier) -> Unit = { textModifier ->
+        val text: @Composable (Modifier) -> Unit = { modifier ->
+            RaftText(
+                message,
+                modifier = modifier,
+                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.foreground,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (messageTooltip) {
+            RaftTooltip(text = message, modifier = textModifier) { text(Modifier) }
+        } else {
+            text(textModifier)
+        }
+    }
     Row(
         modifier
             .fillMaxWidth()
@@ -379,13 +401,7 @@ fun RaftPanelNotice(
         }
         if (stackActions && actions != null) {
             Column(Modifier.weight(1f)) {
-                RaftText(
-                    message,
-                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                    maxLines = maxLines,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                messageText(Modifier)
                 CompositionLocalProvider(LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor)) {
                     Row(
                         Modifier.padding(top = 4.dp),
@@ -396,14 +412,7 @@ fun RaftPanelNotice(
             }
             return@Row
         }
-        RaftText(
-            message,
-            modifier = Modifier.weight(1f),
-            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.foreground,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-        )
+        messageText(Modifier.weight(1f))
         if (actions != null) {
             // `-my-1.5`: a 32dp button doesn't make the strip taller; it centres on the first line.
             Box(Modifier.height(20.dp), contentAlignment = Alignment.Center) {
