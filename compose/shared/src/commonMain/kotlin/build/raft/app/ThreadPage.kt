@@ -6293,8 +6293,12 @@ internal fun channelSettingsPanelVisualPanel(pinned: Boolean = false, serverId: 
     )
 }
 
+/**
+ * The DM settings for Friday (an agent DM): Move to section on Pinned ([pinned]) or at home in
+ * Direct Messages, with my two sections to pick from, then Mute (on) and Collapse long messages.
+ */
 @Composable
-internal fun DirectMessageSettingsPanelVisualScreen() {
+internal fun DirectMessageSettingsPanelVisualScreen(pinned: Boolean = true) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadDirectMessageSettingsModal(
             activityMuteState =
@@ -6304,17 +6308,28 @@ internal fun DirectMessageSettingsPanelVisualScreen() {
                     supported = true,
                     muteFromSeq = 42
                 ),
-            conversationPinState =
-                ThreadConversationPinUiState(
-                    conversationId = "dm-visual-friday",
-                    pinnedKind = "agent",
-                    pinnedId = "agent-visual-friday",
-                    pinned = true,
-                    available = true
+            section =
+                ChannelSectionPlacement(
+                    customSections =
+                        listOf(
+                            build.raft.app.data.SettingsServerSidebarCustomSection(id = "section-launch", name = "Launch", emoji = "\uD83D\uDE80"),
+                            build.raft.app.data.SettingsServerSidebarCustomSection(id = "section-ops", name = "Ops"),
+                        ),
+                    pinned = pinned,
+                    placementSectionId = null,
+                    directMessage = true,
+                ),
+            sectionEnabled = true,
+            longMessageCollapseSetting =
+                RaftLongMessageCollapseConversationSetting(
+                    preference = build.raft.app.data.RaftLongMessageCollapseConversationPreference(globalEnabled = false, channelOverride = null),
+                    available = true,
+                    onSetEnabled = {},
                 ),
             onDismiss = {},
             onToggleActivityMute = {},
-            onTogglePin = {}
+            onMoveSection = {},
+            onCreateSection = { _, _ -> },
         )
     }
 }
@@ -12701,6 +12716,7 @@ private fun SharedThreadRouteContentContent(
                 agentStatusResolver = agentStatusResolver,
                 writeActionsEnabled = renderSlice.writeActionsEnabled,
                 onHomeIntent = { intent -> sharedHomeStore?.dispatch(intent) },
+                directMessage = renderedThread.surfaceKind == RaftThreadSurfaceKind.DirectMessage,
             )?.let { panel ->
                 val serverId = threadMembersServerId
                 val channelId = threadMembersChannelId
@@ -12820,20 +12836,6 @@ private fun SharedThreadRouteContentContent(
                     }
                 },
             conversationPinState = conversationPinState,
-            onToggleConversationPin =
-                conversationPinState
-                    ?.takeIf { it.available && renderSlice.writeActionsEnabled }
-                    ?.let { pinState ->
-                    {
-                        sharedHomeStore?.dispatch(
-                            SharedHomeIntent.TogglePinned(
-                                conversationId = pinState.conversationId,
-                                pinnedKind = pinState.pinnedKind,
-                                pinnedId = pinState.pinnedId
-                            )
-                        )
-                    }
-                },
             forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
@@ -16188,7 +16190,6 @@ private class ThreadPageContentCallbacks(
     val onSelectedTabChanged: (RaftThreadTab) -> Unit,
     val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     val onToggleActivityMute: (() -> Unit)?,
-    val onToggleConversationPin: (() -> Unit)?,
     val onOpenTaskSummary: (TaskSummary, String) -> Unit,
     val onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     val onFilesAuthRequired: (String?) -> Unit,
@@ -16274,7 +16275,6 @@ fun ThreadPageContent(
     activityMutedIndicatorVisible: Boolean = false,
     onToggleActivityMute: (() -> Unit)? = null,
     conversationPinState: ThreadConversationPinUiState? = null,
-    onToggleConversationPin: (() -> Unit)? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
@@ -16411,7 +16411,6 @@ fun ThreadPageContent(
                 onSelectedTabChanged = onSelectedTabChanged,
                 onSuggestionDemandChanged = onSuggestionDemandChanged,
                 onToggleActivityMute = onToggleActivityMute,
-                onToggleConversationPin = onToggleConversationPin,
                 onOpenTaskSummary = onOpenTaskSummary,
                 onTasksIntent = onTasksIntent,
                 onFilesAuthRequired = onFilesAuthRequired,
@@ -16521,7 +16520,6 @@ private fun ThreadPageContentContent(
     val activityMutedIndicatorVisible = data.activityMutedIndicatorVisible
     val onToggleActivityMute = callbacks.onToggleActivityMute
     val conversationPinState = data.conversationPinState
-    val onToggleConversationPin = callbacks.onToggleConversationPin
     val forwardServerId = data.forwardServerId
     val forwardTargetRepository = data.forwardTargetRepository
     val contentExtrasVisible = data.contentExtrasVisible
@@ -18191,11 +18189,13 @@ private fun ThreadPageContentContent(
                 if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                     ThreadDirectMessageSettingsModal(
                         activityMuteState = activityMuteState,
-                        conversationPinState = conversationPinState,
+                        section = channelSettingsPanel?.section,
+                        sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
                         longMessageCollapseSetting = longMessageCollapseConversationSetting,
                         onDismiss = { activeModal = null },
                         onToggleActivityMute = onToggleActivityMute,
-                        onTogglePin = onToggleConversationPin
+                        onMoveSection = { moves -> channelSettingsPanel?.onMoveSection?.invoke(moves) },
+                        onCreateSection = { name, emoji -> channelSettingsPanel?.onCreateSection?.invoke(name, emoji) },
                     )
                 } else {
                     ThreadSettingsModal(
@@ -37900,34 +37900,37 @@ private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? 
         else -> null
     }
 
+/**
+ * The DM settings: Move to section first (web ChannelPreferencesSection for a DM, slock #12622:
+ * Direct Messages, Pinned, or one of my sections, in place of the old Pin switch), then Mute and
+ * Collapse long messages. [section] is null where the DM has no sidebar state to show.
+ */
 @Composable
 private fun ThreadDirectMessageSettingsModal(
     activityMuteState: ThreadActivityMuteUiState?,
-    conversationPinState: ThreadConversationPinUiState?,
+    section: ChannelSectionPlacement?,
+    sectionEnabled: Boolean,
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting? = null,
     onDismiss: () -> Unit,
     onToggleActivityMute: (() -> Unit)?,
-    onTogglePin: (() -> Unit)?
+    onMoveSection: (List<ChannelSectionMove>) -> Unit,
+    onCreateSection: (name: String, emoji: String?) -> Unit,
 ) {
     RaftUnifiedDialog(
         title = stringResource(Res.string.thread_dm_settings_title),
         onDismiss = onDismiss
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            section?.let { state ->
+                ChannelSectionSelectRow(state = state, enabled = sectionEnabled, onMove = onMoveSection, onCreate = onCreateSection)
+                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
+            }
             ThreadDirectMessagePreferenceRow(
                 title = stringResource(Res.string.thread_dm_settings_mute_person),
                 detail = stringResource(Res.string.thread_dm_settings_mute_person_detail),
                 checked = activityMuteState?.muted == true,
                 enabled = activityMuteState != null && onToggleActivityMute != null,
                 onClick = { onToggleActivityMute?.invoke() }
-            )
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-            ThreadDirectMessagePreferenceRow(
-                title = stringResource(Res.string.thread_dm_settings_pin_person),
-                detail = stringResource(Res.string.thread_dm_settings_pin_person_detail),
-                checked = conversationPinState?.pinned == true,
-                enabled = conversationPinState?.available == true && onTogglePin != null,
-                onClick = { onTogglePin?.invoke() }
             )
             longMessageCollapseSetting?.takeIf { it.available }?.let { setting ->
                 Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))

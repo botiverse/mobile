@@ -740,8 +740,6 @@
     <string name="thread_dm_settings_title">DM Settings</string>
     <string name="thread_dm_settings_mute_person">Mute</string>
     <string name="thread_dm_settings_mute_person_detail">Nothing in this conversation notifies you, not even @mentions. Only affects you.</string>
-    <string name="thread_dm_settings_pin_person">Pin conversation</string>
-    <string name="thread_dm_settings_pin_person_detail">Keep this direct message in the Pinned section</string>
     <string name="thread_settings_name">Name</string>
     <string name="thread_settings_name_placeholder">e.g. ai-research</string>
     <string name="thread_settings_description">Description</string>
@@ -780,6 +778,7 @@
     <string name="channel_settings_info">Info</string>
     <string name="channel_settings_info_detail">Name and description shown across the workspace.</string>
     <string name="channel_settings_section_detail">Choose where this channel appears in your sidebar.</string>
+    <string name="channel_settings_section_detail_dm">Choose where this conversation appears in your sidebar.</string>
     <string name="channel_settings_section_create">Create section…</string>
     <string name="channel_settings_collapse_detail">Fold messages taller than the preview height behind a Show more toggle. Turn off to always show full messages in this channel.</string>
     <string name="channel_settings_collapse_detail_dm">Fold messages taller than the preview height behind a Show more toggle. Turn off to always show full messages in this conversation.</string>

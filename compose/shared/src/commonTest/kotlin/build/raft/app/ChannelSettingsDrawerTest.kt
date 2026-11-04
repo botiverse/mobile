@@ -119,6 +119,82 @@ class ChannelSettingsDrawerTest {
         )
     }
 
+    private val sidebarOrder =
+        build.raft.app.data.SettingsServerSidebarOrderSnapshot(
+            customSections = sections,
+            sectionPlacements =
+                listOf(
+                    build.raft.app.data.SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-friday", sectionId = "s-ops", position = 0),
+                    build.raft.app.data.SettingsServerSidebarSectionPlacement(kind = "channel", id = "dm-ada", sectionId = "s-launch", position = 0),
+                    build.raft.app.data.SettingsServerSidebarSectionPlacement(kind = "channel", id = "dm-friday", sectionId = "s-launch", position = 1),
+                ),
+        )
+
+    @Test
+    fun dmIsAtHomeInDirectMessages() {
+        val dm = placement().copy(directMessage = true, joint = false)
+        assertEquals(ChannelSectionValue.Home, dm.current)
+        assertEquals("system:dms", dm.currentSectionKey)
+        assertEquals(ChannelSectionValue.Home, dm.options.first())
+        assertTrue(ChannelSectionValue.Pinned in dm.options)
+    }
+
+    @Test
+    fun agentDmIsPlacedByItsAgentAndHumanDmByItsChannel() {
+        val agentDm =
+            channelSettingsSectionPlacement(
+                sidebarOrder = sidebarOrder,
+                channelId = "dm-friday",
+                pinned = false,
+                joint = false,
+                directMessagePeerKind = "agent",
+                directMessagePeerId = "agent-friday",
+                directMessage = true,
+            )
+        assertEquals(ChannelSectionValue.Custom("s-ops"), agentDm.current)
+        assertTrue(agentDm.directMessage)
+        val humanDm =
+            channelSettingsSectionPlacement(
+                sidebarOrder = sidebarOrder,
+                channelId = "dm-ada",
+                pinned = false,
+                joint = true,
+                directMessagePeerKind = "human",
+                directMessagePeerId = "user-ada",
+                directMessage = true,
+            )
+        assertEquals(ChannelSectionValue.Custom("s-launch"), humanDm.current)
+        assertFalse(humanDm.joint)
+        assertEquals("system:dms", humanDm.copy(placementSectionId = null).currentSectionKey)
+    }
+
+    @Test
+    fun channelPlacementIgnoresAgentItems() {
+        val channelState =
+            channelSettingsSectionPlacement(sidebarOrder = sidebarOrder, channelId = "agent-friday", pinned = false, joint = false)
+        assertEquals(ChannelSectionValue.Home, channelState.current)
+        assertFalse(channelState.directMessage)
+    }
+
+    @Test
+    fun dmMovesPinByItsPeer() {
+        val dmPin =
+            ThreadConversationPinUiState(
+                conversationId = "dm-friday",
+                pinnedKind = "agent",
+                pinnedId = "agent-friday",
+                pinned = false,
+                available = true
+            )
+        assertEquals(
+            listOf(
+                SharedHomeIntent.TogglePinned(conversationId = "dm-friday", pinnedKind = "agent", pinnedId = "agent-friday"),
+                SharedHomeIntent.MoveConversationToSection("dm-friday", "s-launch"),
+            ),
+            channelSectionHomeIntents(dmPin, listOf(ChannelSectionMove.Pin, ChannelSectionMove.MoveTo("s-launch")))
+        )
+    }
+
     private fun rows(row: HomeChannelRow, canManage: Boolean, canStopAllAgents: Boolean = false) =
         channelSettingsActionRows(
             ChannelSettingsUiModel(

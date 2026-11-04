@@ -742,8 +742,6 @@
     <string name="thread_dm_settings_title">DM設定</string>
     <string name="thread_dm_settings_mute_person">ミュート</string>
     <string name="thread_dm_settings_mute_person_detail">@メンションも含め、この会話からは何も通知されません。あなただけに適用されます。</string>
-    <string name="thread_dm_settings_pin_person">会話をピン留め</string>
-    <string name="thread_dm_settings_pin_person_detail">このダイレクトメッセージを「ピン留め」セクションに表示します</string>
     <string name="thread_settings_name">名前</string>
     <string name="thread_settings_name_placeholder">例: ai-research</string>
     <string name="thread_settings_description">説明</string>
@@ -782,6 +780,7 @@
     <string name="channel_settings_info">情報</string>
     <string name="channel_settings_info_detail">ワークスペース全体に表示される名前と説明です。</string>
     <string name="channel_settings_section_detail">このチャンネルをサイドバーのどのセクションに表示するかを選びます。</string>
+    <string name="channel_settings_section_detail_dm">この会話をサイドバーのどのセクションに表示するかを選びます。</string>
     <string name="channel_settings_section_create">セクションを作成…</string>
     <string name="channel_settings_collapse_detail">プレビューの高さを超えるメッセージを折りたたみ、「全文を表示」で展開できるようにします。オフにすると、このチャンネルでは常にメッセージ全体を表示します。</string>
     <string name="channel_settings_collapse_detail_dm">プレビューの高さを超えるメッセージを折りたたみ、「全文を表示」で展開できるようにします。オフにすると、この会話では常にメッセージ全体を表示します。</string>

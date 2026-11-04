@@ -740,8 +740,6 @@
     <string name="thread_dm_settings_title">私信设置</string>
     <string name="thread_dm_settings_mute_person">静音</string>
     <string name="thread_dm_settings_mute_person_detail">这个会话里的任何消息都不会通知你，@你 也不会。只影响你。</string>
-    <string name="thread_dm_settings_pin_person">置顶会话</string>
-    <string name="thread_dm_settings_pin_person_detail">将此私信保留在“已置顶”分区</string>
     <string name="thread_settings_name">名称</string>
     <string name="thread_settings_name_placeholder">例如：ai-research</string>
     <string name="thread_settings_description">描述</string>
@@ -780,6 +778,7 @@
     <string name="channel_settings_info">信息</string>
     <string name="channel_settings_info_detail">在整个工作空间中显示的名称和描述。</string>
     <string name="channel_settings_section_detail">选择此频道在侧栏中所在的分区。</string>
+    <string name="channel_settings_section_detail_dm">选择此会话在侧栏中所在的分区。</string>
     <string name="channel_settings_section_create">新建分区…</string>
     <string name="channel_settings_collapse_detail">超过预览高度的消息折叠在「显示更多」开关后。关闭后此频道的长消息始终完整显示。</string>
     <string name="channel_settings_collapse_detail_dm">超过预览高度的消息折叠在「显示更多」开关后。关闭后此会话的长消息始终完整显示。</string>
