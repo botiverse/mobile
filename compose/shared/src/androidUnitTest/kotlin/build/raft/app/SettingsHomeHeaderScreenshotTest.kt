@@ -14,6 +14,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.LocalRaftStatusBarBackdrop
 import build.raft.designsystem.components.RaftStatusBarBackdrop
 import build.raft.designsystem.components.raftWantsDarkSystemBarIcons
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -33,6 +34,16 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w390dp-h640dp-xxhdpi")
 class SettingsHomeHeaderScreenshotTest {
+    /**
+     * The fixture's page data carries a status bar height, which seeds the process-wide
+     * [RaftHostWindowInsets] for the default window. Clear it so later tests in this JVM
+     * don't inherit a top inset (it pushed the Tasks board goldens down).
+     */
+    @AfterTest
+    fun clearSeededHostInsets() {
+        RaftHostWindowInsets.remove("")
+    }
+
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
