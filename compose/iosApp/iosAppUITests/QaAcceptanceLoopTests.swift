@@ -704,7 +704,10 @@ final class SignedInHomeShotTests: XCTestCase {
     // The web sign-in sheet's close (X) button: by label when the sheet exposes one, else its
     // spot in the sheet's top-left corner.
     private func closeWebSheet(app: XCUIApplication, safari: XCUIApplication) -> Bool {
-        for host in [safari, app] {
+        // Query SafariViewService only while it runs: a snapshot of a gone process fails the test
+        // (kAXErrorServerNotFound, runs 41845886545 and 41877110876).
+        let safariUp = safari.state == .runningForeground || safari.state == .runningBackground
+        for host in safariUp ? [safari, app] : [app] {
             for label in ["Cancel", "Close", "Done"] {
                 let button = host.buttons[label].firstMatch
                 if button.exists && button.frame.minY < 200 {
@@ -713,7 +716,7 @@ final class SignedInHomeShotTests: XCTestCase {
                 }
             }
         }
-        let host = safari.exists ? safari : app
+        let host = safariUp && safari.exists ? safari : app
         host.coordinate(withNormalizedOffset: CGVector(dx: 0.095, dy: 0.115)).tap()
         return false
     }
