@@ -1,5 +1,6 @@
 package build.raft.app.desktop.realtime
 
+import build.raft.app.data.isSsoRequiredSocketError
 import build.raft.app.desktop.RaftDesktopLog
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
@@ -372,7 +373,9 @@ class SocketIoRealtimeClient(
                     serverId = capturedContext.serverId,
             )
             logger("client_connect_error serverId=${capturedContext.serverId.value} reason=${payload?.javaClass?.simpleName.orEmpty()}")
-            if (payload.isAuthFailurePayload()) {
+            // SSO required: the token is valid, so no refresh; the next API call's 403 `SSO_REQUIRED`
+            // asks the person to sign in again (RaftSsoRequiredSignal).
+            if (payload.isAuthFailurePayload() && !isSsoRequiredSocketError(payload?.toString())) {
                 refreshTransportAuth(
                     reason = "connect_error",
                     capturedContext = capturedContext,

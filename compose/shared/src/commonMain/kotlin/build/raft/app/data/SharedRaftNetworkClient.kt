@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.network.raftResponseTraceIdOrNull
 import build.raft.app.data.realtime.RealtimeBaselineHistoryRequests
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
@@ -57,6 +58,7 @@ internal class SharedRaftNetworkClient(
     private val onBaselineHistoryRequestSent: (serverId: String) -> Unit = RealtimeBaselineHistoryRequests::recordSent,
     // A 403 `account_deletion_pending` on any request opens the web deletion page once (app shell).
     private val accountDeletionPendingSignal: RaftAccountDeletionPendingSignal = RaftAccountDeletionPendingSignal.Process,
+    private val ssoRequiredSignal: RaftSsoRequiredSignal = RaftSsoRequiredSignal.Process,
 ) : RaftNetworkClient, AuthorityBoundRaftNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): RaftNetworkAuthMiddleware =
         RaftNetworkAuthMiddleware(
@@ -244,6 +246,9 @@ internal class SharedRaftNetworkClient(
                 }
                 if (accountDeletionPendingSignal.observe(response.code, response.errorBodyText)) {
                     criticalWarningLogger("account_deletion_pending path=$normalizedPath action=open_deletion_page")
+                }
+                if (ssoRequiredSignal.observe(response.code, response.errorBodyText, response.responseHeaders.raftResponseTraceIdOrNull())) {
+                    criticalWarningLogger("sso_required path=$normalizedPath action=sign_in_again")
                 }
                 gate.record(response, probe)
                 recorded = true
@@ -1256,6 +1261,13 @@ class SharedRaftAuthTransport internal constructor(
         // Authenticated auth routes (`auth/me`, `servers`) answer the same 403 while a deletion is pending.
         if (authorization != null && RaftAccountDeletionPendingSignal.Process.observe(response.code, response.errorBodyText)) {
             warningLogger("account_deletion_pending path=$path action=open_deletion_page")
+        }
+        // And a 403 `SSO_REQUIRED` while an organization requires single sign-on.
+        if (
+            authorization != null &&
+            RaftSsoRequiredSignal.Process.observe(response.code, response.errorBodyText, response.responseHeaders.raftResponseTraceIdOrNull())
+        ) {
+            warningLogger("sso_required path=$path action=sign_in_again")
         }
         if (response.code == 0) {
             warningLogger(

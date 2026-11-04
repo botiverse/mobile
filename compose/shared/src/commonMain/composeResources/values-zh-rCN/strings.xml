@@ -1905,6 +1905,7 @@
     <string name="auth_terms_agreement_suffix">。</string>
     <string name="auth_error_session_expired">会话已过期</string>
     <string name="auth_error_sign_in_continue">请登录后继续。</string>
+    <string name="auth_error_sso_required">你的组织要求使用单点登录。请重新登录，并选择“使用 SSO 继续”。</string>
     <string name="auth_error_choose_server_sign_in_required">请先登录再选择服务器。</string>
     <string name="auth_error_restore_session">无法恢复你的会话。</string>
     <string name="auth_error_load_servers">无法加载服务器。</string>

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -94,6 +95,7 @@ const val AUTH_ABOUT_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
+private const val AUTH_TRACE_ID_KEY = "slockAuthTraceId"
 internal const val AUTH_DESTINATION_KEY = "slockAuthDestination"
 internal const val AUTH_DESTINATION_API_ENVIRONMENT = "apiEnvironment"
 internal const val AUTH_TERMS_URL = "https://raft.build/terms"
@@ -976,24 +978,29 @@ internal fun StoredAuthSession.isSamePostAuthSession(
 
 internal fun loginPageData(
     replaceCurrent: Boolean = false,
-    message: String? = null
+    message: String? = null,
+    traceId: String? = null
 ): JSONObject =
     authPageData(
         pageName = LOGIN_PAGE,
         replaceCurrent = replaceCurrent,
-        message = message
+        message = message,
+        traceId = traceId
     )
 
 internal fun authPageData(
     pageName: String,
     replaceCurrent: Boolean = false,
-    message: String? = null
+    message: String? = null,
+    traceId: String? = null
 ): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
         message
             ?.takeIf { it.isNotBlank() }
             ?.let { put(AUTH_MESSAGE_KEY, it) }
+        // The trace id of the server error behind [message], shown with it (AGENTS.md "Errors carry the trace ID").
+        raftValidTraceIdOrNull(traceId)?.let { put(AUTH_TRACE_ID_KEY, it) }
         if (replaceCurrent) {
             put(AUTH_REPLACE_CURRENT_PAGE, true)
         }
@@ -1001,6 +1008,8 @@ internal fun authPageData(
 
 internal fun JSONObject.authRouteMessage(): String? =
     optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
+
+internal fun JSONObject.authRouteTraceId(): String? = raftValidTraceIdOrNull(optString(AUTH_TRACE_ID_KEY))
 
 internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
     pageData: JSONObject
