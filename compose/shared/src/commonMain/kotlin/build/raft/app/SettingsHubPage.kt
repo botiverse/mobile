@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
+import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -344,13 +346,20 @@ internal fun SettingsHomeContent(
         }
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         // Under the wide top bar the Settings tab has no head (web Sidebar `hideTitle`, artin task #8).
+        // The web's phone Settings is a pushed server page (useSidebarHomeEntries
+        // `isServerPushedPage`) headed by its PanelHeader: the canvas, white in light and the dark
+        // canvas in dark, with the seam under it, not a tab root's frame. Every Settings sub-page
+        // head (SettingsDetailShell) is the same, and the status bar icons follow the canvas.
         if (!raftUnderAppShellTopBar() || onBack != null) {
-            RaftMainTabPageHeader(
+            RaftTopPageHeader(
                 title = payload.title,
                 subtitle = null,
                 modifier = headerModifier,
+                backgroundColor = SettingsHomeHeaderBackground,
                 applyTopSafeArea = applyTopSafeArea,
                 onBack = onBack,
+                contentStartPadding = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftMainTabHeaderStartPadding,
+                titleStyle = RaftMainTabHeaderTitleStyle,
                 nativeOnTitleClick = onHeaderClick,
             )
         }
@@ -371,6 +380,10 @@ internal fun SettingsHomeContent(
         }
     }
 }
+
+/** The Settings home head's fill: the canvas, like every Settings page head (web PanelHeader). */
+internal val SettingsHomeHeaderBackground: Color
+    get() = RaftColor.Canvas
 
 private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
     RaftTabItemPayload(
