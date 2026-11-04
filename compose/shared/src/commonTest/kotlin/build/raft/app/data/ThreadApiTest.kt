@@ -648,6 +648,27 @@ class ThreadApiTest {
         assertFalse("mentions" in plain)
     }
 
+    @Test
+    fun sendMessageBodyWithMentionsOmitsAMissingOrBlankRandomId() {
+        // Tenny (dm 429d8d43): slock `parseRandomId` rejects `"randomId": null` with a 400, so a send
+        // with mentions and no randomId must leave the key out, as the plain send does.
+        listOf(null, " ").forEach { randomId ->
+            val body =
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    buildSharedThreadSendMessageBody(
+                        ThreadSendMessageRequestBody(
+                            channelId = "channel-1",
+                            content = "hi @yezi",
+                            randomId = randomId,
+                            mentions = listOf(ThreadSendMessageMention(type = "external", id = "projection-1", name = "yezi")),
+                        )
+                    )
+                ) as kotlinx.serialization.json.JsonObject
+            assertFalse("randomId" in body, "randomId=$randomId body=$body")
+            assertEquals(1, (body["mentions"] as kotlinx.serialization.json.JsonArray).size)
+        }
+    }
+
     private class FakeThreadNetworkApi(
         var channelMessagesBody: String = """{"messages":[],"historyLimited":false}""",
         var syncBody: String = "[]",

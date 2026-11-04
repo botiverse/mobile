@@ -1009,14 +1009,27 @@ private data class ThreadSendMessageRequestBodyWithRandomId(
     val randomId: String
 )
 
-/** A send with structured mentions; the body without them stays byte-identical to before. */
+/**
+ * A send with structured mentions; the body without them stays byte-identical to before. Two shapes,
+ * as for the plain send: slock `parseRandomId` accepts `randomId` missing or a non-empty string only,
+ * and [threadApiJson] would write a null as `"randomId": null` (a 400 for the whole message).
+ */
 @Serializable
 private data class ThreadSendMessageRequestBodyWithMentions(
     val channelId: String,
     val content: String,
     val attachmentIds: List<String> = emptyList(),
     val asTask: Boolean = false,
-    val randomId: String? = null,
+    val randomId: String,
+    val mentions: List<ThreadSendMessageMention>,
+)
+
+@Serializable
+private data class ThreadSendMessageRequestBodyWithMentionsWithoutRandomId(
+    val channelId: String,
+    val content: String,
+    val attachmentIds: List<String> = emptyList(),
+    val asTask: Boolean = false,
     val mentions: List<ThreadSendMessageMention>,
 )
 
@@ -1046,16 +1059,28 @@ internal fun buildSharedThreadSendMessageBody(
 fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): String {
     val randomId = request.randomId?.takeIf { it.isNotBlank() }
     if (request.mentions.isNotEmpty()) {
-        return threadApiJson.encodeToString(
-            ThreadSendMessageRequestBodyWithMentions(
-                channelId = request.channelId,
-                content = request.content,
-                attachmentIds = request.attachmentIds,
-                asTask = request.asTask,
-                randomId = randomId,
-                mentions = request.mentions,
+        return if (randomId == null) {
+            threadApiJson.encodeToString(
+                ThreadSendMessageRequestBodyWithMentionsWithoutRandomId(
+                    channelId = request.channelId,
+                    content = request.content,
+                    attachmentIds = request.attachmentIds,
+                    asTask = request.asTask,
+                    mentions = request.mentions,
+                )
             )
-        )
+        } else {
+            threadApiJson.encodeToString(
+                ThreadSendMessageRequestBodyWithMentions(
+                    channelId = request.channelId,
+                    content = request.content,
+                    attachmentIds = request.attachmentIds,
+                    asTask = request.asTask,
+                    randomId = randomId,
+                    mentions = request.mentions,
+                )
+            )
+        }
     }
     return if (randomId == null) {
         threadApiJson.encodeToString(
