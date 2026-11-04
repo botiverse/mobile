@@ -635,12 +635,11 @@ final class SignedInHomeShotTests: XCTestCase {
         write("artifact-desktop", ["ok": true])
         _ = waitFor("artifact-desktop-shot", timeout: 60)
 
-        // Pinch zoom: the fitted desktop page must still zoom in.
+        // Pinch zoom: the fitted desktop page must still zoom in. Under Compose the WKWebView is
+        // not always exposed as a web view, so pinch the app itself: its centre is the page.
         let web = app.webViews.firstMatch
-        if web.exists {
-            web.pinch(withScale: 2.5, velocity: 2)
-            Thread.sleep(forTimeInterval: 3)
-        }
+        (web.exists ? web : app).pinch(withScale: 2.5, velocity: 2)
+        Thread.sleep(forTimeInterval: 3)
         attach(app, name: "artifact-desktop-zoomed")
         write("artifact-zoomed", ["ok": true, "webView": web.exists])
         _ = waitFor("artifact-zoomed-shot", timeout: 60)
