@@ -739,9 +739,8 @@
     <string name="thread_settings_pin_detail">ホームの「ピン留め」に固定します。</string>
     <string name="thread_settings_actions_title">チャンネルの操作</string>
     <string name="thread_settings_actions_detail">メンバーシップ、公開範囲、変換、アーカイブ、危険な操作を管理します。</string>
-    <string name="thread_dm_settings_title">DM設定</string>
-    <string name="thread_dm_settings_mute_person">ミュート</string>
-    <string name="thread_dm_settings_mute_person_detail">@メンションも含め、この会話からは何も通知されません。あなただけに適用されます。</string>
+    <string name="thread_dm_settings_badge">ダイレクトメッセージ</string>
+    <string name="thread_dm_settings_close">会話の設定を閉じる</string>
     <string name="thread_settings_name">名前</string>
     <string name="thread_settings_name_placeholder">例: ai-research</string>
     <string name="thread_settings_description">説明</string>

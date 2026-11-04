@@ -122,7 +122,6 @@ import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftUiMenuSurface
 import build.raft.app.components.raftMenuWidth
-import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.components.raftCardSurface
@@ -410,6 +409,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -6294,20 +6295,23 @@ internal fun channelSettingsPanelVisualPanel(pinned: Boolean = false, serverId: 
 }
 
 /**
- * The DM settings for Friday (an agent DM): Move to section on Pinned ([pinned]) or at home in
- * Direct Messages, with my two sections to pick from, then Mute (on) and Collapse long messages.
+ * The DM settings drawer for Friday (a DM with an App bot, so it can be muted): Move to section
+ * on Pinned ([pinned]) or at home in Direct Messages, with my two sections to pick from, then
+ * Mute (on) and Collapse long messages. [mutable] false is a DM with a person, which the server
+ * does not let you mute: no Mute row (web `canToggleActivityMute`).
  */
 @Composable
-internal fun DirectMessageSettingsPanelVisualScreen(pinned: Boolean = true) {
+internal fun DirectMessageSettingsPanelVisualScreen(pinned: Boolean = true, mutable: Boolean = true) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        ThreadDirectMessageSettingsModal(
+        ThreadDirectMessageSettingsDrawer(
+            name = if (mutable) "Friday" else "Alice Chen",
             activityMuteState =
                 ThreadActivityMuteUiState(
                     channelId = "dm-visual-friday",
                     muted = true,
                     supported = true,
                     muteFromSeq = 42
-                ),
+                ).takeIf { mutable },
             section =
                 ChannelSectionPlacement(
                     customSections =
@@ -18187,7 +18191,8 @@ private fun ThreadPageContentContent(
         when (activeModal) {
             "settings" -> {
                 if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-                    ThreadDirectMessageSettingsModal(
+                    ThreadDirectMessageSettingsDrawer(
+                        name = headerDisplay.title,
                         activityMuteState = activityMuteState,
                         section = channelSettingsPanel?.section,
                         sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
@@ -37859,12 +37864,16 @@ private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? 
     }
 
 /**
- * The DM settings: Move to section first (web ChannelPreferencesSection for a DM, slock #12622:
- * Direct Messages, Pinned, or one of my sections, in place of the old Pin switch), then Mute and
- * Collapse long messages. [section] is null where the DM has no sidebar state to show.
+ * The DM settings: the channel settings drawer in its DM mode (web ChannelOverflowMenu for a DM,
+ * task #703: the same sheet as a channel). The head is the person's or agent's name with an
+ * outline "Direct message" tag at every width (web ChannelDrawerTitle); the body is the shared
+ * Preferences only: Move to section, Mute where the server lets this DM be muted (a DM with an App
+ * bot) or a mute is stored, then Collapse long messages, worded for a conversation. No members,
+ * no Info form, no actions; Close chat stays in the Home row menu as on the web sidebar.
  */
 @Composable
-private fun ThreadDirectMessageSettingsModal(
+internal fun ThreadDirectMessageSettingsDrawer(
+    name: String,
     activityMuteState: ThreadActivityMuteUiState?,
     section: ChannelSectionPlacement?,
     sectionEnabled: Boolean,
@@ -37874,62 +37883,35 @@ private fun ThreadDirectMessageSettingsModal(
     onMoveSection: (List<ChannelSectionMove>) -> Unit,
     onCreateSection: (name: String, emoji: String?) -> Unit,
 ) {
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.thread_dm_settings_title),
+    RaftUnifiedSideDrawer(
+        title = name,
+        titleTrailing = threadSettingsDirectMessageTag(),
+        closeLabel = stringResource(Res.string.thread_dm_settings_close),
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            section?.let { state ->
-                ChannelSectionSelectRow(state = state, enabled = sectionEnabled, onMove = onMoveSection, onCreate = onCreateSection)
-                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-            }
-            ThreadDirectMessagePreferenceRow(
-                title = stringResource(Res.string.thread_dm_settings_mute_person),
-                detail = stringResource(Res.string.thread_dm_settings_mute_person_detail),
-                checked = activityMuteState?.muted == true,
-                enabled = activityMuteState != null && onToggleActivityMute != null,
-                onClick = { onToggleActivityMute?.invoke() }
-            )
-            longMessageCollapseSetting?.takeIf { it.available }?.let { setting ->
-                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-                ThreadDirectMessagePreferenceRow(
-                    title = stringResource(Res.string.conversation_long_message_collapse),
-                    detail = stringResource(Res.string.channel_settings_collapse_detail_dm),
-                    checked = setting.effective,
-                    enabled = true,
-                    onClick = { setting.onSetEnabled(!setting.effective) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThreadDirectMessagePreferenceRow(
-    title: String,
-    detail: String,
-    checked: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier =
+        Column(
             Modifier
                 .fillMaxWidth()
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = title,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.W600),
-                color = RaftColor.TextBlack
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                // web `px-4 pb-2` under the sheet body's `py-2`, on the channel drawer's margin.
+                .padding(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 16.dp)
+        ) {
+            ThreadSettingsPreferencesSection(
+                panel =
+                    ThreadChannelSettingsPanel(
+                        section = section,
+                        longMessageCollapse = longMessageCollapseSetting,
+                        writeActionsEnabled = sectionEnabled,
+                        onMoveSection = onMoveSection,
+                        onCreateSection = onCreateSection,
+                    ),
+                activityMuteState = activityMuteState,
+                onToggleActivityMute = onToggleActivityMute,
+                separator = false,
+                directMessage = true,
             )
-            Text(text = detail, style = RaftType.Caption, color = RaftColor.TextMutedGray)
         }
-        RaftSwitchButton(checked = checked, enabled = enabled)
     }
 }
 
@@ -38204,6 +38186,8 @@ private fun ThreadSettingsPreferencesSection(
     activityMuteState: ThreadActivityMuteUiState?,
     onToggleActivityMute: (() -> Unit)?,
     separator: Boolean,
+    // A DM's rows speak of "this conversation" (web `conversationKind="dm"`).
+    directMessage: Boolean = false,
 ) {
     RaftFormSection(title = stringResource(Res.string.thread_settings_preferences), separator = separator) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -38253,7 +38237,10 @@ private fun ThreadSettingsPreferencesSection(
                 if (rowAfterFirst) RaftSeparator()
                 ThreadSettingsPreferenceRow(
                     title = stringResource(Res.string.conversation_long_message_collapse),
-                    detail = stringResource(Res.string.channel_settings_collapse_detail),
+                    detail =
+                        stringResource(
+                            if (directMessage) Res.string.channel_settings_collapse_detail_dm else Res.string.channel_settings_collapse_detail
+                        ),
                     checked = setting.effective,
                     onToggle = { setting.onSetEnabled(!setting.effective) }
                 )

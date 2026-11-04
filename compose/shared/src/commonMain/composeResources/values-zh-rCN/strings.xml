@@ -737,9 +737,8 @@
     <string name="thread_settings_pin_detail">固定在首页的「已置顶」里。</string>
     <string name="thread_settings_actions_title">频道操作</string>
     <string name="thread_settings_actions_detail">成员资格、可见性、转换、归档和破坏性操作。</string>
-    <string name="thread_dm_settings_title">私信设置</string>
-    <string name="thread_dm_settings_mute_person">静音</string>
-    <string name="thread_dm_settings_mute_person_detail">这个会话里的任何消息都不会通知你，@你 也不会。只影响你。</string>
+    <string name="thread_dm_settings_badge">私信</string>
+    <string name="thread_dm_settings_close">关闭私信设置</string>
     <string name="thread_settings_name">名称</string>
     <string name="thread_settings_name_placeholder">例如：ai-research</string>
     <string name="thread_settings_description">描述</string>

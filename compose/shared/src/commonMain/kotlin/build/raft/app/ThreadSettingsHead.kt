@@ -51,3 +51,15 @@ internal fun threadSettingsVisibilityTag(channelKind: String?): (@Composable Row
         )
     }
 }
+
+/**
+ * A DM's head tag (web ChannelDrawerTitle `isDm`): the peer's plain name, then "Direct message"
+ * as the same neutral outline badge, at every width (a DM has no "#name" ref to show on a phone).
+ */
+internal fun threadSettingsDirectMessageTag(): @Composable RowScope.() -> Unit = {
+    RaftBadge(
+        text = stringResource(Res.string.thread_dm_settings_badge),
+        modifier = Modifier.align(Alignment.CenterVertically).padding(start = 2.dp),
+        appearance = RaftBadgeAppearance.Outline,
+    )
+}
