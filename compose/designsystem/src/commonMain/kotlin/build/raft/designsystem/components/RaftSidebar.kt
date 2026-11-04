@@ -48,11 +48,13 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 
-// raft-ui 0.10 Sidebar (sidebar-item.recipe.ts, sidebar-section.recipe.ts) at its phone
-// size: below `md` a SidebarItem is at least 44px in `text-body` at 600 (raft-ui 0.8.1+),
-// which is how the web draws Home's Search / Activity / Saved rows, the channel and DM
-// rows and the group headers on a phone. The rows sit 8dp in from the page edge
-// (`SidebarContentInner` `px-2`); the page owns that padding.
+// raft-ui Sidebar (sidebar-item.recipe.ts, sidebar-section.recipe.ts) at its phone size:
+// below `md` a SidebarItem is at least 44px in `text-body` at 600 (raft-ui 0.8.1+), which is
+// how the web draws Home's Search / Activity / Saved rows, the channel and DM rows and the
+// group headers on a phone. Since raft-ui 0.49 (#815, lib/list-cell.ts) a row is a list
+// cell: its shape sits 8dp in from the list's sides (the page owns that padding), its content
+// 12dp inside the shape (20dp from the list's edges), and the list spaces the rows 2dp apart.
+// Group labels and section headers start their words on the same 20dp edge (`px-5`).
 
 /** The hint ink of the enclosing [RaftSidebarItem] (`sticker-ink` when it is selected). */
 private val LocalRaftSidebarItemHint = staticCompositionLocalOf<Color?> { null }
@@ -65,11 +67,11 @@ internal object RaftSidebarItemMetrics {
     /** `max-md:py-[8.5px]`, inside the 1.5dp border. */
     val PaddingVertical = 8.5.dp
 
-    /** `pl-2`, inside the border. */
-    val PaddingStart = 8.dp
+    /** `--cell-pad-x` (12dp from the shape's edge), inside the 1.5dp border. */
+    val PaddingStart = 10.5.dp
 
-    /** `pr-2.5`, inside the border. */
-    val PaddingEnd = 10.dp
+    /** `--cell-pad-x` (12dp from the shape's edge), inside the 1.5dp border. */
+    val PaddingEnd = 10.5.dp
 
     /** `gap-2` between icon, text and aside. */
     val Gap = 8.dp
@@ -78,11 +80,12 @@ internal object RaftSidebarItemMetrics {
     val AsideGap = 4.dp
 
     /**
-     * `my-px`: in the web's block flow the 1px margins above and below collapse, so rows
-     * stand 1dp apart. Compose margins add up, so each row keeps half of it above and below:
-     * 1dp between rows, and about 1dp at either end of a run (before a group header).
+     * The list's `gap-0.5` (lib/list-cell.ts: `SidebarList` and every list of cells space their
+     * rows 2dp apart). The app's lists hold headers and rows in one column, so each row keeps
+     * half of the gap above and below: 2dp between rows. A list that also spaces its rows
+     * itself would add up to more than the web's 46dp pitch.
      */
-    val MarginVertical = 0.5.dp
+    val MarginVertical = 1.dp
 
     /** `SidebarItemIcon` / `SidebarItemChannelIcon`: a 19dp box with a 16dp icon. */
     val IconBox = 19.dp
@@ -125,9 +128,10 @@ enum class RaftSidebarItemVariant(
  * raft-ui SidebarItem at its phone size: one place in the Home list (Search, Activity,
  * Saved, a channel, a DM). The whole row is the target.
  *
- * - Box: at least 44dp tall (it grows with the font scale), 8dp start / 10dp end padding
- *   inside a 1.5dp edge that is always there (transparent at rest), control radius, gap 8,
- *   0.5dp above and below, so rows stand 1dp apart (the web's collapsed `my-px`). The row fills the width it is given.
+ * - Box: at least 44dp tall (it grows with the font scale), the content 12dp inside the
+ *   shape at both ends (10.5dp inside a 1.5dp edge that is always there, transparent at
+ *   rest), control radius, gap 8, 1dp above and below, so rows stand 2dp apart (raft-ui
+ *   0.49 list cells, `gap-0.5`). The row fills the width it is given.
  * - [leading]: a 19dp slot for a 16dp icon ([RaftSidebarItemIcon]) or a 19dp avatar, drawn
  *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
  *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
@@ -639,20 +643,22 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
 
 /**
  * raft-ui SidebarGroupLabel: a plain group heading that doesn't collapse (the web settings
- * hub's Personal / Workspace / Resources, `SettingsSidebarList`). `px-2 pt-4 pb-1.5`, the
+ * hub's Personal / Workspace / Resources, `SettingsSidebarList`). `px-5 pt-4` (20dp from the
+ * list's edges with the page's 8dp), the
  * [title] in `text-footnote` 700 `foreground-hint`, sentence case as written; a heading in
  * semantics. It is [RaftSectionEyebrow] with the sidebar's padding.
  */
 @Composable
 fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
-    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 6.dp))
+    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp))
 }
 
 /**
  * raft-ui SidebarSectionHeader with its SidebarSectionDisclosure: the heading of a
  * collapsible group of rows (Pinned, Channels, a custom group).
  *
- * - `px-2 pt-4 pb-1.5`, gap 8: 40dp tall at the default font scale.
+ * - `px-5 pt-4` (20dp from the list's edges with the page's 8dp), gap 8: 40dp tall at the
+ *   default font scale.
  * - The disclosure: a 14dp `chevron-right` (turned down when [expanded]; `size-3.5`),
  *   an optional [icon] (a custom group's emoji), the [title] in `text-footnote` 700 and
  *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. The whole header is
@@ -761,7 +767,9 @@ fun RaftSidebarSectionHeader(
             .padding(top = RaftSidebarSectionHeaderGap)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
-            .padding(horizontal = 8.dp, vertical = RaftSidebarSectionHeaderInset),
+            // `px-5` (raft-ui 0.49, #815): the words 12dp inside the fill, 20dp from the list's
+            // edges with the page's 8dp, on the rows' content edge.
+            .padding(horizontal = 12.dp, vertical = RaftSidebarSectionHeaderInset),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

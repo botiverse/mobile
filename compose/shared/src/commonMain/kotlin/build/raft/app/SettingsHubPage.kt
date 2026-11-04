@@ -406,10 +406,9 @@ private fun SettingsHubSidebarList(
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         groups.forEach { (section, rows) ->
             if (section != null) build.raft.designsystem.components.RaftSidebarGroupLabel(section)
-            Column(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
+            // `gap-0.5 py-2`: each row keeps 1dp above and below (RaftSidebarItem), so the
+            // column adds 7dp at its ends and nothing between the rows.
+            Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
                 rows.forEach { item ->
                     build.raft.designsystem.components.RaftSidebarItem(
                         title = item.title,
