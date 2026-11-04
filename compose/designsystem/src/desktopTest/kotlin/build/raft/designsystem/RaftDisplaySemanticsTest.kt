@@ -140,6 +140,42 @@ class RaftDisplaySemanticsTest {
             onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
         }
 
+    /**
+     * The whole header is the disclosure's target, as its press fill is: a tap at its end, by
+     * the attention pixel, toggles it; a tap on a control runs the control only.
+     */
+    @Test
+    fun aSidebarHeaderTogglesFromItsEndButNotFromItsControls() =
+        runComposeUiTest {
+            var expanded by mutableStateOf(false)
+            var creates = 0
+            setContent(
+                themed {
+                    Column(Modifier.width(320.dp)) {
+                        RaftSidebarSectionHeader(
+                            "Direct Messages",
+                            expanded = expanded,
+                            onExpandedChange = { expanded = it },
+                            modifier = Modifier.testTag("header"),
+                            count = 12,
+                            attention = true,
+                            actions = { RaftSidebarSectionAction(RaftGlyph.Plus, "New Message", { creates++ }) },
+                        )
+                    }
+                },
+            )
+            onNodeWithContentDescription("New Message").performClick()
+            // In the control's widened touch ring, 1dp before its box.
+            onNodeWithContentDescription("New Message").performTouchInput { click(Offset(-1.dp.toPx(), centerY)) }
+            assertEquals(2, creates)
+            assertFalse(expanded, "a tap on a control or its touch ring does not toggle the section")
+            // Between the title's box and the attention pixel (8dp gap, 271-279dp of 320):
+            // outside the old disclosure, inside the header.
+            onNodeWithTag("header").performTouchInput { click(Offset(width - 45.dp.toPx(), height - 15.dp.toPx())) }
+            assertTrue(expanded, "a tap at the header's end toggles it")
+            assertEquals(2, creates)
+        }
+
     /** Press and hold opens the row's menu (raft-design ContextMenu) and does not also open the row. */
     @Test
     fun aLongPressOnASidebarRowOpensItsMenuWithoutClicking() =

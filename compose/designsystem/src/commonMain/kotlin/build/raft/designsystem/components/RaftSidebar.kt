@@ -655,9 +655,9 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  * - `px-2 pt-4 pb-1.5`, gap 8: 40dp tall at the default font scale.
  * - The disclosure: a 14dp `chevron-right` (turned down when [expanded]; `size-3.5`),
  *   an optional [icon] (a custom group's emoji), the [title] in `text-footnote` 700 and
- *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. It is one button
- *   spanning the header's height (so a finger can hit it), with the expand / collapse
- *   action and state in semantics, and the focus ring round its words.
+ *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. The whole header is
+ *   one button (so a finger can hit it anywhere on it), with the expand / collapse action
+ *   and state in semantics; the controls are buttons of their own on top of it.
  * - [countSeparator]: printed inside the count, straight after the title with no gap
  *   (web members page: `<SidebarSectionCount>{" · "}{count}</SidebarSectionCount>`, so
  *   "Humans · 11"). Null (the sidebar): the count stands 6dp after the title.
@@ -673,11 +673,12 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  *   (raft-ui 0.57.1, #942, stdrc 2026-11-02: shown only on hover they hid what the header
  *   can do and changed a long title's room as the pointer passed), so a long title truncates
  *   before them.
- * - Press: the disclosure lights up its hit area with `fill-pressed` (States: a text
- *   button lights up its hit area when pressed).
+ * - Press: the header lights up its hit area, the whole row with the attention pixel and
+ *   the controls, with `fill-medium` on the control radius (States: a text button lights up
+ *   its hit area when pressed); keyboard focus rings the same shape.
  * - Touch: [onLongClick] is the press and hold that opens the group's menu (the web's
  *   right-click menu on the header), named [onLongClickLabel]; it does not also toggle.
- *   While that menu is open pass [menuOpen] = true: the disclosure stays pressed. Both need
+ *   While that menu is open pass [menuOpen] = true: the header stays pressed. Both need
  *   [onExpandedChange].
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -708,56 +709,56 @@ fun RaftSidebarSectionHeader(
     val showAttention = attention && !expanded
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
+    // The whole header is the disclosure's target, and its press fill and focus ring cover it
+    // all, the attention pixel and the controls included, on the rows' rounded shape: lit only
+    // up to the trailing box, the fill stopped short of the controls (artin, 2026-11-04). The
+    // controls are buttons of their own on top, so a tap on one never toggles the section.
     Row(
         modifier
             .fillMaxWidth()
             .raftSafeAreaHorizontalPadding()
+            .raftFocusRing(focused, RaftRadius.Control, colors)
+            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
+            .then(
+                if (onExpandedChange != null) {
+                    val toggle = { onExpandedChange(!expanded) }
+                    Modifier
+                        .then(
+                            if (onLongClick != null) {
+                                Modifier.combinedClickable(
+                                    interactionSource = source,
+                                    indication = null,
+                                    role = Role.Button,
+                                    onLongClickLabel = onLongClickLabel,
+                                    onLongClick = onLongClick,
+                                    onClick = toggle,
+                                )
+                            } else {
+                                Modifier.clickable(
+                                    interactionSource = source,
+                                    indication = null,
+                                    role = Role.Button,
+                                    onClick = toggle,
+                                )
+                            },
+                        )
+                        .semantics {
+                            if (expanded) {
+                                collapse { onExpandedChange(false); true }
+                            } else {
+                                expand { onExpandedChange(true); true }
+                            }
+                        }
+                } else {
+                    Modifier
+                },
+            )
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(
-            Modifier
-                .weight(1f)
-                .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
-                .then(
-                    if (onExpandedChange != null) {
-                        val toggle = { onExpandedChange(!expanded) }
-                        Modifier
-                            .then(
-                                if (onLongClick != null) {
-                                    Modifier.combinedClickable(
-                                        interactionSource = source,
-                                        indication = null,
-                                        role = Role.Button,
-                                        onLongClickLabel = onLongClickLabel,
-                                        onLongClick = onLongClick,
-                                        onClick = toggle,
-                                    )
-                                } else {
-                                    Modifier.clickable(
-                                        interactionSource = source,
-                                        indication = null,
-                                        role = Role.Button,
-                                        onClick = toggle,
-                                    )
-                                },
-                            )
-                            .semantics {
-                                if (expanded) {
-                                    collapse { onExpandedChange(false); true }
-                                } else {
-                                    expand { onExpandedChange(true); true }
-                                }
-                            }
-                    } else {
-                        Modifier
-                    },
-                )
-                .padding(top = 16.dp, bottom = 6.dp),
-        ) {
+        Box(Modifier.weight(1f).padding(top = 16.dp, bottom = 6.dp)) {
             Row(
-                Modifier.raftFocusRing(focused, RaftRadius.Sticker, colors),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
