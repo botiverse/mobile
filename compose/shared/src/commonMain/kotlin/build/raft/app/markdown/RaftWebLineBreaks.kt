@@ -54,8 +54,8 @@ private fun ASTNode.raftInsideTable(): Boolean {
 /**
  * A reference chip (`#channel`, `#channel:thread`, `@Some One`) is one box on the web
  * (`inline-flex … truncate`), so it never breaks inside: glue its label wherever the native breaker
- * could break it (between CJK characters, at a space, after a slash). A plain Latin word has no
- * break inside and stays as it is.
+ * could break it (between CJK characters, at a space, after a slash). A Latin label without a
+ * space or slash has no break inside and stays as it is.
  */
 internal fun String.withRaftInlineChipGlue(): String {
     if (none { it.isRaftChipBreakable() }) return this
@@ -72,5 +72,6 @@ private const val RaftWebTextWordJoiner = '⁠'
 private fun Char.isRaftAsciiLetterOrDigit(): Boolean =
     this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
 
+// A hyphen is no break for the native breaker (see above), so `@Android-Developer-4` stays as it is.
 private fun Char.isRaftChipBreakable(): Boolean =
-    isWhitespace() || this == '/' || this == '-' || code >= 0x2E80
+    isWhitespace() || this == '/' || code >= 0x2E80
