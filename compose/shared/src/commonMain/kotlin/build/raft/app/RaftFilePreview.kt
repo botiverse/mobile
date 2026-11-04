@@ -6039,11 +6039,13 @@ internal fun RaftFilePreviewColorSwatch(
             modifier =
                 Modifier
                     .size(if (selected) 26.dp else 22.dp)
-                    .borderRadius(20.dp)
-                    .background(color)
+                    .background(color, CircleShape)
+                    // The edge follows the circle: a square edge clipped by the circle showed its
+                    // straight sides inside a dark swatch (artin, #32).
                     .border(
                         width = if (selected) RaftAppStroke.Strong else RaftAppStroke.Thin,
                         color = RaftTheme.colors.lineStrong,
+                        shape = CircleShape,
                     )
         )
     }
