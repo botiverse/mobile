@@ -18199,6 +18199,7 @@ private fun ThreadPageContentContent(
                     )
                 } else {
                     ThreadSettingsModal(
+                        channelKind = headerDisplay.channelKind,
                         channelName = headerDisplay.title,
                         subtitle = headerDisplay.subtitle,
                         panel =
@@ -38003,6 +38004,8 @@ private const val ThreadSettingsSavedNoticeMillis = 1500L
  */
 @Composable
 internal fun ThreadSettingsModal(
+    // The conversation's channel kind: the wide head's visibility tag (web ChannelDrawerTitle).
+    channelKind: String? = null,
     channelName: String,
     subtitle: String?,
     panel: ThreadChannelSettingsPanel = ThreadChannelSettingsPanel(),
@@ -38111,7 +38114,7 @@ internal fun ThreadSettingsModal(
             } else {
                 stringResource(Res.string.thread_settings_panel_title)
             },
-        titleTrailing = if (wideWindow) null else { { ThreadSettingsPanelChannelRef(channelName) } },
+        titleTrailing = if (wideWindow) threadSettingsVisibilityTag(channelKind) else { { ThreadSettingsPanelChannelRef(channelName) } },
         closeLabel = stringResource(Res.string.thread_settings_panel_close),
         dismissOnOutsideTap = !infoDirty && !profileSaving && actionInFlight == null,
         onDismiss = onDismiss
