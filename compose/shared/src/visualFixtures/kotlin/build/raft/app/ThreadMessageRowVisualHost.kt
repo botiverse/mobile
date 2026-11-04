@@ -940,7 +940,9 @@ internal fun ThreadMessageVisualScreenContent() {
                     onOpenThread = {
                         openedVisualThreadMessageId = it
                         if (threadOpenedToken.isNotBlank()) {
-                            Utils.logToNative("$threadOpenedToken messageId=$it")
+                            // This page's own bridge: a click callback runs outside the
+                            // Kuikly call that sets BridgeManager.currentPageId.
+                            visualReadyBridge.log("$threadOpenedToken messageId=$it")
                         }
                     },
                     onOpenTask = {},
