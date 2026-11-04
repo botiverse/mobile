@@ -193,6 +193,7 @@ internal fun SettingsNativeDetailScreen() {
             openNativePage(SettingsNativeDetailPage.LocalFeatureOverride, key)
         },
         onOpenThemePage = { openNativePage(SettingsNativeDetailPage.Theme) },
+        onOpenServerNotificationsPage = { openNativePage(SettingsNativeDetailPage.ServerNotifications) },
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
@@ -277,6 +278,7 @@ internal fun SettingsNativeDetailPageContent(
     onOpenLocalFeatureOverridePage: (String) -> Unit,
     /** Appearance's "Theme on <server>" row (Web `ServerThemeLink`): Settings > Theme. */
     onOpenThemePage: () -> Unit = {},
+    onOpenServerNotificationsPage: () -> Unit = {},
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -696,7 +698,9 @@ internal fun SettingsNativeDetailPageContent(
                     onSettings = { onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings) },
                     onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
-                    servers = remember(session) { settingsNotificationServers(session) }
+                    servers = remember(session) { settingsNotificationServers(session) },
+                    onOpenServerNotifications =
+                        if (route.page == SettingsNativeDetailPage.Notifications) onOpenServerNotificationsPage else null
                 )
             SettingsNativeDetailPage.Mobile ->
                 SettingsMobileContent(

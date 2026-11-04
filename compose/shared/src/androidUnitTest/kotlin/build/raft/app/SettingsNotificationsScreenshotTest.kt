@@ -41,12 +41,12 @@ import org.robolectric.annotation.GraphicsMode
  * Settings › Notifications in the web's order and copy (botiverse/slock
  * packages/web/src/components/settings/notifications): This device, Pause and schedule (quiet
  * hours on, saved for another zone), Content (preview, the phone delay set to Always with its
- * note, sound) and Servers (the current server first, one channel customized). Phone light and
- * dark; verify / record as [RaftRobolectricScreenshot].
+ * note, sound), Servers (the current server first, one channel customized) and the link to the
+ * current server's own page, which is also shown on its own. Phone light and dark; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h2000dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h2150dp-xxhdpi")
 class SettingsNotificationsScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -61,12 +61,17 @@ class SettingsNotificationsScreenshotTest {
     @Test
     fun notificationsPageDark() =
         captureNotifications("settings.notifications.dark", RaftAppAppearance.Dark, activities) { NotificationsFixture() }
+
+    /** Settings › On {server} › Notifications: the current server's card alone (web CurrentServerNotificationsCard). */
+    @Test
+    fun serverNotificationsPageLight() =
+        captureNotifications("settings.server-notifications", RaftAppAppearance.Light, activities) { NotificationsFixture(serverOnly = true) }
 }
 
 /** The longer zh-CN titles: each setting's title wraps to a second line instead of truncating. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h2000dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h2150dp-xxhdpi")
 class SettingsNotificationsChineseScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -82,7 +87,7 @@ class SettingsNotificationsChineseScreenshotTest {
 /** The longer ja titles: each setting's title wraps to a second line instead of truncating. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "ja-w390dp-h2000dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "ja-w390dp-h2400dp-xxhdpi")
 class SettingsNotificationsJapaneseScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -101,7 +106,7 @@ class SettingsNotificationsJapaneseScreenshotTest {
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w1024dp-h1500dp-mdpi")
+@Config(sdk = [34], qualifiers = "w1024dp-h1750dp-mdpi")
 class SettingsNotificationsWideScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -139,7 +144,7 @@ private fun captureNotifications(
 private const val FIXTURE_NOW_MILLIS = 1_793_692_800_000L
 
 @Composable
-private fun NotificationsFixture(pausedUntil: String? = null) {
+private fun NotificationsFixture(pausedUntil: String? = null, serverOnly: Boolean = false) {
     remember {
         RaftNotificationLevelStore.clear()
         RaftNotificationLevelStore.applyServerLevels(mapOf("s1" to RaftNotificationLevel.All, "s2" to RaftNotificationLevel.None))
@@ -149,6 +154,7 @@ private fun NotificationsFixture(pausedUntil: String? = null) {
     }
     SettingsNotificationsContent(
         state = ScreenLoadState.Content(notificationsMobileFixture),
+        serverOnly = serverOnly,
         actionState = null,
         bottomContentPadding = 16.dp,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
@@ -181,7 +187,8 @@ private fun NotificationsFixture(pausedUntil: String? = null) {
                 sound = true,
                 mobileDelay = "always",
                 version = 3
-            )
+            ),
+        onOpenServerNotifications = {}
     )
 }
 

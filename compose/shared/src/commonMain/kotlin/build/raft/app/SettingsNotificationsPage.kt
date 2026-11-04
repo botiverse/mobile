@@ -99,7 +99,9 @@ internal fun SettingsNotificationsContent(
     nowEpochMillis: Long? = null,
     timeZoneId: String? = null,
     /** Fixture account settings in place of the store's (screenshot and visual fixtures). */
-    accountSettingsOverride: RaftNotificationAccountSettings? = null
+    accountSettingsOverride: RaftNotificationAccountSettings? = null,
+    /** Opens Settings › On {server} › Notifications (web `ServerNotificationsLink`); null: no link. */
+    onOpenServerNotifications: (() -> Unit)? = null
 ) {
     // The account settings (`me/notification-settings`): null on an older server or before they
     // load, which keeps the previous workspace and preview cards instead of controls that could
@@ -169,13 +171,20 @@ internal fun SettingsNotificationsContent(
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
+                val currentServer = servers.firstOrNull { it.current }
                 if (serverOnly) {
                     item {
-                        SettingsServerNotificationModeCard(
-                            snapshot = snapshot,
-                            actionState = actionState,
-                            onServerNotificationModeChange = onServerNotificationModeChange
-                        )
+                        // The web's CurrentServerNotificationsCard; an older server without the
+                        // unified settings keeps the previous workspace card.
+                        if (accountSettings != null && currentServer != null) {
+                            SettingsNotificationCurrentServerCard(currentServer)
+                        } else {
+                            SettingsServerNotificationModeCard(
+                                snapshot = snapshot,
+                                actionState = actionState,
+                                onServerNotificationModeChange = onServerNotificationModeChange
+                            )
+                        }
                     }
                     item { Spacer(Modifier.height(bottomContentPadding)) }
                     return@LazyColumn
@@ -234,6 +243,9 @@ internal fun SettingsNotificationsContent(
                     }
                     if (servers.isNotEmpty()) {
                         item { SettingsNotificationServersSection(servers) }
+                    }
+                    if (currentServer != null && onOpenServerNotifications != null) {
+                        item { SettingsNotificationServerLink(currentServer, onOpenServerNotifications) }
                     }
                 } else {
                     item {
