@@ -16,10 +16,9 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
         useSoftwareKeyboardInset = !properties.contentHandlesKeyboard,
         // RaftWindowDialog draws RaftTheme.scrim.
         scrimColor = Color.Transparent,
-        // Compose's own dialog transition (the whole window fading in from 20% while it grows from
-        // 95% and drops 10dp, 200ms; 100ms back out) is not Raft motion: a centered overlay appears
-        // and goes at once, a sheet or drawer slides itself (raft-design Motion).
-        animateTransition = false,
+        // Compose's own transition (fade in while growing from 95%), unless the content moves
+        // itself (RaftDrawer's slide).
+        animateTransition = properties.platformTransition,
     )
 
 /**

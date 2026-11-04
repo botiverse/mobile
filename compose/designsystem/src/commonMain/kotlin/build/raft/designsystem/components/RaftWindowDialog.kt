@@ -28,6 +28,10 @@ import build.raft.designsystem.theme.RaftTheme
  *   focused dialog window without an editor hides the keyboard; this window does not take part
  *   in input (`FLAG_ALT_FOCUSABLE_IM`), so it sits over the keyboard instead. iOS: a layer in the
  *   host's window, nothing to do.
+ * - [platformTransition]: iOS and desktop keep Compose's own dialog transition (the window fading
+ *   in while it grows slightly, as raft-ui's centered dialog and Android's dialog window do).
+ *   Pass false for a window whose content moves itself (a drawer sliding up with its scrim
+ *   fading, [RaftDrawer]), so the two motions don't stack. Android: no effect.
  *
  * A tap on the scrim is the content's to handle: the content fills the window, so nothing is
  * ever "outside" it.
@@ -38,6 +42,7 @@ data class RaftWindowDialogProperties(
     val drawScrim: Boolean = true,
     val contentHandlesKeyboard: Boolean = false,
     val keepsHostKeyboard: Boolean = false,
+    val platformTransition: Boolean = true,
 )
 
 /**

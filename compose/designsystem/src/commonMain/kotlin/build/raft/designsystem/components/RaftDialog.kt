@@ -458,7 +458,8 @@ internal fun RaftSheetWindow(
     val hidden by rememberUpdatedState(onHidden)
     RaftWindowDialog(
         onDismissRequest = onDismissRequest,
-        properties = RaftWindowDialogProperties(drawScrim = !slideMotion),
+        // The drawer slides itself: no platform window transition stacked on the slide (iOS).
+        properties = RaftWindowDialogProperties(drawScrim = !slideMotion, platformTransition = !slideMotion),
     ) {
         val slide = remember { Animatable(1f) }
         if (slideMotion) {
