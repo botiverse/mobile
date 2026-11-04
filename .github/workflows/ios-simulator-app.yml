@@ -69,6 +69,11 @@ on:
         required: false
         type: string
         default: ""
+      artifact_desktop_mode:
+        description: "home_screenshot: then open an Artifact the QA account can see (a message linking it, opened by link), screenshot it, turn on Desktop Mode from the viewer's ⋯ menu, screenshot again, pinch-zoom and screenshot"
+        required: false
+        type: boolean
+        default: false
   # github-release.yml builds the Simulator app of a release tag through this. Inside a call,
   # github.run_id / github.sha / github.ref are the CALLER's: the artifact is
   # ios-simulator-app-<caller run id>, the CI tools come from the caller's commit.
@@ -108,7 +113,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-simulator-app-${{ github.ref }}${{ inputs.concurrency_scope && format('-{0}', inputs.concurrency_scope) || '' }}${{ inputs.home_screenshot && format('-home-shot-{0}-{1}-{2}', inputs.sim_device, inputs.sim_runtime, inputs.native_nav) || '' }}
+  group: ios-simulator-app-${{ github.ref }}${{ inputs.concurrency_scope && format('-{0}', inputs.concurrency_scope) || '' }}${{ inputs.home_screenshot && format('-home-shot-{0}-{1}-{2}-{3}', inputs.sim_device, inputs.sim_runtime, inputs.native_nav, inputs.source_sha) || '' }}
   cancel-in-progress: false
 
 jobs:
@@ -468,6 +473,7 @@ jobs:
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
           SIM_DEVICE: ${{ inputs.sim_device || 'iPhone 17 Pro' }}
           NATIVE_NAV: ${{ inputs.native_nav }}
+          ARTIFACT_SHOT: ${{ inputs.artifact_desktop_mode && '1' || '' }}
         run: |
           set -uo pipefail
           products=compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator
@@ -478,6 +484,7 @@ jobs:
           ( cd compose/iosApp && \
             TEST_RUNNER_HOME_SHOT_IO_DIR="$io" TEST_RUNNER_HOME_SHOT_BUNDLE="$bundle_id" \
             TEST_RUNNER_HOME_SHOT_NATIVE_NAV="$NATIVE_NAV" \
+            TEST_RUNNER_HOME_SHOT_ARTIFACT="$ARTIFACT_SHOT" \
             xcodebuild -workspace iosApp.xcworkspace -scheme iosAppUITests -configuration Debug \
               -destination "platform=iOS Simulator,id=${SHOT_UDID}" \
               -derivedDataPath build/DerivedData \
@@ -487,7 +494,7 @@ jobs:
               test-without-building > "$out/xcodebuild-test.log" 2>&1 ) &
           test_pid=$!
           node .workflow-ci-tools/scripts/ci/ios_home_shot_host.mjs \
-            --udid "$SHOT_UDID" --bundle "$bundle_id" --io "$io" --out "$out" && host_rc=0 || host_rc=$?
+            --udid "$SHOT_UDID" --bundle "$bundle_id" --io "$io" --out "$out" --artifact "${ARTIFACT_SHOT:-0}" && host_rc=0 || host_rc=$?
           # The step shell runs with -e: keep going to collect the test log and provenance.
           wait "$test_pid" && test_rc=0 || test_rc=$?
           tail -40 "$out/xcodebuild-test.log"
@@ -500,6 +507,7 @@ jobs:
             echo "device=$SIM_DEVICE"
             echo "runtime=$SHOT_RUNTIME"
             echo "native_nav=${NATIVE_NAV:-app decision}"
+            echo "artifact_desktop_mode=${ARTIFACT_SHOT:-0}"
             echo "bundle_id=$bundle_id"
             echo "sign_in=app's own app-login request approved via API with the QA account (CI secrets); no web typing"
             echo "host_rc=$host_rc test_rc=$test_rc"

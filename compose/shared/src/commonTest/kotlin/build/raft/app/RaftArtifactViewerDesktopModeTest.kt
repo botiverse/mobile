@@ -70,8 +70,8 @@ class RaftArtifactViewerDesktopModeTest {
     }
 
     @Test
-    fun onLeavesTheScriptAloneWhereTheHostZoomsInstead() {
-        // iOS: pageZoom, live; an unchanged script means the WKWebView is not rebuilt.
+    fun onLeavesTheScriptAloneWhereTheHostHasNoViewportMetaPath() {
+        // The Compose app (desktop): no Desktop Mode, so no viewport rewrite either.
         assertEquals(session, raftArtifactViewerInjectedScript(web, session, desktopMode = true, viaViewportMeta = false))
     }
 

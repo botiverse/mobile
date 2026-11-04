@@ -24,6 +24,8 @@ const args = Object.fromEntries(
   }, []),
 );
 const { udid, bundle, io, out } = args;
+// --artifact 1: after home, open an Artifact and screenshot it before and after Desktop Mode.
+const artifactShot = args.artifact === "1";
 if (!udid || !bundle || !io || !out) {
   console.error("usage: ios_home_shot_host.mjs --udid U --bundle B --io DIR --out DIR");
   process.exit(2);
@@ -140,12 +142,13 @@ function pendingRequestId() {
   return found;
 }
 
-async function api(method, route, { token, body } = {}) {
+async function api(method, route, { token, body, serverId } = {}) {
   const res = await fetch(`${base}${route}`, {
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(serverId ? { "X-Server-Id": serverId } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -207,6 +210,57 @@ async function main() {
   appLoginDiagnostics();
   console.log(`home-shot: saved ${file}`);
   console.log(`home-shot: iOS ${ready.ios}; tab bar buttons: ${ready.tabBarButtons.map((b) => b.label).join(" | ")}`);
+  if (artifactShot) await artifactDesktopShots(token, list, callback.slice(0, callback.indexOf(":")));
+}
+
+const listOf = (json, key) => (Array.isArray(json) ? json : Array.isArray(json?.[key]) ? json[key] : []);
+
+// A message on the QA server that links an Artifact: the Artifacts of each channel
+// (GET artifacts/conversations/:id), then that channel's recent messages for a link to one.
+async function findArtifactMessage(token, server) {
+  const channels = listOf((await api("GET", "channels", { token, serverId: server.id })).json, "channels");
+  console.log(`home-shot: artifact: ${channels.length} channels on the server`);
+  let fallback = null;
+  for (const channel of channels.slice(0, 60)) {
+    const page = await api("GET", `artifacts/conversations/${encodeURIComponent(channel.id)}`, { token, serverId: server.id });
+    const cards = listOf(page.json, "rows").map((row) => row.card).filter(Boolean);
+    if (!page.ok || cards.length === 0) continue;
+    const messages = listOf(
+      (await api("GET", `messages/channel/${encodeURIComponent(channel.id)}?limit=100`, { token, serverId: server.id })).json,
+      "messages",
+    );
+    const linking = messages.filter((m) => typeof m?.content === "string" && m.content.includes("/artifacts/"));
+    for (const message of linking) {
+      const card = cards.find((c) => message.content.includes(c.id)) ?? null;
+      if (card) return { channel, message, title: card.title };
+      fallback ??= { channel, message, title: cards[0].title };
+    }
+  }
+  return fallback;
+}
+
+async function artifactDesktopShots(token, servers, scheme) {
+  const server = servers.find((s) => s?.name === "OranixSlockTest") ?? servers[0];
+  const found = server ? await findArtifactMessage(token, server) : null;
+  if (!found) {
+    writeJson("artifact-target", { ok: false });
+    die("artifact: no message linking an Artifact on the QA server");
+  }
+  console.log(`home-shot: artifact: "${found.title}" linked from a message in #${found.channel.name ?? "?"}`);
+  const link = `${scheme}:///s/${encodeURIComponent(server.slug)}/channel/${encodeURIComponent(found.channel.id)}?msg=${encodeURIComponent(found.message.id)}`;
+  execFileSync("xcrun", ["simctl", "openurl", udid, link], { stdio: "ignore" });
+  writeJson("artifact-target", { ok: true, title: found.title });
+  for (const [ready, shot] of [
+    ["artifact-open", "artifact"],
+    ["artifact-desktop", "artifact-desktop"],
+    ["artifact-zoomed", "artifact-desktop-zoomed"],
+  ]) {
+    const state = await waitForFile(ready, 240_000, ready);
+    if (!state?.ok) die(`${ready}: ${state?.error ?? "timeout"}`);
+    const file = screenshot(shot);
+    writeJson(`${ready}-shot`, { ok: Boolean(file) });
+    console.log(`home-shot: saved ${file}`);
+  }
 }
 
 main().catch((err) => die(`threw ${err?.message ?? err}`));

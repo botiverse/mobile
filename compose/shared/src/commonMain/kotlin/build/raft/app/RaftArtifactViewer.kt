@@ -424,9 +424,8 @@ internal fun raftArtifactViewerOffersDesktopMode(
 /**
  * What the viewer's WebView injects: the session writes ([raftArtifactViewerSessionScript]) and, in
  * Desktop Mode on a host that widens through the page's viewport meta ([viaViewportMeta]: Android,
- * whose `useWideViewPort` honours `width=`), the desktop viewport, guarded like the session (rule 1:
- * a top-level document of the web origin only). iOS widens with `WKWebView.pageZoom` instead, live,
- * so its script stays the same and the WebView is not rebuilt.
+ * whose `useWideViewPort` honours `width=`, and iOS, whose WKWebView always does), the desktop
+ * viewport, guarded like the session (rule 1: a top-level document of the web origin only).
  */
 internal fun raftArtifactViewerInjectedScript(
     webOrigin: String,

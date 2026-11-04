@@ -580,6 +580,62 @@ final class SignedInHomeShotTests: XCTestCase {
         attach(app, name: "home")
         // 4. Keep the app up until the host has its screenshot.
         _ = waitFor("shot-done", timeout: 120)
+        if env["HOME_SHOT_ARTIFACT"] == "1" {
+            artifactDesktopMode(app)
+        }
+    }
+
+    // Optional (HOME_SHOT_ARTIFACT=1): open an Artifact the host found (it opens the message that
+    // links it with `simctl openurl`), screenshot it, turn on Desktop Mode from the ⋯ menu,
+    // screenshot again, then pinch to zoom in. The host takes each screenshot on the `-ready` file.
+    private func artifactDesktopMode(_ app: XCUIApplication) {
+        guard let data = waitFor("artifact-target", timeout: 180),
+              let target = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let title = target["title"] as? String, !title.isEmpty else {
+            fail("artifact-open", "host found no Artifact", app)
+            return
+        }
+        // The message's Artifact chip: its title, else the link itself.
+        let chip = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", title, "/artifacts/")).firstMatch
+        guard chip.waitForExistence(timeout: 60) else {
+            fail("artifact-open", "no chip for \"\(title)\" in the opened message", app)
+            return
+        }
+        tap(app, x: chip.frame.midX, y: chip.frame.midY)
+        // The viewer's WebView, then its title bar ⋯ (tooltip "More").
+        _ = app.webViews.firstMatch.waitForExistence(timeout: 60)
+        let more = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "More")).firstMatch
+        guard more.waitForExistence(timeout: 60) else {
+            fail("artifact-open", "no ⋯ More in the Artifact viewer (Desktop Mode not offered?)", app)
+            return
+        }
+        Thread.sleep(forTimeInterval: 12)
+        attach(app, name: "artifact")
+        write("artifact-open", ["ok": true])
+        _ = waitFor("artifact-open-shot", timeout: 60)
+
+        tap(app, x: more.frame.midX, y: more.frame.midY)
+        let item = element(app, label: "Desktop Mode")
+        guard item.waitForExistence(timeout: 10) else {
+            fail("artifact-desktop", "no Desktop Mode item in the ⋯ menu", app)
+            return
+        }
+        tap(app, x: item.frame.midX, y: item.frame.midY)
+        Thread.sleep(forTimeInterval: 15)
+        attach(app, name: "artifact-desktop")
+        write("artifact-desktop", ["ok": true])
+        _ = waitFor("artifact-desktop-shot", timeout: 60)
+
+        // Pinch zoom: the fitted desktop page must still zoom in.
+        let web = app.webViews.firstMatch
+        if web.exists {
+            web.pinch(withScale: 2.5, velocity: 2)
+            Thread.sleep(forTimeInterval: 3)
+        }
+        attach(app, name: "artifact-desktop-zoomed")
+        write("artifact-zoomed", ["ok": true, "webView": web.exists])
+        _ = waitFor("artifact-zoomed-shot", timeout: 60)
     }
 
     // One system alert, if any: "Open in “Raft”?" (the callback) -> Open; the web sign-in

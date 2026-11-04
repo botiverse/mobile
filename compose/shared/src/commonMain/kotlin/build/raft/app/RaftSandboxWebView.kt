@@ -117,7 +117,8 @@ internal expect val raftWebViewNeedsHostBottomInsets: Boolean
 /**
  * How a host lays a page out at a desktop width (`useWideViewPort`, task #188, the Artifact
  * viewer's Desktop Mode). Android: the page's viewport meta says `width=1280` (injected) and
- * `useWideViewPort` + `setInitialScale` fit it. iOS: `WKWebView.pageZoom` alone (task #514), which
- * widens any page, its own `width=device-width` included, without a reload. Desktop: no such mode.
+ * `useWideViewPort` + `setInitialScale` fit it. iOS: the same injected meta, which WKWebView lays
+ * out and fits by itself (its `pageZoom` only shrank CSS px, never widened the layout: 1.19.2).
+ * Desktop: no such mode.
  */
 internal expect val raftWebViewDesktopModeViaViewportMeta: Boolean
