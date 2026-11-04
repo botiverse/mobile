@@ -216,26 +216,36 @@ async function main() {
 const listOf = (json, key) => (Array.isArray(json) ? json : Array.isArray(json?.[key]) ? json[key] : []);
 
 // A message on the QA server that links an Artifact: the Artifacts of each channel
-// (GET artifacts/conversations/:id), then that channel's recent messages for a link to one.
+// (GET artifacts/conversations/:id), then that channel's recent messages for a link to one
+// (`/artifacts/<id>`, `artifacts.raft.build/<id>` or the content host `a-pt-<uuid>`).
+const ARTIFACT_LINK = /\/artifacts\/|artifacts\.raft\.build\/|a-pt-[0-9a-f-]{36}\.raftusercontent\.com/;
 async function findArtifactMessage(token, server) {
+  const all = await api("GET", "artifacts/dashboard/all", { token, serverId: server.id });
+  const visible = listOf(all.json, "rows").length || listOf(all.json, "items").length || listOf(all.json, "artifacts").length;
+  console.log(`home-shot: artifact: dashboard/all HTTP ${all.status}${all.ok ? "" : ` code=${all.json?.code ?? "?"}`}; keys ${Object.keys(all.json ?? {}).join(",")}; ${visible} on the first page`);
   const channels = listOf((await api("GET", "channels", { token, serverId: server.id })).json, "channels");
   console.log(`home-shot: artifact: ${channels.length} channels on the server`);
+  const statuses = {};
+  let withArtifacts = 0;
   let fallback = null;
   for (const channel of channels.slice(0, 60)) {
     const page = await api("GET", `artifacts/conversations/${encodeURIComponent(channel.id)}`, { token, serverId: server.id });
+    const key = page.ok ? String(page.status) : `${page.status}:${page.json?.code ?? "?"}`;
+    statuses[key] = (statuses[key] ?? 0) + 1;
     const cards = listOf(page.json, "rows").map((row) => row.card).filter(Boolean);
     if (!page.ok || cards.length === 0) continue;
-    const messages = listOf(
-      (await api("GET", `messages/channel/${encodeURIComponent(channel.id)}?limit=100`, { token, serverId: server.id })).json,
-      "messages",
-    );
-    const linking = messages.filter((m) => typeof m?.content === "string" && m.content.includes("/artifacts/"));
+    withArtifacts += 1;
+    const history = await api("GET", `messages/channel/${encodeURIComponent(channel.id)}?limit=100`, { token, serverId: server.id });
+    const messages = listOf(history.json, "messages");
+    const linking = messages.filter((m) => typeof m?.content === "string" && (ARTIFACT_LINK.test(m.content) || cards.some((c) => m.content.includes(c.id))));
+    console.log(`home-shot: artifact: a channel with ${cards.length} Artifacts; messages HTTP ${history.status}, ${messages.length} read, ${linking.length} linking one`);
     for (const message of linking) {
       const card = cards.find((c) => message.content.includes(c.id)) ?? null;
       if (card) return { channel, message, title: card.title };
       fallback ??= { channel, message, title: cards[0].title };
     }
   }
+  console.log(`home-shot: artifact: conversations answers ${JSON.stringify(statuses)}; ${withArtifacts} channels with Artifacts`);
   return fallback;
 }
 

@@ -597,7 +597,7 @@ final class SignedInHomeShotTests: XCTestCase {
         }
         // The message's Artifact chip: its title, else the link itself.
         let chip = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", title, "/artifacts/")).firstMatch
+            .matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", title, "artifacts")).firstMatch
         guard chip.waitForExistence(timeout: 60) else {
             fail("artifact-open", "no chip for \"\(title)\" in the opened message", app)
             return
