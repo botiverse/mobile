@@ -42,8 +42,9 @@ import build.raft.designsystem.theme.RaftTheme
  *   arrows; disabled at either end) just before the search field ([RaftSearchTrigger]), which
  *   opens search ([onSearchClick]). The search stays centred on the bar; the arrows sit 8dp
  *   before it, outside its width ([RaftTopBar]'s `centerLeading`);
- * - trailing: the notification bell ([bell], web TopBarGlobalActions' NotificationTrigger
- *   `top-bar`). The web shows Working now before it; the app has no Working now summary yet.
+ * - trailing: who is working ([RaftWorkingNowSummary], from [LocalRaftWorkingNow]), then the
+ *   notification bell ([bell]), as web TopBarGlobalActions (WorkingNowSummary, NotificationTrigger
+ *   `top-bar`).
  *
  * [currentServer] null (the server list hasn't loaded) leaves the workspace out.
  */
@@ -162,6 +163,9 @@ internal fun RaftAppShellTopBar(
             // The theme's pixel art on the bar's end shows from a 1024dp window, as on the web.
             windowWidth = windowWidth,
             trailing = {
+                // Who is working, before the bell (Web TopBarGlobalActions: WorkingNowSummary
+                // `count` on the frame, `h-9`); takes no space while nobody is.
+                RaftWorkingNowSummary(height = RaftWorkingNowTopBarHeight)
                 if (bell != null) {
                     RaftAppTopBarNotificationBell(
                         notifications = bell.notifications,

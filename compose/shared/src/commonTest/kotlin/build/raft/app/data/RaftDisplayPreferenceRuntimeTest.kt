@@ -51,4 +51,21 @@ class RaftDisplayPreferenceRuntimeTest {
         RaftDisplayPreferenceRuntime.resetForTest(store)
         assertFalse(RaftDisplayPreferenceRuntime.hideEmptySidebarSections)
     }
+
+    @Test
+    fun liveAgentActivityIsOnByDefaultAndSavedUnderTheWebKey() {
+        val store = MemoryStore()
+        RaftDisplayPreferenceRuntime.resetForTest(store)
+        assertTrue(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
+
+        RaftDisplayPreferenceRuntime.setShowLiveAgentActivity(false)
+        assertEquals("false", store.values["slock_show_live_agent_activity_bar"])
+        RaftDisplayPreferenceRuntime.resetForTest(store)
+        assertFalse(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
+
+        // Web `readStoredShowLiveAgentActivityBar`: anything but "false" is on.
+        store.values["slock_show_live_agent_activity_bar"] = "garbage"
+        RaftDisplayPreferenceRuntime.resetForTest(store)
+        assertTrue(RaftDisplayPreferenceRuntime.showLiveAgentActivity)
+    }
 }

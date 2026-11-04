@@ -515,6 +515,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val shellAuthStores = RaftShellScopedStoreCache<RaftShellAuthSessionStore>()
     private val shellNetworkClients = RaftShellScopedStoreCache<RaftNetworkClient>()
     private val shellServerMembersStores = RaftShellScopedStoreCache<SharedServerMembersStore>()
+    private val liveAgentActivityStores = RaftShellScopedStoreCache<SharedLiveAgentActivityStore>()
     private val shellRealtimeDomainEventOwners = RaftShellScopedStoreCache<SharedRealtimeDomainEventOwner>()
     private val realtimeAuthorityRegistrations = RaftShellScopedStoreCache<String>()
     private val shellAgentDetailStores = RaftShellScopedStoreCache<SharedAgentDetailStore>()
@@ -1232,6 +1233,19 @@ internal class RaftSharedStoreProvider private constructor(
             },
         )
     }
+
+    /**
+     * Who is working right now on each server (Live agent activity), from the presence facts and
+     * members the shell's [serverMembersStore] already has; one per shell, like that store.
+     */
+    fun liveAgentActivity(scope: RaftShellStoreScope): SharedLiveAgentActivityStore =
+        liveAgentActivityStores.getOrPut(scope) {
+            val members = serverMembersStore(scope)
+            SharedLiveAgentActivityStore(
+                scope = threadSendScope,
+                workingAgents = { serverId -> members.workingAgentsFlow(build.raft.app.model.ServerId(serverId)) },
+            )
+        }
 
     /**
      * Missed `appearance:updated` notices are not replayed: every socket (re)connect and every
@@ -2661,6 +2675,7 @@ internal class RaftSharedStoreProvider private constructor(
         homeActivityStoreScopes.remove(scope)?.cancel()
         shellNetworkClients.remove(scope)
         shellAuthStores.remove(scope)
+        liveAgentActivityStores.remove(scope)
         shellServerMembersStores.remove(scope)?.let { store ->
             store.clearScopedReadCaches()
             store.dispose()

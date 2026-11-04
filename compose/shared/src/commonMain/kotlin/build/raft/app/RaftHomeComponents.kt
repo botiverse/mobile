@@ -2693,6 +2693,11 @@ private fun RaftStructuralHomeShellContent(
                             dismissNotificationCenterForFocusLoss()
                             listScope.launch { listState.animateScrollToTopExpressive() }
                         },
+                        // Web Sidebar: with no top bar, who is working sits on the Chat sidebar's head
+                        // (raft-design people-and-agents/working-agents.md, "Where working shows").
+                        trailingContent = {
+                            RaftWorkingNowSummary(onFrame = false, modifier = Modifier.offset(x = HomeWorkingNowContentInset))
+                        },
                         showBodyTopBanner = false,
                     )
                 }
@@ -5288,6 +5293,13 @@ private fun HomeTitlebar(
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
             }
+            // Who is working (Web WorkingNowSummary `count` on the frame, before the bell;
+            // raft-design products/raft-chat/home.md). Takes no space while nobody is, or with
+            // Settings › Appearance › Live agent activity off. Moved by the bell's inset like the
+            // bell, so the two keep the row's 12dp gap; with no bell its faces end on the content line.
+            RaftWorkingNowSummary(
+                modifier = Modifier.offset(x = if (bellInColumn) HomeWorkingNowContentInset else HomeNotificationBellEdgeInset),
+            )
             // The bell's icon box ends on the content line (16dp), mirroring the server avatar on
             // the left; its 44dp target reaches past it.
             if (!bellInColumn) HomeNotificationCenter(
@@ -5525,6 +5537,8 @@ private val RaftAppTopBarNotificationTriggerSize = 36.dp
 private val HomeNotificationBellIconSize = 20.dp
 // From the trigger's end to the bell icon's: the icon centred in 44dp.
 internal val HomeNotificationBellEdgeInset = (HomeNotificationTriggerSize - HomeNotificationBellIconSize) / 2
+// The working summary's own padding (Web `px-1.5`): with no bell after it, its count ends on the content line.
+private val HomeWorkingNowContentInset = 6.dp
 // raft-ui NotificationCenterPopup `sideOffset={8}`: the popover hangs 8dp under the bell button.
 private val HomeNotificationPopoverBellGap = 8.dp
 

@@ -62,8 +62,7 @@ internal val LocalSettingsAppearancePreviewTimeLabel = staticCompositionLocalOf<
  * Settings > Appearance, in the Web's order (`AppearanceSection`): the way to this server's theme
  * ("Theme on <server>"), the "Appearance" header over the message font size card (title,
  * description, size, "Saved on this device." and a real message row as the preview), then the
- * device display switches. The Web's "Live agent activity" switch is left out: the app has no
- * live agent activity bar. "Activity sender avatars" is the app's own and comes last.
+ * device display switches. "Activity sender avatars" is the app's own and comes last.
  */
 @Composable
 internal fun SettingsAppearanceContent(
@@ -195,7 +194,8 @@ private fun SettingsAppearanceServerThemeLink(serverName: String, onClick: () ->
 
 /**
  * The Web's device switches (`ListRowGroup` of plain rows: title, description, "Saved on this
- * device.", the switch its target), plus the app's Activity sender avatars last.
+ * device.", the switch its target) in the Web's order (Live agent activity, Show agent model, Hide
+ * empty sidebar sections), plus the app's Activity sender avatars last.
  */
 @Composable
 private fun SettingsAppearanceDisplaySwitches(
@@ -205,11 +205,18 @@ private fun SettingsAppearanceDisplaySwitches(
     RaftDesignSystemTheme {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             SettingsAppearanceSwitchRow(
+                title = stringResource(Res.string.settings_appearance_live_agent_activity_title),
+                description = stringResource(Res.string.settings_appearance_live_agent_activity_description),
+                checked = RaftDisplayPreferenceRuntime.showLiveAgentActivity,
+                onCheckedChange = RaftDisplayPreferenceRuntime::setShowLiveAgentActivity,
+                divider = false
+            )
+            SettingsAppearanceSwitchRow(
                 title = stringResource(Res.string.settings_appearance_show_agent_model_title),
                 description = stringResource(Res.string.settings_appearance_show_agent_model_description),
                 checked = RaftDisplayPreferenceRuntime.showAgentModelName,
                 onCheckedChange = RaftDisplayPreferenceRuntime::setShowAgentModelName,
-                divider = false
+                divider = true
             )
             SettingsAppearanceSwitchRow(
                 title = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_title),

@@ -2285,6 +2285,11 @@
     <string name="settings_appearance_message_font_size_title">メッセージの文字サイズ</string>
     <string name="settings_appearance_message_font_size_description">このデバイスで表示されるメッセージ本文（見出し、コードブロック、インラインコード、参照チップを含む）の文字サイズを調整します。ボタン、ラベル、サイドバーは固定サイズのままです。</string>
     <string name="settings_appearance_saved_on_device">このデバイスに保存されます。</string>
+    <string name="settings_appearance_live_agent_activity_title">エージェントのライブアクティビティ</string>
+    <string name="settings_appearance_live_agent_activity_description">作業中のエージェントとその作業内容を、ウィンドウ上部とホームバーに表示します。</string>
+    <string name="layout_working_now_title">作業中</string>
+    <string name="layout_working_now_summary_one">エージェント %1$d 個が作業中</string>
+    <string name="layout_working_now_summary_other">エージェント %1$d 個が作業中</string>
     <string name="settings_appearance_show_agent_model_title">エージェントのモデルを表示</string>
     <string name="settings_appearance_show_agent_model_description">チャットでエージェント名の横に使用中のモデルを表示します。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">空のサイドバーセクションを非表示</string>
