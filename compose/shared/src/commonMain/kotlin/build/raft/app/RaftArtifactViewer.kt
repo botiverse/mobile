@@ -410,9 +410,9 @@ internal fun raftArtifactViewerWebBottomInsetPx(
  * touch devices narrower than that width; the Compose app (a fine pointer, web `pointer: fine`) and
  * a screen already that wide show the page as a desktop does without it.
  *
- * Only where the WebView widens through the injected viewport meta ([viaViewportMeta], Android):
- * iOS's `WKWebView.pageZoom` path left the Artifact page a blank, ~0.3x-wide strip on device
- * (1.19.2 TestFlight, artin 11-04), so iOS does not offer it until that path is fixed.
+ * Only where the WebView widens through the injected viewport meta ([viaViewportMeta]: Android and
+ * iOS). iOS's earlier `WKWebView.pageZoom` path left the Artifact page a blank, ~0.3x-wide strip
+ * (1.19.2 TestFlight, artin 11-04), which is why 1.19.2 hid it there.
  */
 internal fun raftArtifactViewerOffersDesktopMode(
     finePointer: Boolean,
