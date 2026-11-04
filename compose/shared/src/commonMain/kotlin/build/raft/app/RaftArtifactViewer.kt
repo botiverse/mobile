@@ -409,9 +409,17 @@ internal fun raftArtifactViewerWebBottomInsetPx(
  * fits it to the screen, zoomable, as a phone browser's "Request desktop site" does. Offered on
  * touch devices narrower than that width; the Compose app (a fine pointer, web `pointer: fine`) and
  * a screen already that wide show the page as a desktop does without it.
+ *
+ * Only where the WebView widens through the injected viewport meta ([viaViewportMeta], Android):
+ * iOS's `WKWebView.pageZoom` path left the Artifact page a blank, ~0.3x-wide strip on device
+ * (1.19.2 TestFlight, artin 11-04), so iOS does not offer it until that path is fixed.
  */
-internal fun raftArtifactViewerOffersDesktopMode(finePointer: Boolean, windowWidthDp: Float): Boolean =
-    !finePointer && windowWidthDp > 0f && windowWidthDp < RaftFilePreviewDesktopViewportWidth
+internal fun raftArtifactViewerOffersDesktopMode(
+    finePointer: Boolean,
+    windowWidthDp: Float,
+    viaViewportMeta: Boolean = raftWebViewDesktopModeViaViewportMeta,
+): Boolean =
+    viaViewportMeta && !finePointer && windowWidthDp > 0f && windowWidthDp < RaftFilePreviewDesktopViewportWidth
 
 /**
  * What the viewer's WebView injects: the session writes ([raftArtifactViewerSessionScript]) and, in
