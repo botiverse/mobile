@@ -162,6 +162,7 @@ private data class WireThreadReplyPreview(
     val senderDisplayName: String? = null,
     val senderAvatarUrl: String? = null,
     val createdAt: String = "",
+    val updatedAt: String? = null,
 )
 
 @Serializable
@@ -492,6 +493,7 @@ private fun WireThreadReplyPreview.toDomain(): ReplyPreview? {
         senderAvatarUrl = senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() },
         createdAt = createdAt.trim(),
         senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
+        updatedAt = updatedAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

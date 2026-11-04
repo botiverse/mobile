@@ -942,6 +942,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is MessageUpdated -> "message_updated"
     is DirectMessageCreated -> "direct_message_created"
     is ThreadFollowersUpdated -> "thread_followers_updated"
+    is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
     is ScopeReadUpdated -> "scope_read_updated"
     is AgentTypingUpdated -> "agent_typing"
         is ThreadUpdated -> "thread_updated"

@@ -1089,6 +1089,7 @@ final class RaftIosRealtimeHost: NSObject {
         GeneratedRealtimeContract.SocketEvent.reminderScheduled,
         GeneratedRealtimeContract.SocketEvent.reminderCanceled,
         "thread:followers-updated",
+        "thread:reply_updated",
         "read_state:updated",
         "read_state:updated_bulk",
         "notification_prefs:updated",

@@ -4,6 +4,7 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope
@@ -73,6 +74,42 @@ class SharedThreadStoreReplyCountParentScopeTest {
                 diagnostics.none { it.startsWith("thread_reply_parent_scope") },
                 "the open page owns its own parent: no second write to another conversation, log=$diagnostics",
             )
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun anEditedSlackReplyRewritesItsInlineRowOnTheOpenPage() = runTest {
+        // Task #73: slock sends `thread:reply_updated` to the parent's room when a Slack thread reply
+        // is edited; the inline row under the parent shows the new text, count unchanged.
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val dataSource = dataSource(storeScope = backgroundScope)
+        try {
+            val openDm = openPage(dataSource, scope, dmRoute(), dmPayload())
+            openDm.dispatch(SharedThreadIntent.ApplyRealtimeEvent(dmReplyUpdated()))
+            advanceUntilIdle()
+
+            openDm.dispatch(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    ThreadReplyUpdated(
+                        parentMessageId = MessageId(DmParentId),
+                        parentChannelId = ChannelId(DmId),
+                        parentChannelType = "dm",
+                        threadChannelId = ChannelId(DmThreadId),
+                        messageId = MessageId("reply-1"),
+                        seq = 1L,
+                        content = "on it, edited in Slack",
+                        updatedAt = "2026-10-21T09:05:00.000Z",
+                    )
+                )
+            )
+            advanceUntilIdle()
+
+            val parent = openDm.state.value.payload.messages.single { it.id == DmParentId }
+            assertEquals(listOf("on it, edited in Slack"), parent.inlineReplies?.replies?.map { it.content })
+            assertEquals(1, parent.replyCount)
         } finally {
             scopeJob.cancelAndJoin()
         }
