@@ -261,14 +261,75 @@ async function seedArtifactMessage(token, server, webBase) {
     .filter((c) => QA_CHANNEL.test(c?.name ?? ""))
     .sort((a, b) => (b.name === "qa-test-create-58291") - (a.name === "qa-test-create-58291"));
   console.log(`home-shot: artifact seed: ${channels.length} qa-* channels`);
+  const kinds = {};
   for (const channel of channels) {
-    const history = await api("GET", `messages/channel/${encodeURIComponent(channel.id)}?limit=100`, { token, serverId: server.id });
-    const attachment = listOf(history.json, "messages").flatMap((m) => (Array.isArray(m?.attachments) ? m.attachments : [])).find(isHtml);
+    // Up to 200 messages back, newest first (`before` = the oldest seq read).
+    let attachment = null;
+    let before = null;
+    for (let page = 0; page < 2 && !attachment; page += 1) {
+      const query = `limit=100${before != null ? `&before=${before}` : ""}`;
+      const history = await api("GET", `messages/channel/${encodeURIComponent(channel.id)}?${query}`, { token, serverId: server.id });
+      const messages = listOf(history.json, "messages");
+      const all = messages.flatMap((m) => (Array.isArray(m?.attachments) ? m.attachments : []));
+      for (const a of all) {
+        const kind = (a?.mimeType ?? a?.contentType ?? String(a?.filename ?? a?.name ?? "").split(".").pop() ?? "?").toString().slice(0, 40);
+        kinds[kind] = (kinds[kind] ?? 0) + 1;
+      }
+      attachment = all.find(isHtml) ?? null;
+      const seqs = messages.map((m) => Number(m?.seq)).filter(Number.isFinite);
+      if (messages.length < 100 || seqs.length === 0) break;
+      before = Math.min(...seqs);
+    }
     if (!attachment?.id) continue;
+    const linked = await saveAndLink(token, server, webBase, channel, attachment, null);
+    if (linked) return linked;
+  }
+  console.log(`home-shot: artifact seed: no HTML attachment in qa-* channels; attachment kinds seen ${JSON.stringify(kinds)}`);
+  // None to reuse (coordinator OK, 11-04): post one small self-made HTML file in one qa-* channel.
+  const channel = channels[0];
+  if (!channel) return null;
+  const form = new FormData();
+  form.append("channelId", channel.id);
+  form.append("files", new Blob([QA_FIXTURE_HTML], { type: "text/html" }), "qa-desktop-mode-test.html");
+  const res = await fetch(`${base}attachments/upload`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "X-Server-Id": server.id }, body: form });
+  const uploaded = await res.json().catch(() => null);
+  const attachment = uploaded?.attachments?.[0];
+  if (!res.ok || !attachment?.id) die(`artifact seed: upload in #${channel.name} HTTP ${res.status}`);
+  const filePost = await api("POST", "messages", {
+    token,
+    serverId: server.id,
+    body: { channelId: channel.id, content: "QA desktop-mode test — safe to delete (iOS Simulator CI, ios-simulator-app.yml)", attachmentIds: [attachment.id] },
+  });
+  if (!filePost.ok) die(`artifact seed: posting the file in #${channel.name} HTTP ${filePost.status} code=${filePost.json?.code ?? "?"}`);
+  const fileMessage = filePost.json?.message ?? filePost.json;
+  console.log(`home-shot: artifact seed: QA DATA uploaded attachment ${attachment.id} in message ${fileMessage?.id} in #${channel.name}`);
+  return saveAndLink(token, server, webBase, channel, attachment, fileMessage?.id ?? null);
+}
+
+// A 1280px-wide page that says which width it was laid out at.
+const QA_FIXTURE_HTML = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA desktop-mode test — safe to delete</title><style>
+body{margin:0;font:16px -apple-system,system-ui,sans-serif;color:#111}
+header{background:#1f6feb;color:#fff;padding:16px 24px;font-size:22px;font-weight:600}
+.ruler{position:relative;height:48px;border-bottom:2px solid #111;width:1280px}
+.ruler span{position:absolute;top:0;height:48px;border-left:2px solid #d00;padding-left:4px;font-size:14px;color:#d00}
+.cols{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:24px}
+.cols div{background:#eef3fb;border:1px solid #9bb;padding:24px;min-height:160px}
+#w{font-weight:700}
+@media (max-width:800px){.cols{grid-template-columns:1fr}}
+</style></head><body><header>QA desktop-mode test — safe to delete</header>
+<div class="ruler">${[0,160,320,480,640,800,960,1120,1270].map((x)=>`<span style="left:${x}px">${x}</span>`).join("")}</div>
+<p style="padding:0 24px">Laid out at <span id="w"></span> CSS px wide. Four columns side by side = desktop layout; one column = phone layout.</p>
+<div class="cols"><div>Column 1</div><div>Column 2</div><div>Column 3</div><div>Column 4</div></div>
+<script>document.getElementById("w").textContent=String(document.documentElement.clientWidth)</script>
+</body></html>`;
+
+async function saveAndLink(token, server, webBase, channel, attachment, fileMessageId) {
+  {
     const saved = await api("POST", "artifacts/save-attachment", { token, serverId: server.id, body: { attachmentId: attachment.id } });
     if (!saved.ok) {
       console.log(`home-shot: artifact seed: save-attachment in #${channel.name} HTTP ${saved.status} code=${saved.json?.code ?? "?"}`);
-      continue;
+      return null;
     }
     const artifact = saved.json?.artifact ?? {};
     const card = artifact.card ?? artifact;
@@ -280,10 +341,12 @@ async function seedArtifactMessage(token, server, webBase) {
     if (!posted.ok) die(`artifact seed: posting the link in #${channel.name} HTTP ${posted.status} code=${posted.json?.code ?? "?"}`);
     const message = posted.json?.message ?? posted.json;
     console.log(`home-shot: artifact seed: QA DATA artifact=${id} (created=${saved.json?.created}) from attachment ${attachment.id} in #${channel.name} (${channel.id}); link message=${message?.id}`);
-    fs.writeFileSync(path.join(out, "qa-seed.json"), JSON.stringify({ server: server.slug, channel: channel.name, channelId: channel.id, artifactId: id, attachmentId: attachment.id, messageId: message?.id }, null, 2));
+    fs.writeFileSync(
+      path.join(out, "qa-seed.json"),
+      JSON.stringify({ server: server.slug, channel: channel.name, channelId: channel.id, artifactId: id, attachmentId: attachment.id, fileMessageId, linkMessageId: message?.id }, null, 2),
+    );
     return { channel, message, title };
   }
-  return null;
 }
 
 async function artifactDesktopShots(token, servers, scheme) {
