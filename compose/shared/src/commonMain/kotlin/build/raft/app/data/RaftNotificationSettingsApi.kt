@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
@@ -336,6 +337,14 @@ internal class RaftNotificationSettingsApi(private val networkClient: RaftNetwor
 
     suspend fun serverLevels(serverId: String, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority = priority, path = "notification-levels", serverIdOverride = ServerId(serverId))
+
+    /** `GET channels` of [serverId] (the web Servers card names a server's customized channels with it). */
+    suspend fun channels(serverId: String): HomeNetworkResponse =
+        networkClient.request(priority = DataRequestPriority.Visible, path = "channels", serverIdOverride = ServerId(serverId))
+
+    /** `GET channels/dm` of [serverId]. */
+    suspend fun directMessages(serverId: String): HomeNetworkResponse =
+        networkClient.request(priority = DataRequestPriority.Visible, path = "channels/dm", serverIdOverride = ServerId(serverId))
 }
 
 private suspend fun <T> notificationRequest(
@@ -752,6 +761,135 @@ enum class RaftNotificationPauseOption {
                 }
             }
         return until.toString()
+    }
+}
+
+/**
+ * A quiet-hours edit (web `PauseAndScheduleCard.saveQuiet`): all four fields, with the given
+ * changes, always saved for this device's time zone ([timeZoneId]) since the hours mean local time
+ * here; switching off records it too, as the web does.
+ */
+fun raftQuietHoursPatch(
+    current: RaftNotificationQuietHours,
+    timeZoneId: String,
+    enabled: Boolean? = null,
+    startMinute: Int? = null,
+    endMinute: Int? = null
+): RaftNotificationAccountSettingsPatch =
+    RaftNotificationAccountSettingsPatch(
+        quietHours =
+            current.copy(
+                enabled = enabled ?: current.enabled,
+                startMinute = startMinute ?: current.startMinute,
+                endMinute = endMinute ?: current.endMinute,
+                timeZone = timeZoneId
+            )
+    )
+
+/** The quiet-hours time choices: every 15 minutes of the day, plus [current] when it is off that grid. */
+fun raftQuietHoursTimeOptions(current: Int? = null): List<Int> {
+    val grid = (0 until 24 * 4).map { it * 15 }
+    val held = current?.takeIf { it in 0..1439 }
+    return if (held == null || held in grid) grid else (grid + held).sorted()
+}
+
+/** A custom pause: a day and a minute of that day in [timeZoneId] (web `datetime-local`). */
+data class RaftNotificationCustomPause(val date: LocalDate, val minuteOfDay: Int) {
+    /** The ISO `pausedUntil` this means in [timeZoneId]. */
+    fun pausedUntil(timeZoneId: String = raftCurrentTimeZoneId()): String {
+        val zone = runCatching { TimeZone.of(timeZoneId) }.getOrDefault(TimeZone.UTC)
+        return LocalDateTime(date, LocalTime(minuteOfDay / 60, minuteOfDay % 60)).toInstant(zone).toString()
+    }
+
+    /** Whether the server would take it at [nowEpochMillis]: in the future, at most 366 days on. */
+    fun accepted(nowEpochMillis: Long, timeZoneId: String = raftCurrentTimeZoneId()): Boolean =
+        raftPausedUntilAccepted(pausedUntil(timeZoneId), nowEpochMillis)
+
+    companion object {
+        /** The first value the custom picker shows: an hour from now (the web's default), on the 15-minute grid. */
+        fun initial(nowEpochMillis: Long, timeZoneId: String = raftCurrentTimeZoneId()): RaftNotificationCustomPause {
+            val zone = runCatching { TimeZone.of(timeZoneId) }.getOrDefault(TimeZone.UTC)
+            val inAnHour = Instant.fromEpochMilliseconds(nowEpochMillis) + Duration.parse("1h")
+            val local = inAnHour.toLocalDateTime(zone)
+            val minute = local.hour * 60 + local.minute
+            val rounded = ((minute + 14) / 15) * 15
+            return if (rounded >= 1440) {
+                RaftNotificationCustomPause(local.date.plus(1, DateTimeUnit.DAY), 0)
+            } else {
+                RaftNotificationCustomPause(local.date, rounded)
+            }
+        }
+
+        /** The days the custom picker offers: today and the next [count] - 1 days in [timeZoneId]. */
+        fun days(nowEpochMillis: Long, timeZoneId: String = raftCurrentTimeZoneId(), count: Int = 14): List<LocalDate> {
+            val zone = runCatching { TimeZone.of(timeZoneId) }.getOrDefault(TimeZone.UTC)
+            val today = Instant.fromEpochMilliseconds(nowEpochMillis).toLocalDateTime(zone).date
+            return (0 until count).map { today.plus(it, DateTimeUnit.DAY) }
+        }
+    }
+}
+
+@Serializable
+private data class WireNotificationChannelName(
+    val id: String = "",
+    val name: String? = null,
+    val type: String? = null,
+    val peerDisplayName: String? = null,
+    val peerName: String? = null
+)
+
+/**
+ * The names of a `GET channels` or `GET channels/dm` answer, keyed by channel id, labelled as the
+ * web Servers card does (`channelLabel`): a DM by its peer's display name (else handle, else its
+ * name), a channel as `#name`. Null when the body is not a list.
+ */
+fun parseRaftNotificationChannelNames(bodyText: String): Map<String, String>? =
+    runCatching {
+        notificationSettingsJson.decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(WireNotificationChannelName.serializer()),
+            bodyText
+        ).mapNotNull { row ->
+            val id = row.id.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val label =
+                if (row.type == "dm") {
+                    listOf(row.peerDisplayName, row.peerName, row.name).firstOrNull { !it.isNullOrBlank() }
+                } else {
+                    row.name?.takeIf { it.isNotBlank() }?.let { "#$it" }
+                } ?: return@mapNotNull null
+            id to label
+        }.toMap()
+    }.getOrNull()
+
+/**
+ * Names of a server's channels and DMs for the Settings › Notifications › Servers card, fetched
+ * once per server when its customized channels are first shown (web `useChannelNames`).
+ */
+object RaftNotificationChannelNames {
+    private val mutableState = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+    val state: StateFlow<Map<String, Map<String, String>>> = mutableState.asStateFlow()
+
+    @Volatile
+    internal var apiProvider: () -> RaftNotificationSettingsApi? = ::currentNotificationApi
+
+    /** Loads [serverId]'s names unless held; a failed list counts as empty, as on the web. */
+    suspend fun load(serverId: String) {
+        if (mutableState.value.containsKey(serverId)) return
+        val api = apiProvider() ?: return
+        suspend fun names(block: suspend () -> HomeNetworkResponse): Map<String, String> =
+            try {
+                val response = block()
+                response.bodyText?.takeIf { response.isSuccessful }?.let(::parseRaftNotificationChannelNames).orEmpty()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                emptyMap()
+            }
+        val all = names { api.channels(serverId) } + names { api.directMessages(serverId) }
+        mutableState.update { it + (serverId to all) }
+    }
+
+    fun clear() {
+        mutableState.value = emptyMap()
     }
 }
 

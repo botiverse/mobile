@@ -175,6 +175,9 @@ fun RaftListRowGroup(
  *
  * [text]: [RaftListRowText.Member] sets the title and subtitle as the web members page does.
  *
+ * [titleMaxLines]: a setting's title wraps to this many lines before it truncates (a long
+ * label, or its zh / ja translation, as the web's `ListRowTitle` wraps); conversation rows keep 1.
+ *
  * [titleCopyText] / [subtitleCopyText]: a long press on the title / subtitle copies that text
  * ([raftCopyable]; a member's name, an `@handle`); the row's tap still opens. Null (default):
  * not copyable.
@@ -215,6 +218,7 @@ fun RaftListRow(
     subtitleCopyText: String? = null,
     titleTrailing: (@Composable () -> Unit)? = null,
     saveStatus: RaftSaveStatusState? = null,
+    titleMaxLines: Int = 1,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -285,7 +289,7 @@ fun RaftListRow(
                             modifier = Modifier.weight(1f).raftCopyable(titleCopyText),
                             style = titleStyle,
                             color = inks.ink,
-                            maxLines = 1,
+                            maxLines = titleMaxLines.coerceAtLeast(1),
                             overflow = TextOverflow.Ellipsis,
                         )
                     } else {
@@ -301,7 +305,7 @@ fun RaftListRow(
                                 modifier = Modifier.weight(1f, fill = false).raftCopyable(titleCopyText),
                                 style = titleStyle,
                                 color = inks.ink,
-                                maxLines = 1,
+                                maxLines = titleMaxLines.coerceAtLeast(1),
                                 overflow = TextOverflow.Ellipsis,
                             )
                             titleTrailing()

@@ -180,6 +180,7 @@ enum class RaftLucideIconName(val wireName: String) {
     MessageSquarePlus("message-square-plus"),
     Monitor("monitor"),
     MonitorX("monitor-x"),
+    Moon("moon"),
     Mosaic("mosaic"),
     Music("music"),
     Network("network"),

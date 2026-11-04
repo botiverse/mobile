@@ -991,6 +991,17 @@ class DisplayComponentScreenshotTest {
                         ChannelRow("release-announcements", RaftRowTone.Default, "Wug: Release notes are drafted.")
                         ChannelRow("invites", RaftRowTone.Default, "Sent to", meta = "ada.lovelace@analytical-engine.example", divider = true)
                     }
+                    Caption("Narrow, 240dp: a setting title wraps to two lines")
+                    RaftListRowGroup(Modifier.width(240.dp)) {
+                        RaftListRow(
+                            "Receive notifications on this device",
+                            variant = RaftListRowVariant.Plain,
+                            description = "Your other devices still get them.",
+                            wrapDescription = true,
+                            titleMaxLines = 2,
+                            trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
+                        )
+                    }
                 }
             }
         }

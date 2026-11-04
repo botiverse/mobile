@@ -4020,6 +4020,7 @@ private fun RaftAppShellReadyContent(
         if (build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId != notificationAccountUserId) {
             build.raft.app.data.RaftNotificationLevelStore.clear()
             build.raft.app.data.RaftNotificationAccountSettingsStore.clear()
+            build.raft.app.data.RaftNotificationChannelNames.clear()
             build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId = notificationAccountUserId
         }
         build.raft.app.data.RaftNotificationAccountSettingsStore.load(build.raft.app.data.DataRequestPriority.Background)
@@ -17387,9 +17388,21 @@ private fun SettingsVisualNotificationsContent() {
         onPermission = {},
         onSettings = {},
         onTest = {},
-        onRetry = {}
+        onRetry = {},
+        // The web case's account and zone (packages/visual-testing: a browser in Asia/Shanghai).
+        nowEpochMillis = SETTINGS_VISUAL_NOTIFICATIONS_NOW_MILLIS,
+        timeZoneId = "Asia/Shanghai",
+        accountSettingsOverride =
+            build.raft.app.data.RaftNotificationAccountSettings(
+                quietHours = build.raft.app.data.RaftNotificationQuietHours(timeZone = "Asia/Shanghai"),
+                mobileDelay = "inactive",
+                version = 1
+            )
     )
 }
+
+/** 2026-11-03T08:00:00Z: a fixed clock for the notifications fixture's pause choices. */
+private const val SETTINGS_VISUAL_NOTIFICATIONS_NOW_MILLIS = 1_793_692_800_000L
 
 private fun settingsVisualServerSnapshot(): SettingsServerSnapshot {
     val fixture = settingsVisualFixtureValues
