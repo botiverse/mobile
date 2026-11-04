@@ -3324,6 +3324,11 @@
     <string name="joint_create_archived_name_held">The name #%1$s is held by an archived channel.</string>
     <string name="joint_create_unarchive">Unarchive</string>
     <string name="joint_create_change_name">Change Name</string>
+    <string name="channel_create_open_archived">Open Channel</string>
+    <string name="channel_create_archived_can_manage">Unarchive it to keep its history, or choose a different name.</string>
+    <string name="channel_create_archived_cannot_manage">Pick a different name, or ask an admin to unarchive it.</string>
+    <string name="channel_create_unarchiving">Unarchiving…</string>
+    <string name="channel_create_failed_unarchive">Failed to unarchive channel</string>
     <string name="joint_create_name_label">Name</string>
     <string name="joint_create_name_placeholder">e.g. partner-launch</string>
     <string name="joint_create_description_label">Description</string>

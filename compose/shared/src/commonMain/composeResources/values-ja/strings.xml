@@ -3324,6 +3324,11 @@
     <string name="joint_create_archived_name_held">#%1$s という名前は、アーカイブ済みのチャンネルで使用されています。</string>
     <string name="joint_create_unarchive">アーカイブを解除</string>
     <string name="joint_create_change_name">名前を変更</string>
+    <string name="channel_create_open_archived">チャンネルを開く</string>
+    <string name="channel_create_archived_can_manage">アーカイブを解除して履歴を残すか、別の名前を選んでください。</string>
+    <string name="channel_create_archived_cannot_manage">別の名前を選ぶか、管理者にアーカイブの解除を依頼してください。</string>
+    <string name="channel_create_unarchiving">アーカイブを解除中…</string>
+    <string name="channel_create_failed_unarchive">チャンネルのアーカイブを解除できませんでした</string>
     <string name="joint_create_name_label">名前</string>
     <string name="joint_create_name_placeholder">例：partner-launch</string>
     <string name="joint_create_description_label">説明</string>
