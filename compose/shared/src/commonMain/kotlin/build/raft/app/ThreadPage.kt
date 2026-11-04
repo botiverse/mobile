@@ -3309,7 +3309,12 @@ internal data class RaftThreadPendingSendContext(
     val parentMessageId: String? = null,
     val streamChannelId: String? = null,
     val memberScopedMentions: Boolean = false,
-    val randomId: String? = null
+    val randomId: String? = null,
+    /**
+     * Structured `mentions` picked in the composer and still visible in [body] at send time. Journaled
+     * with the send so every retry resends this exact list (never re-resolved by name).
+     */
+    val mentions: List<build.raft.app.data.ThreadSendMessageMention> = emptyList(),
 )
 
 /**
@@ -10310,7 +10315,8 @@ private fun SharedThreadRouteContentContent(
                                 body = context.body,
                                 asTask = context.asTask,
                                 attachmentIds = context.attachmentIds,
-                                randomId = sendAttemptState.randomId
+                                randomId = sendAttemptState.randomId,
+                                mentions = context.mentions,
                             )
                         }
                             ?: throw RaftRequestTimeoutException(
@@ -11543,7 +11549,9 @@ private fun SharedThreadRouteContentContent(
                 parentMessageId = composerSurface.parentMessageId,
                 streamChannelId = composerSurface.streamChannelId,
                 memberScopedMentions = payload.memberScopedMentions,
-                randomId = newThreadSendRandomId()
+                randomId = newThreadSendRandomId(),
+                // Only picks whose `@handle` is still in the text go out; the list is journaled as is.
+                mentions = currentDraftState.structuredMentions.visibleStructuredMentionsIn(draftText),
             )
         val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
         val localTimestampLabel = buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
@@ -14572,6 +14580,14 @@ private fun SharedThreadRouteContentContent(
                             "asTask=${nextDraftState.seedAsTask} draftKey=${nextDraftState.draftKey.orEmpty()} " +
                             "activeRecords=${composerDraftPersistSlice.activeDraftRecordsState.value.toThreadComposerDraftDiagnosticsSummary()}"
                     )
+                }
+                ThreadComposerSelectMentionEvent -> {
+                    val mention = decodeThreadComposerMentionEvent(value)
+                    bridge.log(
+                        "thread_composer_select_mention instanceId=$composerInstanceId " +
+                            "type=${mention?.type.orEmpty()} draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
+                    mention?.let { composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.SelectMention(it)) }
                 }
                 "toggleAsTask" -> {
                     bridge.log(

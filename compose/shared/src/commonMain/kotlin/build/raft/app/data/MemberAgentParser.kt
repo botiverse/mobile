@@ -97,6 +97,7 @@ private data class WireChannelExternalMember(
     val actorKind: String? = null,
     val avatarUrl: String? = null,
     val lastSeenAt: String? = null,
+    val workspaceName: String? = null,
 )
 
 @Serializable
@@ -742,6 +743,7 @@ private fun WireChannelExternalMember.toModel(): ChannelExternalMemberProfile {
         avatarUrl = avatarUrl,
         avatarLabel = label.toRaftAvatarLabel(),
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        workspaceName = workspaceName?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

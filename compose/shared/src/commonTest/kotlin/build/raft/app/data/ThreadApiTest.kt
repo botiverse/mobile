@@ -5,6 +5,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.network.MultipartFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -616,6 +617,35 @@ class ThreadApiTest {
             """{"channelId":"channel-1","content":"hello","attachmentIds":[],"asTask":false}""",
             buildSharedThreadSendMessageBody(channelId = "channel-1", body = "hello", randomId = " ")
         )
+    }
+
+    @Test
+    fun sendMessageBodyCarriesStructuredMentionsInWebShape() {
+        // Task #73: slock `routes/messages.ts` `parseStructuredMentions` reads `mentions[]` as
+        // `{ type, id, name }`, the shape web `MessageInput.tsx` sends.
+        val body =
+            kotlinx.serialization.json.Json.parseToJsonElement(
+                buildSharedThreadSendMessageBody(
+                    ThreadSendMessageRequestBody(
+                        channelId = "channel-1",
+                        content = "hi @yezi",
+                        randomId = "random-1",
+                        mentions = listOf(ThreadSendMessageMention(type = "external", id = "projection-1", name = "yezi")),
+                    )
+                )
+            ) as kotlinx.serialization.json.JsonObject
+        val mention = (body["mentions"] as kotlinx.serialization.json.JsonArray).single() as kotlinx.serialization.json.JsonObject
+        assertEquals(setOf("type", "id", "name"), mention.keys)
+        assertEquals("\"external\"", mention["type"].toString())
+        assertEquals("\"projection-1\"", mention["id"].toString())
+        assertEquals("\"yezi\"", mention["name"].toString())
+        assertEquals("\"random-1\"", body["randomId"].toString())
+        // Without mentions the body is unchanged: no `mentions` key at all.
+        val plain =
+            kotlinx.serialization.json.Json.parseToJsonElement(
+                buildSharedThreadSendMessageBody(ThreadSendMessageRequestBody(channelId = "channel-1", content = "hi"))
+            ) as kotlinx.serialization.json.JsonObject
+        assertFalse("mentions" in plain)
     }
 
     private class FakeThreadNetworkApi(

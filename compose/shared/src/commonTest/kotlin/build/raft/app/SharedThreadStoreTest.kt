@@ -71,6 +71,8 @@ class SharedThreadStoreTest {
         var sendResponseBody: String? = null
         var lastAttachmentIds: List<String> = emptyList()
         var lastRandomId: String? = null
+        /** `mentions[]` of the last POST /messages (empty for a send without structured mentions). */
+        var lastMentions: List<build.raft.app.data.ThreadSendMessageMention> = emptyList()
         val savedMessageIds: MutableList<String> = mutableListOf()
         val unsavedMessageIds: MutableList<String> = mutableListOf()
         val addedReactions: MutableList<Pair<String, String>> = mutableListOf()
@@ -154,8 +156,19 @@ class SharedThreadStoreTest {
             sentChannelIds += channelId
             lastAttachmentIds = attachmentIds
             lastRandomId = randomId
+            lastMentions = emptyList()
             return HomeNetworkResponse(code = 200, bodyText = sendResponseBody ?: messagesResponse(body))
         }
+
+        override suspend fun sendMessageWithMentions(
+            channelId: String,
+            body: String,
+            asTask: Boolean,
+            attachmentIds: List<String>,
+            randomId: String?,
+            mentions: List<build.raft.app.data.ThreadSendMessageMention>,
+        ): HomeNetworkResponse =
+            sendMessage(channelId, body, asTask, attachmentIds, randomId).also { lastMentions = mentions }
 
         override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse {
             mentionActionRequests += action to resolutionIds

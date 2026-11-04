@@ -508,7 +508,9 @@ data class ChannelExternalMemberProfile(
     val avatarUrl: String? = null,
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
     /** External-agent credential last use; Web considers this online for 120s. */
-    val lastSeenAt: String? = null
+    val lastSeenAt: String? = null,
+    /** The Slack workspace's name (slock `getChannelExternalMembers` `workspaceName`). */
+    val workspaceName: String? = null,
 )
 
 @Serializable

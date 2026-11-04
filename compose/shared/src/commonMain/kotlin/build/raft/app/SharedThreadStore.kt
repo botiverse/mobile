@@ -103,6 +103,7 @@ import build.raft.app.data.ThreadPendingSendJournalDrainStore
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
+import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadReplyCacheIdentityTransitionAnchor
 import build.raft.app.data.authSessionRequiredResult
@@ -5451,9 +5452,22 @@ internal class SharedThreadDataSource(
         body: String,
         asTask: Boolean,
         attachmentIds: List<String> = emptyList(),
-        randomId: String? = null
+        randomId: String? = null,
+        /** Structured `mentions` exactly as the composer recorded them (a retry resends this same list). */
+        mentions: List<ThreadSendMessageMention> = emptyList(),
     ): ThreadApiResult<ThreadMessagesPage> =
-        api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds, randomId = randomId)
+        if (mentions.isEmpty()) {
+            api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds, randomId = randomId)
+        } else {
+            api.sendMessageWithMentions(
+                channelId = channelId,
+                body = body,
+                asTask = asTask,
+                attachmentIds = attachmentIds,
+                randomId = randomId,
+                mentions = mentions,
+            )
+        }
 
     suspend fun executePendingMentionActions(
         action: String,
@@ -7540,6 +7554,7 @@ internal class SharedThreadStore(
                         context.asTask,
                         context.attachmentIds,
                         context.randomId,
+                        context.mentions,
                     )
                 },
                 onSent = { localId, page, provenance, route ->
