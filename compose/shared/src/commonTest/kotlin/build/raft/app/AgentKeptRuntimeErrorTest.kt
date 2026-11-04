@@ -10,7 +10,9 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Web classifyRuntimeError.ts and AgentDetailPanel `activityErrorText`: the agent page's error notice
@@ -130,6 +132,24 @@ class AgentKeptRuntimeErrorTest {
         )
         // Nothing kept: no notice.
         assertNull(agent.membersAgentRuntimeErrorDisplay(detail(AgentDetailSummary(id = "agent-1", name = "ruby")), state(AgentStatus.Offline)))
+    }
+
+    @Test
+    fun copyInfoCarriesTheKeptErrorAndItsTypedDiagnostic() {
+        val typed =
+            detail(
+                AgentDetailSummary(
+                    id = "agent-1",
+                    name = "ruby",
+                    lastRuntimeErrorMessage = "Codex rejected the tool call",
+                    lastRuntimeErrorClass = "ToolArgumentParseError",
+                    lastRuntimeErrorReason = "model_tool_args_invalid",
+                )
+            )
+        val info = buildMembersAgentDiagnostics(agent, typed, state(AgentStatus.Offline))
+        assertTrue(info.contains("lastRuntimeError=Codex rejected the tool call"))
+        assertTrue(info.contains("class=ToolArgumentParseError reason=model_tool_args_invalid"))
+        assertFalse(buildMembersAgentDiagnostics(agent, detail(AgentDetailSummary(id = "agent-1", name = "ruby")), null).contains("lastRuntimeError="))
     }
 
     private val agent = MemberProfile(id = MemberId("agent-1"), displayName = "Ruby", handle = "ruby", kind = MemberKind.Agent)

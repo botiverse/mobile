@@ -13967,6 +13967,14 @@ internal fun buildMembersAgentDiagnostics(
         "machineName=${summary?.machineName.orBadgeFallback(member.membersComputerName)}",
         "daemon=${summary?.daemonVersion.orDash()}",
         "deleted=${summary?.deletedAt?.isNotBlank() == true}"
+    ).plus(
+        // Web `diagnosticErrorMessage`: the kept runtime error the notice shows, with its typed diagnostic.
+        listOfNotNull(
+            summary?.lastRuntimeErrorMessage?.let { "lastRuntimeError=$it" },
+            summary?.lastRuntimeErrorClass?.let { cls ->
+                summary.lastRuntimeErrorReason?.let { reason -> "class=$cls reason=$reason" }
+            },
+        )
     ).joinToString("\n")
 }
 
