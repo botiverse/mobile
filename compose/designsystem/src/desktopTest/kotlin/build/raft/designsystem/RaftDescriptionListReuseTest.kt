@@ -113,4 +113,73 @@ class RaftDescriptionListReuseTest {
             onNodeWithText("Claude Code").assertExists()
             assertFalse(placedWhileMeasuring, "the chip was laid out while the list was measuring")
         }
+
+    /** The inline list (a task dialog's facts row) in a `LazyColumn` survives item reuse too. */
+    @Test
+    fun inlineListWithChipsInALazyColumnSurvivesItemReuse() =
+        runComposeUiTest {
+            val itemDp = 80.dp
+            val itemPx = with(density) { itemDp.roundToPx() }
+            val lazyListState = LazyListState()
+            setContent {
+                RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+                    LazyColumn(state = lazyListState, modifier = Modifier.width(480.dp).height(itemDp * 2)) {
+                        items(10) { index ->
+                            RaftDescriptionList(Modifier.height(itemDp), direction = RaftDescriptionListDirection.Inline) {
+                                Item("Status", "In progress $index")
+                                Item("Assignee") {
+                                    Spacer(Modifier.size(width = 1.dp, height = (20 + 2 * index).dp))
+                                    RaftBadge("Cindy $index", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            runOnIdle { lazyListState.dispatchRawDelta(itemPx.toFloat()) }
+            runOnIdle { lazyListState.dispatchRawDelta(itemPx.toFloat()) }
+            runOnIdle { lazyListState.dispatchRawDelta(itemPx.toFloat()) }
+            waitForIdle()
+
+            onNodeWithText("Cindy 4").assertExists()
+        }
+
+    /** An inline fact lays out its value only when it is placed, as the two-column list does. */
+    @Test
+    fun inlineListPlacesItsChipsOnlyAfterMeasuring() =
+        runComposeUiTest {
+            var measuring = false
+            var placedWhileMeasuring = false
+            val probe =
+                Modifier.layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    layout(placeable.width, placeable.height) {
+                        if (measuring) placedWhileMeasuring = true
+                        placeable.place(0, 0)
+                    }
+                }
+            setContent {
+                RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+                    Layout(
+                        content = {
+                            RaftDescriptionList(Modifier.width(480.dp), direction = RaftDescriptionListDirection.Inline) {
+                                Item("Assignee") {
+                                    RaftBadge("Cindy", probe, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+                                }
+                            }
+                        },
+                    ) { measurables, constraints ->
+                        measuring = true
+                        val placeable = measurables.single().measure(constraints)
+                        measuring = false
+                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    }
+                }
+            }
+            waitForIdle()
+
+            onNodeWithText("Cindy").assertExists()
+            assertFalse(placedWhileMeasuring, "the chip was laid out while the list was measuring")
+        }
 }
