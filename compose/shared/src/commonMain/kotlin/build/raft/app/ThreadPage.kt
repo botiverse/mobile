@@ -12441,27 +12441,9 @@ private fun SharedThreadRouteContentContent(
         )
     }
 
-    // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
-    // when the assistant is ready with its DM, never on that DM or a thread in it.
-    val assistantOtterHostId = remember { newAssistantOtterHostId() }
-    val assistantOtterInSplitPane = threadInSplitDetailPane()
-    val assistantOtterReplyThread = renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread
-    val assistantOtter =
-        rememberThreadAssistantOtter(
-            store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) },
-            featureFlags = sharedStores.serverFeatureFlags,
-            serverMembersStore = serverMembersStore,
-            homeState = sharedHomeState,
-            serverId = currentServerId,
-            userId = currentSession?.user?.id,
-            viewerIsGuest = threadViewerIsGuest,
-            conversationChannelId =
-                if (assistantOtterReplyThread) renderedThread.parentChannelId else renderedThread.streamChannelId,
-            hostId = assistantOtterHostId,
-            wide = assistantOtterInSplitPane,
-            replyThread = assistantOtterReplyThread,
-            pageActive = active,
-        )
+    // Whether this page's assistant panel is open (set from the content, where the otter lives):
+    // the page's own banner then gives way to the panel window's (threadForegroundBannerOnPage).
+    var assistantPanelOpenOnPage by remember { mutableStateOf(false) }
     val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
     val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
     val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
@@ -12490,7 +12472,7 @@ private fun SharedThreadRouteContentContent(
             foregroundMessageBanner?.takeIf {
                 threadForegroundBannerOnPage(
                     inAssistantPanel = LocalThreadAssistantPanelEmbed.current != null,
-                    assistantPanelOpen = assistantOtter?.panelOpen == true,
+                    assistantPanelOpen = assistantPanelOpenOnPage,
                 )
             },
         topSafeArea = foregroundBannerTopSafeArea,
@@ -12534,6 +12516,29 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
             )
+        // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
+        // when the assistant is ready with its DM, never on that DM or a thread in it.
+        val assistantOtterHostId = remember { newAssistantOtterHostId() }
+        val assistantOtterInSplitPane = threadInSplitDetailPane()
+        val assistantOtterReplyThread = renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+        val assistantOtter =
+            rememberThreadAssistantOtter(
+                store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) },
+                featureFlags = sharedStores.serverFeatureFlags,
+                serverMembersStore = serverMembersStore,
+                homeState = sharedHomeState,
+                serverId = currentServerId,
+                userId = currentSession?.user?.id,
+                viewerIsGuest = threadViewerIsGuest,
+                conversationChannelId =
+                    if (assistantOtterReplyThread) renderedThread.parentChannelId else renderedThread.streamChannelId,
+                hostId = assistantOtterHostId,
+                wide = assistantOtterInSplitPane,
+                replyThread = assistantOtterReplyThread,
+                pageActive = active,
+            )
+        val assistantPanelOpen = assistantOtter?.panelOpen == true
+        SideEffect { assistantPanelOpenOnPage = assistantPanelOpen }
         // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
         // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
         assistantOtter?.let { otter ->
