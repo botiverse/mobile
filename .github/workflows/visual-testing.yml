@@ -429,7 +429,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: visual-logcat-shard-${{ matrix.shard }}
-          path: visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
+          path: |
+            visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
+            visual-testing-results/crash-shard-${{ matrix.shard }}.txt
           if-no-files-found: warn
 
       - name: Upload capture harness evidence

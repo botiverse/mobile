@@ -20,8 +20,9 @@ import build.raft.app.compat.pager.Page
  *                       random suggestion
  *  - `no-computer`      dialog-no-computer: zero machines (loaded, no error) -> the short
  *                       centred "Connect a computer first" dialog with Cancel + Add Computer
- *  - `builtin-provider` builtin-provider-dialog: runtime builtin
- *  - `pi-provider`      pi-provider-dialog: runtime pi
+ *
+ * builtin-provider-dialog and pi-provider-dialog are React-only in slock's case list (no Android
+ * capture), so they have no variant here.
  */
 @Page("compose_create_agent_state_visual", supportInLocal = true)
 internal class ComposeCreateAgentStateVisualPage : BasePager() {
@@ -49,8 +50,6 @@ private fun createAgentStateVisualSpec(variant: String): CreateAgentStateVisualS
         "error" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), name = "bad name!!")
         "empty" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), description = "")
         "no-computer" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), noMachines = true)
-        "builtin-provider" -> CreateAgentStateVisualSpec("builtin", listOf("builtin", "claude", "codex"))
-        "pi-provider" -> CreateAgentStateVisualSpec("pi", listOf("pi", "claude", "codex"))
         else -> error("unknown create-agent visual variant: $variant")
     }
 
