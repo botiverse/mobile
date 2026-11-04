@@ -746,7 +746,8 @@ private fun SharedAgentDetailState.mergeSequencedActivityIntoDetail(
             incomingSummary.copy(
                 status = currentSummary.status ?: incomingSummary.status,
                 activity = currentSummary.activity ?: incomingSummary.activity,
-                activityDetail = currentSummary.activityDetail ?: incomingSummary.activityDetail
+                activityDetail = currentSummary.activityDetail ?: incomingSummary.activityDetail,
+                spawnFailure = if (currentSummary.activityDetail != null) currentSummary.spawnFailure else incomingSummary.spawnFailure
             )
         } else {
             incomingSummary
@@ -825,6 +826,11 @@ private fun AgentDetailSnapshot.withAgentActivity(
             activityDetail =
                 if (isSeenEvent) currentSummary.activityDetail
                 else event.statusLabel.nonBlankOrNull() ?: currentSummary.activityDetail,
+            // Web agentActivityEvents: a detailed frame replaces the start-failure carrier (it
+            // carries one only with `runtime_unavailable`); seen and coarse frames keep it.
+            spawnFailure =
+                if (isSeenEvent || event.coarseState) currentSummary.spawnFailure
+                else event.spawnFailure,
             lastSeenAt = event.lastSeenAt ?: currentSummary.lastSeenAt
         ),
         activity =

@@ -1423,6 +1423,10 @@
     <string name="member_state_runtime_config_unavailable">运行时配置不可用</string>
     <string name="member_state_no_connected_apps">还没有已连接的应用</string>
     <string name="member_state_agent_error">Agent 遇到错误</string>
+    <string name="agent_runtime_error_not_installed_named">这台 Computer 上没有安装 %1$s。请在这台 Computer 上安装它，或把 Agent 移到装有它的 Computer，或更换 Agent 的运行时。</string>
+    <string name="agent_runtime_lookup_timeout">检查此 Computer 上的 %1$s 超时。请重试，或查看此 Computer 的状态。</string>
+    <string name="agent_runtime_lookup_permission_denied">无法检查此 Computer 上的 %1$s：权限被拒绝。请检查那台机器的权限后重试。</string>
+    <string name="agent_runtime_lookup_unresolved">无法确认此 Computer 上是否有 %1$s。请重试，或查看此 Computer 的状态。</string>
     <string name="member_state_profile_loading">正在加载 Agent 资料…</string>
     <string name="member_state_profile_unavailable">Agent 资料元数据不可用。</string>
     <string name="member_state_profile_refreshing">正在刷新 Agent 资料…</string>

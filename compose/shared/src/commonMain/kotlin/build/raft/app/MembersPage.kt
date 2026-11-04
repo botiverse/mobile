@@ -6790,7 +6790,12 @@ private fun MembersDetailContent(
             .background(RaftColor.SurfaceWhite)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            val runtimeErrorText = member.membersAgentRuntimeErrorText(detail, agentStatusIndicatorState)
+            // Web AgentDetailPanel: a runtime "not installed" start failure says how the lookup
+            // ended, and a confirmed miss names the runtime (botiverse/slock #12729).
+            val runtimeLookupError = member.membersAgentRuntimeLookupError(detail, agentStatusIndicatorState)
+            val runtimeErrorText =
+                runtimeLookupError?.let { (display, runtimeName) -> agentRuntimeLookupErrorText(display, runtimeName) }
+                    ?: member.membersAgentRuntimeErrorText(detail, agentStatusIndicatorState)
             if (member.kind == MemberKind.Human) {
                 MembersHumanDetailHeader(
                     member = member,
@@ -8406,7 +8411,7 @@ private fun MembersAgentDetailStateNotice(
 }
 
 @Composable
-private fun MembersAgentRuntimeErrorBanner(
+internal fun MembersAgentRuntimeErrorBanner(
     errorText: String,
     canViewPrivate: Boolean,
     showViewLogs: Boolean,
@@ -13824,6 +13829,31 @@ private fun MemberProfile.membersAgentRuntimeErrorText(
     } else {
         null
     }
+}
+
+/**
+ * The lookup verdict of the agent's runtime error and the runtime's display name, when the error
+ * is the runtime "not installed" (web AgentDetailPanel `startLookupDisplay`); null otherwise, and
+ * without a runtime to name. As on the web, the error is the live one while the agent is in error,
+ * else the one the server kept (`lastRuntimeError`): a failed start leaves the agent offline.
+ */
+private fun MemberProfile.membersAgentRuntimeLookupError(
+    detail: AgentDetailSnapshot?,
+    statusIndicatorState: RaftAgentStatusIndicatorState?
+): Pair<AgentRuntimeLookupDisplay, String>? {
+    if (kind != MemberKind.Agent) return null
+    val summary = detail?.summary ?: return null
+    val runtime = (summary.runtime ?: statusIndicatorState?.runtime)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val runtimeError =
+        when (statusIndicatorState?.status) {
+            AgentStatus.Error -> membersAgentActivityErrorDisplayDetail(summary.activityDetail)
+            // The kept error only while the agent is not running: the profile is not re-read when
+            // it starts again, so a running agent must not keep showing an old failed start.
+            null, AgentStatus.Offline, AgentStatus.Disconnected -> summary.lastRuntimeErrorMessage
+            else -> null
+        }
+    val display = agentStartLookupDisplay(runtimeError, summary.spawnFailure) ?: return null
+    return display to raftAgentRuntimeDisplayName(runtime)
 }
 
 internal fun membersAgentActivityErrorText(detail: String?): String {

@@ -972,6 +972,11 @@ data class MemberPresenceUpdated(
      */
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
     /**
+     * Why the last start failed, with [detailKind] `runtime_unavailable` (the `spawnFailure`
+     * carrier of `agent:activity`); null for every other status.
+     */
+    val spawnFailure: AgentSpawnFailure? = null,
+    /**
      * The agent is stuck on one tool call (the `toolStuck` carrier of `agent:activity`). The daemon
      * attaches it to every frame while that is true, so a frame without it means "not stuck".
      */
@@ -993,6 +998,18 @@ data class MemberPresenceUpdated(
 data class AgentActivitySubscribed(
     val agentIds: List<String>
 ) : RealtimeEvent
+
+/**
+ * Why an agent's start failed (shared `SpawnFailureActivityDiagnostic`, botiverse/slock task #1123):
+ * the fields the client shows. [lookupReason] says how the Computer's lookup for the runtime ended
+ * (`not_on_path`, `lookup_timed_out`, ...), only with [reason] `runtime_not_found`; absent means
+ * no verdict (an older daemon), never "confirmed missing".
+ */
+@Serializable
+data class AgentSpawnFailure(
+    val reason: String,
+    val lookupReason: String? = null
+)
 
 /**
  * The server paused automatic wakes after the agent stopped several times in a row (shared

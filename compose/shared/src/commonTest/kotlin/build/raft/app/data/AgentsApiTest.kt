@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.runPortableCoroutineTest
+import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
@@ -366,6 +367,41 @@ class AgentsApiTest {
             assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = otherKind)).agent(MemberId("agent-1"))).data
         assertEquals("stopped", otherDetail.activityDetailKind)
         assertEquals(null, otherDetail.wakeCrashLoop)
+    }
+
+    @Test
+    fun agentDetailCarriesTheFailedStartAndTheKeptRuntimeError() = runPortableCoroutineTest {
+        // GET /agents/:id: a failed start leaves the agent offline with `activityDetailKind`
+        // runtime_unavailable and the shared SpawnFailureActivityDiagnostic; `lastRuntimeError`
+        // is the shared AgentRuntimeErrorState (web AgentDetailPanel reads both).
+        val failed =
+            """{"id":"agent-1","name":"Agent One","status":"active","runtime":"codex","activity":"offline",""" +
+                """"activityDetail":"Codex CLI is not installed on this computer.","activityDetailKind":"runtime_unavailable",""" +
+                """"spawnFailure":{"reason":"runtime_not_found","lookupReason":"not_on_path","autoRestartPaused":true},""" +
+                """"lastRuntimeError":{"message":"Codex CLI is not installed on this computer.","at":"2026-11-03T18:00:00.000Z",""" +
+                """"actionRequired":true}}"""
+        val detail =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(RecordingAgentsApi(agentBody = failed)).agent(MemberId("agent-1"))
+            ).data.toAgentDetailSummary()
+        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", lookupReason = "not_on_path"), detail.spawnFailure)
+        assertEquals("Codex CLI is not installed on this computer.", detail.lastRuntimeErrorMessage)
+
+        // An older daemon sends no lookup verdict; a carrier beside another kind is not a failed start.
+        val noVerdict = failed.replace(""","lookupReason":"not_on_path"""", "")
+        val noVerdictDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = noVerdict)).agent(MemberId("agent-1"))).data
+        assertEquals(AgentSpawnFailure(reason = "runtime_not_found"), noVerdictDetail.spawnFailure)
+        val otherKind = failed.replace(""""activityDetailKind":"runtime_unavailable"""", """"activityDetailKind":"stopped"""")
+        val otherDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = otherKind)).agent(MemberId("agent-1"))).data
+        assertEquals(null, otherDetail.spawnFailure)
+
+        // No kept error: null, as with an explicit null.
+        val cleared = failed.replace(Regex(""","lastRuntimeError":\{[^}]*\}"""), ""","lastRuntimeError":null""")
+        val clearedDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = cleared)).agent(MemberId("agent-1"))).data
+        assertEquals(null, clearedDetail.lastRuntimeErrorMessage)
     }
 
     @Test
