@@ -42,7 +42,22 @@ class SettingsHomeHeaderScreenshotTest {
     @Test
     fun settingsHomeDark() = captureAndCheckStatusBar("settings.home.dark", RaftAppAppearance.Dark, darkIcons = false)
 
-    private fun captureAndCheckStatusBar(name: String, appearance: RaftAppAppearance, darkIcons: Boolean) {
+    // A sub-page head (SettingsDetailShell, here Notifications): the same canvas head, so Settings
+    // reads as one surface with the web (its PanelHeader on every Settings tab).
+    @Test
+    fun settingsSubPageLight() =
+        captureAndCheckStatusBar("settings.sub-page-head", RaftAppAppearance.Light, darkIcons = true) { SettingsSubPageFixture() }
+
+    @Test
+    fun settingsSubPageDark() =
+        captureAndCheckStatusBar("settings.sub-page-head.dark", RaftAppAppearance.Dark, darkIcons = false) { SettingsSubPageFixture() }
+
+    private fun captureAndCheckStatusBar(
+        name: String,
+        appearance: RaftAppAppearance,
+        darkIcons: Boolean,
+        page: @Composable () -> Unit = { SettingsHomeFixture() },
+    ) {
         var backdropRef: RaftStatusBarBackdrop? = null
         var canvas: Color? = null
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -53,7 +68,7 @@ class SettingsHomeHeaderScreenshotTest {
                 }
             val backdrop = remember { RaftStatusBarBackdrop().also { backdropRef = it } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftStatusBarBackdrop provides backdrop) {
-                RaftDesignSystemTheme { SettingsHomeFixture() }
+                RaftDesignSystemTheme { page() }
             }
             SideEffect { canvas = RaftColor.Canvas }
         }
@@ -82,4 +97,11 @@ private fun SettingsHomeFixture() {
         onBack = {},
         onSelect = {},
     )
+}
+
+@Composable
+private fun SettingsSubPageFixture() {
+    SettingsDetailShell(title = "Notifications", subtitle = "", iconName = RaftLucideIconName.Bell, onBack = {}) {
+        SettingsSharedPlaceholder(title = "Notifications", detail = "This device", iconName = RaftLucideIconName.Bell)
+    }
 }
