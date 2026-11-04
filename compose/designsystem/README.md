@@ -544,9 +544,11 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   (`--scrollbar-size`): Compose scrollbars take no layout width. A muted place with something unread shows the gray
   status pixel the web Home draws; raft-ui's quiet number is `RaftSidebarItemMeta`. The
   chevron leads the group title, as on the web Home (the docs composition puts it after).
-  The disclosure lights up its hit area with `fill-pressed` while pressed or while its
-  press-and-hold menu is open (States: a text button lights up its hit area); raft-ui's
-  disclosure has no press look, as a mouse right-clicks it.
+  The whole header is the disclosure's target, and it lights up all of it, the attention
+  pixel and the controls included, with `fill-medium` on the control radius while pressed or
+  while its press-and-hold menu is open (States: a text button lights up its hit area);
+  keyboard focus rings the same shape. raft-ui's disclosure has no press look, as a mouse
+  right-clicks it.
 - **ListRow** follows the pages' AvatarListRow too: an optional mono `subtitle` line and a
   trailing slot 6dp apart. Rows don't know their siblings: pass `divider = true` from the
   second row on. A selected or disabled row hides its badge.

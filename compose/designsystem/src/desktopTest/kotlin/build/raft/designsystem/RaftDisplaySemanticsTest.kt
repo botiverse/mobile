@@ -140,6 +140,39 @@ class RaftDisplaySemanticsTest {
             onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
         }
 
+    /**
+     * The whole header is the disclosure's target, as its press fill is: a tap at its end, by
+     * the attention pixel, toggles it; a tap on a control runs the control only.
+     */
+    @Test
+    fun aSidebarHeaderTogglesFromItsEndButNotFromItsControls() =
+        runComposeUiTest {
+            var expanded by mutableStateOf(false)
+            var creates = 0
+            setContent(
+                themed {
+                    Column(Modifier.width(320.dp)) {
+                        RaftSidebarSectionHeader(
+                            "Direct Messages",
+                            expanded = expanded,
+                            onExpandedChange = { expanded = it },
+                            modifier = Modifier.testTag("header"),
+                            count = 12,
+                            attention = true,
+                            actions = { RaftSidebarSectionAction(RaftGlyph.Plus, "New Message", { creates++ }) },
+                        )
+                    }
+                },
+            )
+            onNodeWithContentDescription("New Message").performClick()
+            assertEquals(1, creates)
+            assertFalse(expanded, "a tap on a control does not toggle the section")
+            // Past the title, just before the attention pixel: outside the old disclosure.
+            onNodeWithTag("header").performTouchInput { click(Offset(width - 48.dp.toPx(), height - 15.dp.toPx())) }
+            assertTrue(expanded, "a tap at the header's end toggles it")
+            assertEquals(1, creates)
+        }
+
     /** Press and hold opens the row's menu (raft-design ContextMenu) and does not also open the row. */
     @Test
     fun aLongPressOnASidebarRowOpensItsMenuWithoutClicking() =
