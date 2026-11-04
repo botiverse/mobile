@@ -299,22 +299,25 @@ class RaftDisplaySemanticsTest {
         onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
     /**
-     * Rows 44dp tall and 1dp apart (the web's collapsed `my-px`), at a phone's 2x density: at
-     * 1x each 0.5dp margin rounds to a whole pixel.
+     * Rows 44dp tall and 2dp apart: raft-ui 0.49 list cells (botiverse/raft-design#815,
+     * lib/list-cell.ts), whose lists space their rows with `gap-0.5`; the web phone's pitch is 46.
      */
     @Test
-    fun sidebarRowsStand1dpApart() =
+    fun sidebarRowsStand2dpApart() =
         runComposeUiTest {
             setSidebarWebMetricsContent(screenDensity = 2f)
-            assertEquals(45f, (textBounds("random").top - textBounds("general").top) / 2f, 0.5f)
+            assertEquals(46f, (textBounds("random").top - textBounds("general").top) / 2f, 0.5f)
         }
 
-    /** A group header's title sits `px-2` + the 14dp chevron + `gap-1.5` from its edge. */
+    /**
+     * A group header's title sits 12dp (with the page's 8dp, raft-ui 0.49's `px-5`,
+     * sidebar-section.recipe.ts) + the 14dp chevron + `gap-1.5` from its edge.
+     */
     @Test
-    fun aSidebarHeaderTitleSits28dpIn() =
+    fun aSidebarHeaderTitleSits32dpIn() =
         runComposeUiTest {
             setSidebarWebMetricsContent()
-            assertEquals(28f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
+            assertEquals(32f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
         }
 
     /**
@@ -343,14 +346,15 @@ class RaftDisplaySemanticsTest {
 
     /**
      * ...4dp apart, and the last one's 14dp icon box, not its button, ends on the header's
-     * 8dp line: the button hangs its 5dp of empty space past it (`-mr-icon-inset`, 0.56 #922).
+     * 12dp line (`px-5` less the page's 8dp, raft-ui 0.49 #815): the button hangs its 5dp of
+     * empty space past it (`-mr-icon-inset`, 0.56 #922).
      */
     @Test
     fun theLastSidebarHeaderControlsIconEndsOnTheHeadersLine() =
         runComposeUiTest {
             setSidebarWebMetricsContent()
             assertEquals(4f, (boundsOf("create").left - boundsOf("sort").right) / density.density, 0.5f)
-            assertEquals(3f, (boundsOf("header").right - boundsOf("create").right) / density.density, 0.5f)
+            assertEquals(7f, (boundsOf("header").right - boundsOf("create").right) / density.density, 0.5f)
         }
 
     /** A tap in the 4dp gap between two controls goes to the nearer one (raft-ui 0.57 #935). */

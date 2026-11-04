@@ -248,15 +248,18 @@ private const val EdgeAutoScrollStepPx = 18f
 /** Web `SIDEBAR_ROW_TRAILING_CLASS` `max-w-[58%]`. */
 private const val DirectMessageTrailingMaxWidthFraction = 0.58f
 private val HomeListHorizontalPadding = RaftAppSpacing.Md
-// Web phone sidebar: the list is `px-2` and section headers add their own `px-2`, while rows
-// add only `pl-2` inside their highlight. Rows therefore sit 8dp from the edge so their icon
-// lines up under the section chevron (16dp), not 8dp past it.
+// Web phone sidebar (raft-ui 0.49 list cells): a row's shape sits 8dp in from the list's sides
+// and its content 12dp inside it, the section headers' words on the same 20dp edge
+// (RaftSidebarItem / RaftSidebarSectionHeader). The page gives the 8dp.
 private val HomeListRowHorizontalPadding = RaftAppSpacing.Sm
 // Web phone Sidebar.tsx scroller `pt-1` (the Home head stays on screen, so not `pt-2`).
 private val HomeListTopPadding = RaftAppSpacing.Xs
 private val HomeListTopPaddingUnderTopBar = RaftAppSpacing.Sm
 // Web `SidebarSectionDescription` `py-1.5`.
 private val HomeSidebarSectionEmptyHintPaddingVertical = 6.dp
+// Web `SidebarSectionDescription` `px-5`: with the page's 8dp, 20dp from the edge, the words
+// on the section header's edge.
+private val HomeSidebarSectionEmptyHintPaddingHorizontal = 12.dp
 // #372 React parity: the post-sign-in loading state shows skeleton rows
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
@@ -4293,8 +4296,8 @@ data class RaftHomeSectionCreateRequest(
 )
 
 /**
- * Web `SidebarSectionDescription` hint under an empty, expanded section: `px-2 py-1.5` inside
- * the list's `px-2`, so its words start under the section chevron (16dp from the edge).
+ * Web `SidebarSectionDescription` hint under an empty, expanded section: `px-5`, so its words
+ * start under the section chevron (20dp from the edge).
  */
 @Composable
 private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modifier) {
@@ -4302,7 +4305,7 @@ private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modif
         text = text,
         style = RaftType.Caption,
         color = RaftColor.TextMutedGray,
-        modifier = modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm, vertical = HomeSidebarSectionEmptyHintPaddingVertical)
+        modifier = modifier.fillMaxWidth().padding(horizontal = HomeSidebarSectionEmptyHintPaddingHorizontal, vertical = HomeSidebarSectionEmptyHintPaddingVertical)
     )
 }
 

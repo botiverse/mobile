@@ -111,15 +111,16 @@ class HomeSidebarWebMetricsTest {
         assertEquals(8, saved.left.toDp(), "entry row inset")
         assertEquals(8, firstChannel.left.toDp(), "channel row inset")
         assertEquals(393 - 8, saved.right.toDp(), "entry row end inset")
-        // Web phone `pt-1` + the row's `my-px`: the first row's box starts 5dp under the list top.
+        // Web phone `pt-1` + the row's 1dp (half the list's gap): the first row's box starts 5dp under the list top.
         assertEquals(5, (saved.top - list.top).toDp(), "first row offset")
         // Web on a touch screen: the entries' SidebarCellList `py-2` under the last row (the row's
-        // `my-px` plus 7dp, HomeSidebarListEdge) above a section header (its own pt-4 sits inside).
+        // 1dp plus 7dp, HomeSidebarListEdge) above a section header (its own pt-4 sits inside).
         assertEquals(8, (pinnedHeader.top - saved.bottom).toDp(), "entry row -> section header gap")
         assertEquals(44, saved.height.toDp(), "entry row height")
         assertEquals(44, firstChannel.height.toDp(), "channel row height")
-        // Web: the rows' `my-px` margins collapse, so rows stand 1px apart (RaftSidebarItem).
-        assertEquals(1, (secondChannel.top - firstChannel.bottom).toDp(), "inter-row gap")
+        // Web: raft-ui 0.49 list cells (raft-design#815): the list's `gap-0.5` stands rows 2px
+        // apart (RaftSidebarItem keeps 1dp above and below).
+        assertEquals(2, (secondChannel.top - firstChannel.bottom).toDp(), "inter-row gap")
     }
 
     private fun settle() {
