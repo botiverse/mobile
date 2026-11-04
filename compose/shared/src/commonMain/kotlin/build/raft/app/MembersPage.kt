@@ -228,6 +228,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
@@ -298,7 +299,6 @@ import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.isSpecified
-import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftDescriptionValue
 import build.raft.designsystem.components.RaftGlyph
@@ -8593,6 +8593,45 @@ private fun MembersHumanGlyph(name: RaftLucideIconName, size: Dp) {
 }
 
 /**
+ * Web KeyValueRow: the label (`text-footnote font-medium text-foreground-hint`) with an optional
+ * [accessory] 8dp after it (`mb-1 flex items-center gap-2`), then [content] in foreground ink.
+ */
+@Composable
+private fun MembersHumanKeyValue(
+    term: String,
+    accessory: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    Column(Modifier.semantics(mergeDescendants = true) {}) {
+        Row(
+            modifier = Modifier.padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RaftText(
+                text = term,
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                color = RaftTheme.colors.foregroundHint
+            )
+            accessory?.invoke()
+        }
+        CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foreground) {
+            content()
+        }
+    }
+}
+
+/** CSS `-my-1`: the 32dp icon button takes 8dp less height in its row, centred on it. */
+private fun Modifier.membersInlineActionOverhang(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val overhang = 4.dp.roundToPx()
+        layout(placeable.width, (placeable.height - overhang * 2).coerceAtLeast(0)) {
+            placeable.place(0, -overhang)
+        }
+    }
+
+/**
  * Web HumanDetailPanel `INLINE_ICON_ACTION_CLASS`: the ghost `icon-md` button's 18dp Lucide glyph
  * in `text-foreground-hint` (HelpCircle beside Role, Pencil to edit it).
  */
@@ -8754,14 +8793,16 @@ private fun MembersHumanInfoSection(
     val roleHelpLabel = stringResource(Res.string.member_title_human_roles)
     val editRoleLabel = stringResource(Res.string.member_action_edit_role)
     MembersHumanSection(title = stringResource(Res.string.member_section_info)) {
-        RaftDescriptionList {
-            Item(
+        // Web HumanDetailPanel: `stack-y-3` of KeyValueRows (label `mb-1`, then the value), not a
+        // raft-ui DescriptionList: no 28dp value rows, and the inline icon buttons are `-my-1`.
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MembersHumanKeyValue(
                 term = if (departure != null) {
                     stringResource(Res.string.member_label_status)
                 } else {
                     stringResource(Res.string.member_label_role)
                 },
-                termAccessory = if (departure != null) {
+                accessory = if (departure != null) {
                     null
                 } else {
                     {
@@ -8769,7 +8810,8 @@ private fun MembersHumanInfoSection(
                             RaftIconButton(
                                 onClick = { roleHelpOpen = true },
                                 tooltip = roleHelpLabel,
-                                variant = RaftButtonVariant.Ghost
+                                variant = RaftButtonVariant.Ghost,
+                                modifier = Modifier.membersInlineActionOverhang()
                             ) {
                                 MembersHumanInlineActionGlyph(RaftLucideIconName.CircleQuestionMark)
                             }
@@ -8782,7 +8824,9 @@ private fun MembersHumanInfoSection(
                                         editingRole = true
                                     },
                                     tooltip = editRoleLabel,
-                                    variant = RaftButtonVariant.Ghost
+                                    variant = RaftButtonVariant.Ghost,
+                                    // `ml-1`: 12dp from the help button, as on the web.
+                                    modifier = Modifier.padding(start = 4.dp).membersInlineActionOverhang()
                                 ) {
                                     MembersHumanInlineActionGlyph(RaftLucideIconName.Pencil)
                                 }
@@ -8877,12 +8921,12 @@ private fun MembersHumanInfoSection(
                 }
             }
             member.email?.takeIf { it.isNotBlank() }?.let { email ->
-                Item(term = stringResource(Res.string.member_label_email)) {
+                MembersHumanKeyValue(term = stringResource(Res.string.member_label_email)) {
                     RaftDescriptionValue(email)
                 }
             }
             joined?.takeIf { it.isNotBlank() }?.let { joinedText ->
-                Item(term = stringResource(Res.string.member_label_joined)) {
+                MembersHumanKeyValue(term = stringResource(Res.string.member_label_joined)) {
                     RaftDescriptionValue(joinedText, mono = true)
                 }
             }
