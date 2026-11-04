@@ -13,6 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+/**
+ * Legacy: new code uses the design system's `RaftSwitch` (pass `onCheckedChange = null` when
+ * the row handles the tap). Left only for the callers in ThreadPage.kt and
+ * SettingsNotificationsPage.kt, which open PRs are changing; delete this file once they move.
+ */
 @Composable
 internal fun RaftSwitchButton(
     checked: Boolean,

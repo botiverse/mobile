@@ -19,20 +19,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Unified brutal-style checkbox used by `SharedCreateAgentDialog` (Fast mode),
- * `ThreadComposerPage` (As Task toggle), and any other checkbox surface.
- *
- * Visual contract:
- * - Box size [size] (default 16dp), 2dp black border, white fill when unchecked,
- *   black fill with white `Check` lucide icon when checked.
- * - Clicking the box toggles via [onCheckedChange] when [enabled].
- * - Disabled state: 2dp border, lighter background, no fill change on click.
- *
- * Mirrors the `ComposerAsTaskToggle` pattern that previously lived as a
- * private Composable in `ThreadComposerPage.kt`. The previous yellow-fill /
- * ✓-unicode variant in `SharedCreateAgentDialog.kt` was the only consumer
- * using a different visual style — we standardize on the black-fill / Check
- * icon style here so every checkbox in the app shares one look.
+ * Legacy: new code uses the design system's `RaftCheckbox`, or `RaftCheckboxIndicator`
+ * when a parent row handles the tap. Left only for the Original image toggle in
+ * RaftFilePreview.kt, which an open PR is changing; delete this file once it moves.
  */
 @Composable
 internal fun RaftAppCheckbox(

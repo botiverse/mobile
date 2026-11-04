@@ -27,7 +27,7 @@ import build.raft.designsystem.components.RaftSaveStatusDefaults
 import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftSwitchButton
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
@@ -486,7 +486,7 @@ private fun SharedSettingsRow(
                 RaftLucideIcon(RaftLucideIconName.ArrowUpRight, modifier = Modifier.size(16.dp), color = RaftColor.TextMutedGrayArgb)
             }
             row.toggleValue?.let { enabled ->
-                RaftSwitchButton(checked = enabled, enabled = row.enabled)
+                RaftSwitch(checked = enabled, onCheckedChange = null, enabled = row.enabled)
             }
         }
     }

@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
-import build.raft.app.components.RaftSwitchButton
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
@@ -271,7 +271,7 @@ private fun SettingsMultiShellHostCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -327,7 +327,7 @@ private fun SettingsDesktopModeCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_DESKTOP_MODE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -386,7 +386,7 @@ private fun SettingsServerDrawerCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -431,7 +431,7 @@ private fun SettingsHomeServerAvatarCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HOME_SERVER_AVATAR && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -477,7 +477,7 @@ private fun SettingsThreadReverseLayoutCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -640,8 +640,9 @@ private fun SettingsCompactMessagesCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -689,8 +690,9 @@ private fun SettingsLongMessageCollapseCard(
                     color = RaftColor.TextMutedGray
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -743,8 +745,9 @@ private fun SettingsNewMessageMenuCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -804,8 +807,9 @@ private fun SettingsConversationForwardGestureCard(
                     )
                 }
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -860,8 +864,9 @@ private fun SettingsActivityTaskStatusBadgesCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }
@@ -919,8 +924,9 @@ private fun SettingsComposerSendKeyCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftSwitchButton(
+            RaftSwitch(
                 checked = preference.enabled,
+                onCheckedChange = null,
                 enabled = preference.available && !busy
             )
         }

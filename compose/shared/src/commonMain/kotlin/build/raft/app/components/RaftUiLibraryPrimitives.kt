@@ -208,10 +208,9 @@ internal fun RaftUiCheckboxLabelRow(
     label: String,
     checked: Boolean,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    size: Dp = 16.dp
+    enabled: Boolean = true
 ) {
-    RaftCheckboxLabelRow(label = label, checked = checked, modifier = modifier, enabled = enabled, size = size)
+    RaftCheckboxLabelRow(label = label, checked = checked, modifier = modifier, enabled = enabled)
 }
 
 @Composable

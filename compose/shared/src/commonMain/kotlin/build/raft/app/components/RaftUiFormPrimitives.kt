@@ -8,6 +8,7 @@ import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import build.raft.app.TextField
 import build.raft.app.withRaftFontWeight
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -175,15 +176,14 @@ internal fun RaftCheckboxLabelRow(
     label: String,
     checked: Boolean,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    size: Dp = 16.dp
+    enabled: Boolean = true
 ) {
     Row(
         modifier = modifier.widthIn(min = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftAppCheckbox(checked = checked, onCheckedChange = {}, enabled = enabled, size = size)
+        RaftCheckboxIndicator(checked = checked, enabled = enabled)
         Text(
             text = label,
             style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),

@@ -30,7 +30,7 @@ import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftSlugInput
-import build.raft.app.components.RaftSwitchButton
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ServerPublicExposedChannel
@@ -810,7 +810,7 @@ private fun SettingsPublicAccessSwitchRow(
                 Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
                 SettingsFormDetailText(detail)
             }
-            RaftSwitchButton(checked = checked, enabled = enabled)
+            RaftSwitch(checked = checked, onCheckedChange = null, enabled = enabled)
         }
     }
 }
