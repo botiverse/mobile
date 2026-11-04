@@ -24,6 +24,9 @@ import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -184,6 +187,25 @@ internal class SharedForegroundBannerStore(
     fun visibleRouteIdentity(): ThreadRouteIdentity? = synchronized(lock) { visibleRoute }
 }
 
+/**
+ * The page's banner as its host would show it, handed to [content] ([LocalRaftForegroundBannerHandoff])
+ * for a window opened over the page that must show it on top instead (the assistant's panel
+ * sheet: the page's own banner would sit under its scrim). While [coveredByWindow] is true the page
+ * leaves its banner to that window. Read through the local, not captured: ThreadPage's content
+ * lambda is at the JVM's limit for captured values.
+ */
+internal class RaftForegroundBannerHandoff(
+    val banner: RaftForegroundMessageBanner?,
+    val topSafeArea: Dp,
+    val serverMembersStore: SharedServerMembersStore?,
+    val currentServerId: ServerId?,
+    val onClick: (RaftForegroundMessageBanner) -> Unit,
+    val onDismiss: (RaftForegroundMessageBanner) -> Unit,
+    val coveredByWindow: MutableState<Boolean>,
+)
+
+internal val LocalRaftForegroundBannerHandoff = compositionLocalOf<RaftForegroundBannerHandoff?> { null }
+
 @Composable
 internal fun RaftForegroundBannerHost(
     banner: RaftForegroundMessageBanner?,
@@ -193,6 +215,7 @@ internal fun RaftForegroundBannerHost(
     currentServerIdOverride: ServerId? = null,
     onBannerClick: (RaftForegroundMessageBanner) -> Unit,
     onBannerDismiss: (RaftForegroundMessageBanner) -> Unit = {},
+    handoff: RaftForegroundBannerHandoff? = null,
     content: @Composable () -> Unit
 ) {
     val currentSessionFlow =
@@ -202,7 +225,11 @@ internal fun RaftForegroundBannerHost(
     val currentSession by currentSessionFlow.collectAsState(null)
     val currentServerId = currentServerIdOverride ?: currentSession?.currentServerId
     Box(modifier = Modifier.fillMaxSize()) {
-        content()
+        if (handoff == null) {
+            content()
+        } else {
+            CompositionLocalProvider(LocalRaftForegroundBannerHandoff provides handoff, content = content)
+        }
         if (banner != null) {
             RaftForegroundMessageBannerView(
                 banner = banner,

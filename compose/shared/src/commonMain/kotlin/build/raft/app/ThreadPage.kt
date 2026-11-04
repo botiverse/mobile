@@ -12443,7 +12443,7 @@ private fun SharedThreadRouteContentContent(
 
     // Whether this page's assistant panel is open (set from the content, where the otter lives):
     // the page's own banner then gives way to the panel window's (threadForegroundBannerOnPage).
-    var assistantPanelOpenOnPage by remember { mutableStateOf(false) }
+    val assistantPanelOpenOnPage = remember { mutableStateOf(false) }
     val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
     val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
     val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
@@ -12472,7 +12472,7 @@ private fun SharedThreadRouteContentContent(
             foregroundMessageBanner?.takeIf {
                 threadForegroundBannerOnPage(
                     inAssistantPanel = LocalThreadAssistantPanelEmbed.current != null,
-                    assistantPanelOpen = assistantPanelOpenOnPage,
+                    assistantPanelOpen = assistantPanelOpenOnPage.value,
                 )
             },
         topSafeArea = foregroundBannerTopSafeArea,
@@ -12480,7 +12480,17 @@ private fun SharedThreadRouteContentContent(
         currentServerStore = foregroundBannerCurrentServerStore,
         currentServerIdOverride = foregroundBannerServerId,
         onBannerClick = onForegroundBannerClick,
-        onBannerDismiss = onForegroundBannerDismiss
+        onBannerDismiss = onForegroundBannerDismiss,
+        handoff =
+            RaftForegroundBannerHandoff(
+                banner = foregroundMessageBanner,
+                topSafeArea = foregroundBannerTopSafeArea,
+                serverMembersStore = serverMembersStore,
+                currentServerId = foregroundBannerServerId,
+                onClick = onForegroundBannerClick,
+                onDismiss = onForegroundBannerDismiss,
+                coveredByWindow = assistantPanelOpenOnPage,
+            ),
     ) {
         // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
         // diagnostics OFF the census session Local is NOT part of the vararg
@@ -12537,8 +12547,10 @@ private fun SharedThreadRouteContentContent(
                 replyThread = assistantOtterReplyThread,
                 pageActive = active,
             )
+        // Read through the local, not captured (this lambda is at the JVM's captured-value limit).
+        val bannerHandoff = LocalRaftForegroundBannerHandoff.current
         val assistantPanelOpen = assistantOtter?.panelOpen == true
-        SideEffect { assistantPanelOpenOnPage = assistantPanelOpen }
+        SideEffect { bannerHandoff?.coveredByWindow?.value = assistantPanelOpen }
         // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
         // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
         assistantOtter?.let { otter ->
@@ -12547,14 +12559,15 @@ private fun SharedThreadRouteContentContent(
                 // The page's banner goes over the panel while it is open (threadForegroundBannerOnPage);
                 // once it is closing, the page shows it again.
                 windowOverlay = {
-                    foregroundMessageBanner?.takeIf { otter.panelOpen }?.let { banner ->
+                    val handoff = bannerHandoff
+                    handoff?.banner?.takeIf { otter.panelOpen }?.let { banner ->
                         RaftForegroundMessageBannerView(
                             banner = banner,
-                            topSafeArea = foregroundBannerTopSafeArea,
-                            serverMembersStore = serverMembersStore,
-                            currentServerId = foregroundBannerServerId,
-                            onClick = { onForegroundBannerClick(banner) },
-                            onDismiss = { onForegroundBannerDismiss(banner) },
+                            topSafeArea = handoff.topSafeArea,
+                            serverMembersStore = handoff.serverMembersStore,
+                            currentServerId = handoff.currentServerId,
+                            onClick = { handoff.onClick(banner) },
+                            onDismiss = { handoff.onDismiss(banner) },
                         )
                     }
                 },
