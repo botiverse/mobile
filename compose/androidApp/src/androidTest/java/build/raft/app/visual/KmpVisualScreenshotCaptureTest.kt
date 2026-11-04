@@ -6616,9 +6616,9 @@ class KmpVisualScreenshotCaptureTest {
     companion object {
         private const val PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS = 10_000L
         private const val ACCESSIBILITY_TREE_MAX_DEPTH = 60
-        // A 4dp x 4dp solid patch at the pinned 480dpi (3x). Measured on
-        // components.ui.status-dot.states: the smallest dot fill is 196 px and
-        // the largest anti-aliased edge blend 63 px.
+        // A 4dp x 4dp solid patch at the pinned 480dpi (3x). Measured on the
+        // status dots of the former components.ui.status-dot.states case: the
+        // smallest dot fill is 196 px and the largest anti-aliased edge blend 63 px.
         private const val SOLID_CONTENT_COLOR_MIN_PIXELS = 144
         private const val UI_AUTOMATION_CAPTURE_METHOD =
             "ui-automation-take-screenshot-viewport-crop"

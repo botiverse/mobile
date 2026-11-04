@@ -864,6 +864,15 @@ else
 fi
 rm -f "$RAW_LOG_FILE" "$LOG_SCOPE_SUMMARY"
 
+# The scoped log above keeps only the harness tags, so an app crash ("Process crashed.") left no
+# stack anywhere (VT run 41791804431 shard 2). Keep the crash buffer beside it, and print it.
+CRASH_LOG_FILE="$OUTPUT_DIR/crash-shard-${SHARD_INDEX}.txt"
+"$ADB_BIN" logcat -d -b crash -v epoch > "$CRASH_LOG_FILE" 2>/dev/null || : > "$CRASH_LOG_FILE"
+if grep -q '[^[:space:]]' "$CRASH_LOG_FILE" && grep -vq '^--------- beginning of ' "$CRASH_LOG_FILE"; then
+  echo "android visual capture: crash buffer (shard ${SHARD_INDEX}):"
+  sed 's/^/  /' "$CRASH_LOG_FILE"
+fi
+
 grep -oE 'CASE_START [A-Za-z0-9_]+' "$LOG_FILE" 2>/dev/null | awk '{print $NF}' | sort -u > "$STARTED_FILE" || true
 grep -oE 'CASE_END [A-Za-z0-9_]+' "$LOG_FILE" 2>/dev/null | awk '{print $NF}' | sort -u > "$ENDED_FILE" || true
 HUNG="$(comm -23 "$STARTED_FILE" "$ENDED_FILE" | tr '\n' ' ')"
