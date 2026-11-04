@@ -249,9 +249,47 @@ async function findArtifactMessage(token, server) {
   return fallback;
 }
 
+// QA test data, only when the QA account sees no Artifact linked from a message (coordinator OK,
+// 11-04): in a `qa-*` channel only, an EXISTING HTML attachment there is saved as an Artifact
+// owned by the QA account (POST artifacts/save-attachment; saving it again returns the same
+// one), and one message linking it is posted in that same channel. Nothing else is written;
+// the ids are printed so the data can be found and deleted.
+const QA_CHANNEL = /^qa-/;
+const isHtml = (a) => /\.html?$/i.test(a?.filename ?? a?.name ?? "") || /^text\/html\b/i.test(a?.mimeType ?? a?.contentType ?? "");
+async function seedArtifactMessage(token, server, webBase) {
+  const channels = listOf((await api("GET", "channels", { token, serverId: server.id })).json, "channels")
+    .filter((c) => QA_CHANNEL.test(c?.name ?? ""))
+    .sort((a, b) => (b.name === "qa-test-create-58291") - (a.name === "qa-test-create-58291"));
+  console.log(`home-shot: artifact seed: ${channels.length} qa-* channels`);
+  for (const channel of channels) {
+    const history = await api("GET", `messages/channel/${encodeURIComponent(channel.id)}?limit=100`, { token, serverId: server.id });
+    const attachment = listOf(history.json, "messages").flatMap((m) => (Array.isArray(m?.attachments) ? m.attachments : [])).find(isHtml);
+    if (!attachment?.id) continue;
+    const saved = await api("POST", "artifacts/save-attachment", { token, serverId: server.id, body: { attachmentId: attachment.id } });
+    if (!saved.ok) {
+      console.log(`home-shot: artifact seed: save-attachment in #${channel.name} HTTP ${saved.status} code=${saved.json?.code ?? "?"}`);
+      continue;
+    }
+    const artifact = saved.json?.artifact ?? {};
+    const card = artifact.card ?? artifact;
+    const id = card.id ?? artifact.id;
+    const title = card.title ?? artifact.title ?? attachment.filename ?? "";
+    if (!id) die("artifact seed: save-attachment answered without an id");
+    const url = `${webBase}/artifacts/${id}`;
+    const posted = await api("POST", "messages", { token, serverId: server.id, body: { channelId: channel.id, content: url } });
+    if (!posted.ok) die(`artifact seed: posting the link in #${channel.name} HTTP ${posted.status} code=${posted.json?.code ?? "?"}`);
+    const message = posted.json?.message ?? posted.json;
+    console.log(`home-shot: artifact seed: QA DATA artifact=${id} (created=${saved.json?.created}) from attachment ${attachment.id} in #${channel.name} (${channel.id}); link message=${message?.id}`);
+    fs.writeFileSync(path.join(out, "qa-seed.json"), JSON.stringify({ server: server.slug, channel: channel.name, channelId: channel.id, artifactId: id, attachmentId: attachment.id, messageId: message?.id }, null, 2));
+    return { channel, message, title };
+  }
+  return null;
+}
+
 async function artifactDesktopShots(token, servers, scheme) {
   const server = servers.find((s) => s?.name === "OranixSlockTest") ?? servers[0];
-  const found = server ? await findArtifactMessage(token, server) : null;
+  let found = server ? await findArtifactMessage(token, server) : null;
+  if (!found && server) found = await seedArtifactMessage(token, server, process.env.QA_WEB_BASE || "https://app.raft.build");
   if (!found) {
     writeJson("artifact-target", { ok: false });
     die("artifact: no message linking an Artifact on the QA server");
@@ -270,6 +308,24 @@ async function artifactDesktopShots(token, servers, scheme) {
     const file = screenshot(shot);
     writeJson(`${ready}-shot`, { ok: Boolean(file) });
     console.log(`home-shot: saved ${file}`);
+  }
+  // Activity -> the Artifact's row (#4316): the test taps it if Activity lists the Artifact.
+  const activity = await waitForFile("activity-open", 180_000, "activity");
+  const shot = screenshot("activity-artifact");
+  writeJson("activity-open-shot", { ok: Boolean(shot) });
+  console.log(`home-shot: activity row: ${JSON.stringify(activity)}`);
+  try {
+    const trace = execFileSync(
+      "xcrun",
+      ["simctl", "spawn", udid, "log", "show", "--last", "20m", "--style", "compact", "--predicate", 'eventMessage CONTAINS "artifact_open"'],
+      { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+    );
+    const lines = trace.split("\n").filter((l) => l.includes("artifact_open"));
+    fs.writeFileSync(path.join(out, "artifact-open-trace.txt"), lines.join("\n"));
+    console.log(`home-shot: artifact_open trace (${lines.length} lines)`);
+    for (const line of lines.slice(-40)) console.log(`  ${line.slice(0, 300)}`);
+  } catch (err) {
+    console.log(`home-shot: artifact_open trace unavailable: ${err?.message ?? err}`);
   }
 }
 

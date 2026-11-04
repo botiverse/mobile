@@ -636,6 +636,34 @@ final class SignedInHomeShotTests: XCTestCase {
         attach(app, name: "artifact-desktop-zoomed")
         write("artifact-zoomed", ["ok": true, "webView": web.exists])
         _ = waitFor("artifact-zoomed-shot", timeout: 60)
+
+        // Activity -> the Artifact's row (#4316), if Activity lists it: back to the tab bar first.
+        let tabBar = app.tabBars.firstMatch
+        for _ in 0..<4 {
+            if tabBar.exists && tabBar.frame.height > 0 && tabBar.isHittable { break }
+            let back = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Back", "Navigate up")).firstMatch
+            if back.exists { back.tap() } else { tap(app, x: 32, y: 100) }
+            Thread.sleep(forTimeInterval: 2)
+        }
+        let activityTab = tabBar.buttons["Activity"]
+        guard activityTab.exists else {
+            write("activity-open", ["ok": false, "error": "no Activity tab"])
+            return
+        }
+        activityTab.tap()
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+        guard row.waitForExistence(timeout: 20) else {
+            attach(app, name: "activity")
+            write("activity-open", ["ok": false, "error": "Activity lists no row for the Artifact"])
+            _ = waitFor("activity-open-shot", timeout: 60)
+            return
+        }
+        tap(app, x: row.frame.midX, y: row.frame.midY)
+        let opened = app.webViews.firstMatch.waitForExistence(timeout: 30)
+        Thread.sleep(forTimeInterval: 8)
+        attach(app, name: "activity-artifact")
+        write("activity-open", ["ok": true, "viewerWebView": opened])
+        _ = waitFor("activity-open-shot", timeout: 60)
     }
 
     // One system alert, if any: "Open in “Raft”?" (the callback) -> Open; the web sign-in
