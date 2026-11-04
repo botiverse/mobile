@@ -2133,10 +2133,10 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
             id = "activity-agent-detail-command",
             type = "tool_start",
             title = "Running command",
-            body = "node scripts/slock-visual-testing.mjs diff --case screens.members.agent-detail.activity",
+            body = "pnpm --filter @botiverse/raft-visual-testing exec slock-visual diff --case screens.members.agent-detail.activity",
             timestamp = "2026-06-19T12:30:00Z",
             toolName = "shell",
-            toolInput = "node scripts/slock-visual-testing.mjs diff --case screens.members.agent-detail.activity"
+            toolInput = "pnpm --filter @botiverse/raft-visual-testing exec slock-visual diff --case screens.members.agent-detail.activity"
         ),
         AgentActivityEntry(
             id = "activity-agent-detail-report",
@@ -12618,44 +12618,40 @@ private fun MembersAgentActivityTab(
             overview.onIntent(AgentActivityOverviewIntent.CatchUp)
         }
     }
-    // raft-ui agent page Activity tab: the activity log as a Timeline under a section head
-    // with Copy Info.
+    // Web AgentActivityLog: without the Overview flag the tab is the raw log alone, no toolbar
+    // (Copy info lives in the profile's Actions and the runtime-error notice, as on the web);
+    // behind it, the Overview / Raw Log toolbar heads the tab.
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(RaftTheme.colors.layerCanvas),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = MembersPageInset,
-                    vertical = RaftAppSpacing.Sm
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-        ) {
-            if (overview != null) {
+        if (overview != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = MembersPageInset,
+                        vertical = RaftAppSpacing.Sm
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+            ) {
                 // Web AgentActivityLog behind activity_overview_web_v0: Overview / Raw Log.
                 MembersAgentActivityViewSwitch(view = activityView, onViewChange = { activityView = it })
                 Spacer(Modifier.weight(1f))
-            } else {
-                MembersDetailSectionTitle(
-                    stringResource(Res.string.member_section_activity_diagnostics),
-                    modifier = Modifier.weight(1f)
+                RaftButton(
+                    text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
+                    onClick = onCopyDiagnostics,
+                    enabled = diagnosticActionState?.inProgress != true,
+                    leadingIcon = {
+                        RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
+                    }
                 )
             }
-            RaftButton(
-                text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
-                onClick = onCopyDiagnostics,
-                enabled = diagnosticActionState?.inProgress != true,
-                leadingIcon = {
-                    RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
-                }
-            )
+            MembersDetailSectionDivider()
         }
-        MembersDetailSectionDivider()
         if (overview != null && activityView == MembersAgentActivityView.Overview) {
             val summary = detail?.summary
             MembersAgentActivityOverview(
@@ -12756,7 +12752,8 @@ private fun MembersAgentActivityTab(
                         scrollUp = NestedScrollMode.SELF_FIRST,
                         scrollDown = NestedScrollMode.SELF_FIRST
                     ),
-                contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = RaftAppSpacing.Md),
+                // Web: the log's `py-3` plus each entry's `py-1.5` above the first and under the last.
+                contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = MembersActivityLogPaddingY),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
@@ -12766,6 +12763,8 @@ private fun MembersAgentActivityTab(
         }
     }
 }
+
+private val MembersActivityLogPaddingY = 18.dp
 
 @Composable
 private fun MembersAgentActivityLoadNotice(
@@ -12809,8 +12808,15 @@ private fun MembersAgentActivityRow(
         }
     val colors = RaftTheme.colors
     val detailStyle = RaftTheme.typography.monoMeta
+    val titleText = memoryLimit?.title ?: activity.title
+    // Web StatusEntry: a status row is one wrapping line, the status in the title's ink and its
+    // detail after it (`ml-1.5 text-foreground-hint`) in the same type. A detail carrying a
+    // channel / thread ref keeps the ref-rendering body under the title.
+    val inlineStatusDetail =
+        displayBody.takeIf { activity.type == "status" && !longBody && it.isNotBlank() && !it.membersActivityMayHoldRef() }
     // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
-    // Space Mono, the time on the right, a `subagent` tag on a subagent's step.
+    // Space Mono, the time on the right, a `subagent` tag on a subagent's step. The title is
+    // web LOG_TITLE_CLASS: `text-foreground-muted wrap-anywhere`, wrapping instead of clipping.
     RaftTimelineItem(
         color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
         last = last,
@@ -12820,21 +12826,32 @@ private fun MembersAgentActivityRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftText(
-                    text = memoryLimit?.title ?: activity.title,
-                    style = raftTimelineMonoTitleStyle(),
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
+                if (inlineStatusDetail != null) {
+                    RaftText(
+                        text = buildAnnotatedString {
+                            append(titleText)
+                            append(' ')
+                            withStyle(SpanStyle(color = colors.foregroundHint)) { append(inlineStatusDetail) }
+                        },
+                        style = raftTimelineMonoTitleStyle(),
+                        color = colors.foregroundMuted,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                } else {
+                    RaftText(
+                        text = titleText,
+                        style = raftTimelineMonoTitleStyle(),
+                        color = colors.foregroundMuted,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                }
                 activity.membersActivitySubagentBadgeLabel()?.let { subagentLabel ->
                     RaftBadge(text = subagentLabel, appearance = RaftBadgeAppearance.Outline)
                 }
             }
         }
     ) {
-        if (displayBody.isNotBlank()) {
+        if (displayBody.isNotBlank() && inlineStatusDetail == null) {
             // #64 owner override (artin 06-23 17:41): '改成用 RaftMarkdownBody
             // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
             // the activity body can render task refs / issue refs (e.g. `#225`,
@@ -12847,11 +12864,16 @@ private fun MembersAgentActivityRow(
                     onOpenUrl = onOpenUrl,
                 )
             } else {
+                // Web: a detail clamps only when it is long (the "Show more" toggle below).
                 RaftText(
                     text = displayBody,
                     style = detailStyle,
                     color = colors.foregroundHint,
-                    maxLines = if (expanded) 12 else 3,
+                    maxLines = when {
+                        expanded -> 12
+                        longBody -> 3
+                        else -> Int.MAX_VALUE
+                    },
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -14359,11 +14381,16 @@ private fun String.membersActivityAccentColor(): Color =
         "tool_start", "tool", "thinking", "working", "busy", "subagent_spawned", "subagent_started" ->
             RaftUiPalette.presenceBusy
         "running", "active", "online", "compaction_finished", "subagent_completed" -> RaftUiPalette.presenceOnline
-        "text", "message", "output" -> RaftUiPalette.info
+        // Web AgentActivityLog: Output and Raft actions are `online`, a compaction start `busy`.
+        "text", "message", "output", "slock_action" -> RaftUiPalette.presenceOnline
         "offline", "disconnected", "subagent_suspended" -> RaftUiPalette.presenceOffline
-        "system", "slock_action", "compaction_started" -> RaftUiPalette.presenceError
+        "compaction_started" -> RaftUiPalette.presenceBusy
+        "system" -> RaftUiPalette.presenceError
         else -> RaftUiPalette.presenceBusy
     }
+
+/** A `#channel`, `#channel:thread` or `dm:@peer` ref the web RefText would render. */
+private fun String.membersActivityMayHoldRef(): Boolean = contains('#') || contains("dm:@")
 
 private fun String.membersActivityStatusKey(): String =
     trim().lowercase().replace('-', '_').replace('.', '_')
