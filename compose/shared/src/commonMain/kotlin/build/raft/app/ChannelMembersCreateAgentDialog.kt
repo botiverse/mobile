@@ -18,6 +18,8 @@ internal fun ChannelMembersCreateAgentDialog(
     channelId: ChannelId,
     initialName: String,
     mode: MembersCreateAgentMode = MembersCreateAgentMode.Managed,
+    /** The channel the new agent joins, said in the dialog (web `autoJoinChannelName`). */
+    channelName: String? = null,
     authority: AuthenticatedRouteAuthorityGateway,
     computersStore: SharedComputersStore,
     formStore: SharedCreateAgentFormStore,
@@ -75,8 +77,7 @@ internal fun ChannelMembersCreateAgentDialog(
                     agentId = result.data.id
                     createdId = agentId
                 }
-                val joined = membersStore.addChannelMembersBatch(owner,
-                    AddChannelMembersBatchRequest(channelId, emptyList(), listOf(MemberId(agentId))))
+                val joined = membersStore.addChannelMembersBatch(owner, createdAgentJoinRequest(channelId, agentId))
                 if (!authority.isCurrent(receipt)) return@launch
                 if (joined is DataResult.Content) {
                     // task #5 (Hands 906abab9): ordering is the contract — see
@@ -113,6 +114,7 @@ internal fun ChannelMembersCreateAgentDialog(
     } else {
         SharedCreateAgentDialog(
             external = mode == MembersCreateAgentMode.External,
+            autoJoinChannelName = channelName,
             submitting = submitting, errorMessage = error, initialName = initialName,
             machines = if (mode.requiresComputerSelection()) picker.machines else emptyList(),
             machinesLoading = mode.requiresComputerSelection() && picker.initialLoadInFlight,
@@ -125,6 +127,13 @@ internal fun ChannelMembersCreateAgentDialog(
         )
     }
 }
+
+/**
+ * The created agent's join (web `joinCreatedAgent`): the same one-call batch as "Add Selected",
+ * `{ userIds: [], agentIds: [id] }`, so a failed join is retried the same way.
+ */
+internal fun createdAgentJoinRequest(channelId: ChannelId, agentId: String): AddChannelMembersBatchRequest =
+    AddChannelMembersBatchRequest(channelId, emptyList(), listOf(MemberId(agentId)))
 
 /**
  * Ordered steps to perform once the created agent has been joined into the channel.

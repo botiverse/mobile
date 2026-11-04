@@ -5244,8 +5244,9 @@ private fun ThreadMembersPageScreen() {
         canCreateAgents = false
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
-            canCreateAgents = session?.servers?.firstOrNull { it.id == routeOwner.serverId }
-                ?.toServerSummary()?.permissions?.canManageSettings == true
+            canCreateAgents = threadAddMemberCanCreateAgents(
+                session?.servers?.firstOrNull { it.id == routeOwner.serverId }?.toServerSummary()?.permissions
+            )
         } else createAgentName = null
     }
     var addDialogVisible by remember { mutableStateOf(false) }
@@ -5522,6 +5523,7 @@ private fun ThreadMembersPageScreen() {
         createAgentName?.let { initialName ->
             ChannelMembersCreateAgentDialog(
                 owner = routeOwner, channelId = route.channelId, initialName = initialName, mode = createAgentMode,
+                channelName = channelName,
                 authority = authorityGateway, computersStore = sharedStores.computersStore(storeScope),
                 formStore = sharedStores.createAgentFormStore(storeScope), membersStore = serverMembersStore,
                 onDismiss = { createAgentName = null; refreshMembers() },

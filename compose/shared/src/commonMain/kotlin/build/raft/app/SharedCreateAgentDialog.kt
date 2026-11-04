@@ -78,6 +78,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.designsystem.tokens.RaftRadius
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -381,6 +383,11 @@ internal fun SharedCreateAgentDialog(
     maxAgents: Int = -1,
     limitPlanLabel: String? = null,
     external: Boolean = false,
+    /**
+     * Add Member's channel: the dialog keeps the entry's promise that the new agent joins it
+     * (web `autoJoinChannelName`, `create-agent-channel-context`); null elsewhere.
+     */
+    autoJoinChannelName: String? = null,
     runtimeFormV2Override: RuntimeFormV2Access? = null,
     errorFieldKeys: Set<String> = emptySet(),
     takenAgentNames: List<String> = emptyList(),
@@ -625,6 +632,11 @@ internal fun SharedCreateAgentDialog(
             // spacing stays inside the group below.
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+                autoJoinChannelName?.takeIf { it.isNotBlank() }?.let { channel ->
+                    item(key = "auto-join-channel") {
+                        CreateAgentAutoJoinChannel(channel)
+                    }
+                }
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
                         CreateAgentDraftHint(hint)
@@ -958,6 +970,25 @@ private fun PlanLimitBanner(
  * The action card's draft note above the form: web AddMembersDialog's context line (`border-l-2
  * border-line-seam pl-2.5 text-callout text-foreground-muted`), context rather than a warning.
  */
+/**
+ * Web `create-agent-channel-context`: a plain line on the info wash, not a banner (it is context,
+ * not a warning), saying the new agent joins the channel; it stays until the create is sent.
+ */
+@Composable
+internal fun CreateAgentAutoJoinChannel(channelName: String) {
+    val colors = RaftTheme.colors
+    RaftText(
+        text = stringResource(Res.string.agent_create_auto_join_channel, "#${channelName.removePrefix("#")}"),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(colors.infoSoft, RoundedCornerShape(RaftRadius.Container))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+        color = colors.foreground
+    )
+}
+
 @Composable
 private fun CreateAgentDraftHint(hint: String) {
     val colors = RaftTheme.colors

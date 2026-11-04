@@ -1947,6 +1947,7 @@
     <string name="agent_create_placeholder_select_runtime">ランタイムを選択</string>
     <string name="agent_create_title">エージェントを作成</string>
     <string name="agent_create_title_external">外部エージェントを作成</string>
+    <string name="agent_create_auto_join_channel">作成後、自動的に %1$s に参加します</string>
     <string name="agent_create_placeholder_description">汎用エージェントの場合は空欄のまま、または役割を記述してください...</string>
     <string name="agent_create_error_description_length">説明は %1$d 文字以内にしてください。</string>
     <string name="agent_create_action_create">エージェントを作成</string>
@@ -3053,7 +3054,6 @@
     <string name="thread_members_create_no_permission">ここではメンバーを追加できますが、このサーバーでエージェントを作成するにはオーナーまたは管理者の権限が必要です。権限の付与を依頼するか、オーナーまたは管理者にエージェントを作成してもらってから追加してください。</string>
     <string name="thread_members_created_join_failed">Agent は作成されましたが、チャンネルへの参加に失敗しました。再作成せずに参加を再試行できます。</string>
     <string name="thread_members_create_named_agent">エージェント「%1$s」を作成</string>
-    <string name="thread_members_create_named_external_agent">外部エージェント「%1$s」を作成</string>
     <string name="app_update_download_paused">ダウンロード一時停止中 — 再開を待っています</string>
     <string name="app_update_download_failed">ダウンロードに失敗しました。再試行してください。</string>
     <string name="thread_audio_playback_position">再生位置</string>
