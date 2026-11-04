@@ -18176,8 +18176,18 @@ internal fun SettingsRouteVisualScreen() {
         )
     }
 
-    // The web case's frozen clock: the Appearance preview message is sent at 20:30.
-    CompositionLocalProvider(LocalSettingsAppearancePreviewTimeLabel provides "20:30") {
+    // The web case's frozen clock: the Appearance preview message is sent at 20:30. Its device
+    // switches are a fresh browser's (nothing saved, no app-only rows), not this device's.
+    CompositionLocalProvider(
+        LocalSettingsAppearancePreviewTimeLabel provides "20:30",
+        LocalSettingsAppearanceVisualSwitches provides
+            SettingsAppearanceVisualSwitches(
+                showLiveAgentActivity = true,
+                showAgentModelName = true,
+                hideEmptySidebarSections = false,
+                showAppOnlyRows = false,
+            ),
+    ) {
         if (route.destination == SettingsDestinationHome) {
             // On a phone Settings is a page pushed from the server panel (raft-design #712), so it
             // has Back, as the web's phone Settings does.
