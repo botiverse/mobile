@@ -12826,11 +12826,17 @@ private fun MembersAgentActivityRow(
                     onOpenUrl = onOpenUrl,
                 )
             } else {
+                // Web ToolStartEntry: the command breaks anywhere (`break-all`); a detail clamps only
+                // when it is long (the "Show more" toggle below).
                 RaftText(
-                    text = displayBody,
+                    text = if (activity.type == "tool_start") displayBody.membersBreakAnywhere() else displayBody,
                     style = detailStyle,
                     color = colors.foregroundHint,
-                    maxLines = if (expanded) 12 else 3,
+                    maxLines = when {
+                        expanded -> 12
+                        longBody -> 3
+                        else -> Int.MAX_VALUE
+                    },
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -14344,6 +14350,15 @@ private fun String.membersActivityAccentColor(): Color =
         "compaction_started" -> RaftUiPalette.presenceBusy
         "system" -> RaftUiPalette.presenceError
         else -> RaftUiPalette.presenceBusy
+    }
+
+/** CSS `word-break: break-all`: a zero-width break opportunity between every character. */
+private fun String.membersBreakAnywhere(): String =
+    buildString(length * 2) {
+        this@membersBreakAnywhere.forEachIndexed { index, char ->
+            if (index > 0 && !char.isLowSurrogate()) append('\u200B')
+            append(char)
+        }
     }
 
 /** A `#channel`, `#channel:thread` or `dm:@peer` ref the web RefText would render. */
