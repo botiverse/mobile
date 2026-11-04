@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -31,10 +30,12 @@ import build.raft.designsystem.tokens.RaftUiPalette
  * raft-ui 0.8.0 Timeline (timeline.css), markers on the left: each item is a 9dp status
  * pixel (2dp corners, 1.5dp `sticker-ink` edge, the item's colour) centred on the title's
  * 20dp first line, strung on a 1dp `line-hairline` that stops 2dp short of each pixel;
- * 12dp from the pixel to the text and 12dp between items. The title shares its line with
- * the time (Space Mono 12, `foreground-hint`) on the right; the detail runs the full width
- * under them. There is no Timeline in :designsystem yet; this ports the one recipe the
- * agent activity log needs.
+ * 12dp from the pixel to the text and 12dp between items. Web AgentActivityLog `LOG_ITEM_CLASS`
+ * is a three-column grid (`grid-cols-[10px_minmax(0,1fr)_auto] gap-x-3`): the pixel, the
+ * title with its detail under it, and the time (Space Mono 12, `foreground-hint`) on the
+ * right of the first line. The detail stays in the middle column, so it wraps before the
+ * time's column instead of running under it. There is no Timeline in :designsystem yet; this
+ * ports the one recipe the agent activity log needs.
  */
 
 private val RaftTimelineMarker = 10.dp
@@ -49,7 +50,7 @@ internal fun raftTimelineMonoTitleStyle(): TextStyle =
 
 /**
  * One raft-ui TimelineItem. [last] hides the line to the next item and the gap under it.
- * [title] fills the first line beside [time]; [content] follows under both.
+ * [title] starts the middle column beside [time]; [content] follows under the title.
  */
 @Composable
 internal fun RaftTimelineItem(
@@ -90,24 +91,18 @@ internal fun RaftTimelineItem(
                 .padding(bottom = if (last) 0.dp else RaftTimelineGap),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(RaftTimelineGap),
-                verticalAlignment = Alignment.Top
-            ) {
-                Box(Modifier.weight(1f)) { title() }
-                if (!time.isNullOrBlank()) {
-                    RaftText(
-                        text = time,
-                        style = RaftTheme.typography.monoMeta.copy(lineHeight = 20.sp),
-                        color = RaftTheme.colors.foregroundHint,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Clip
-                    )
-                }
-            }
+            title()
             content?.invoke(this)
+        }
+        if (!time.isNullOrBlank()) {
+            RaftText(
+                text = time,
+                style = RaftTheme.typography.monoMeta.copy(lineHeight = 20.sp),
+                color = RaftTheme.colors.foregroundHint,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
+            )
         }
     }
 }
