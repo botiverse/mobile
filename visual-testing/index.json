@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-04T09:06:28.230Z",
+  "generatedAt": "2026-11-04T09:32:28.708Z",
   "latestRunId": "bf972e2b-20261104090539",
   "latest": {
     "runId": "bf972e2b-20261104090539",
     "commit": "bf972e2b-20261104090539",
     "commitSubject": "Settings: the Feedback row has the web's feedback icon (#4299)",
-    "generatedAt": "2026-11-04T09:06:28.230Z",
+    "generatedAt": "2026-11-04T09:32:28.708Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -127,7 +127,7 @@
       "runId": "bf972e2b-20261104090539",
       "commit": "bf972e2b-20261104090539",
       "commitSubject": "Settings: the Feedback row has the web's feedback icon (#4299)",
-      "generatedAt": "2026-11-04T09:06:28.230Z",
+      "generatedAt": "2026-11-04T09:32:28.708Z",
       "baseline": "react",
       "current": "android",
       "summary": {

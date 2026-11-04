@@ -1,6 +1,6 @@
 # Raft Visual Testing
 
-Generated: 2026-11-04 09:06:28 UTC
+Generated: 2026-11-04 09:32:28 UTC
 Latest run: bf972e2b-20261104090539
 Latest commit: bf972e2b-20261104090539
 Commit subject: Settings: the Feedback row has the web's feedback icon (#4299)
