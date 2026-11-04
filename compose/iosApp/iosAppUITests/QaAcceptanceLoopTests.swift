@@ -595,13 +595,21 @@ final class SignedInHomeShotTests: XCTestCase {
             fail("artifact-open", "host found no Artifact", app)
             return
         }
-        // The message's Artifact chip: its title, else the link itself.
-        let chip = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", title, "artifacts")).firstMatch
-        guard chip.waitForExistence(timeout: 60) else {
+        // The message's Artifact chip or card: a small element whose label has the title (the
+        // message text and the whole list carry it too, so not the first match). Prefer the last
+        // one above the composer.
+        _ = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+            .waitForExistence(timeout: 60)
+        Thread.sleep(forTimeInterval: 3)
+        let composerTop = app.textViews.firstMatch.exists ? app.textViews.firstMatch.frame.minY : app.frame.maxY
+        let candidates = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", title)).allElementsBoundByIndex
+            .filter { $0.frame.height > 10 && $0.frame.height < 260 && $0.frame.maxY < composerTop && $0.frame.minY > 120 }
+        guard let chip = candidates.last else {
             fail("artifact-open", "no chip for \"\(title)\" in the opened message", app)
             return
         }
+        write("artifact-chip", ["label": chip.label, "frame": [chip.frame.minX, chip.frame.minY, chip.frame.width, chip.frame.height]])
         tap(app, x: chip.frame.midX, y: chip.frame.midY)
         // The viewer's WebView, then its title bar ⋯ (tooltip "More").
         _ = app.webViews.firstMatch.waitForExistence(timeout: 60)
