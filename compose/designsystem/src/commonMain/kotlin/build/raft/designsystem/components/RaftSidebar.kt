@@ -759,7 +759,6 @@ fun RaftSidebarSectionHeader(
     ) {
         Box(Modifier.weight(1f).padding(top = 16.dp, bottom = 6.dp)) {
             Row(
-                Modifier,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

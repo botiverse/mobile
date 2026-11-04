@@ -165,12 +165,15 @@ class RaftDisplaySemanticsTest {
                 },
             )
             onNodeWithContentDescription("New Message").performClick()
-            assertEquals(1, creates)
-            assertFalse(expanded, "a tap on a control does not toggle the section")
-            // Past the title, just before the attention pixel: outside the old disclosure.
-            onNodeWithTag("header").performTouchInput { click(Offset(width - 48.dp.toPx(), height - 15.dp.toPx())) }
+            // In the control's widened touch ring, 1dp before its box.
+            onNodeWithContentDescription("New Message").performTouchInput { click(Offset(-1.dp.toPx(), centerY)) }
+            assertEquals(2, creates)
+            assertFalse(expanded, "a tap on a control or its touch ring does not toggle the section")
+            // Between the title's box and the attention pixel (8dp gap, 271-279dp of 320):
+            // outside the old disclosure, inside the header.
+            onNodeWithTag("header").performTouchInput { click(Offset(width - 45.dp.toPx(), height - 15.dp.toPx())) }
             assertTrue(expanded, "a tap at the header's end toggles it")
-            assertEquals(1, creates)
+            assertEquals(2, creates)
         }
 
     /** Press and hold opens the row's menu (raft-design ContextMenu) and does not also open the row. */
