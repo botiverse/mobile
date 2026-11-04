@@ -117,6 +117,48 @@ class ThreadPendingSendStoreIntegrationTest {
         }
     }
 
+    /**
+     * Hands b19326ee / c2430c69 (Android 1.17.0): the local-send counter restarted in every
+     * process and the auth generation rotated on each launch, so the journal held two rows with
+     * the same local id under different generations. Both restored, and the duplicate id crashed
+     * the message list. Re-entry must show one row: the newest.
+     */
+    @Test
+    fun journalRowsSharingALocalIdAcrossAuthGenerationsRestoreAsOneRow() = runTest {
+        withDatabase { path ->
+            val api = FakeThreadApi()
+            val identity = identity()
+            val sharedLocalId = "local-send-integration-thread-1"
+            val older = pendingMessage(sharedLocalId, "random-older-launch", createdAt = 10L)
+            val newer = pendingMessage(sharedLocalId, "random-newer-launch", createdAt = 20L)
+
+            val first = open(path, api, identity)
+            first.store.accept(SharedThreadIntent.Start(basePayload()))
+            val route = first.store.state.value.payload.resolveThreadRouteIdentity()
+            val previousLaunch = identity.copy(authGeneration = identity.authGeneration - 1L).toProvenance()
+            assertTrue(first.journal.persistSending(previousLaunch, route, older))
+            assertTrue(first.journal.persistSending(identity.toProvenance(), route, newer))
+            assertEquals(
+                listOf(sharedLocalId, sharedLocalId),
+                first.journal.restore(identity.toProvenance(), route).map { it.id },
+                "precondition: the journal holds two rows with one local id"
+            )
+            first.scope.cancel()
+            first.driver.close()
+
+            val second = open(path, api, identity)
+            second.store.accept(SharedThreadIntent.Start(basePayload()))
+            val messages = second.store.state.value.payload.messages
+            val restored = messages.filter { it.id == sharedLocalId }
+            assertEquals(1, restored.size, "one row per local id, got ${messages.map { it.id to it.randomId }}")
+            assertEquals("random-newer-launch", restored.single().pendingSendContext?.randomId)
+            val keys = messages.map { it.messageListItemKey(messages.threadDuplicateRandomIds()) }
+            assertEquals(keys.size, keys.toSet().size, "LazyColumn keys must be unique: $keys")
+            second.scope.cancel()
+            second.driver.close()
+        }
+    }
+
     @Test
     fun reEntryWithFailedSendLoadsNewerServerMessagesAndKeepsFailedSendLast() = runTest {
         withDatabase { path ->

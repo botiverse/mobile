@@ -2230,8 +2230,17 @@ internal class SharedThreadDataSource(
                 }
             }
         }
+        val uniqueSurviving = surviving.newestPerLocalId()
+        if (uniqueSurviving.size != surviving.size) {
+            val repeatedIds = surviving.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys
+            diagnosticsLogger(
+                "thread_pending_send_restore_duplicate_local_id level=warn " +
+                    "localIds=${repeatedIds.joinToString(",")} dropped=${surviving.size - uniqueSurviving.size} " +
+                    "serverId=${provenance.serverId} route=${route.instanceKey}"
+            )
+        }
         val existingIds = canonicalProjection.messages.mapTo(mutableSetOf()) { it.id }
-        val additions = surviving.filter { it.id !in existingIds }
+        val additions = uniqueSurviving.filter { it.id !in existingIds }
         return if (additions.isEmpty()) {
             canonicalProjection
         } else {
@@ -14511,6 +14520,26 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
         newerMessagesStatus = if (before) newerMessagesStatus else "idle"
     ).withOriginReplyCountAtLeastLoadedReplies()
         .asLoadedEmptyReplyThreadPayload()
+}
+
+/**
+ * Journal rows from different auth/selection generations can share a local id (before 1.19.2 the
+ * local-send counter restarted in every process). Only one of them may render: two rows with the
+ * same id crash the message list. Keep the newest by creation time; on a tie, the later row.
+ */
+internal fun List<RaftThreadMessageItem>.newestPerLocalId(): List<RaftThreadMessageItem> {
+    if (size < 2 || mapTo(HashSet(size)) { it.id }.size == size) return this
+    val keptIndexById = HashMap<String, Int>(size)
+    forEachIndexed { index, message ->
+        val keptIndex = keptIndexById[message.id]
+        if (
+            keptIndex == null ||
+            (message.createdAtEpochMillis ?: Long.MIN_VALUE) >= (this[keptIndex].createdAtEpochMillis ?: Long.MIN_VALUE)
+        ) {
+            keptIndexById[message.id] = index
+        }
+    }
+    return filterIndexed { index, message -> keptIndexById[message.id] == index }
 }
 
 private fun RaftThreadScreenPayload.withLocalSendStarted(
