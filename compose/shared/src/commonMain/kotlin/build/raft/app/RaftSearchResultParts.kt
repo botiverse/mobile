@@ -1,13 +1,14 @@
 package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
-import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,8 +50,20 @@ import build.raft.designsystem.theme.RaftTypography
 // placed where that read would throw; callers read it inside RaftDesignSystemTheme.
 
 internal object RaftSearchMetrics {
-    /** Rows, headings and the summary: `px-4`. */
-    val Inset = 16.dp
+    /**
+     * Rows, headings and the summary: the search column's margin, 20dp (raft-ui SearchShellRoot
+     * `--column-margin:20px`; a list cell's content sits 8dp inset + 12dp padding in).
+     */
+    val Inset = 20.dp
+
+    /** list-cell `--cell-inset-x`: how far in from the column edge a row's state shape starts. */
+    val CellInset = 8.dp
+
+    /** search `list` / search-thread `threadMessages`: `gap-0.5` between rows. */
+    val RowGap = 2.dp
+
+    /** search `list` / search-thread `threadMessages`: `py-2` round the rows. */
+    val ListPaddingVertical = 8.dp
 
     /** search-entity / search-message rows: `py-3`. */
     val RowPaddingVertical = 12.dp
@@ -64,33 +77,36 @@ internal object RaftSearchMetrics {
     /** Avatar `sm` / IconTile `sm`. */
     val EntityLeading = 27.dp
 
-    /** search-entity separator: `not-first:before:left-[55px]` (under the text). */
-    val EntitySeparatorInset = 55.dp
-
-    /** search-message / search-thread separator: `not-first:before:left-4`. */
-    val MessageSeparatorInset = 16.dp
-
     /** Avatar `3xs` beside the sender (`preview-mini`). */
     val SenderAvatar = 14.dp
 }
 
 /**
- * `not-first:before:border-t border-line-hairline`: a 1dp hairline across the top of every
- * row but the first, starting [inset] from the left and running to the right edge.
+ * search `list` `gap-0.5`: no line between hits (raft-design patterns/lists.md), a 2dp gap above
+ * every row but the first.
  */
-internal fun Modifier.raftSearchRowSeparator(show: Boolean, inset: Dp, color: Color): Modifier =
-    if (!show) {
+internal fun Modifier.raftSearchRowGap(show: Boolean): Modifier =
+    if (show) padding(top = RaftSearchMetrics.RowGap) else this
+
+/**
+ * search-entity / search-message pressed state (list-cell `active:before:bg-fill-cell-press`): the
+ * fill is the cell's shape, [RaftSearchMetrics.CellInset] in from both sides, control radius.
+ */
+internal fun Modifier.raftSearchRowPressed(pressed: Boolean, color: Color): Modifier =
+    if (!pressed) {
         this
     } else {
         drawBehind {
-            val stroke = 1.dp.toPx()
-            drawRect(color, topLeft = Offset(inset.toPx(), 0f), size = Size((size.width - inset.toPx()).coerceAtLeast(0f), stroke))
+            val inset = RaftSearchMetrics.CellInset.toPx()
+            val radius = RaftAppRadius.Control.toPx()
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(inset, 0f),
+                size = Size((size.width - inset * 2).coerceAtLeast(0f), size.height),
+                cornerRadius = CornerRadius(radius, radius)
+            )
         }
     }
-
-/** search-entity / search-message `hover:bg-fill-pressed active:bg-fill-pressed`. */
-internal fun Modifier.raftSearchRowPressed(pressed: Boolean, color: Color): Modifier =
-    if (pressed) background(color) else this
 
 /** `clickable`'s press delay inside a scrolling container (Android's tap timeout). */
 internal const val RaftSearchRowPressDelayMillis = 100L
@@ -136,7 +152,9 @@ internal suspend fun raftDelayedRowPress(
 }
 
 /**
- * search `sectionHeading`: `px-4 pt-5 pb-2 text-footnote font-bold text-foreground-hint`.
+ * search `sectionHeading`: `px-5 pt-3 pb-0 text-footnote font-bold text-foreground-hint`, and the
+ * 8dp (`py-2`) the search `list` under it opens with; the list's closing 8dp is
+ * [RaftSearchListEnd] after the last row.
  * [style] is the designsystem `footnote` in bold (`RaftTheme.typography.footnote`, read by
  * the caller inside RaftDesignSystemTheme).
  */
@@ -149,7 +167,7 @@ internal fun RaftSearchSectionHeading(
     countStyle: TextStyle = style,
 ) {
     Row(
-        modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 20.dp, end = RaftSearchMetrics.Inset, bottom = 8.dp),
+        modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = RaftSearchMetrics.ListPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -173,8 +191,14 @@ internal fun RaftSearchSectionHeading(
     }
 }
 
+/** search `list` `py-2`: the 8dp after a section's last row. */
+@Composable
+internal fun RaftSearchListEnd() {
+    Spacer(Modifier.height(RaftSearchMetrics.ListPaddingVertical))
+}
+
 /**
- * search `summary`: `px-4 pt-2 text-footnote text-foreground-hint`. [typography] is the
+ * search `summary`: `px-5 pt-2 text-footnote text-foreground-hint`. [typography] is the
  * designsystem type scale (`RaftTheme.typography`, read by the caller inside
  * RaftDesignSystemTheme).
  */
