@@ -230,6 +230,11 @@ internal data class ThreadChannelSettingsPanel(
     /** An action ended the drawer: [accessLost] after Leave / Delete / Disconnect. */
     val onChannelClosed: (action: ChannelSettingsAction?, accessLost: Boolean) -> Unit = { _, _ -> },
     val onActionFailed: (message: String) -> Unit = {},
+    /**
+     * The rename's archived-name warning left the drawer for that channel (web
+     * ArchivedNameCollisionBanner `nav.toChannel`): Open Channel, or after Unarchive ([unarchived]).
+     */
+    val onOpenChannel: (conversation: ThreadLaunchConversationIdentity, unarchived: Boolean) -> Unit = { _, _ -> },
 )
 
 /** Web ChatPanel `hideAllChannelMembersButton`: #all, a member's view, a server that hides people from members. */

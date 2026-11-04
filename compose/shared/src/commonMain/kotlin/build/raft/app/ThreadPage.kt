@@ -12806,6 +12806,22 @@ private fun SharedThreadRouteContentContent(
                     if (accessLost || action == ChannelSettingsAction.Archive) onLeave()
                 },
                 onActionFailed = { message -> bridge.toast(message) },
+                onOpenChannel = { conversation, unarchived ->
+                    if (unarchived) sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                    val next =
+                        buildAppShellThreadPayload(
+                            conversation = conversation,
+                            timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                            alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                            compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                            onWarn = bridge::logWarn,
+                        )
+                    if (next != null) {
+                        onOpenThreadPayload(next)
+                    } else {
+                        bridge.logWarn("channel_settings_archived_open_rejected reason=identity_unresolved")
+                    }
+                },
             )
         }
         // The settings drawer beyond the name form and actions (web ChannelOverflowMenu): the
@@ -38418,6 +38434,12 @@ internal fun ThreadSettingsModal(
                 onDismiss()
                 panel.onChannelClosed(lastAction, state.closedWithAccessLost)
             }
+            // Web ArchivedNameCollisionBanner: the drawer closes, then the archived channel opens.
+            is ChannelSettingsEffect.OpenChannel -> {
+                confirm = null
+                onDismiss()
+                panel.onOpenChannel(effect.conversation, effect.unarchived)
+            }
             null -> Unit
         }
         if (state.effect != null) store?.dispatch(ChannelSettingsIntent.ConsumeEffect)
@@ -38508,6 +38530,8 @@ internal fun ThreadSettingsModal(
                                         if (store != null) store.dispatch(ChannelSettingsIntent.ClearProfileStatus) else onClearUpdateStatus()
                                     },
                                     onDirtyChange = { infoDirty = it },
+                                    archivedCollision = store?.let { storeState?.archivedCollisionFor(it) },
+                                    errorMessage = storeState?.profileErrorMessage,
                                 )
                             }
                             sectionAfterFirst = true

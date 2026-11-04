@@ -11,6 +11,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ARCHIVED_NAME_COLLISION
+import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ScreenError
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -453,6 +455,24 @@ private fun ChannelSettingsPageScreen() {
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
                 router.closePage()
             }
+            // Web ArchivedNameCollisionBanner: settings close, then the archived channel opens
+            // (read-only), or restored after Unarchive.
+            is ChannelSettingsEffect.OpenChannel -> {
+                confirm = null
+                if (effect.unarchived) homeStore?.dispatch(SharedHomeIntent.Refresh)
+                val launch =
+                    buildStandaloneConversationThreadLaunchPayload(
+                        conversation = effect.conversation,
+                        timeContext = null,
+                        onWarn = bridge::logWarn,
+                    )
+                router.closePage()
+                if (launch != null) {
+                    pager.openRaftPage(THREAD_PAGE, threadLaunchPageData(launch), storeScopeOverride = storeScope)
+                } else {
+                    bridge.logWarn("channel_settings_archived_open_rejected reason=identity_unresolved")
+                }
+            }
             null -> Unit
         }
         if (settingsState.effect != null) settingsStore.dispatch(ChannelSettingsIntent.ConsumeEffect)
@@ -477,6 +497,8 @@ private fun ChannelSettingsPageScreen() {
                                 actionInFlight = settingsState.actionInFlight,
                                 profileStatus = settingsState.profileStatus,
                                 profileErrorCode = settingsState.profileErrorCode,
+                                profileErrorMessage = settingsState.profileErrorMessage,
+                                profileCollision = settingsState.archivedCollisionFor(settingsStore),
                                 slackBridge = settingsState.slackBridge,
                                 section = section,
                             ),
@@ -625,6 +647,9 @@ internal data class ChannelSettingsUiModel(
     val actionInFlight: ChannelSettingsAction? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
+    val profileErrorMessage: String? = null,
+    /** A rename refused for an archived channel's name (web `archivedCollision`); null hides the warning. */
+    val profileCollision: ChannelInfoArchivedCollision? = null,
     /** The Slack channel pick (web ChannelSlackBridgeField); null hides it. */
     val slackBridge: ChannelSlackBridgeState? = null,
     /** Move to section (web ChannelSectionSelect, Pinned included); null keeps the Pin switch. */
@@ -647,6 +672,27 @@ internal class ChannelSettingsCallbacks(
     val onMoveSection: (List<ChannelSectionMove>) -> Unit = {},
     val onCreateSection: (name: String, emoji: String?) -> Unit = { _, _ -> },
 )
+
+/** The rename's archived-name warning as [ChannelInfoForm] shows it, with its store hooks. */
+internal class ChannelInfoArchivedCollision(
+    val collision: ArchivedNameCollision,
+    val unarchiving: Boolean,
+    val onUnarchive: () -> Unit,
+    val onOpen: () -> Unit,
+    val onClear: () -> Unit,
+)
+
+/** The warning from the settings store's state, or null when there is none. */
+internal fun ChannelSettingsState.archivedCollisionFor(store: ChannelSettingsStore): ChannelInfoArchivedCollision? =
+    profileCollision?.let { collision ->
+        ChannelInfoArchivedCollision(
+            collision = collision,
+            unarchiving = collisionUnarchiving,
+            onUnarchive = { store.dispatch(ChannelSettingsIntent.UnarchiveArchivedCollision) },
+            onOpen = { store.dispatch(ChannelSettingsIntent.OpenArchivedCollision) },
+            onClear = { store.dispatch(ChannelSettingsIntent.ClearArchivedCollision) },
+        )
+    }
 
 internal data class ChannelSettingsFailureLabels(
     val update: String,
@@ -775,6 +821,8 @@ internal fun ChannelSettingsContent(
                     slackBridge = model.slackBridge?.takeIf { channelSettingsSlackBridgeApplies(channel, permissions) },
                     onSave = callbacks.onSaveProfile,
                     onClearStatus = callbacks.onClearProfileStatus,
+                    archivedCollision = model.profileCollision,
+                    errorMessage = model.profileErrorMessage,
                 )
             }
         }
@@ -1064,6 +1112,8 @@ private fun ChannelInfoSection(
     slackBridge: ChannelSlackBridgeState?,
     onSave: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit,
     onClearStatus: () -> Unit,
+    archivedCollision: ChannelInfoArchivedCollision?,
+    errorMessage: String?,
 ) {
     RaftSection(title = stringResource(Res.string.channel_settings_info)) {
         RaftText(
@@ -1072,7 +1122,18 @@ private fun ChannelInfoSection(
             style = RaftTheme.typography.footnote,
             color = RaftTheme.colors.foregroundHint,
         )
-        ChannelInfoForm(channel, nameEditable, enabled, status, errorCode, slackBridge, onSave, onClearStatus)
+        ChannelInfoForm(
+            channel = channel,
+            nameEditable = nameEditable,
+            enabled = enabled,
+            status = status,
+            errorCode = errorCode,
+            slackBridge = slackBridge,
+            onSave = onSave,
+            onClearStatus = onClearStatus,
+            archivedCollision = archivedCollision,
+            errorMessage = errorMessage,
+        )
     }
 }
 
@@ -1093,6 +1154,10 @@ internal fun ChannelInfoForm(
     onClearStatus: () -> Unit,
     /** Unsaved edits (the drawer keeps them on a tap beside it). */
     onDirtyChange: (Boolean) -> Unit = {},
+    /** The rename's archived-name warning (web EditChannelDialog `archivedCollision`); null hides it. */
+    archivedCollision: ChannelInfoArchivedCollision? = null,
+    /** The server's reason for a failed Unarchive from that warning, shown in the failure banner. */
+    errorMessage: String? = null,
 ) {
     val savedSlack = slackBridge?.pairedSlackChannelId
     var slackPick by remember(channel.channelId, savedSlack) { mutableStateOf(savedSlack) }
@@ -1125,6 +1190,18 @@ internal fun ChannelInfoForm(
         }
     val clearStatusOnEdit: () -> Unit = { if (status != ChannelProfileUpdateStatus.Idle && !saving) onClearStatus() }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Web: the warning sits above the name it is about, with Unarchive (when allowed) and Open
+        // Channel; no Change Name on a rename, the field is right below.
+        archivedCollision?.let { warning ->
+            ArchivedNameCollisionBanner(
+                archivedChannelName = warning.collision.archivedChannelName,
+                canUnarchive = warning.collision.canUnarchive,
+                unarchiving = warning.unarchiving,
+                onUnarchive = warning.onUnarchive,
+                onOpen = warning.onOpen,
+                onChangeName = null,
+            )
+        }
         RaftField(
             label = stringResource(Res.string.thread_settings_name),
             required = true,
@@ -1137,6 +1214,8 @@ internal fun ChannelInfoForm(
                 onValueChange = {
                     name = it
                     clearStatusOnEdit()
+                    // Web `handleNameChange`: a new name drops the warning.
+                    archivedCollision?.onClear?.invoke()
                 },
                 placeholder = stringResource(Res.string.thread_settings_name_placeholder),
             )
@@ -1166,16 +1245,19 @@ internal fun ChannelInfoForm(
                 },
             )
         }
-        if (status == ChannelProfileUpdateStatus.Failed && errorCode != "channel_name_invalid") {
+        // Web: the warning takes the place of the error for the refused rename.
+        val namedByWarning = errorCode == ARCHIVED_NAME_COLLISION && archivedCollision != null
+        if (status == ChannelProfileUpdateStatus.Failed && errorCode != "channel_name_invalid" && !namedByWarning) {
             RaftBanner(
                 description =
-                    stringResource(
-                        if (errorCode == CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE) {
-                            Res.string.channel_settings_slack_partial_failure
-                        } else {
-                            Res.string.thread_settings_update_failed
-                        }
-                    ),
+                    when (errorCode) {
+                        CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE ->
+                            stringResource(Res.string.channel_settings_slack_partial_failure)
+                        // Web ArchivedNameCollisionBanner `onError`: the server's reason, else its own line.
+                        CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED ->
+                            errorMessage ?: stringResource(Res.string.channel_create_failed_unarchive)
+                        else -> stringResource(Res.string.thread_settings_update_failed)
+                    },
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
             )
@@ -1200,6 +1282,8 @@ internal fun ChannelInfoForm(
                     description = savedDescription
                     slackPick = savedSlack
                     clearStatusOnEdit()
+                    // Web `resetDraft` drops the warning too.
+                    archivedCollision?.onClear?.invoke()
                 },
                 variant = RaftButtonVariant.Ghost,
                 enabled = dirty && !saving,

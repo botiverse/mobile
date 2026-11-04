@@ -9,6 +9,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.ArchivedNameCollision
+import build.raft.app.model.ConversationKind
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -20,7 +22,7 @@ import build.raft.designsystem.components.RaftButtonVariant
  * Web `ArchivedNameCollisionBanner.tsx` (slock #12614): the warning for a channel name an
  * archived channel holds. Open Channel goes to the archived channel (read-only); Unarchive
  * restores it, offered only to whoever may unarchive it; Change Name clears the name for
- * another. [showHint] adds the line saying what to do (Create Channel; Create Joint Channel
+ * another (create only). [showHint] adds the line saying what to do (Create Channel; Create Joint Channel
  * leaves it out, as on the web).
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -31,7 +33,8 @@ internal fun ArchivedNameCollisionBanner(
     unarchiving: Boolean,
     onUnarchive: () -> Unit,
     onOpen: () -> Unit,
-    onChangeName: () -> Unit,
+    /** Create clears the name for another; rename leaves it to the field: null, no Change Name (web `onChangeName` unset). */
+    onChangeName: (() -> Unit)?,
     modifier: Modifier = Modifier,
     showHint: Boolean = true,
 ) {
@@ -76,11 +79,21 @@ internal fun ArchivedNameCollisionBanner(
                 enabled = !unarchiving,
                 variant = if (canUnarchive) RaftButtonVariant.Ghost else RaftButtonVariant.Default,
             )
-            RaftButton(
-                text = stringResource(Res.string.joint_create_change_name),
-                onClick = onChangeName,
-                variant = RaftButtonVariant.Ghost,
-            )
+            if (onChangeName != null) {
+                RaftButton(
+                    text = stringResource(Res.string.joint_create_change_name),
+                    onClick = onChangeName,
+                    variant = RaftButtonVariant.Ghost,
+                )
+            }
         }
     }
 }
+
+/** The archived channel holding the name, as a conversation to open (web `nav.toChannel(archivedChannelId)`). */
+internal fun ArchivedNameCollision.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity =
+    buildThreadLaunchConversationIdentity(
+        kind = if (archivedChannelType == "joint") ConversationKind.Joint else ConversationKind.Channel,
+        channelId = archivedChannelId,
+        channelType = archivedChannelType,
+    )

@@ -325,6 +325,9 @@ private class OfflineFakeChannelSettingsDataSource(
     override suspend fun unarchive(): DataResult<HomeChannelRow> =
         DataResult.Content(HomeChannelRow(threadId = ThreadId("channel-1"), channelId = ChannelId("channel-1"), name = "#x"))
 
+    override suspend fun unarchiveChannel(channelId: ChannelId): DataResult<HomeChannelRow> =
+        DataResult.Content(HomeChannelRow(threadId = ThreadId(channelId.value), channelId = channelId, name = "#x"))
+
     override suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow> =
         DataResult.Content(HomeChannelRow(threadId = ThreadId("channel-1"), channelId = ChannelId("channel-1"), name = "#x"))
 

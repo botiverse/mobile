@@ -23,6 +23,9 @@ data class ArchivedNameCollision(
 /** The kinds Create Channel offers: it never names an archived joint channel (web `["channel", "private"]`). */
 val CREATE_CHANNEL_ARCHIVED_TYPES: Set<String> = setOf("channel", "private")
 
+/** Rename names any of them, joint included (web EditChannelDialog: `parseArchivedNameCollision(err)`). */
+val RENAME_CHANNEL_ARCHIVED_TYPES: Set<String> = setOf("channel", "private", "joint")
+
 /**
  * The collision a create refusal carries, or null (web `parseArchivedNameCollision`): only an
  * `archived_name_collision` naming an archived channel of one of [types], with its id and name.
