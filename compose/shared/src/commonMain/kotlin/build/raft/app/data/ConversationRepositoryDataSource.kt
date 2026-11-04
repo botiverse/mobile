@@ -285,6 +285,14 @@ class RealConversationRepository private constructor(
         PrioritySingleFlight<TaskConversationContextFlightKey, TaskSummary?>()
 
     /**
+     * Hands fa151b10: the thread store's initial access lookup and the page's task bar both read a
+     * conversation's ref as the page opens; overlapping reads share one `GET /channels/:id`.
+     * Keyed by principal, server and conversation.
+     */
+    private val taskConversationRefFlights =
+        PrioritySingleFlight<Triple<String, String, String>, DataResult<TaskConversationChannelRef>>()
+
+    /**
      * Hands 4cf4c781: the last ref / parent / task seen per task conversation (insertion-ordered,
      * bounded). The ref never changes; the parent here only names the title (write authority is
      * always read fresh); the task is reused for [taskConversationTaskReuseMillis].
@@ -1259,12 +1267,23 @@ class RealConversationRepository private constructor(
         val context = currentContext() ?: return authRequired()
         // A task conversation's parent channel and task never change; reuse a ref this process read.
         recentTaskConversationRef(context.server.id, conversationChannelId)?.let { return DataResult.Content(it) }
+        val flightKey =
+            Triple(sessionStore.readSession()?.user?.id.orEmpty(), context.server.id.value, conversationChannelId.value)
+        return taskConversationRefFlights.run(flightKey, DataRequestPriority.Visible) {
+            fetchTaskConversationRef(context.server.id, conversationChannelId)
+        }
+    }
+
+    private suspend fun fetchTaskConversationRef(
+        serverId: ServerId,
+        conversationChannelId: ChannelId,
+    ): DataResult<TaskConversationChannelRef> {
         val response =
             try {
                 networkClient.request(
                     priority = DataRequestPriority.Visible,
                     path = "channels/${conversationChannelId.value}",
-                    serverIdOverride = context.server.id,
+                    serverIdOverride = serverId,
                 )
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
@@ -1281,7 +1300,7 @@ class RealConversationRepository private constructor(
             "task_conversation_ref channelId=${conversationChannelId.value} " +
                 "resolved=${ref != null}"
         )
-        ref?.let { updateRecentTaskConversation(taskConversationContextKey(context.server.id, it), it) { recent -> recent } }
+        ref?.let { updateRecentTaskConversation(taskConversationContextKey(serverId, it), it) { recent -> recent } }
         return ref?.let { DataResult.Content(it) } ?: DataResult.Empty(EmptyReason.NoMessages)
     }
 

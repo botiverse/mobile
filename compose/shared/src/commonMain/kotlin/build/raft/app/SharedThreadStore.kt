@@ -3436,11 +3436,55 @@ internal class SharedThreadDataSource(
     suspend fun initialConversationAccessResolution(
         payload: RaftThreadScreenPayload
     ): ThreadHomeContextResolution =
-        if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-            replyParentConversationAccessResolution(payload)
-        } else {
-            homeConversationContextResolution(payload)
+        when {
+            payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread -> replyParentConversationAccessResolution(payload)
+            payload.isTaskConversationSurface() -> taskConversationAccessResolution(payload)
+            else -> homeConversationContextResolution(payload)
         }
+
+    /**
+     * Task v2: a task conversation has no Home row of its own. Its write authority is its task
+     * channel's (`withTaskConversationContext`: the parent's joined + canSend), so the parent's Home
+     * row is the same initial candidate a Channel route reads from its own row. Without it the
+     * composer waited for messages/context -> channels/:id -> channels/:parent in series (Hands
+     * fa151b10: 2.4-4.8 s after the messages showed). Only a joined + canSend parent is used; the
+     * canonical load still wins and a later NoPermission still closes access.
+     */
+    private suspend fun taskConversationAccessResolution(
+        payload: RaftThreadScreenPayload
+    ): ThreadHomeContextResolution {
+        val base = homeConversationContextResolution(payload)
+        if (base.accessCandidate != null) return base
+        val conversationId =
+            listOfNotNull(payload.streamChannelId, payload.sourceThreadId)
+                .firstOrNull { it.isNotBlank() }
+                ?: return base
+        val ref = (loadTaskConversationRef(ChannelId(conversationId)) as? DataResult.Content)?.data
+        if (ref == null || ref.conversationChannelId.value != conversationId) return base
+        val session = readSession() ?: return base
+        val home = currentHomeSnapshot(session) ?: return base
+        val parent =
+            home.toSharedConversationDirectoryState()
+                .resolve(ref.parentChannelId.value)
+                ?.toConversationAccessCandidate()
+        val writable = parent != null && parent.joined && parent.permissions.canSend && !parent.archived
+        diagnosticsLogger(
+            "thread_initial_task_access conversationId=$conversationId " +
+                "parentChannelId=${ref.parentChannelId.value} parentRow=${parent != null} writable=$writable"
+        )
+        if (parent == null || !writable) return base
+        return base.copy(
+            accessCandidate =
+                ConversationAccessCandidate(
+                    ids = setOf(conversationId),
+                    conversationKind = ConversationKind.Task,
+                    surfaceKind = payload.surfaceKind,
+                    joined = true,
+                    archived = false,
+                    permissions = parent.permissions.copy(canCreateTask = false),
+                )
+        )
+    }
 
     private suspend fun replyParentConversationAccessResolution(
         payload: RaftThreadScreenPayload
@@ -14970,9 +15014,10 @@ internal fun RaftThreadScreenPayload.withInitialHomeConversationAccessFallback(
 ): RaftThreadScreenPayload {
     candidate ?: return this
     if (!acceptsInitialConversationAccessCandidate(candidate)) return this
-    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread || isTaskConversationSurface()) {
         // Reply capability belongs to the parent Channel/DM, not to the
-        // synthetic thread conversation returned with reply content.
+        // synthetic thread conversation returned with reply content. A task
+        // conversation's belongs to its task channel the same way.
         return copy(
             joined = candidate.joined,
             canSend = candidate.permissions.canSend,
