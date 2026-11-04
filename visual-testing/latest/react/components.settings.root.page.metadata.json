@@ -42,5 +42,5 @@
     "maxHeight": 2700,
     "scroller": "div[data-testid=sidebar-scroll-surface].r-scroll-area.r-scroll-area--medium.r-scroll-area--scroll-trigger.r-scroll-area--vertical-orientation"
   },
-  "capturedAt": "2026-11-03T23:16:09.754Z"
+  "capturedAt": "2026-11-04T07:35:11.443Z"
 }

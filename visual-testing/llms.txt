@@ -1,18 +1,18 @@
 # Raft Visual Testing
 
-Generated: 2026-11-03 23:49:43 UTC
-Latest run: e6d3cbab-20261103232613
-Latest commit: e6d3cbab-20261103232613
-Commit subject: The Home list ends with the web's space under its last item (#4259)
+Generated: 2026-11-04 07:42:30 UTC
+Latest run: 63a3324a-20261104074137
+Latest commit: 63a3324a-20261104074137
+Commit subject: Every bottom sheet has the grab handle, as raft-ui 0.57.2 (#4278)
 Providers: react vs android
-Summary: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
-AI analysis: ready 38 / total 93, pending 55
+Summary: total 93, same 0, pass 1, basic-pass 7, different 77, missing 8
+AI analysis: ready 25 / total 93, pending 68
 Visual coverage matrix: active 102 / total 122, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 93, same 0, pass 2, basic-pass 12, different 77, missing 2
+- react__android: total 93, same 0, pass 1, basic-pass 7, different 77, missing 8
 
 ## Capture Type Coverage
 
@@ -114,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 63a3324a-20261104074137: react vs android, total 93, pass 1, basic-pass 7, different 77, matrix runs/63a3324a-20261104074137/component-matrix.json, page runs/63a3324a-20261104074137/
 - e6d3cbab-20261103232613: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/e6d3cbab-20261103232613/component-matrix.json, page runs/e6d3cbab-20261103232613/
 - 33a0350d-20261103220336: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/33a0350d-20261103220336/component-matrix.json, page runs/33a0350d-20261103220336/
 - 515ed2a6-20261103205636: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/515ed2a6-20261103205636/component-matrix.json, page runs/515ed2a6-20261103205636/
