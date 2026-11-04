@@ -228,6 +228,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
@@ -298,7 +299,6 @@ import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.isSpecified
-import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftDescriptionValue
 import build.raft.designsystem.components.RaftGlyph
@@ -1884,41 +1884,22 @@ private val membersAgentDetailVisualMember = MemberProfile(
     permissionBadges = listOf("computer:MacBook Pro", "runtime:Codex")
 )
 
+// fixtureData.json humans.owner: the web captures this profile as its own viewer (the "(you)"
+// badge, no role edit), the server's owner, with no agents created.
 private val membersHumanDetailVisualMember = MemberProfile(
     id = MemberId("visual-user"),
     displayName = "artin",
     handle = "@artin",
     kind = MemberKind.Human,
-    description = "Product design and server administration.",
-    roleDescription = "Member",
-    serverRole = "member",
+    description = "Owner",
+    roleDescription = "Owner",
+    serverRole = "owner",
     serverId = ServerId("visual-server"),
     email = "artin@slock.ai",
-    avatarLabel = "A",
+    avatarLabel = "AR",
     presence = Presence.Active,
     joinedAt = "2026-06-18T00:00:00.000Z",
-    membershipStatus = "active",
-    // Web HumanDetailPanel lists the agents this person created as inset list rows.
-    createdAgents = listOf(
-        AgentProfile(
-            id = MemberId("visual-agent-created-1"),
-            userId = "visual-agent-created-1",
-            displayName = "Product UX",
-            handle = "@product-ux",
-            runtime = "claude",
-            presence = Presence.Active,
-            agentStatus = AgentStatus.Online
-        ),
-        AgentProfile(
-            id = MemberId("visual-agent-created-2"),
-            userId = "visual-agent-created-2",
-            displayName = "Release Notes",
-            handle = "@release-notes",
-            runtime = "codex",
-            presence = Presence.Offline,
-            agentStatus = AgentStatus.Offline
-        )
-    )
+    membershipStatus = "active"
 )
 
 private val membersAgentDetailVisualScopeSet = AgentScopeSet(
@@ -2864,7 +2845,9 @@ private data class MemberDetailVisualSeed(
     val agentDetailState: MembersAgentDetailLoadState,
     val agentScopeSet: AgentScopeSet? = null,
     /** Activity tab Overview fixture (flag on); null keeps the raw log only. */
-    val activityOverview: build.raft.app.data.AgentActivityOverviewState? = null
+    val activityOverview: build.raft.app.data.AgentActivityOverviewState? = null,
+    /** The signed-in viewer; the human profile is the web fixture's own (`visual-user`). */
+    val viewerId: String = "visual-owner"
 )
 
 /**
@@ -5046,7 +5029,8 @@ private fun RaftMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDeta
         membersHumanDetailVisualMember.id.value ->
             MemberDetailVisualSeed(
                 member = membersHumanDetailVisualMember,
-                agentDetailState = MembersAgentDetailLoadState.Idle
+                agentDetailState = MembersAgentDetailLoadState.Idle,
+                viewerId = membersHumanDetailVisualMember.id.value
             )
         else -> membersAgentDetailVisualVariants
             .firstOrNull { it.id == identity?.memberId?.value }
@@ -5091,7 +5075,7 @@ private fun MemberDetailVisualSeedContent(
     }
     MembersDetailContent(
         member = seed.member,
-        currentUserId = "visual-owner",
+        currentUserId = seed.viewerId,
         currentServerId = "visual-server",
         agentDetailState = seed.agentDetailState,
         activityOverview =
@@ -8609,6 +8593,54 @@ private fun MembersHumanGlyph(name: RaftLucideIconName, size: Dp) {
 }
 
 /**
+ * Web KeyValueRow: the label (`text-footnote font-medium text-foreground-hint`) with an optional
+ * [accessory] 8dp after it (`mb-1 flex items-center gap-2`), then [content] in foreground ink.
+ */
+@Composable
+private fun MembersHumanKeyValue(
+    term: String,
+    accessory: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    Column(Modifier.semantics(mergeDescendants = true) {}) {
+        Row(
+            modifier = Modifier.padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RaftText(
+                text = term,
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                color = RaftTheme.colors.foregroundHint
+            )
+            accessory?.invoke()
+        }
+        CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foreground) {
+            content()
+        }
+    }
+}
+
+/** CSS `-my-1`: the 32dp icon button takes 8dp less height in its row, centred on it. */
+private fun Modifier.membersInlineActionOverhang(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val overhang = 4.dp.roundToPx()
+        layout(placeable.width, (placeable.height - overhang * 2).coerceAtLeast(0)) {
+            placeable.place(0, -overhang)
+        }
+    }
+
+/**
+ * Web HumanDetailPanel `INLINE_ICON_ACTION_CLASS`: the ghost `icon-md` button's 18dp Lucide glyph
+ * in `text-foreground-hint` (HelpCircle beside Role, Pencil to edit it).
+ */
+@Composable
+private fun MembersHumanInlineActionGlyph(name: RaftLucideIconName) {
+    RaftLucideIcon(name, modifier = Modifier.size(18.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
+}
+
+/**
  * raft-ui Avatar (the square sticker) around the member's resolved photo / pixel avatar.
  * [RaftAvatarSize.Xl] is web `AvatarSlot context="profile-hero"`, Md the panel head and list rows.
  */
@@ -8628,7 +8660,8 @@ private fun MembersStickerAvatar(
         image = {
             RaftAppAvatar(
                 avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
-                label = member.raftAvatarName(),
+                // Web AvatarSlot: a person without a photo is the User placeholder, never initials.
+                label = if (member.kind == MemberKind.Human) "" else member.raftAvatarName(),
                 // The face fills the inside of the sticker's two 1.5dp edges.
                 avatarSize = size.edge - RaftAppStroke.Control * 2,
                 borderWidth = 0.dp,
@@ -8760,14 +8793,16 @@ private fun MembersHumanInfoSection(
     val roleHelpLabel = stringResource(Res.string.member_title_human_roles)
     val editRoleLabel = stringResource(Res.string.member_action_edit_role)
     MembersHumanSection(title = stringResource(Res.string.member_section_info)) {
-        RaftDescriptionList {
-            Item(
+        // Web HumanDetailPanel: `stack-y-3` of KeyValueRows (label `mb-1`, then the value), not a
+        // raft-ui DescriptionList: no 28dp value rows, and the inline icon buttons are `-my-1`.
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MembersHumanKeyValue(
                 term = if (departure != null) {
                     stringResource(Res.string.member_label_status)
                 } else {
                     stringResource(Res.string.member_label_role)
                 },
-                termAccessory = if (departure != null) {
+                accessory = if (departure != null) {
                     null
                 } else {
                     {
@@ -8775,9 +8810,10 @@ private fun MembersHumanInfoSection(
                             RaftIconButton(
                                 onClick = { roleHelpOpen = true },
                                 tooltip = roleHelpLabel,
-                                variant = RaftButtonVariant.Ghost
+                                variant = RaftButtonVariant.Ghost,
+                                modifier = Modifier.membersInlineActionOverhang()
                             ) {
-                                RaftGlyphIcon(RaftGlyph.Info, size = 14.dp)
+                                MembersHumanInlineActionGlyph(RaftLucideIconName.CircleQuestionMark)
                             }
                             if (canEditRole && !editingRole) {
                                 RaftIconButton(
@@ -8788,9 +8824,11 @@ private fun MembersHumanInfoSection(
                                         editingRole = true
                                     },
                                     tooltip = editRoleLabel,
-                                    variant = RaftButtonVariant.Ghost
+                                    variant = RaftButtonVariant.Ghost,
+                                    // `ml-1`: 12dp from the help button, as on the web.
+                                    modifier = Modifier.padding(start = 4.dp).membersInlineActionOverhang()
                                 ) {
-                                    MembersHumanGlyph(RaftLucideIconName.Pencil, 14.dp)
+                                    MembersHumanInlineActionGlyph(RaftLucideIconName.Pencil)
                                 }
                             }
                         }
@@ -8883,12 +8921,12 @@ private fun MembersHumanInfoSection(
                 }
             }
             member.email?.takeIf { it.isNotBlank() }?.let { email ->
-                Item(term = stringResource(Res.string.member_label_email)) {
+                MembersHumanKeyValue(term = stringResource(Res.string.member_label_email)) {
                     RaftDescriptionValue(email)
                 }
             }
             joined?.takeIf { it.isNotBlank() }?.let { joinedText ->
-                Item(term = stringResource(Res.string.member_label_joined)) {
+                MembersHumanKeyValue(term = stringResource(Res.string.member_label_joined)) {
                     RaftDescriptionValue(joinedText, mono = true)
                 }
             }
