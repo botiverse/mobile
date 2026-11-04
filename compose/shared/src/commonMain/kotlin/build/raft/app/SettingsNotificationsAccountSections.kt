@@ -475,6 +475,7 @@ internal fun SettingsNotificationServerLink(server: SettingsNotificationServer, 
         RaftListRow(
             title = stringResource(Res.string.settings_server_notifications_subtitle, server.name),
             variant = RaftListRowVariant.Plain,
+            titleMaxLines = 2,
             onClick = onClick,
             trailing = {
                 RaftListRowValue(level.localizedNotificationLevelLabel())
