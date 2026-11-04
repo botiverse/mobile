@@ -19,8 +19,9 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
 /**
- * Where a channel sits in MY sidebar, as web ChannelSectionSelect models it: its home section
- * (Channels, or Joint Channels), Pinned, or one of my custom sections.
+ * Where a channel or a DM sits in MY sidebar, as web ChannelSectionSelect models it: its home
+ * section (Channels, Joint Channels, or Direct Messages for a DM), Pinned, or one of my custom
+ * sections.
  */
 internal sealed interface ChannelSectionValue {
     data object Home : ChannelSectionValue
@@ -41,6 +42,8 @@ internal data class ChannelSectionPlacement(
     val placementSectionId: String?,
     val canPin: Boolean = true,
     val joint: Boolean = false,
+    /** A DM (slock #12622): at home in Direct Messages, pinned by its peer. */
+    val directMessage: Boolean = false,
 ) {
     /** Pinned wins over a placement; a placement in a deleted section shows as home (web). */
     val current: ChannelSectionValue
@@ -66,7 +69,12 @@ internal data class ChannelSectionPlacement(
         get() =
             when (val value = current) {
                 ChannelSectionValue.Pinned -> "system:pinned"
-                ChannelSectionValue.Home -> if (joint) "system:joint" else "system:channels"
+                ChannelSectionValue.Home ->
+                    when {
+                        directMessage -> "system:dms"
+                        joint -> "system:joint"
+                        else -> "system:channels"
+                    }
                 is ChannelSectionValue.Custom -> value.sectionId
             }
 }
@@ -103,7 +111,8 @@ internal fun channelSectionMoves(state: ChannelSectionPlacement, next: ChannelSe
 /**
  * Web ChannelPreferencesSection's first row: "Move to section", its line, and the select of
  * [ChannelSectionPlacement.options] with "Create section…" last, which opens the sidebar's New
- * section dialog and creates the section with this channel in it.
+ * section dialog and creates the section with this channel or DM in it. A DM's line says "this
+ * conversation" and its home is Direct Messages.
  */
 @Composable
 internal fun ChannelSectionSelectRow(
@@ -115,7 +124,11 @@ internal fun ChannelSectionSelectRow(
     var creating by remember { mutableStateOf(false) }
     val title = stringResource(Res.string.home_section_move_to)
     val homeLabel =
-        if (state.joint) stringResource(Res.string.home_section_joint_channels) else stringResource(Res.string.home_section_channels)
+        when {
+            state.directMessage -> stringResource(Res.string.home_section_direct_messages)
+            state.joint -> stringResource(Res.string.home_section_joint_channels)
+            else -> stringResource(Res.string.home_section_channels)
+        }
     val pinnedLabel = stringResource(Res.string.home_section_pinned)
     val createLabel = stringResource(Res.string.channel_settings_section_create)
     // null is the "Create section…" action at the end of the list.
@@ -137,7 +150,9 @@ internal fun ChannelSectionSelectRow(
                 color = RaftTheme.colors.foreground
             )
             RaftText(
-                stringResource(Res.string.channel_settings_section_detail),
+                stringResource(
+                    if (state.directMessage) Res.string.channel_settings_section_detail_dm else Res.string.channel_settings_section_detail
+                ),
                 style = RaftTheme.typography.footnote,
                 color = RaftTheme.colors.foregroundHint
             )
@@ -259,6 +274,8 @@ internal fun rememberThreadChannelSettingsPanel(
     agentStatusResolver: RaftAgentStatusResolver,
     writeActionsEnabled: Boolean,
     onHomeIntent: (build.raft.app.data.SharedHomeIntent) -> Unit,
+    // A DM's Move to section (slock #12622): placed by the sidebar's DM key, at home in Direct Messages.
+    directMessage: Boolean = false,
 ): ThreadChannelSettingsPanel? {
     if (channelId == null) return null
     val snapshot = (homeContent as? build.raft.app.data.SharedHomeContentState.Content)?.snapshot
@@ -273,6 +290,9 @@ internal fun rememberThreadChannelSettingsPanel(
                 pinned = pin.pinned,
                 joint = channel?.let(::channelSettingsIsJoint) == true,
                 canPin = pin.available,
+                directMessagePeerKind = pin.pinnedKind,
+                directMessagePeerId = pin.pinnedId,
+                directMessage = directMessage,
             )
         }
     val muted = activityMuteState?.muted == true
@@ -349,21 +369,41 @@ internal fun channelSectionHomeIntents(
 internal fun channelSettingsSidebarPinned(order: build.raft.app.data.SettingsServerSidebarOrderSnapshot, channelId: String): Boolean =
     ThreadConversationPinTarget(conversationId = channelId, kind = "channel", id = channelId).toUiState(order).pinned
 
-/** Move to section's state of a channel from my sidebar order (web useConversationSidebarSection). */
+/**
+ * Move to section's state of a channel or a DM from my sidebar order (web
+ * useConversationSidebarSection). A channel is placed as `channel:<id>`; a DM is placed by the
+ * sidebar's key for it ([build.raft.app.data.sidebarSectionPlacementKindId]: `agent:<agent id>`
+ * for an agent DM, else `channel:<dm id>`), pinned by its peer, at home in Direct Messages.
+ */
 internal fun channelSettingsSectionPlacement(
     sidebarOrder: build.raft.app.data.SettingsServerSidebarOrderSnapshot?,
     channelId: String,
     pinned: Boolean,
     joint: Boolean,
     canPin: Boolean = true,
-): ChannelSectionPlacement =
-    ChannelSectionPlacement(
+    directMessagePeerKind: String? = null,
+    directMessagePeerId: String? = null,
+    directMessage: Boolean = false,
+): ChannelSectionPlacement {
+    val (placementKind, placementId) =
+        if (directMessage) {
+            build.raft.app.data.sidebarSectionPlacementKindId(
+                peerType = directMessagePeerKind,
+                presenceMemberId = directMessagePeerId,
+                conversationId = channelId,
+            )
+        } else {
+            build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL to channelId
+        }
+    return ChannelSectionPlacement(
         customSections = sidebarOrder?.customSections.orEmpty(),
         pinned = pinned,
         placementSectionId =
             sidebarOrder?.sectionPlacements
-                ?.firstOrNull { it.kind == build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL && it.id == channelId }
+                ?.firstOrNull { it.kind == placementKind && it.id == placementId }
                 ?.sectionId,
         canPin = canPin,
-        joint = joint,
+        joint = joint && !directMessage,
+        directMessage = directMessage,
     )
+}
