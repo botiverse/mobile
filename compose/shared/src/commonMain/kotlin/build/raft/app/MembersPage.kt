@@ -1884,41 +1884,22 @@ private val membersAgentDetailVisualMember = MemberProfile(
     permissionBadges = listOf("computer:MacBook Pro", "runtime:Codex")
 )
 
+// fixtureData.json humans.owner: the web captures this profile as its own viewer (the "(you)"
+// badge, no role edit), the server's owner, with no agents created.
 private val membersHumanDetailVisualMember = MemberProfile(
     id = MemberId("visual-user"),
     displayName = "artin",
     handle = "@artin",
     kind = MemberKind.Human,
-    description = "Product design and server administration.",
-    roleDescription = "Member",
-    serverRole = "member",
+    description = "Owner",
+    roleDescription = "Owner",
+    serverRole = "owner",
     serverId = ServerId("visual-server"),
     email = "artin@slock.ai",
-    avatarLabel = "A",
+    avatarLabel = "AR",
     presence = Presence.Active,
     joinedAt = "2026-06-18T00:00:00.000Z",
-    membershipStatus = "active",
-    // Web HumanDetailPanel lists the agents this person created as inset list rows.
-    createdAgents = listOf(
-        AgentProfile(
-            id = MemberId("visual-agent-created-1"),
-            userId = "visual-agent-created-1",
-            displayName = "Product UX",
-            handle = "@product-ux",
-            runtime = "claude",
-            presence = Presence.Active,
-            agentStatus = AgentStatus.Online
-        ),
-        AgentProfile(
-            id = MemberId("visual-agent-created-2"),
-            userId = "visual-agent-created-2",
-            displayName = "Release Notes",
-            handle = "@release-notes",
-            runtime = "codex",
-            presence = Presence.Offline,
-            agentStatus = AgentStatus.Offline
-        )
-    )
+    membershipStatus = "active"
 )
 
 private val membersAgentDetailVisualScopeSet = AgentScopeSet(
@@ -2864,7 +2845,9 @@ private data class MemberDetailVisualSeed(
     val agentDetailState: MembersAgentDetailLoadState,
     val agentScopeSet: AgentScopeSet? = null,
     /** Activity tab Overview fixture (flag on); null keeps the raw log only. */
-    val activityOverview: build.raft.app.data.AgentActivityOverviewState? = null
+    val activityOverview: build.raft.app.data.AgentActivityOverviewState? = null,
+    /** The signed-in viewer; the human profile is the web fixture's own (`visual-user`). */
+    val viewerId: String = "visual-owner"
 )
 
 /**
@@ -5046,7 +5029,8 @@ private fun RaftMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDeta
         membersHumanDetailVisualMember.id.value ->
             MemberDetailVisualSeed(
                 member = membersHumanDetailVisualMember,
-                agentDetailState = MembersAgentDetailLoadState.Idle
+                agentDetailState = MembersAgentDetailLoadState.Idle,
+                viewerId = membersHumanDetailVisualMember.id.value
             )
         else -> membersAgentDetailVisualVariants
             .firstOrNull { it.id == identity?.memberId?.value }
@@ -5091,7 +5075,7 @@ private fun MemberDetailVisualSeedContent(
     }
     MembersDetailContent(
         member = seed.member,
-        currentUserId = "visual-owner",
+        currentUserId = seed.viewerId,
         currentServerId = "visual-server",
         agentDetailState = seed.agentDetailState,
         activityOverview =
@@ -8609,6 +8593,15 @@ private fun MembersHumanGlyph(name: RaftLucideIconName, size: Dp) {
 }
 
 /**
+ * Web HumanDetailPanel `INLINE_ICON_ACTION_CLASS`: the ghost `icon-md` button's 18dp Lucide glyph
+ * in `text-foreground-hint` (HelpCircle beside Role, Pencil to edit it).
+ */
+@Composable
+private fun MembersHumanInlineActionGlyph(name: RaftLucideIconName) {
+    RaftLucideIcon(name, modifier = Modifier.size(18.dp), color = raftArgbHex(RaftTheme.colors.foregroundHint))
+}
+
+/**
  * raft-ui Avatar (the square sticker) around the member's resolved photo / pixel avatar.
  * [RaftAvatarSize.Xl] is web `AvatarSlot context="profile-hero"`, Md the panel head and list rows.
  */
@@ -8628,7 +8621,8 @@ private fun MembersStickerAvatar(
         image = {
             RaftAppAvatar(
                 avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
-                label = member.raftAvatarName(),
+                // Web AvatarSlot: a person without a photo is the User placeholder, never initials.
+                label = if (member.kind == MemberKind.Human) "" else member.raftAvatarName(),
                 // The face fills the inside of the sticker's two 1.5dp edges.
                 avatarSize = size.edge - RaftAppStroke.Control * 2,
                 borderWidth = 0.dp,
@@ -8777,7 +8771,7 @@ private fun MembersHumanInfoSection(
                                 tooltip = roleHelpLabel,
                                 variant = RaftButtonVariant.Ghost
                             ) {
-                                RaftGlyphIcon(RaftGlyph.Info, size = 14.dp)
+                                MembersHumanInlineActionGlyph(RaftLucideIconName.CircleQuestionMark)
                             }
                             if (canEditRole && !editingRole) {
                                 RaftIconButton(
@@ -8790,7 +8784,7 @@ private fun MembersHumanInfoSection(
                                     tooltip = editRoleLabel,
                                     variant = RaftButtonVariant.Ghost
                                 ) {
-                                    MembersHumanGlyph(RaftLucideIconName.Pencil, 14.dp)
+                                    MembersHumanInlineActionGlyph(RaftLucideIconName.Pencil)
                                 }
                             }
                         }
