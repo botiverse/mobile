@@ -70,6 +70,7 @@ LUCIDE_ICONS = [
     "ban",
     "badge-info",
     "bell",
+    "bell-dot",
     "bell-off",
     "bell-ring",
     "blend",

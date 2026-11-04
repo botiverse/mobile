@@ -359,6 +359,8 @@
     <string name="settings_server_theme_name_spooky">Spooky</string>
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_subtitle">Push status and workspace mute</string>
+    <string name="settings_server_notifications_subtitle">Notifications on %1$s</string>
+    <string name="settings_documentation_title">Documentation</string>
     <string name="settings_language_title">Language</string>
     <string name="settings_language_update_failed">Failed to update language preferences</string>
     <string name="settings_app_language_title">App language</string>

@@ -359,6 +359,8 @@
     <string name="settings_server_theme_name_spooky">怪谈</string>
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_subtitle">推送状态和工作空间静音</string>
+    <string name="settings_server_notifications_subtitle">%1$s 的通知</string>
+    <string name="settings_documentation_title">文档</string>
     <string name="settings_language_title">语言</string>
     <string name="settings_language_update_failed">更新语言偏好失败</string>
     <string name="settings_app_language_title">应用语言</string>

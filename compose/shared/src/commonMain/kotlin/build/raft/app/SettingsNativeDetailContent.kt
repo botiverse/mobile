@@ -142,7 +142,10 @@ internal fun SettingsNativeDetailScreen() {
         serverId =
             session?.currentServerId
                 ?.trim()
-                ?.takeIf { it.isNotBlank() && route.page == SettingsNativeDetailPage.Notifications },
+                ?.takeIf {
+                    it.isNotBlank() &&
+                        route.page in setOf(SettingsNativeDetailPage.Notifications, SettingsNativeDetailPage.ServerNotifications)
+                },
         dispatch = settingsViewModel::dispatch,
     )
     LaunchedEffect(environment.chatLayoutPreferenceRepository) {
@@ -640,8 +643,10 @@ internal fun SettingsNativeDetailPageContent(
                     }
                 }
             }
-            SettingsNativeDetailPage.Notifications ->
+            SettingsNativeDetailPage.Notifications,
+            SettingsNativeDetailPage.ServerNotifications ->
                 SettingsNotificationsContent(
+                    serverOnly = route.page == SettingsNativeDetailPage.ServerNotifications,
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
@@ -815,6 +820,7 @@ private fun settingsNativeDetailPageTitle(route: SettingsNativeDetailRoute): Str
         SettingsNativeDetailPage.Appearance -> stringResource(Res.string.settings_appearance_title)
         SettingsNativeDetailPage.Notifications -> stringResource(Res.string.settings_notifications_title)
         SettingsNativeDetailPage.Theme -> stringResource(Res.string.settings_theme_title)
+        SettingsNativeDetailPage.ServerNotifications -> stringResource(Res.string.settings_notifications_title)
         SettingsNativeDetailPage.Mobile -> stringResource(Res.string.settings_mobile_title)
         SettingsNativeDetailPage.Server -> stringResource(Res.string.settings_server_profile_title)
         SettingsNativeDetailPage.About -> stringResource(Res.string.settings_about_title)
@@ -840,6 +846,7 @@ private fun settingsNativeDetailPageIcon(page: SettingsNativeDetailPage): RaftLu
         SettingsNativeDetailPage.Appearance -> RaftLucideIconName.Type
         SettingsNativeDetailPage.Notifications -> RaftLucideIconName.Bell
         SettingsNativeDetailPage.Theme -> RaftLucideIconName.Palette
+        SettingsNativeDetailPage.ServerNotifications -> RaftLucideIconName.BellDot
         SettingsNativeDetailPage.Mobile -> RaftLucideIconName.Smartphone
         SettingsNativeDetailPage.Server -> RaftLucideIconName.Building2
         SettingsNativeDetailPage.About -> RaftLucideIconName.BadgeInfo

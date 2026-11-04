@@ -60,6 +60,7 @@ internal val SettingsWideNativeDetailKeys: Set<String> =
         SettingsNativeDetailPage.Mobile.key,
         SettingsDestinationStorage,
         SettingsNativeDetailPage.Theme.key,
+        SettingsNativeDetailPage.ServerNotifications.key,
         SettingsNativeDetailPage.Server.key,
         SettingsDestinationComputers,
         SettingsNativeDetailPage.About.key,

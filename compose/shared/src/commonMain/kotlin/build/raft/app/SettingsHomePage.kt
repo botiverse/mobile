@@ -548,6 +548,8 @@ internal const val SettingsDestinationBilling = "billing"
 internal const val SettingsDestinationStorage = "storage"
 internal const val SettingsDestinationReleaseNotes = "releaseNotes"
 internal const val SettingsDestinationHandsFeedback = "hands-feedback"
+/** Settings > Resources > Documentation: the docs site in the browser (web: a link, ↗). */
+internal const val SettingsDestinationDocumentation = "documentation"
 
 private const val SettingsRouteVisualDestinationKey = "destination"
 private const val SettingsRouteVisualFixtureKey = "fixtureKey"
@@ -8480,6 +8482,7 @@ private fun RaftAppShellReadyContent(
                             SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
                             SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
                             SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
+                            SettingsDestinationDocumentation -> bridge.openUrl(RaftDocumentationUrl, inBrowser = true)
                             SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
                             SettingsDestinationComputers -> {
                                 if (!navRailActive) {

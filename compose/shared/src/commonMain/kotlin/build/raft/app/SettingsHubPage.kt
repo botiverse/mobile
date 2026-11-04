@@ -95,9 +95,11 @@ internal fun SettingsAppShellHomeContent(
 /**
  * The Settings home rows top to bottom, the web's settings groups (botiverse/slock
  * packages/web/src/components/layout/Sidebar.tsx:2257-2328, settingsNavigation.ts:29-45):
- * Personal; "On {server}", the member's own settings in the current server, with Theme (the web
- * then has the server's Notifications; the app keeps that mute on Notifications); Workspace;
- * Resources. Theme is there only with a current server ([hasThemeServer]), as is the web's group.
+ * Personal; "On {server}", the member's own settings in the current server: Theme and the server's
+ * Notifications (its level alone; the personal Notifications page shows it too); Workspace;
+ * Resources, with Documentation leaving Raft for the docs site. The "On {server}" group is there
+ * only with a current server ([hasThemeServer]), as is the web's. The app's own rows stay: Mobile
+ * and Storage (this device), Applications and Computers (the web has them on the rail).
  * Mobile is a phone page: with [appPreferencesUnderAppearance] (the desktop app) its cards are part
  * of Appearance, the web's home for them, and there is no Mobile row. IM Bridges follows
  * Administration, as on the web (settingsNavigation.ts, Sidebar.tsx), only with [imBridges]: the
@@ -117,6 +119,7 @@ internal fun settingsHomeRowKeys(
         SettingsNativeDetailPage.Mobile.key.takeUnless { appPreferencesUnderAppearance },
         SettingsDestinationStorage,
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
+        SettingsNativeDetailPage.ServerNotifications.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.Server.key,
         SettingsDestinationBilling,
         SettingsDestinationAdministration,
@@ -124,6 +127,7 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationConnectedApps,
         SettingsDestinationComputers,
         SettingsNativeDetailPage.About.key,
+        SettingsDestinationDocumentation,
         SettingsDestinationHandsFeedback,
         SettingsDestinationReleaseNotes.takeIf { releaseNotes },
     )
@@ -155,6 +159,7 @@ internal fun appShellSettingsHomePayload(
     val aboutSection = stringResource(Res.string.settings_navigation_section_about)
     val themeServer = session?.settingsThemeServer()
     val themeServerName = themeServer?.name.orEmpty()
+    val onServerSection = stringResource(Res.string.settings_navigation_section_on_server, themeServerName)
     val rows =
         listOf(
             SettingsHomePageLinkPayload(
@@ -205,7 +210,14 @@ internal fun appShellSettingsHomePayload(
                 title = stringResource(Res.string.settings_theme_title),
                 subtitle = stringResource(Res.string.settings_server_theme_description, themeServerName),
                 iconName = RaftLucideIconName.Palette,
-                section = stringResource(Res.string.settings_navigation_section_on_server, themeServerName)
+                section = onServerSection
+            ),
+            SettingsHomePageLinkPayload(
+                key = SettingsNativeDetailPage.ServerNotifications.key,
+                title = stringResource(Res.string.settings_notifications_title),
+                subtitle = stringResource(Res.string.settings_server_notifications_subtitle, themeServerName),
+                iconName = RaftLucideIconName.BellDot,
+                section = onServerSection
             ),
             SettingsHomePageLinkPayload(
                 key = SettingsNativeDetailPage.Server.key,
@@ -258,6 +270,14 @@ internal fun appShellSettingsHomePayload(
                 subtitle = stringResource(Res.string.settings_about_subtitle),
                 iconName = RaftLucideIconName.BadgeInfo,
                 section = aboutSection
+            ),
+            SettingsHomePageLinkPayload(
+                key = SettingsDestinationDocumentation,
+                title = stringResource(Res.string.settings_documentation_title),
+                subtitle = RaftDocumentationUrl,
+                iconName = RaftLucideIconName.BookOpenText,
+                section = aboutSection,
+                opensExternally = true,
             ),
             SettingsHomePageLinkPayload(
                 key = SettingsDestinationHandsFeedback,
