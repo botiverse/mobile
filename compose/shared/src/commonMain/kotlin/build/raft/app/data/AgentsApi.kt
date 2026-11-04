@@ -639,6 +639,9 @@ internal data class AgentSummary(
     val spawnFailure: AgentSpawnFailure? = null,
     /** `lastRuntimeError.message`: the runtime error the server kept for the agent; null when none. */
     val lastRuntimeErrorMessage: String? = null,
+    /** `lastRuntimeError.errorClass` / `errorReason`: the kept error's typed diagnostic, when it has one. */
+    val lastRuntimeErrorClass: String? = null,
+    val lastRuntimeErrorReason: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: AgentToolStuck? = null
 )
@@ -678,6 +681,8 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         wakeCrashLoop = wakeCrashLoop,
         spawnFailure = spawnFailure,
         lastRuntimeErrorMessage = lastRuntimeErrorMessage,
+        lastRuntimeErrorClass = lastRuntimeErrorClass,
+        lastRuntimeErrorReason = lastRuntimeErrorReason,
         toolStuck = toolStuck
     )
 internal data class AgentCommandResult(val ok: Boolean)
@@ -902,10 +907,13 @@ private data class AgentWireDto(
     val toolStuck: ToolStuckDto? = null,
 )
 
-/** The field of shared `AgentRuntimeErrorState` the client reads. */
+/** The fields of shared `AgentRuntimeErrorState` the client reads. */
 @Serializable
 private data class AgentLastRuntimeErrorWireDto(
     val message: String? = null,
+    /** #688(c) typed diagnostic (`RuntimeErrorClass` / `RuntimeErrorReason`); absent for an untyped error. */
+    val errorClass: String? = null,
+    val errorReason: String? = null,
 )
 
 @Serializable
@@ -962,6 +970,8 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind),
         spawnFailure = spawnFailure.toAgentSpawnFailure(activityDetailKind),
         lastRuntimeErrorMessage = lastRuntimeError?.message?.trim()?.takeIf { it.isNotEmpty() },
+        lastRuntimeErrorClass = lastRuntimeError?.errorClass?.trim()?.takeIf { it.isNotEmpty() },
+        lastRuntimeErrorReason = lastRuntimeError?.errorReason?.trim()?.takeIf { it.isNotEmpty() },
         toolStuck = toolStuck.toAgentToolStuck()
     )
 }
