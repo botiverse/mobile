@@ -36,7 +36,7 @@ import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.designsystem.components.RaftSideAction
 
 /*
- * PROTOTYPE (agent/lagoon/ios-native-nav-proto, not for merge): the page's top bar drawn by the
+ * iOS native navigation (mobile_ios_native_nav_v1, default off): the page's top bar drawn by the
  * host's real UINavigationBar instead of a Compose header.
  *
  * A host opts a page in like the native tab bar: it registers a [RaftNativeNavBarBridge] in
@@ -188,6 +188,11 @@ class RaftNativeNavBarBridge {
     /** One publishing head; the one activated last that is still on screen is the bar's. */
     internal class Entry {
         var head: RaftNativeNavBarHead? = null
+
+        /** A head that draws itself (not mapped to the bar): on top, it hides the bar. */
+        var declined: Boolean = false
+
+        internal val shown: Boolean get() = head != null || declined
     }
 
     private val entries = mutableListOf<Entry>()
@@ -200,7 +205,7 @@ class RaftNativeNavBarBridge {
         this.listener = listener
         lastWire = null
         // Nothing published yet: the host keeps its bar until the page's head arrives.
-        if (entries.any { it.head != null }) send()
+        if (entries.any { it.shown }) send()
         reportScroll()
     }
 
@@ -219,7 +224,7 @@ class RaftNativeNavBarBridge {
         entries.remove(entry)
         entries.add(entry)
         // A head that has not published yet sends from its first publish.
-        if (entry.head != null) send()
+        if (entry.shown) send()
     }
 
     internal fun deactivate(entry: Entry) {
@@ -229,11 +234,12 @@ class RaftNativeNavBarBridge {
 
     internal fun publish(entry: Entry, head: RaftNativeNavBarHead) {
         entry.head = head
-        if (entry in entries && entries.lastOrNull { it.head != null } === entry) send()
+        if (entry in entries && entries.lastOrNull { it.shown } === entry) send()
     }
 
     private fun send() {
-        val entry = entries.lastOrNull { it.head != null }
+        val entry = entries.lastOrNull { it.shown }
+        // A declined head on top: no bar (its Compose head draws instead).
         val head = entry?.head
         if (head == null) {
             handlers = emptyMap()
@@ -403,6 +409,29 @@ val LocalRaftNativeNavBar = staticCompositionLocalOf<RaftNativeNavBarBridge?> { 
 
 /** The page's registered bridge even when the host does not draw the bar (capture scripting). */
 val LocalRaftNativeNavBarScript = staticCompositionLocalOf<RaftNativeNavBarBridge?> { null }
+
+/**
+ * The head of a page on the host bar that draws itself instead ([raftNativeNavBarHeadMapped] false):
+ * while it is the top head, the host hides its bar, so the page's Compose head is the only one.
+ */
+@Composable
+internal fun RaftNativeNavBarDecline() {
+    val bridge = LocalRaftNativeNavBar.current ?: return
+    val active = LocalRaftPageActive.current
+    val entry = remember(bridge) { RaftNativeNavBarBridge.Entry().also { it.declined = true } }
+    DisposableEffect(bridge, entry, active) {
+        if (active) bridge.activate(entry)
+        onDispose { bridge.deactivate(entry) }
+    }
+}
+
+/**
+ * A head may go on the host bar only when everything it shows is mapped: Compose trailing buttons
+ * ([hasComposeTrailing]) need bar buttons ([nativeActions]), else the head keeps drawing itself (a
+ * page moved to the main stack before its head was mapped must not lose its buttons).
+ */
+internal fun raftNativeNavBarHeadMapped(hasComposeTrailing: Boolean, nativeActions: List<RaftNativeNavBarAction>): Boolean =
+    !hasComposeTrailing || nativeActions.isNotEmpty()
 
 /**
  * Publishes the head to the host bar when there is one. True when the host draws it (the caller

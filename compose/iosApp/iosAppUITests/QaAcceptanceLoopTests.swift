@@ -479,6 +479,11 @@ final class SignedInHomeShotTests: XCTestCase {
         }
         ioDir = dir
         let app = XCUIApplication(bundleIdentifier: env["HOME_SHOT_BUNDLE"] ?? "build.raft.app")
+        // iOS native navigation for this launch (Debug builds read RAFT_NATIVE_NAV=1|0); unset
+        // leaves the app's own decision (server flag, default off).
+        if let nativeNav = env["HOME_SHOT_NATIVE_NAV"], !nativeNav.isEmpty {
+            app.launchEnvironment["RAFT_NATIVE_NAV"] = nativeNav
+        }
         app.launch()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 

@@ -1,7 +1,7 @@
 package build.raft.app.network
 
 /*
- * PROTOTYPE (agent/lagoon/ios-native-nav-proto, never merged): a login-free capture of the REAL
+ * iOS native navigation capture tooling: a login-free capture of the REAL
  * signed-in app (the production app shell, its native tab bar, real pages) on fabricated data.
  *
  * Only a build with visual fixtures (`-PslockVisualFixtures=true`) has an installer

@@ -1,14 +1,17 @@
-# PROTOTYPE ONLY (agent/lagoon/ios-native-nav-proto, never merged): build the Simulator app with
-# visual fixtures and capture the native-navigation demo (RAFT_PROTO_SCENE) with the prototype
-# off ("now", RAFT_NATIVE_NAV_PROTO=0) and on ("native"), plus a screen recording of each.
+# iOS native navigation (mobile_ios_native_nav_v1, default off) side-by-side capture: build the
+# Debug Simulator app with visual fixtures and capture the real signed-in app on fabricated data
+# (and, with RAFT_PROTO_DEMO_SCENES=1, the login-free demo scenes) with the switch off ("now",
+# launch environment RAFT_NATIVE_NAV=0) and on ("native", RAFT_NATIVE_NAV=1), plus a recording.
 # Phase 2: the four tabs (Home / Activity / Tasks / More), Settings detail, Saved, the conversation,
 # Members, channel settings and an agent profile.
-name: iOS native nav prototype capture
+name: iOS native nav capture (on demand)
 
 on:
+  # On demand; a push runs it only when this file changes (so ordinary pushes never take a macOS
+  # runner, and a branch can trigger it before the file reaches the default branch).
   push:
-    branches:
-      - agent/lagoon/ios-native-nav-proto
+    paths:
+      - ".github/workflows/ios-native-nav-proto.yml"
   workflow_dispatch:
 
 permissions:
@@ -153,7 +156,7 @@ jobs:
             local log="$out/$mode-$scene.log"
             xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
             sleep 1
-            SIMCTL_CHILD_RAFT_PROTO_SCENE="$scene" SIMCTL_CHILD_RAFT_NATIVE_NAV_PROTO="$flag" \
+            SIMCTL_CHILD_RAFT_PROTO_SCENE="$scene" SIMCTL_CHILD_RAFT_NATIVE_NAV="$flag" \
               xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" > "$log" 2>&1 &
             local pid=$!
             for _ in $(seq 1 120); do
@@ -174,7 +177,7 @@ jobs:
             xcrun simctl io "$SIM_UDID" recordVideo --codec h264 --force "$out/real-$mode.mp4" &
             local rec=$!
             sleep 2
-            SIMCTL_CHILD_RAFT_PROTO_FAKE_BACKEND=1 SIMCTL_CHILD_RAFT_PROTO_REAL_SCENE=walk SIMCTL_CHILD_RAFT_NATIVE_NAV_PROTO="$flag" \
+            SIMCTL_CHILD_RAFT_PROTO_FAKE_BACKEND=1 SIMCTL_CHILD_RAFT_PROTO_REAL_SCENE=walk SIMCTL_CHILD_RAFT_NATIVE_NAV="$flag" \
               xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" -RaftHideEnvironmentIndicator YES > "$log" 2>&1 &
             local seen=" "
             for _ in $(seq 1 500); do

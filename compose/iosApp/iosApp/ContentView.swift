@@ -205,13 +205,14 @@ private struct ShellContextResolver: UIViewRepresentable {
     }
 }
 
-// MARK: - PROTOTYPE: fully native navigation (agent/lagoon/ios-native-nav-proto, not for merge)
+// MARK: - Fully native navigation (behind mobile_ios_native_nav_v1, default off)
 //
 // artin, 2026-10-30: "我就想知道全原生是什么感觉". Pages listed in `RaftNativeNavProto` get the real
 // UINavigationBar (system Back with the previous title, Liquid Glass bar buttons, the title
 // published by the page's shared head) and the system interactive pop gesture instead of
-// FDFullscreenPopGesture. `RAFT_NATIVE_NAV_PROTO=0` in the launch environment switches the
-// prototype off (today's behaviour) in the same build, for side-by-side captures.
+// FDFullscreenPopGesture. Behind the switch `mobile_ios_native_nav_v1` (default off; see
+// RaftNativeNavProto.enabled). A Debug build takes `RAFT_NATIVE_NAV=1|0` from the launch
+// environment, for side-by-side captures of one build.
 //
 // `RAFT_PROTO_SCENE=<home|thread|members|midswipe|video>` launches a login-free demo stack built
 // from visual-fixture pages (needs -PslockVisualFixtures=true): Home (tab root) -> #design ->
@@ -221,46 +222,32 @@ private struct ShellContextResolver: UIViewRepresentable {
 let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
 
 @objc final class RaftNativeNavProto: NSObject {
-    /// On by default on this branch; `RAFT_NATIVE_NAV_PROTO=0` restores today's behaviour.
-    @objc static let enabled: Bool =
-        ProcessInfo.processInfo.environment["RAFT_NATIVE_NAV_PROTO"]?.trimmingCharacters(in: .whitespaces) != "0"
+    /// This process's decision, read once (shared RaftIosNativeNavFlag): the server flag
+    /// `mobile_ios_native_nav_v1` (default off, last evaluation kept on the device) or the
+    /// Settings > Developer switch, iPhone only. Off, no page gets a bridge or the real bar and the
+    /// app behaves as before. A Debug build also takes `RAFT_NATIVE_NAV=1|0` from the launch
+    /// environment (CI captures); a release build never reads it.
+    @objc static let enabled: Bool = {
+        #if DEBUG
+        let launchOverride = ProcessInfo.processInfo.environment["RAFT_NATIVE_NAV"]
+        #else
+        let launchOverride: String? = nil
+        #endif
+        let decided = RaftIosNativeNavFlagKt.raftIosNativeNavLaunchDecision(launchOverride: launchOverride)
+        print("RAFT_NATIVE_NAV decided=\(decided)")
+        return decided
+    }()
 
-    /// Pages whose heads are mapped (every head they show publishes to the bar, every button of it
-    /// is reachable there). Phase 2: the app shell (its Home / Activity / Tasks / Members / More
-    /// tabs; Search keeps its own search-field head, the bar hides for it) and the pushed pages.
-    private static let nativePageNames: Set<String> = [
-        // App
-        "compose_slock_app_shell",
-        "compose_thread",
-        "compose_thread_members",
-        "compose_home_activity",
-        "compose_home_saved",
-        "compose_home_drafts",
-        "compose_channel_settings",
-        "compose_members",
-        "compose_member_detail",
-        "compose_settings_home",
-        "compose_settings_account",
-        "compose_settings_native_detail",
-        "compose_settings_storage",
-        "compose_settings_computers",
-        "compose_settings_hands_feedback",
-        // Login-free demo (visual fixtures)
-        "compose_native_nav_proto_home",
-        "compose_native_nav_proto_thread",
-        "compose_channel_members_parity_visual",
-        "compose_native_nav_proto_activity",
-        "compose_native_nav_proto_tasks",
-        "compose_native_nav_proto_more",
-        "compose_native_nav_proto_settings_detail",
-        "compose_native_nav_proto_saved",
-        "compose_native_nav_proto_agent",
-        "compose_native_nav_proto_channel_settings",
-    ]
+    /// Before the first decision (iOSApp init): only an iPhone offers the switch.
+    static func installHostSupport() {
+        RaftIosNativeNavFlag.shared.hostSupported = UIDevice.current.userInterfaceIdiom == .phone
+    }
 
-    /// iPhone only: the iPad / wide layouts keep their own top bar and panes.
+    /// The mapped pages (shared RaftIosNativeNavFlag.pageUsesNativeNavBar), with the switch on for
+    /// this process; iPhone only (the switch is never on elsewhere; the idiom check stays as a guard).
     static func usesNativeNavBar(pageName: String) -> Bool {
-        enabled && UIDevice.current.userInterfaceIdiom == .phone && nativePageNames.contains(pageName)
+        UIDevice.current.userInterfaceIdiom == .phone
+            && RaftIosNativeNavFlag.shared.pageUsesNativeNavBar(enabled: enabled, pageName: pageName)
     }
 
     /// Pages whose title is large and collapses with their primary list (the tab root, lists).
@@ -290,7 +277,7 @@ let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
     /// In a capture with the prototype off, the same pages get a script-only bridge so the
     /// scripted scroll (and the real-app script's head actions) run in both modes.
     static func scriptsPage(pageName: String) -> Bool {
-        (demoScene != nil || realScene != nil) && nativePageNames.contains(pageName)
+        (demoScene != nil || realScene != nil) && RaftIosNativeNavFlag.shared.isMappedPage(pageName: pageName)
     }
 
     /// `RAFT_PROTO_REAL_SCENE=<name>`: script the REAL signed-in app (with

@@ -22,7 +22,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import androidx.compose.material3.Text
 
 /*
- * PROTOTYPE (agent/lagoon/ios-native-nav-proto, not for merge): fixture pages for the "fully
+ * iOS native navigation (mobile_ios_native_nav_v1, default off): fixture pages for the "fully
  * native iOS navigation" experiment. They render production composables from fixture data (no
  * session), so the iOS demo can show Home -> #design -> Members with and without the host's
  * UINavigationBar (RaftNativeNavBar). The page decides nothing about the bar itself: the shared

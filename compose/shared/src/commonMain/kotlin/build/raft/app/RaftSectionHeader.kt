@@ -156,9 +156,15 @@ internal fun RaftTopPageHeader(
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
             .coerceAtLeast(0.dp)
-    // PROTOTYPE: the host's UINavigationBar draws this head (title, Back, actions). The page's top
-    // safe area already includes the bar, so only that space is kept.
+    // iOS native navigation (mobile_ios_native_nav_v1): the host's UINavigationBar draws this head
+    // (title, Back, actions). The page's top safe area already includes the bar, so only that space
+    // is kept. A head with Compose buttons but no bar buttons mapped keeps its Compose head (and
+    // the host hides its bar) instead of losing those buttons.
+    // iPhone Duo side column: the column holds Back and the actions, so the Compose head stays.
+    val nativeHeadMapped = !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null, nativeActions)
+    if (!nativeHeadMapped) RaftNativeNavBarDecline()
     if (
+        nativeHeadMapped &&
         raftNativeNavBarPublish(
             title = title,
             subtitle = nativeSubtitle,
@@ -298,8 +304,15 @@ internal fun RaftPanelBackHeader(
     nativeActions: List<RaftNativeNavBarAction> = emptyList(),
 ) {
     val safeTop = topSafeArea.coerceAtLeast(0.dp)
-    // PROTOTYPE: the host's UINavigationBar draws this head.
-    if (raftNativeNavBarPublish(title, subtitle, nativeActions, RaftNativeNavBarTitleExtras(refreshing = refreshing), onBack = onBack, onTitleClick = onTitleClick)) {
+    // iOS native navigation: the host's UINavigationBar draws this head (unless its Compose
+    // buttons have no bar buttons mapped, see RaftTopPageHeader).
+    val nativeHeadMapped =
+        leadingContent == null && !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null, nativeActions)
+    if (!nativeHeadMapped) RaftNativeNavBarDecline()
+    if (
+        nativeHeadMapped &&
+        raftNativeNavBarPublish(title, subtitle, nativeActions, RaftNativeNavBarTitleExtras(refreshing = refreshing), onBack = onBack, onTitleClick = onTitleClick)
+    ) {
         RaftNativeNavBarHeadSpacer(
             bridge = LocalRaftNativeNavBar.current!!,
             modifier = modifier.fillMaxWidth(),

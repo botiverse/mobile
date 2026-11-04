@@ -774,7 +774,9 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         RaftIosAvatarCacheHost.shared.install()
         RaftIosAppScopeMMKV.install()
-        // PROTOTYPE (agent/lagoon/ios-native-nav-proto): the login-free capture of the real app on
+        // iOS native navigation (mobile_ios_native_nav_v1): iPhone only; decided at the first page.
+        RaftNativeNavProto.installHostSupport()
+        // iOS native navigation capture tooling: the login-free capture of the real app on
         // fabricated data. Only a visual-fixture build carries the backend; only the capture's
         // launch environment asks for it.
         if ProcessInfo.processInfo.environment["RAFT_PROTO_FAKE_BACKEND"] == "1" {

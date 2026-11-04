@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** PROTOTYPE (native nav bar, branch only): the bar's head stack and the trailing-button split. */
+/** iOS native navigation: the bar's head stack and the trailing-button split. */
 class RaftNativeNavBarBridgeTest {
     private class Recorder : RaftNativeNavBarListener {
         val titles = mutableListOf<String>()
@@ -77,5 +77,30 @@ class RaftNativeNavBarBridgeTest {
         assertEquals(RaftNativeNavBarPlacement.Trailing, split["search"])
         assertEquals(RaftNativeNavBarPlacement.Overflow, split["settings"])
         assertEquals(RaftNativeNavBarPlacement.Overflow, split["focus"])
+    }
+
+    @Test
+    fun aDeclinedHeadOnTopHidesTheBarAndGivesItBackWhenItLeaves() {
+        val bridge = RaftNativeNavBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+        val page = RaftNativeNavBarBridge.Entry()
+        bridge.activate(page)
+        bridge.publish(page, head("Settings"))
+        val unmapped = RaftNativeNavBarBridge.Entry().also { it.declined = true }
+        bridge.activate(unmapped)
+        assertEquals(1, recorder.cleared)
+        bridge.deactivate(unmapped)
+        assertEquals(listOf("Settings", "Settings"), recorder.titles)
+    }
+
+    @Test
+    fun aPageWhoseOnlyHeadDeclinedHidesTheBarOnceTheHostListens() {
+        val bridge = RaftNativeNavBarBridge()
+        bridge.activate(RaftNativeNavBarBridge.Entry().also { it.declined = true })
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+        assertEquals(1, recorder.cleared)
+        assertTrue(recorder.titles.isEmpty())
     }
 }

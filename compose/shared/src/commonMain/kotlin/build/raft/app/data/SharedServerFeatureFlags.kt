@@ -173,6 +173,16 @@ const val DRAFTS_SECTION_FEATURE_FLAG_KEY: String = "drafts_section_v0"
 const val MOBILE_NAV3_STACK_FEATURE_FLAG_KEY: String = "mobile_nav3_stack_v1"
 
 /**
+ * iOS native navigation (iPhone only): the opted-in pages' heads on the real UINavigationBar and the
+ * system swipe-back instead of the Compose heads and the full-page pan. Mobile-only key, default
+ * OFF (server-unresolved evaluates false). Read like [MOBILE_NAV3_STACK_FEATURE_FLAG_KEY]: the last
+ * evaluation is kept on the device ([build.raft.app.nav.RaftIosNativeNavFlag]) and the app reads it
+ * once at launch, so a change takes effect on the next app start. Local test switch: Settings >
+ * Developer > "iOS native navigation" (iPhone only).
+ */
+const val MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY: String = "mobile_ios_native_nav_v1"
+
+/**
  * Interactive link cards (slock `packages/shared/src/featureFlags.ts` `INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY`,
  * web `serverFeatureFlags.ts` `interactiveLinkCards`): per server, default off. On, a message's App links
  * are read with the batched link-card read (`POST messages/:id/link-cards/read`, App link cards v2);
@@ -211,6 +221,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
     MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,
+    MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY,
     INTERACTIVE_LINK_CARDS_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
