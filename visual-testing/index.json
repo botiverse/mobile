@@ -1,40 +1,40 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-04T08:10:01.638Z",
-  "latestRunId": "63a3324a-20261104074137",
+  "generatedAt": "2026-11-04T09:06:28.230Z",
+  "latestRunId": "bf972e2b-20261104090539",
   "latest": {
-    "runId": "63a3324a-20261104074137",
-    "commit": "63a3324a-20261104074137",
-    "commitSubject": "Every bottom sheet has the grab handle, as raft-ui 0.57.2 (#4278)",
-    "generatedAt": "2026-11-04T08:10:01.638Z",
+    "runId": "bf972e2b-20261104090539",
+    "commit": "bf972e2b-20261104090539",
+    "commitSubject": "Settings: the Feedback row has the web's feedback icon (#4299)",
+    "generatedAt": "2026-11-04T09:06:28.230Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 93,
+      "total": 87,
       "same": 0,
       "pass": 1,
       "basic-pass": 7,
       "different": 77,
-      "missing": 8
+      "missing": 2
     },
     "analysisSummary": {
-      "total": 93,
+      "total": 87,
       "ready": 30,
-      "pending": 63
+      "pending": 57
     },
     "comparisons": [
       "react__android"
     ],
     "componentMatrixSummary": {
-      "total": 122,
-      "active": 102,
+      "total": 116,
+      "active": 96,
       "pending": 17,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 89,
-          "active": 84,
+          "total": 83,
+          "active": 78,
           "pending": 3,
           "skipped": 2
         },
@@ -47,16 +47,16 @@
       },
       "providers": {
         "react": {
-          "active": 92,
+          "active": 86,
           "pending": 13,
           "unsupported": 0,
-          "total": 105
+          "total": 99
         },
         "android": {
-          "active": 85,
+          "active": 79,
           "pending": 18,
           "unsupported": 0,
-          "total": 103
+          "total": 97
         },
         "harmony": {
           "active": 0,
@@ -72,19 +72,19 @@
         }
       }
     },
-    "href": "runs/63a3324a-20261104074137/",
-    "componentMatrix": "runs/63a3324a-20261104074137/component-matrix.json",
-    "llms": "runs/63a3324a-20261104074137/metadata.json"
+    "href": "runs/bf972e2b-20261104090539/",
+    "componentMatrix": "runs/bf972e2b-20261104090539/component-matrix.json",
+    "llms": "runs/bf972e2b-20261104090539/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 122,
-    "active": 102,
+    "total": 116,
+    "active": 96,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 89,
-        "active": 84,
+        "total": 83,
+        "active": 78,
         "pending": 3,
         "skipped": 2
       },
@@ -97,16 +97,16 @@
     },
     "providers": {
       "react": {
-        "active": 92,
+        "active": 86,
         "pending": 13,
         "unsupported": 0,
-        "total": 105
+        "total": 99
       },
       "android": {
-        "active": 85,
+        "active": 79,
         "pending": 18,
         "unsupported": 0,
-        "total": 103
+        "total": 97
       },
       "harmony": {
         "active": 0,
@@ -123,6 +123,79 @@
     }
   },
   "runs": [
+    {
+      "runId": "bf972e2b-20261104090539",
+      "commit": "bf972e2b-20261104090539",
+      "commitSubject": "Settings: the Feedback row has the web's feedback icon (#4299)",
+      "generatedAt": "2026-11-04T09:06:28.230Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 87,
+        "same": 0,
+        "pass": 1,
+        "basic-pass": 7,
+        "different": 77,
+        "missing": 2
+      },
+      "analysisSummary": {
+        "total": 87,
+        "ready": 30,
+        "pending": 57
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 116,
+        "active": 96,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 83,
+            "active": 78,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 86,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 99
+          },
+          "android": {
+            "active": 79,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 97
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 80,
+            "unsupported": 0,
+            "total": 80
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/bf972e2b-20261104090539/",
+      "componentMatrix": "runs/bf972e2b-20261104090539/component-matrix.json",
+      "llms": "runs/bf972e2b-20261104090539/metadata.json"
+    },
     {
       "runId": "63a3324a-20261104074137",
       "commit": "63a3324a-20261104074137",
