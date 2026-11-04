@@ -16,7 +16,6 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
 import androidx.compose.foundation.text.KeyboardActions
 import build.raft.designsystem.components.RaftMobileNavServerPopoverItem
-import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabel
@@ -315,6 +314,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ChannelId
@@ -598,8 +598,16 @@ private const val MessageLinkServerNamePlaceholder = "__raft_message_link_server
 internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): String? = null
 
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
-private val SearchControlsHorizontalPadding = 16.dp
-private val SearchMessagesHorizontalPadding = 16.dp
+// raft-ui SearchShellRoot sets its column's margin (`--column-margin`) to 20dp, the content edge of
+// its list-cell rows (8dp inset + 12dp padding): the filters, summary, headings, rows and notices
+// all start there.
+private val SearchControlsHorizontalPadding = 20.dp
+private val SearchMessagesHorizontalPadding = 20.dp
+// The search head (the Search tab's frame bar, or the Back + field row) keeps the page head's 16dp
+// (nav spec §2/§7.1).
+private val SearchHeadHorizontalPadding = 16.dp
+// web SearchFilterBar in the ⌘K overlay: `px-3`.
+private val SearchOverlayFiltersHorizontalPadding = 12.dp
 private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
 private val SearchPopoverShadowColor: Color get() = RaftColor.ShadowBlack
@@ -12528,6 +12536,7 @@ internal fun SharedHomeSearchPanel(
                     },
                     onIntent = onIntent,
                     showSenderFilter = showSenderFilter,
+                    horizontalPadding = if (overlay != null) SearchOverlayFiltersHorizontalPadding else SearchControlsHorizontalPadding,
                     // From and Channel open the web's Combobox popup under the chip, with search,
                     // at any number of options (artin 2026-11-02), never a sheet.
                     // Composed only while open, so a closed chip builds no option list.
@@ -12855,7 +12864,8 @@ internal fun SharedHomeSearchPanel(
                                     modifier =
                                         Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp),
+                                            // web `px-(--column-margin) py-2`; the heading's 8dp is the top.
+                                            .padding(start = SearchMessagesHorizontalPadding, end = SearchMessagesHorizontalPadding, bottom = 8.dp),
                                 ) {
                                     RaftText(
                                         text = stringResource(Res.string.search_home_frequent_empty),
@@ -12892,6 +12902,7 @@ internal fun SharedHomeSearchPanel(
                                 )
                                 }
                             }
+                            item(key = "search-home-frequent-end") { RaftSearchListEnd() }
                         }
                     }
                     if (entityResults.isNotEmpty()) {
@@ -12934,6 +12945,7 @@ internal fun SharedHomeSearchPanel(
                             )
                             }
                         }
+                        item(key = "search-entities-end") { RaftSearchListEnd() }
                     }
                     if (groupedResults.isNotEmpty()) {
                         item {
@@ -12993,6 +13005,9 @@ internal fun SharedHomeSearchPanel(
                                 }
                             }
                         }
+                    }
+                    if (groupedResults.isNotEmpty()) {
+                        item(key = "search-messages-end") { RaftSearchListEnd() }
                     }
                     if (state.hasMore) {
                         item {
@@ -13275,8 +13290,8 @@ private fun SharedHomeSearchToolbar(
         RaftTopPageHeaderFrame(
             backgroundColor = RaftColor.Frame,
             topSafeArea = topSafeAreaPadding,
-            contentStartPadding = SearchControlsHorizontalPadding,
-            contentEndPadding = SearchControlsHorizontalPadding,
+            contentStartPadding = SearchHeadHorizontalPadding,
+            contentEndPadding = SearchHeadHorizontalPadding,
         ) {
             SharedHomeSearchInput(
                 query = editor.value,
@@ -13301,7 +13316,7 @@ private fun SharedHomeSearchToolbar(
     SharedHomeSearchControlsRow(
         topSafeAreaPadding = topSafeAreaPadding,
         // Back sits at the top-bar edge inset, its arrow 14dp in, like every page header.
-        startPadding = if (onClose != null) RaftBackButtonDefaults.EdgeInset else SearchControlsHorizontalPadding
+        startPadding = if (onClose != null) RaftBackButtonDefaults.EdgeInset else SearchHeadHorizontalPadding
     ) {
         if (onClose != null) {
             RaftBackButton(onClick = onClose, label = stringResource(Res.string.common_back))
@@ -13363,7 +13378,7 @@ private fun SharedHomeSearchScopeRow(scopeLabel: String, onExpand: () -> Unit) {
 @Composable
 private fun SharedHomeSearchControlsRow(
     topSafeAreaPadding: Dp,
-    startPadding: Dp = SearchControlsHorizontalPadding,
+    startPadding: Dp = SearchHeadHorizontalPadding,
     content: @Composable RowScope.() -> Unit
 ) {
     Row(
@@ -13374,7 +13389,7 @@ private fun SharedHomeSearchControlsRow(
                 .padding(top = topSafeAreaPadding)
                 .height(56.dp)
                 .raftSafeAreaHorizontalPadding()
-                .padding(start = startPadding, end = SearchControlsHorizontalPadding),
+                .padding(start = startPadding, end = SearchHeadHorizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
@@ -13690,6 +13705,7 @@ internal fun SharedHomeSearchFilters(
     onOpenFilter: (String, RaftPopoverAnchor) -> Unit,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     showSenderFilter: Boolean = true,
+    horizontalPadding: Dp = SearchControlsHorizontalPadding,
     // The popup a chip opens under itself (the sender and channel comboboxes), composed in the
     // chip's own box so it anchors to it; given the filter id.
     chipPopover: @Composable (String) -> Unit = {}
@@ -13715,9 +13731,9 @@ internal fun SharedHomeSearchFilters(
     // (web `max-w-full`): a long sender or channel name ends in an ellipsis.
     SharedHomeSearchControlsBlock {
         BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
-            val chipModifier = Modifier.widthIn(max = (maxWidth - SearchControlsHorizontalPadding * 2).coerceAtLeast(0.dp))
+            val chipModifier = Modifier.widthIn(max = (maxWidth - horizontalPadding * 2).coerceAtLeast(0.dp))
             FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -13791,10 +13807,12 @@ internal fun SharedHomeSearchFilters(
                     }
                 )
                 if (hasActiveFilters) {
-                    RaftPickerTriggerButton(
+                    // web SearchFilterBar: Clear All is a `ghost` `md` Button, not a picker chip.
+                    RaftButton(
                         text = stringResource(Res.string.search_filter_clear_all),
-                        showIndicator = false,
-                        onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
+                        onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) },
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Md
                     )
                 }
             }
@@ -14371,10 +14389,10 @@ internal fun sharedHomeSearchTimestampTextStyle() =
         letterSpacing = 0.sp
     )
 
-// raft-ui search-entity: a flat `px-4 py-3` row (min 64dp) on the panel, `gap-3` between a
-// 27dp leading avatar / IconTile and the text; `text-body` semibold title with its type
-// Badge, `text-callout` `foreground-muted` description; hairline separators from 55dp;
-// pressed lays `fill-pressed`. An archived channel mutes its title and description.
+// raft-ui search-entity: a flat list-cell row, `py-3` (min 64dp) with its content 20dp in,
+// `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title with
+// its type Badge, `text-callout` `foreground-muted` description; 2dp between rows, no line;
+// pressed fills the cell shape. An archived channel mutes its title and description.
 @Composable
 internal fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
@@ -14406,7 +14424,7 @@ internal fun SharedHomeSearchEntityRow(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = RaftSearchMetrics.EntityMinHeight)
-                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.EntitySeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .raftCaptureLiveRootAnchor(contentAnchor)
                 .raftGesturePointerInput(gestureOwner, interactionSource) { owner ->
@@ -14474,18 +14492,30 @@ internal fun SharedHomeSearchEntityRow(
                     )
                 }
             }
-            // A channel matched by its description shows it cut like a message snippet (web
+            // A channel says "Channel" (web `searchEntities` subtitle `{ kind: "channel" }`); one
+            // matched by its description shows that instead, cut like a message snippet (web
             // `searchEntitySubtitleForQuery`): only when the description holds a hit.
+            val channelLabel = stringResource(Res.string.search_entity_channel)
+            val channelDescriptionHit =
+                shown.type == SearchEntityType.Channel &&
+                    shown.subtitleDataRange == null &&
+                    homeSearchHighlightRanges(shown.subtitle, query).isNotEmpty()
             val subtitle =
-                if (shown.type == SearchEntityType.Channel && shown.subtitleDataRange == null) {
-                    channelDescriptionSnippet(shown.subtitle, query)
-                } else {
-                    shown.subtitle
+                when {
+                    channelDescriptionHit -> channelDescriptionSnippet(shown.subtitle, query)
+                    shown.type == SearchEntityType.Channel -> channelLabel
+                    else -> shown.subtitle
                 }
             if (subtitle.isNotBlank() || appBot == null) RaftSearchHitText(
                 text = subtitle,
                 query = query,
-                highlightRange = shown.subtitleDataRange.takeIf { subtitle == shown.subtitle },
+                // Only real data (a handle, a description) is marked, never the "Channel" label.
+                highlightRange =
+                    when {
+                        channelDescriptionHit -> null
+                        shown.type == SearchEntityType.Channel -> IntRange.EMPTY
+                        else -> shown.subtitleDataRange
+                    },
                 style = typography.callout.withHomeSearchVisualTextScale(visualTextScale),
                 color = if (mutedArchived) RaftColor.ForegroundHint else RaftColor.TextMuted,
                 maxLines = 1,
@@ -14585,9 +14615,8 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType, agent: Boolean, mu
     )
 }
 
-// raft-ui search-thread: a flat block (hairline separator from 16dp, no card or wash). The
-// `px-4 pt-3 pb-1` header holds a mono-meta `foreground-hint` line (Thread Badge, #channel,
-// hit count, time at the end) over the `text-callout` semibold title; the hits follow as
+// raft-ui search-thread: a flat block (no line, card or wash). The `px-5 pt-3` header holds a
+// mono-meta `foreground-hint` line (Thread Badge, #channel, hit count, time at the end) over the `text-callout` semibold title; the hits follow as
 // search-message rows.
 @Composable
 internal fun SharedHomeThreadResultGroup(
@@ -14607,13 +14636,14 @@ internal fun SharedHomeThreadResultGroup(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowGap(showSeparator)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = 4.dp),
+                    // threadHeader `pt-3 pb-0`, then threadMessages' `py-2` before the first hit.
+                    .raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = RaftSearchMetrics.ListPaddingVertical),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Row(
@@ -14629,8 +14659,9 @@ internal fun SharedHomeThreadResultGroup(
                     RaftBadge(
                         text = stringResource(Res.string.search_meta_thread),
                         icon = {
+                            // raft-ui ThreadIcon, as the web's thread Badge.
                             RaftLucideIcon(
-                                RaftLucideIconName.MessageSquare,
+                                RaftLucideIconName.Thread,
                                 color = raftArgbHex(RaftColor.StickerInk),
                                 modifier = Modifier.size(11.dp)
                             )
@@ -14677,7 +14708,6 @@ internal fun SharedHomeThreadResultGroup(
             SharedHomeSearchMessageResultRow(
                 item = item,
                 query = query,
-                nested = true,
                 showSeparator = index > 0,
                 cacheServerId = cacheServerId,
                 memberAvatarResolver = memberAvatarResolver,
@@ -14685,18 +14715,18 @@ internal fun SharedHomeThreadResultGroup(
                 onOpen = { onOpenItem(item) }
             )
         }
+        RaftSearchListEnd()
     }
 }
 
-// raft-ui search-message: a flat `px-4 py-3` row (hairline separator from 16dp, pressed
-// `fill-pressed`). The header line is mono-meta `foreground-hint` with the sender first
-// (14dp avatar, `text-callout` bold `foreground`), then #channel, thread, and the time at
-// the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
+// raft-ui search-message: a flat list-cell row, `py-3` with its content 20dp in (8dp cell inset +
+// 12dp padding), 2dp from the row above and no line between hits; pressed fills the cell shape.
+// The header line is mono-meta `foreground-hint` with the sender first (14dp avatar,
+// `text-callout` bold `foreground`), then #channel, thread, and the time at the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
 @Composable
 internal fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     query: String,
-    nested: Boolean = false,
     showSeparator: Boolean = false,
     cacheServerId: String? = null,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
@@ -14718,7 +14748,7 @@ internal fun SharedHomeSearchMessageResultRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowGap(showSeparator)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
                 .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
@@ -14726,11 +14756,13 @@ internal fun SharedHomeSearchMessageResultRow(
         verticalAlignment = Alignment.Top
     ) {
         val senderLabel = sender?.takeIf { it.isNotBlank() }
+        // web MessageHitRow AvatarSlot: a sender without an avatar shows the kind's default, the
+        // robot for an agent and the person glyph on lavender for anyone else.
+        val resolvedAvatar = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
+        val senderIsAgent = (item.latestActivitySenderKind ?: item.lastMessageSenderKind) == MemberKind.Agent
         RaftAppAvatar(
-            avatarWireValue =
-                item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
-                    ?: AvatarReference.Random((senderLabel ?: item.key).searchAvatarSeed()).wireValue,
-            label = senderLabel.orEmpty(),
+            avatarWireValue = resolvedAvatar ?: if (senderIsAgent) agentAvatarFallbackWireValue(item.key) else null,
+            label = if (resolvedAvatar == null && !senderIsAgent) "" else senderLabel.orEmpty(),
             avatarSize = RaftSearchMetrics.EntityLeading,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
@@ -14756,17 +14788,17 @@ internal fun SharedHomeSearchMessageResultRow(
                             modifier = Modifier.widthIn(max = 180.dp)
                         )
                     }
-                    if (!nested) {
-                        Text(
-                            text = searchResultSourceLabel(item),
-                            style = metaStyle,
-                            color = RaftColor.ForegroundHint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                    }
-                    if (item.kind == InboxItemKind.Thread && !nested) {
+                    // web MessageHitRow: a hit nested in its thread still names its channel and
+                    // says "thread", like a top-level one.
+                    Text(
+                        text = searchResultSourceLabel(item),
+                        style = metaStyle,
+                        color = RaftColor.ForegroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (item.kind == InboxItemKind.Thread) {
                         SharedHomeSearchThreadMeta(metaStyle)
                     }
                     if (item.hasDraft) {
@@ -14795,7 +14827,8 @@ internal fun SharedHomeSearchMessageResultRow(
     }
 }
 
-// search-message `messageThreadMeta`: a 12dp message icon and "thread" in the meta type.
+// search-message `messageThreadMeta`: a 12dp raft-ui ThreadIcon and "thread" (web
+// `search.threadInline`, lower case in English) in the meta type.
 @Composable
 private fun SharedHomeSearchThreadMeta(style: TextStyle) {
     Row(
@@ -14803,12 +14836,12 @@ private fun SharedHomeSearchThreadMeta(style: TextStyle) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftLucideIcon(
-            RaftLucideIconName.MessageSquare,
+            RaftLucideIconName.Thread,
             color = raftArgbHex(RaftColor.ForegroundHint),
             modifier = Modifier.size(12.dp)
         )
         Text(
-            text = stringResource(Res.string.search_meta_thread),
+            text = stringResource(Res.string.search_meta_thread_inline),
             style = style,
             color = RaftColor.ForegroundHint,
             maxLines = 1
@@ -15612,12 +15645,6 @@ private val SearchSort.searchKey: String
             SearchSort.Relevance -> "relevance"
             SearchSort.Recent -> "recent"
         }
-
-private fun String.searchAvatarSeed(): String =
-    lowercase()
-        .replace(Regex("[^a-z0-9]+"), "-")
-        .trim('-')
-        .ifBlank { "default" }
 
 @Composable
 private fun SharedHomeSessionShell(
