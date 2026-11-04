@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -3136,6 +3137,8 @@ private fun RaftMarkdownCodeSurface(code: String, language: String?, style: Text
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = RaftMarkdownCodeSurfaceVerticalInset)
+                // Horizontal drags that start on code are never the thread list's time reveal.
+                .raftKeepsHorizontalDrags()
                 .clip(shape)
                 .raftMarkdownObserveCodeTap()
                 .background(RaftMarkdownCodeBlockBackground)

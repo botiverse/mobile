@@ -1,6 +1,7 @@
 package build.raft.app.markdown
 
 import androidx.compose.foundation.horizontalScroll
+import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -368,7 +369,7 @@ internal fun RaftDisplayMath(source: String, style: TextStyle) {
         // Centred when it fits; otherwise it starts at the edge and scrolls (no subcomposition).
         Layout(
             content = {
-                Box(Modifier.horizontalScroll(rememberScrollState())) {
+                Box(Modifier.raftKeepsHorizontalDrags().horizontalScroll(rememberScrollState())) {
                     Latex(latex = tex, config = config, isDarkTheme = false)
                 }
             },
@@ -385,7 +386,7 @@ internal fun RaftDisplayMath(source: String, style: TextStyle) {
 
 @Composable
 private fun RaftMathSourceText(source: String, style: TextStyle, color: Color, fontFamily: FontFamily?) {
-    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+    Box(Modifier.fillMaxWidth().raftKeepsHorizontalDrags().horizontalScroll(rememberScrollState())) {
         MarkdownBasicText(
             text = source,
             style = style.copy(color = color, fontFamily = fontFamily ?: style.fontFamily),

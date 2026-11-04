@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.annotatorSettings
@@ -107,6 +108,9 @@ fun MarkdownTable(
         Layout(
             contents = listOf(cells, headerBackground, rules),
             modifier = Modifier
+                // A drag that starts on the table is the table's, even at its end (no hand-off to
+                // the thread list's drag-to-see-times).
+                .raftKeepsHorizontalDrags()
                 .then(backSwipe.modifier)
                 .horizontalScroll(scroll, enabled = backSwipe.userScrollEnabled),
             measurePolicy = remember(rows, columnCount, headerRows, closedGrid, stroke, availableWidth) {

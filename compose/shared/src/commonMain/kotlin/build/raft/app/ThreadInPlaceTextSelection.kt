@@ -148,6 +148,10 @@ internal class ThreadInPlaceTextSelectionHost(
         if (active === target) active = null
     }
 
+    /** Whether text is selected in a message now (its handles own horizontal drags). */
+    internal val selectionShowing: Boolean
+        get() = active?.hasSelection == true
+
     /**
      * A pointer went down on a message row. Returns true when a selection was showing anywhere:
      * that gesture is a dismissal and its tap must not also run the row action (open thread).
