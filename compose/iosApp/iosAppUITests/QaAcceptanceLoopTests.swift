@@ -667,10 +667,10 @@ final class SignedInHomeShotTests: XCTestCase {
             return
         }
         tap(app, x: row.frame.midX, y: row.frame.midY)
-        let opened = app.webViews.firstMatch.waitForExistence(timeout: 30)
+        let activityOpened = app.webViews.firstMatch.waitForExistence(timeout: 30)
         Thread.sleep(forTimeInterval: 8)
         attach(app, name: "activity-artifact")
-        write("activity-open", ["ok": true, "viewerWebView": opened])
+        write("activity-open", ["ok": true, "viewerWebView": activityOpened])
         _ = waitFor("activity-open-shot", timeout: 60)
     }
 
