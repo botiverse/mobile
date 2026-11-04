@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.app.resources.*
 import build.raft.app.data.SharedMessageTranslationCandidate
 import build.raft.app.data.SharedMessageTranslationEntry
@@ -251,18 +253,23 @@ internal fun ThreadMessageTranslationIndicator(
                         ThreadMessageTranslationIndicatorAction.ToggleOriginal -> onToggleOriginal
                         ThreadMessageTranslationIndicatorAction.None -> null
                     }
-                RaftText(
-                    text = localizedActionLabel,
-                    style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                    maxLines = 1,
-                    modifier =
-                        if (onAction != null) {
-                            Modifier.clickable(role = Role.Button, onClick = onAction)
-                        } else {
-                            Modifier
-                        }
-                )
+                if (onAction != null) {
+                    // A link inside the indicator's sentence: TextLink strong (ink, semibold).
+                    RaftTextLink(
+                        text = localizedActionLabel,
+                        onClick = onAction,
+                        variant = RaftTextLinkVariant.Strong,
+                        style = typography.caption,
+                        maxLines = 1,
+                    )
+                } else {
+                    RaftText(
+                        text = localizedActionLabel,
+                        style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }

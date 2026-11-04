@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -1285,13 +1286,13 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         if (refLine) {
             // The ref names the task's channel: a tap goes there, to the task (artin, task #35).
             val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
-            RaftText(
-                chrome.ref,
-                Modifier.clickable(onClickLabel = viewInChannel, role = Role.Button, onClick = chrome.onViewInChannel),
+            RaftTextLink(
+                text = chrome.ref,
+                onClick = chrome.onViewInChannel,
+                // Screen readers say where the ref goes, not just the ref.
+                modifier = Modifier.semantics { onClick(label = viewInChannel) { chrome.onViewInChannel(); true } },
                 style = typography.monoMeta,
-                color = colors.foregroundMuted,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         if (chrome.summarized) {
