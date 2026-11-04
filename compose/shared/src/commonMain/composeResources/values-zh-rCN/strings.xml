@@ -2233,6 +2233,7 @@
     <string name="search_entity_computer">计算机</string>
     <string name="search_badge_human">人类成员</string>
     <string name="search_meta_thread">消息列</string>
+    <string name="search_meta_thread_inline">消息列</string>
     <string name="search_hits_count">%1$d 条命中</string>
     <string name="search_state_no_preview">暂无预览</string>
     <string name="search_thread_discussion">消息列讨论</string>

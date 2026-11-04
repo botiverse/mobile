@@ -314,6 +314,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ChannelId
@@ -14658,8 +14659,9 @@ internal fun SharedHomeThreadResultGroup(
                     RaftBadge(
                         text = stringResource(Res.string.search_meta_thread),
                         icon = {
+                            // raft-ui ThreadIcon, as the web's thread Badge.
                             RaftLucideIcon(
-                                RaftLucideIconName.MessageSquare,
+                                RaftLucideIconName.Thread,
                                 color = raftArgbHex(RaftColor.StickerInk),
                                 modifier = Modifier.size(11.dp)
                             )
@@ -14754,11 +14756,13 @@ internal fun SharedHomeSearchMessageResultRow(
         verticalAlignment = Alignment.Top
     ) {
         val senderLabel = sender?.takeIf { it.isNotBlank() }
+        // web MessageHitRow AvatarSlot: a sender without an avatar shows the kind's default, the
+        // robot for an agent and the person glyph on lavender for anyone else.
+        val resolvedAvatar = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
+        val senderIsAgent = (item.latestActivitySenderKind ?: item.lastMessageSenderKind) == MemberKind.Agent
         RaftAppAvatar(
-            avatarWireValue =
-                item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
-                    ?: AvatarReference.Random((senderLabel ?: item.key).searchAvatarSeed()).wireValue,
-            label = senderLabel.orEmpty(),
+            avatarWireValue = resolvedAvatar ?: if (senderIsAgent) agentAvatarFallbackWireValue(item.key) else null,
+            label = if (resolvedAvatar == null && !senderIsAgent) "" else senderLabel.orEmpty(),
             avatarSize = RaftSearchMetrics.EntityLeading,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
@@ -14823,7 +14827,8 @@ internal fun SharedHomeSearchMessageResultRow(
     }
 }
 
-// search-message `messageThreadMeta`: a 12dp message icon and "thread" in the meta type.
+// search-message `messageThreadMeta`: a 12dp raft-ui ThreadIcon and "thread" (web
+// `search.threadInline`, lower case in English) in the meta type.
 @Composable
 private fun SharedHomeSearchThreadMeta(style: TextStyle) {
     Row(
@@ -14831,12 +14836,12 @@ private fun SharedHomeSearchThreadMeta(style: TextStyle) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftLucideIcon(
-            RaftLucideIconName.MessageSquare,
+            RaftLucideIconName.Thread,
             color = raftArgbHex(RaftColor.ForegroundHint),
             modifier = Modifier.size(12.dp)
         )
         Text(
-            text = stringResource(Res.string.search_meta_thread),
+            text = stringResource(Res.string.search_meta_thread_inline),
             style = style,
             color = RaftColor.ForegroundHint,
             maxLines = 1
@@ -15640,12 +15645,6 @@ private val SearchSort.searchKey: String
             SearchSort.Relevance -> "relevance"
             SearchSort.Recent -> "recent"
         }
-
-private fun String.searchAvatarSeed(): String =
-    lowercase()
-        .replace(Regex("[^a-z0-9]+"), "-")
-        .trim('-')
-        .ifBlank { "default" }
 
 @Composable
 private fun SharedHomeSessionShell(
