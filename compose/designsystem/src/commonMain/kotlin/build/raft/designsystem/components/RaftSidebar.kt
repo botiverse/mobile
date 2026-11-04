@@ -673,9 +673,11 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  *   (raft-ui 0.57.1, #942, stdrc 2026-11-02: shown only on hover they hid what the header
  *   can do and changed a long title's room as the pointer passed), so a long title truncates
  *   before them.
- * - Press: the header lights up its hit area, the whole row with the attention pixel and
- *   the controls, with `fill-medium` on the control radius (States: a text button lights up
- *   its hit area when pressed); keyboard focus rings the same shape.
+ * - Press: the header lights up the whole row with the attention pixel and the controls,
+ *   with `fill-medium` on the control radius (States: a text button lights up its hit
+ *   area when pressed): its line with 6dp above and below, so the words sit in the middle
+ *   of the fill (30dp at the default font scale). The 10dp above that is the gap between
+ *   sections: still part of the target, never painted. Keyboard focus rings the same shape.
  * - Touch: [onLongClick] is the press and hold that opens the group's menu (the web's
  *   right-click menu on the header), named [onLongClickLabel]; it does not also toggle.
  *   While that menu is open pass [menuOpen] = true: the header stays pressed. Both need
@@ -713,12 +715,14 @@ fun RaftSidebarSectionHeader(
     // all, the attention pixel and the controls included, on the rows' rounded shape: lit only
     // up to the trailing box, the fill stopped short of the controls (artin, 2026-11-04). The
     // controls are buttons of their own on top, so a tap on one never toggles the section.
+    // The fill and the ring paint only the header's line with `pb-1.5` (6dp) on both sides of
+    // it, so the words sit in the middle; the rest of `pt-4` above (10dp) is the gap between
+    // sections, still part of the target but never painted (artin, 2026-11-04: lit from the
+    // top of the gap, the words sat low in the fill).
     Row(
         modifier
             .fillMaxWidth()
             .raftSafeAreaHorizontalPadding()
-            .raftFocusRing(focused, RaftRadius.Control, colors)
-            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
             .then(
                 if (onExpandedChange != null) {
                     val toggle = { onExpandedChange(!expanded) }
@@ -753,11 +757,15 @@ fun RaftSidebarSectionHeader(
                     Modifier
                 },
             )
-            .padding(horizontal = 8.dp),
+            // Below the gap: the ring and the fill paint only the line and its 6dp.
+            .padding(top = RaftSidebarSectionHeaderGap)
+            .raftFocusRing(focused, RaftRadius.Control, colors)
+            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
+            .padding(horizontal = 8.dp, vertical = RaftSidebarSectionHeaderInset),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.weight(1f).padding(top = 16.dp, bottom = 6.dp)) {
+        Box(Modifier.weight(1f)) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -798,7 +806,7 @@ fun RaftSidebarSectionHeader(
         // The trailing box (`min-w-4.5`): the attention pixel, then the controls.
         if ((attention && !expanded) || actions != null) {
             Row(
-                Modifier.padding(top = 16.dp, bottom = 6.dp).widthIn(min = 18.dp).overhang(lineHeight),
+                Modifier.widthIn(min = 18.dp).overhang(lineHeight),
                 horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -815,6 +823,12 @@ fun RaftSidebarSectionHeader(
         }
     }
 }
+
+/** `pb-1.5`: the header's fill reaches this far below and above its line. */
+private val RaftSidebarSectionHeaderInset = 6.dp
+
+/** The rest of `pt-4` (16dp) above the fill: the gap between sections, tappable but unpainted. */
+private val RaftSidebarSectionHeaderGap = 16.dp - RaftSidebarSectionHeaderInset
 
 /**
  * A group header's control (`SidebarSectionControl`: ghost, `h-6 min-w-6`, raft-ui 0.55 #916):
