@@ -84,7 +84,21 @@ class ArchivedNameCollisionBannerScreenshotTest {
     fun renameUnarchiveFailedDark() =
         captureRename("channel.settings.rename.archived-name.unarchive-failed.dark", RaftAppAppearance.Dark, unarchiveFailed = true)
 
-    private fun captureRename(name: String, appearance: RaftAppAppearance, unarchiveFailed: Boolean = false) {
+    // A refusal without the archived channel's details (the plain "already taken"): the error line, as before.
+    @Test
+    @Config(qualifiers = RENAME_QUALIFIERS)
+    fun renameTakenLight() = captureRename("channel.settings.rename.taken", RaftAppAppearance.Light, withWarning = false)
+
+    @Test
+    @Config(qualifiers = RENAME_QUALIFIERS)
+    fun renameTakenDark() = captureRename("channel.settings.rename.taken.dark", RaftAppAppearance.Dark, withWarning = false)
+
+    private fun captureRename(
+        name: String,
+        appearance: RaftAppAppearance,
+        unarchiveFailed: Boolean = false,
+        withWarning: Boolean = true,
+    ) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme {
                 Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(20.dp)) {
@@ -104,7 +118,7 @@ class ArchivedNameCollisionBannerScreenshotTest {
                         onSave = { _, _, _ -> },
                         onClearStatus = {},
                         archivedCollision =
-                            ChannelInfoArchivedCollision(
+                            if (!withWarning) null else ChannelInfoArchivedCollision(
                                 collision =
                                     ArchivedNameCollision(
                                         archivedChannelId = ChannelId("ch-old"),
