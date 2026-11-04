@@ -1917,6 +1917,7 @@
     <string name="auth_terms_agreement_suffix">.</string>
     <string name="auth_error_session_expired">Session expired</string>
     <string name="auth_error_sign_in_continue">Sign in to continue.</string>
+    <string name="auth_error_sso_required">Your organization requires single sign-on. Sign in again and choose Continue with SSO.</string>
     <string name="auth_error_choose_server_sign_in_required">Sign in before choosing a server.</string>
     <string name="auth_error_restore_session">Could not restore your session.</string>
     <string name="auth_error_load_servers">Could not load servers.</string>

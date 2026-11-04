@@ -4568,6 +4568,20 @@ private fun RaftAppShellReadyContent(
         resetAppShellSessionState()
     }
 
+    // An organization requires single sign-on and this session isn't one (a 403 `SSO_REQUIRED` on any
+    // request): sign out and ask the person to sign in again, which goes through the web sign-in page
+    // and its "Continue with SSO". Once per session; the signal hands each request to one shell only.
+    LaunchedEffect(bridge, storeScope) {
+        build.raft.app.data.RaftSsoRequiredSignal.Process.signInRequests.collect {
+            bridge.logWarn("sso_required_sign_in shell=${storeScope.shellInstanceId}")
+            authDataSource.logout()
+            bridge.realtimeDisconnect("sso_required")
+            authGateMessage = AuthGateMessage.Static(Res.string.auth_error_sso_required.desc())
+            authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+            resetAppShellSessionState()
+        }
+    }
+
     val conversationForwardGestureRuntimeAuthority =
         remember(
             settingsCapabilities.supportsConversationForwardGesture,

@@ -1919,6 +1919,7 @@
     <string name="auth_terms_agreement_suffix">を確認します。</string>
     <string name="auth_error_session_expired">セッションの有効期限が切れました</string>
     <string name="auth_error_sign_in_continue">続行するにはログインしてください。</string>
+    <string name="auth_error_sso_required">組織でシングルサインオンが必須になっています。もう一度ログインし、「SSO で続行」を選んでください。</string>
     <string name="auth_error_choose_server_sign_in_required">サーバーを選択する前にログインしてください。</string>
     <string name="auth_error_restore_session">セッションを復元できませんでした。</string>
     <string name="auth_error_load_servers">サーバーを読み込めませんでした。</string>
