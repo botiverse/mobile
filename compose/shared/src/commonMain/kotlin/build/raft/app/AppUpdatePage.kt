@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.transfer.RaftTransferMeter
@@ -439,11 +440,11 @@ internal fun AppUpdateSummary(
         }
         RaftSeparator()
         if (appUpdateCanSkipVersion(snapshot)) {
-            Text(
+            RaftTextLink(
                 text = stringResource(Res.string.app_update_skip_version),
-                modifier = Modifier.align(Alignment.End).clickable(onClick = onSkipVersion).padding(vertical = 4.dp),
+                onClick = onSkipVersion,
+                modifier = Modifier.align(Alignment.End).padding(vertical = 4.dp),
                 style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
             )
         }
     }

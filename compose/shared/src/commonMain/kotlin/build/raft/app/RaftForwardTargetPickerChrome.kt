@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -161,14 +162,7 @@ internal fun RaftForwardPickerSearchField(
         leading = { ForwardPickerGlyph(RaftLucideIconName.Search, 18.dp) },
         trailing =
             if (query.isNotEmpty()) {
-                {
-                    Box(
-                        modifier = Modifier.size(18.dp).clickable(enabled = enabled) { onQueryChange("") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        ForwardPickerGlyph(RaftLucideIconName.X, 16.dp)
-                    }
-                }
+                { RaftTextFieldClearAction(onClear = { onQueryChange("") }, enabled = enabled) }
             } else {
                 null
             },
