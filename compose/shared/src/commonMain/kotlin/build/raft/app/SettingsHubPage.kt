@@ -414,13 +414,7 @@ private fun SettingsHubSidebarList(
                     build.raft.designsystem.components.RaftSidebarItem(
                         title = item.title,
                         onClick = if (item.enabled) ({ onSelect(item.key) }) else null,
-                        leading = {
-                            RaftLucideIcon(
-                                item.iconName,
-                                Modifier.size(build.raft.designsystem.components.raftSidebarItemIconSize()),
-                                color = raftArgbHex(build.raft.designsystem.theme.LocalRaftContentColor.current),
-                            )
-                        },
+                        leading = { SettingsRowIcon(item.key, item.iconName) },
                         trailing =
                             if (item.attentionDot || item.opensExternally) {
                                 {
@@ -440,5 +434,28 @@ private fun SettingsHubSidebarList(
                 }
             }
         }
+    }
+}
+
+/**
+ * A Settings list row's glyph in a raft-ui SidebarItem's icon box. Feedback is raft-ui
+ * `FeedbackIcon` (the web settings list, useSidebarRoute.tsx), drawn at the box's stroke-2 in its
+ * 18-unit viewBox; every other row is its Lucide [iconName].
+ */
+@Composable
+internal fun SettingsRowIcon(key: String, iconName: RaftLucideIconName) {
+    val size = build.raft.designsystem.components.raftSidebarItemIconSize()
+    if (key == SettingsDestinationHandsFeedback) {
+        build.raft.designsystem.components.RaftConversationKindIcon(
+            build.raft.designsystem.components.RaftConversationKindGlyph.Feedback,
+            size = size,
+            strokeWidth = 2f,
+        )
+    } else {
+        RaftLucideIcon(
+            iconName,
+            Modifier.size(size),
+            color = raftArgbHex(build.raft.designsystem.theme.LocalRaftContentColor.current),
+        )
     }
 }

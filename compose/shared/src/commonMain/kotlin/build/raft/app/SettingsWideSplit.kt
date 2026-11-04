@@ -240,13 +240,7 @@ internal fun SettingsWideSidebarList(
                     title = row.title,
                     selected = row.key == selectedKey,
                     onClick = { onSelect(row.key) },
-                    leading = {
-                        RaftLucideIcon(
-                            row.iconName,
-                            Modifier.size(raftSidebarItemIconSize()),
-                            color = raftArgbHex(LocalRaftContentColor.current),
-                        )
-                    },
+                    leading = { SettingsRowIcon(row.key, row.iconName) },
                     // raft-ui 0.26 (#758): a row that leaves Raft (iOS Billing) ends in ↗.
                     trailing =
                         if (row.opensExternally) {

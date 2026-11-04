@@ -25,12 +25,14 @@ import build.raft.designsystem.theme.RaftTheme
  * `messages-square`); a direct message is the outline bubble with a person. Inbox and Activity
  * titles lead with them, beside Lucide `hash` for a channel. [Chat] is raft-ui `ChatIcon`, since
  * 0.53.0 the same plain closed bubble as `MessageIcon` (raft-design #901: a message and a chat
- * share one icon), the Chat tab of a channel or thread panel.
+ * share one icon), the Chat tab of a channel or thread panel. [Feedback] is raft-ui `FeedbackIcon`,
+ * the same bubble with an exclamation mark: the Settings Feedback row.
  */
 enum class RaftConversationKindGlyph {
     Thread,
     DirectMessage,
     Chat,
+    Feedback,
 }
 
 private val BubbleOutline by lazy {
@@ -39,6 +41,8 @@ private val BubbleOutline by lazy {
 private val ChatBubble by lazy {
     parse("M14.25 2.25H3.75C2.65 2.25 1.75 3.15 1.75 4.25V11.25C1.75 12.35 2.65 13.25 3.75 13.25H5.75V16.25L9.5 13.25H14.25C15.35 13.25 16.25 12.35 16.25 11.25V4.25C16.25 3.15 15.35 2.25 14.25 2.25Z")
 }
+private val FeedbackMarkStem by lazy { parse("M9 4.75v3") }
+private val FeedbackMarkDot by lazy { parse("M9 10.5h.01") }
 private val ThreadBackBubble by lazy {
     parse("M3.5 11.5L1.75 13.25V4.25A2 2 0 0 1 3.75 2.25H11.25")
 }
@@ -87,6 +91,11 @@ fun RaftConversationKindIcon(
                     drawPath(DirectMessageShoulders, ink, style = stroke)
                 }
                 RaftConversationKindGlyph.Chat -> drawPath(ChatBubble, ink, style = stroke)
+                RaftConversationKindGlyph.Feedback -> {
+                    drawPath(ChatBubble, ink, style = stroke)
+                    drawPath(FeedbackMarkStem, ink, style = stroke)
+                    drawPath(FeedbackMarkDot, ink, style = stroke)
+                }
             }
         }
     }
