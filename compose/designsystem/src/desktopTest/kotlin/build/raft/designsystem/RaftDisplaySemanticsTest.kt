@@ -317,6 +317,21 @@ class RaftDisplaySemanticsTest {
             assertEquals(28f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
         }
 
+    /**
+     * A group header stays 40dp (`pt-4`, its 18dp line, `pb-1.5`), so sections stand as far
+     * apart as before, and its line sits 16dp from its top: the press fill paints from 10dp
+     * down, 6dp above and below the line, so the words sit in the middle of it.
+     */
+    @Test
+    fun aSidebarHeaderIs40dpWithItsLine16dpDown() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            val header = boundsOf("header")
+            assertEquals(40f, header.height / density.density, 0.5f)
+            val title = textBounds("Channels")
+            assertEquals(25f, ((title.top + title.bottom) / 2f - header.top) / density.density, 0.75f)
+        }
+
     /** A group header's controls are 24dp (`h-6 min-w-6`, raft-ui 0.55 #916)... */
     @Test
     fun sidebarHeaderControlsAre24dp() =
