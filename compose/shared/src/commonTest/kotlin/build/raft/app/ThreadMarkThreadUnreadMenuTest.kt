@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 /**
@@ -52,11 +53,13 @@ class ThreadMarkThreadUnreadMenuTest {
     }
 
     @Test
-    fun classicMenuPutsItRightAfterSave() {
+    fun classicMenuPutsItInTheThreadSectionBeforeTheCopyActions() {
         var marked = 0
         val actions = classicActions(message("r1"), show = true, onMarkThreadUnread = { marked += 1 })
-        val saveIndex = actions.indexOfFirst { it.label == Res.string.thread_action_save_message.desc() }
-        val item = actions[saveIndex + 1]
+        // web MessageItem: Mark Thread as Unread follows Follow in the thread and task section.
+        val index = actions.indexOfFirst { it.label == Res.string.thread_action_mark_thread_unread.desc() }
+        val item = actions[index]
+        assertTrue(index < actions.indexOfFirst { it.group == "copy" }, "before the take-it-elsewhere section")
 
         assertEquals(Res.string.thread_action_mark_thread_unread.desc(), item.label)
         assertEquals(RaftLucideIconName.MessageSquareDot, item.icon)
