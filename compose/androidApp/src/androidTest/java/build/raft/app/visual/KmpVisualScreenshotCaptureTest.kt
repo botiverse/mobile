@@ -983,13 +983,17 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadMessageBodyTapOpensThread() {
+        // Positive control for the token the long-press case asserts is absent.
+        val threadOpenedToken =
+            "thread_body_tap_thread_opened_${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
         captureKmpComponentCase(
             caseId = "components.thread.message-body-tap",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-tap")
-                    .put("visualFixture", "default"),
+                    .put("visualFixture", "default")
+                    .put("threadOpenedToken", threadOpenedToken),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1009,6 +1013,10 @@ class KmpVisualScreenshotCaptureTest {
                     assertTrue(
                         "Tapping the ordinary message body must open its thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
                         yellowAfter >= yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                    assertTrue(
+                        "Tapping the ordinary message body must report the thread open; token=$threadOpenedToken",
+                        logcatContainsToken(threadOpenedToken)
                     )
                 } finally {
                     before?.recycle()
@@ -1116,13 +1124,22 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadMessageBodyLongPressOpensActionsWithoutOpeningThread() {
+        // The fixture reports both outcomes as launch-unique log tokens. The old oracle counted
+        // brand-yellow pixels in the top band, but the quick-reaction emoji in that band are yellow
+        // too: once #4266 enlarged the reaction row (36dp buttons, 22dp drawings) the menu alone
+        // read as an opened thread (run 41784346875: yellowBefore=36 yellowAfter=137).
+        val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
+        val longPressMenuVisibleToken = "thread_body_long_press_menu_visible_$launchTokenSuffix"
+        val threadOpenedToken = "thread_body_long_press_thread_opened_$launchTokenSuffix"
         captureKmpComponentCase(
             caseId = "components.thread.message-body-long-press",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-long-press")
-                    .put("visualFixture", "default"),
+                    .put("visualFixture", "default")
+                    .put("longPressMenuVisibleToken", longPressMenuVisibleToken)
+                    .put("threadOpenedToken", threadOpenedToken),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1132,24 +1149,39 @@ class KmpVisualScreenshotCaptureTest {
                 var after: Bitmap? = null
                 try {
                     before = captureAppWindowsScreenshot("components.thread.message-body-long-press.before")
-                    val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
                     after = captureAfterLongPressRendered(
                         label = "components.thread.message-body-long-press",
                         before = before,
                         longPress = { longPressDisplayDp(x = 300f, y = 70f) },
                         rendered = { _, _, changedRatio ->
-                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
+                                logcatContainsToken(longPressMenuVisibleToken)
                         },
                     )
-                    val yellowAfter = after.countThreadOpenProbeYellowSamplesInTopBand()
+                    // Let a stray thread-open (a tap fired on release) land before checking.
+                    waitForIdleBounded()
+                    Thread.sleep(300)
+                    val menuLine = logcatFindToken(longPressMenuVisibleToken)
+                    val threadOpenedLine = logcatFindToken(threadOpenedToken)
                     val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                    Log.i(
+                        VISUAL_LOG_TAG,
+                        "components.thread.message-body-long-press menuLine=${menuLine ?: "<none>"} " +
+                            "threadOpenedLine=${threadOpenedLine ?: "<none>"} changedRatio=$changedRatio"
+                    )
+                    // The menu token is also what proves the logcat read works, so the
+                    // absent-token check below cannot pass just because logcat was unreadable.
+                    assertTrue(
+                        "Long-pressing the ordinary body must compose the actions menu; menuVisibleTokenObserved=false",
+                        menuLine != null
+                    )
                     assertTrue(
                         "Long-pressing the ordinary body must render the actions menu; changedRatio=$changedRatio",
                         changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
                     )
                     assertTrue(
-                        "Long press must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
-                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                        "Long press must not open the thread; threadOpenedLine=$threadOpenedLine",
+                        threadOpenedLine == null
                     )
                 } finally {
                     before?.recycle()
