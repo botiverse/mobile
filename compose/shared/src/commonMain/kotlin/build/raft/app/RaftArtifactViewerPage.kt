@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -127,6 +128,8 @@ private class RaftArtifactViewerHost(
     val bridge: BridgeModule,
     val sharedStores: RaftSharedStoreProvider,
     val storeScope: RaftShellStoreScope,
+    /** [LocalRaftArtifactOpenStoreScope]: the scope the viewer page is opened with, if given. */
+    val openStoreScope: RaftShellStoreScope? = null,
 ) {
     val webBaseUrl: String get() = build.raft.app.sharedSettingsResolvedWebBaseUrl(standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore))
 
@@ -134,18 +137,38 @@ private class RaftArtifactViewerHost(
         RaftArtifactViewerScope.of(webBaseUrl, sharedStores.currentAuthenticatedRouteOwner(storeScope))
 }
 
+/**
+ * The shell scope an opener here opens the viewer with, for a surface whose page data carries none.
+ * An app-shell tab (Activity) is composed in a child page whose data is only its tab, and the
+ * Compose 版 shell page has none either: [openRaftPage] rejected the viewer there
+ * (`missing_source_scope`) and the Artifact opened in the browser instead.
+ */
+internal val LocalRaftArtifactOpenStoreScope = compositionLocalOf<RaftShellStoreScope?> { null }
+
+/**
+ * Opens the viewer page for [target] from [this] page, with [storeScope] when given (else the
+ * page's own scope). False when no page can be opened from here (no scope): the caller falls back.
+ */
+internal fun Pager.openRaftArtifactViewerPage(target: ArtifactLinkTarget, storeScope: RaftShellStoreScope?): Boolean =
+    openRaftPage(
+        pageName = RAFT_ARTIFACT_VIEWER_PAGE,
+        pageData = raftArtifactViewerPageData(target),
+        storeScopeOverride = storeScope,
+    )
+
 @Composable
-private fun rememberRaftArtifactViewerHost(): RaftArtifactViewerHost? {
+private fun rememberRaftArtifactViewerHost(openStoreScope: RaftShellStoreScope? = null): RaftArtifactViewerHost? {
     val pager = LocalActivity.current.getPager() as? Pager ?: return null
     // Null where there is no live page (fixtures, screenshots): no viewer, no prewarm.
-    return remember(pager.pagerId, pager.pageData.params.toString()) {
+    return remember(pager.pagerId, pager.pageData.params.toString(), openStoreScope) {
         runCatching {
             val bridge = Utils.bridgeModule(pager.pagerId)
             RaftArtifactViewerHost(
                 pager = pager,
                 bridge = bridge,
                 sharedStores = RaftSharedStoreRegistry.get(bridge),
-                storeScope = pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId),
+                storeScope = openStoreScope ?: pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId),
+                openStoreScope = openStoreScope,
             )
         }.getOrNull()
     }
@@ -164,13 +187,14 @@ internal class RaftArtifactOpener(
  */
 @Composable
 internal fun rememberRaftArtifactOpener(fallback: (ArtifactLinkTarget) -> Unit): RaftArtifactOpener {
-    val host = rememberRaftArtifactViewerHost()
+    val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current)
     val coroutineScope = rememberCoroutineScope()
     val currentFallback by rememberUpdatedState(fallback)
     return remember(host, coroutineScope) {
         RaftArtifactOpener { target, header, source ->
             RaftArtifactOpenTrace.tap(source, target.id)
             if (host == null) {
+                RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_host")
                 currentFallback(target)
                 return@RaftArtifactOpener
             }
@@ -196,12 +220,11 @@ internal fun rememberRaftArtifactOpener(fallback: (ArtifactLinkTarget) -> Unit):
                     }
                 }
             }
-            val opened =
-                host.pager.openRaftPage(
-                    pageName = RAFT_ARTIFACT_VIEWER_PAGE,
-                    pageData = raftArtifactViewerPageData(target),
-                )
-            if (!opened) currentFallback(target)
+            val opened = host.pager.openRaftArtifactViewerPage(target, host.openStoreScope)
+            if (!opened) {
+                RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
+                currentFallback(target)
+            }
         }
     }
 }
@@ -214,7 +237,7 @@ internal fun rememberRaftArtifactOpener(fallback: (ArtifactLinkTarget) -> Unit):
 @Composable
 internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
     if (!enabled) return
-    val host = rememberRaftArtifactViewerHost() ?: return
+    val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current) ?: return
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
     val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore)
     val controller = rememberRaftWebViewController()
