@@ -378,6 +378,10 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
+    // The thread-open oracle the capture harness reads instead of pixel colour: the yellow
+    // marker below shares its colour with the quick-reaction emoji, so once the long-press menu
+    // sat higher (#4275 dropped its date row) the menu alone looked like an opened thread.
+    val threadOpenedToken = params.optString("threadOpenedToken")
     val newMessageMenuComposerBoundaryVisible =
         params.optBoolean("newMessageMenuComposerBoundaryVisible", false)
     val newMessageMenuTargetReplyCount = params.optInt("newMessageMenuTargetReplyCount", 0)
@@ -933,7 +937,12 @@ internal fun ThreadMessageVisualScreenContent() {
                         }
                     },
                     onOpenMember = {},
-                    onOpenThread = { openedVisualThreadMessageId = it },
+                    onOpenThread = {
+                        openedVisualThreadMessageId = it
+                        if (threadOpenedToken.isNotBlank()) {
+                            Utils.logToNative("$threadOpenedToken messageId=$it")
+                        }
+                    },
                     onOpenTask = {},
                     onOpenTaskStatusMenu = {},
                     onToggleReaction = {},
