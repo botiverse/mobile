@@ -2027,6 +2027,7 @@
     <string name="pagination_next">Next</string>
     <string name="announcement_action_got_it">Got It</string>
     <string name="announcement_action_skip">Skip</string>
+    <string name="announcement_whats_new">What's new</string>
     <string name="tasks_label_new_tasks">New tasks</string>
     <string name="tasks_create_multiple_hint">Add one or more task titles. Empty rows are ignored.</string>
     <string name="tasks_create_action">Create</string>
@@ -2617,7 +2618,7 @@
     <string name="settings_computers_migrate_detail">Raft Computer replaces the legacy daemon — it runs the agents on this machine and keeps itself up to date. Migrating keeps this machine's agents. Run this on the machine itself (%1$s):</string>
     <string name="settings_computers_windows_powershell">Windows x64 PowerShell</string>
     <string name="settings_computers_mac_linux">macOS / Linux</string>
-    <string name="settings_computers_release_notes_open">What's new</string>
+    <string name="settings_computers_release_notes_open">View what's new</string>
     <string name="settings_computers_release_notes_title">What's new in v%1$s</string>
     <string name="settings_computers_version_notice_upgrade_title">Upgrade soon</string>
     <string name="settings_computers_version_notice_upgrade_title_scheduled">Upgrade soon: from %1$s, agents on this computer stop running</string>

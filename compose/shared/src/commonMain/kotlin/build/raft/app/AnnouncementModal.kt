@@ -58,13 +58,13 @@ internal fun SharedAnnouncementModal(
         onDismiss = onDismiss,
         maxWidth = 576.dp
     ) {
-        announcement.label?.let { label ->
-            Text(
-                text = label,
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = RaftColor.TextMutedGray
-            )
-        }
+        // Web AnnouncementModal (slock #12661): an announcement without its own label reads
+        // "What's new".
+        Text(
+            text = announcementLabelOrDefault(announcement.label, stringResource(Res.string.announcement_whats_new)),
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = RaftColor.TextMutedGray
+        )
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -157,3 +157,6 @@ internal fun SharedAnnouncementModal(
         }
     }
 }
+
+/** Web `current.label ?? whatsNew`: the announcement's own label, else the default one. */
+internal fun announcementLabelOrDefault(label: String?, default: String): String = label ?: default

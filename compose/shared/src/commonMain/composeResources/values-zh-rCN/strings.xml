@@ -2027,6 +2027,7 @@
     <string name="pagination_next">下一页</string>
     <string name="announcement_action_got_it">知道了</string>
     <string name="announcement_action_skip">跳过</string>
+    <string name="announcement_whats_new">最新动态</string>
     <string name="tasks_label_new_tasks">新任务</string>
     <string name="tasks_create_multiple_hint">添加一个或多个任务标题。空行将被忽略。</string>
     <string name="tasks_create_action">创建</string>

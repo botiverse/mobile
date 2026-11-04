@@ -2029,6 +2029,7 @@
     <string name="pagination_next">次のページ</string>
     <string name="announcement_action_got_it">わかりました</string>
     <string name="announcement_action_skip">スキップ</string>
+    <string name="announcement_whats_new">最新情報</string>
     <string name="tasks_label_new_tasks">新しいタスク</string>
     <string name="tasks_create_multiple_hint">1 件以上のタスクタイトルを追加してください。空の行は無視されます。</string>
     <string name="tasks_create_action">作成</string>
