@@ -1735,7 +1735,7 @@
     <string name="file_preview_action_open_in_other_app">在其他应用中打开</string>
     <string name="file_preview_action_saving_to_files">保存中…</string>
     <string name="file_preview_action_delete_downloaded">清除缓存副本</string>
-    <string name="file_preview_placeholder_tap_to_add_text">点击图片添加文字</string>
+    <string name="file_preview_placeholder_tap_to_add_text">点按图片放置文字</string>
     <string name="file_preview_placeholder_click_to_add_text">点击图片放置文字</string>
     <string name="file_preview_error_send_comment">无法发送评论</string>
     <string name="file_preview_error_resolve_comment">无法解决评论</string>

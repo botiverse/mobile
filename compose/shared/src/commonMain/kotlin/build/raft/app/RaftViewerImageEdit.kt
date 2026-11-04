@@ -22,7 +22,6 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftEventBuses
 import build.raft.app.resources.*
-import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.designsystem.components.RaftSpinner
 import coil3.compose.LocalPlatformContext
@@ -37,7 +36,7 @@ import kotlinx.coroutines.withContext
  * (the user can add text before sending), closes the viewer and focuses the composer. The message
  * that holds the original is untouched.
  *
- * Phones open images on the file preview page (a separate page): its ⋯ > Edit posts
+ * Phones open images on the file preview page (a separate page): its header's ⋯ > Edit posts
  * [RAFT_VIEWER_IMAGE_EDIT_EVENT] with the attachment id and closes; the conversation page that
  * shows that attachment opens the editor. Desktop / wide windows open images in the lightbox,
  * which the conversation page hosts, so its Edit calls the page directly.
@@ -193,56 +192,11 @@ internal fun RaftFilePreviewPayload.viewerShownAttachmentId(): String =
 
 internal const val RaftViewerImageMenuEditId = "viewer_image_edit"
 
-/** The phone image viewer's menu (⋯ at the bottom right): Edit now; Save / Forward can join. */
+/** Edit in the phone image viewer's ⋯ menu (the page header's, with Save to Photos and Comments). */
 @Composable
-internal fun raftViewerImageMenuItems(): List<RaftUiMenuItem> =
-    listOf(
-        RaftUiMenuItem(
-            id = RaftViewerImageMenuEditId,
-            label = stringResource(Res.string.common_edit),
-            icon = RaftLucideIconName.Pencil,
-        )
+internal fun raftViewerImageEditMenuItem(): RaftUiMenuItem =
+    RaftUiMenuItem(
+        id = RaftViewerImageMenuEditId,
+        label = stringResource(Res.string.common_edit),
+        icon = RaftLucideIconName.Pencil,
     )
-
-/**
- * ⋯ at the bottom right of the phone image viewer, opening [raftViewerImageMenuItems].
- * [onSelect] gets the chosen item's id.
- */
-@Composable
-internal fun RaftViewerImageMoreButton(
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val anchorRef = remember { RaftLiveRootAnchorRef(identity = "viewer_image_more") }
-    var anchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    var open by remember { mutableStateOf(false) }
-    val items = raftViewerImageMenuItems()
-    build.raft.designsystem.components.RaftIconButton(
-        onClick = {
-            anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)?.let {
-                anchor = it
-                open = true
-            }
-        },
-        tooltip = stringResource(Res.string.tab_more),
-        modifier = modifier.raftCaptureLiveRootAnchor(anchorRef),
-        variant = build.raft.designsystem.components.RaftButtonVariant.Default,
-        size = build.raft.designsystem.components.RaftIconButtonSize.Lg,
-    ) {
-        build.raft.app.components.RaftSlotIcon(RaftLucideIconName.Ellipsis)
-    }
-    val shownAnchor = anchor
-    if (open && shownAnchor != null) {
-        RaftUiControlledMenu(
-            expanded = true,
-            anchor = shownAnchor,
-            items = items,
-            onSelect = { id ->
-                open = false
-                onSelect(id)
-            },
-            onDismiss = { open = false },
-            width = 180.dp,
-        )
-    }
-}
