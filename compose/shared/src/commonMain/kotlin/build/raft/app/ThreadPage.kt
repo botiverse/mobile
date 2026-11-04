@@ -2098,14 +2098,30 @@ internal fun threadViewportPixelProbeOwnerCurrent(
 private fun Int.asThreadProbeRangeStart(): Int =
     if (this == Int.MAX_VALUE) -1 else this
 
-private object ThreadLocalSendNextId {
+/**
+ * Mints optimistic local-send ids: `local-send-<scope>-<processNonce>-<counter>`.
+ *
+ * The counter restarts in every process, but pending sends are journaled and restored after a
+ * restart, so the counter alone would hand a new send the id of a restored row (two rows with
+ * `…-1` crashed the message list with a duplicate LazyColumn key). The per-process nonce keeps
+ * ids unique across restarts. The counter stays the last `-` segment because
+ * [RaftThreadMessageItem.localSendOrder] parses it from there; the nonce is base36 (no `-`).
+ */
+internal class ThreadLocalSendIdGenerator(
+    private val processNonce: String = newThreadLocalSendProcessNonce()
+) {
     private var counter: Int = 0
-    fun value(instanceId: String): String {
+
+    fun next(instanceId: String): String {
         counter += 1
         val scope = instanceId.takeIf { it.isNotBlank() } ?: "thread"
-        return "local-send-$scope-$counter"
+        return "$ThreadTransientLocalSendIdPrefix$scope-$processNonce-$counter"
     }
 }
+
+internal fun newThreadLocalSendProcessNonce(): String = Random.nextLong().toULong().toString(36)
+
+private val ThreadLocalSendNextId = ThreadLocalSendIdGenerator()
 
 internal fun newThreadSendRandomId(): String =
     "mobile-${Random.nextLong().toULong().toString(36)}-${Random.nextLong().toULong().toString(36)}"
@@ -11553,7 +11569,7 @@ private fun SharedThreadRouteContentContent(
                 // Only picks whose `@handle` is still in the text go out; the list is journaled as is.
                 mentions = currentDraftState.structuredMentions.visibleStructuredMentionsIn(draftText),
             )
-        val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
+        val localMessageId = ThreadLocalSendNextId.next(composerInstanceId)
         val localTimestampLabel = buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
         val localMessage =
             buildThreadPendingSendMessage(
@@ -21119,7 +21135,20 @@ private fun ThreadMessagesListContent(
     val hostForeground = data.hostForeground
     val renderConfig = data.renderConfig
     val messageBodyTextStyle = data.messageBodyTextStyle
-    val timelineSlice = data.timelineSlice
+    // Duplicate item keys crash the LazyColumn; drop them here so every consumer below (keys,
+    // indexes, scroll targets) sees the same list. Logged once diagnosticsLogger is in scope.
+    val messageListKeyDedupe =
+        remember(data.timelineSlice.messages) {
+            data.timelineSlice.messages.withUniqueMessageListKeys()
+        }
+    val timelineSlice =
+        remember(data.timelineSlice, messageListKeyDedupe) {
+            if (messageListKeyDedupe.droppedKeys.isEmpty()) {
+                data.timelineSlice
+            } else {
+                data.timelineSlice.copy(messages = messageListKeyDedupe.messages)
+            }
+        }
     val replyMetadataByParentId = data.replyMetadataByParentId
     val activeReplyDraftParentMessageIds = data.activeReplyDraftParentMessageIds
     val composerKeyboardInsetDp = data.composerKeyboardInsetDp
@@ -21154,6 +21183,15 @@ private fun ThreadMessagesListContent(
     val onOpenMarkdownUrl = callbacks.onOpenMarkdownUrl
     val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
     val diagnosticsLogger = callbacks.diagnosticsLogger
+    if (messageListKeyDedupe.droppedKeys.isNotEmpty()) {
+        LaunchedEffect(messageListKeyDedupe) {
+            diagnosticsLogger(
+                "thread_message_list_duplicate_keys_dropped level=warn " +
+                    "instance=$threadInstanceKey dropped=${messageListKeyDedupe.droppedKeys.size} " +
+                    "keys=${messageListKeyDedupe.droppedKeys.distinct().take(5).joinToString(",")}"
+            )
+        }
+    }
     val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
     val onComposerPixelProbe = callbacks.onComposerPixelProbe
     val shareSelectionActive = data.shareSelectionActive
@@ -26227,6 +26265,36 @@ internal fun RaftThreadMessageItem.messageListItemKey(
             id
         }
     return "thread-page:$identity"
+}
+
+internal data class ThreadMessageListKeyDedupe(
+    val messages: List<RaftThreadMessageItem>,
+    val droppedKeys: List<String>,
+)
+
+/**
+ * Safety net for the message LazyColumn: a repeated item key throws during measure and crashes
+ * the app, so rows whose [messageListItemKey] repeats are dropped, keeping the last occurrence
+ * (the newest in timeline order). Normal data never repeats a key; [ThreadMessageListKeyDedupe.droppedKeys]
+ * is non-empty only when an upstream merge produced duplicate rows, and the caller logs it.
+ */
+internal fun List<RaftThreadMessageItem>.withUniqueMessageListKeys(): ThreadMessageListKeyDedupe {
+    var current = this
+    val dropped = mutableListOf<String>()
+    while (true) {
+        val duplicateRandomIds = current.threadDuplicateRandomIds()
+        val keys = current.map { message -> message.messageListItemKey(duplicateRandomIds) }
+        val lastIndexByKey = HashMap<String, Int>(keys.size)
+        keys.forEachIndexed { index, key -> lastIndexByKey[key] = index }
+        if (lastIndexByKey.size == keys.size) return ThreadMessageListKeyDedupe(current, dropped)
+        // Dropping a row can make a repeated randomId unique again, which changes the surviving
+        // rows' keys; loop until the keys are stable. Every pass removes at least one row.
+        val next = ArrayList<RaftThreadMessageItem>(lastIndexByKey.size)
+        keys.forEachIndexed { index, key ->
+            if (lastIndexByKey[key] == index) next += current[index] else dropped += key
+        }
+        current = next
+    }
 }
 
 internal data class ThreadMessageMarkdownRenderSignature(
