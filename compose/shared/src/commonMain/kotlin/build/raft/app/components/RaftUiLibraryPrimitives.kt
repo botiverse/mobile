@@ -596,7 +596,7 @@ internal enum class RaftUiSurfaceStatus(val icon: RaftLucideIconName, val backgr
 
 @Composable
 internal fun RaftUiAvatarGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy((-6).dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy((-5).dp), verticalAlignment = Alignment.CenterVertically) {
         content()
     }
 }

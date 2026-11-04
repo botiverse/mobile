@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,7 +29,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -111,9 +108,6 @@ enum class RaftAvatarSize(
     /** raft-ui writes only one initial at `xs`, `2xs` and `sm`, where two don't fit. */
     val maxInitials: Int get() = if (this == Xl || this == Lg || this == Md) 2 else 1
 }
-
-/** Set by [RaftAvatarGroup]: each face in a stack is ringed with the surface. */
-private val LocalRaftAvatarGroupRing = staticCompositionLocalOf { Color.Unspecified }
 
 /**
  * raft-ui 0.8.0 Avatar: the square sticker that stands for one agent or one person. A
@@ -206,19 +200,11 @@ private fun RaftAvatarFrame(
 ) {
     val dark = RaftTheme.isDark
     val shape = RoundedCornerShape(RaftRadius.Sticker)
-    val groupRing = LocalRaftAvatarGroupRing.current
     Box(
         modifier
             .size(size.edge)
-            // Paint order is bottom-up: the hard shadow, the surface ring of a stack, the die-cut ring.
+            // Paint order is bottom-up: the hard shadow, then the die-cut ring.
             .then(if (size == RaftAvatarSize.Xl) Modifier.raftHardShadow(RaftElevation.sticker(dark), RaftRadius.Sticker) else Modifier)
-            .then(
-                if (groupRing.isSpecified) {
-                    Modifier.raftOuterRing(groupRing, RaftStroke.Control * 2, RaftRadius.Sticker)
-                } else {
-                    Modifier
-                },
-            )
             .raftDieCutEdge(RaftTheme.colors.stickerEdge, RaftRadius.Sticker),
     ) {
         Box(
@@ -374,32 +360,31 @@ private fun RaftAvatarPlaceholderIcon(modifier: Modifier) {
 }
 
 /**
- * raft-ui AvatarGroup: an overlapping stack of avatars, each overlapping the one before
- * it by 5dp and ringed with [ringColor] (the surface the stack sits on, by default
- * [RaftTheme.surfaceColor]), so a face never
- * shows its neighbour through the overlap. End with [RaftAvatarGroupCount] for the rest.
+ * raft-ui 0.61.0 AvatarGroup: an overlapping stack of avatars, each lying 5dp over the one
+ * before with nothing between them: no ring of the surface, no gap. Each sticker's own ink
+ * edge (and its die-cut edge in dark) parts it from the face beneath, and 5dp clears the
+ * 4dp sticker corner, so the seam sits on the straight edge. The faces are opaque, so the
+ * stack looks the same on any surface. End with [RaftAvatarGroupCount] for the rest.
  * Give the stack an accessible name with the full count ("5 agents working").
  */
 @Composable
 fun RaftAvatarGroup(
     modifier: Modifier = Modifier,
-    ringColor: Color = RaftTheme.surfaceColor,
     content: @Composable RowScope.() -> Unit,
 ) {
-    CompositionLocalProvider(LocalRaftAvatarGroupRing provides ringColor) {
-        Row(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.spacedBy((-5).dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
-    }
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy((-5).dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
 }
 
 /**
  * raft-ui AvatarGroupCount: the trailing "+N" chip of a stack at the [size] of the avatars
- * beside it: the avatar frame with a transparent edge on `fill-muted`, Space Mono 12 bold
- * tabular in `foreground-muted`.
+ * beside it: the avatar frame with the faces' ink edge (and die-cut edge in dark) on
+ * `fill-muted`, so it reads as one more sticker in the stack; Space Mono 12 bold tabular
+ * in `foreground-muted`.
  */
 @Composable
 fun RaftAvatarGroupCount(
@@ -408,7 +393,7 @@ fun RaftAvatarGroupCount(
     modifier: Modifier = Modifier,
 ) {
     val colors = RaftTheme.colors
-    RaftAvatarFrame(size = size, fill = colors.fillMuted, edge = Color.Transparent, modifier = modifier) {
+    RaftAvatarFrame(size = size, fill = colors.fillMuted, edge = RaftUiPalette.stickerInk, modifier = modifier) {
         RaftText(
             text = text,
             style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
