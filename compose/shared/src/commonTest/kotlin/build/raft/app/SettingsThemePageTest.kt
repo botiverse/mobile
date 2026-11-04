@@ -56,18 +56,40 @@ class SettingsThemePageTest {
         val theme = keys.indexOf(SettingsNativeDetailPage.Theme.key)
         assertTrue(theme > keys.indexOf(SettingsNativeDetailPage.Appearance.key))
         assertTrue(theme > keys.indexOf(SettingsNativeDetailPage.Notifications.key))
-        // The app has no server Notifications row (its mute is on Notifications), so Theme is the
-        // last of "On {server}" and Server Profile opens the workspace right after it.
-        assertEquals(SettingsNativeDetailPage.Server.key, keys[theme + 1])
+        // web "On {server}": Theme, then the server's Notifications; Server Profile opens the
+        // workspace right after them.
+        assertEquals(SettingsNativeDetailPage.ServerNotifications.key, keys[theme + 1])
+        assertEquals(SettingsNativeDetailPage.Server.key, keys[theme + 2])
         assertEquals(SettingsDestinationStorage, keys[theme - 1])
     }
 
     @Test
-    fun navigationHasNoThemeWithoutAServer() {
+    fun navigationHasNoOnServerGroupWithoutAServer() {
         val withServer = settingsHomeRowKeys(hasThemeServer = true)
         val withoutServer = settingsHomeRowKeys(hasThemeServer = false)
         assertFalse(SettingsNativeDetailPage.Theme.key in withoutServer)
-        assertEquals(withServer - SettingsNativeDetailPage.Theme.key, withoutServer)
+        assertFalse(SettingsNativeDetailPage.ServerNotifications.key in withoutServer)
+        assertEquals(
+            withServer - SettingsNativeDetailPage.Theme.key - SettingsNativeDetailPage.ServerNotifications.key,
+            withoutServer,
+        )
+    }
+
+    @Test
+    fun serverNotificationsIsANativeSettingsPageInTheWidePane() {
+        assertEquals(SettingsNativeDetailPage.ServerNotifications, SettingsNativeDetailPage.fromKey("server-notifications"))
+        val key = SettingsNativeDetailPage.ServerNotifications.key
+        assertEquals(SettingsWidePick.Detail(key), settingsWidePick(key))
+    }
+
+    @Test
+    fun documentationFollowsAboutAndLeavesRaft() {
+        val keys = settingsHomeRowKeys(hasThemeServer = true)
+        // web Resources: About, Documentation, Feedback, Release Notes.
+        assertEquals(SettingsNativeDetailPage.About.key, keys[keys.indexOf(SettingsDestinationDocumentation) - 1])
+        assertEquals(SettingsDestinationHandsFeedback, keys[keys.indexOf(SettingsDestinationDocumentation) + 1])
+        // A link out, not a section: the wide layout does not open it in its pane.
+        assertEquals(SettingsWidePick.Push, settingsWidePick(SettingsDestinationDocumentation))
     }
 
     @Test

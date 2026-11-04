@@ -74,6 +74,11 @@ import kotlinx.coroutines.flow.mapNotNull
 @Composable
 internal fun SettingsNotificationsContent(
     state: ScreenLoadState<SettingsMobileSnapshot>,
+    /**
+     * The On {server} > Notifications page (web `CurrentServerNotificationsCard`): only how the
+     * current server notifies, without this device's and the account's settings.
+     */
+    serverOnly: Boolean = false,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
@@ -142,6 +147,17 @@ internal fun SettingsNotificationsContent(
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
+                if (serverOnly) {
+                    item {
+                        SettingsServerNotificationModeCard(
+                            snapshot = snapshot,
+                            actionState = actionState,
+                            onServerNotificationModeChange = onServerNotificationModeChange
+                        )
+                    }
+                    item { Spacer(Modifier.height(bottomContentPadding)) }
+                    return@LazyColumn
+                }
                 item {
                     SettingsPushStatusCard(
                         snapshot = snapshot,

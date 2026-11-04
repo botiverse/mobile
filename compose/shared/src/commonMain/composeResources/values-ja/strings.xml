@@ -361,6 +361,8 @@
     <string name="settings_server_theme_name_spooky">怪談</string>
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_subtitle">プッシュ通知の状態とワークスペースのミュート</string>
+    <string name="settings_server_notifications_subtitle">%1$s の通知</string>
+    <string name="settings_documentation_title">ドキュメント</string>
     <string name="settings_language_title">言語</string>
     <string name="settings_language_update_failed">言語設定を更新できませんでした</string>
     <string name="settings_app_language_title">アプリの言語</string>

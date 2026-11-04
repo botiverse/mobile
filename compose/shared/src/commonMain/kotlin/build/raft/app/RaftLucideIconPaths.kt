@@ -153,6 +153,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"),
                     ),
                 )
+            RaftLucideIconName.BellDot ->
+                RaftLucideIconSpec(
+                    "bell-dot",
+                    listOf(
+                        RaftLucidePathSpec("M10.268 21a2 2 0 0 0 3.464 0"),
+                        RaftLucidePathSpec("M11.68 2.009A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673c-.824-.85-1.678-1.731-2.21-3.348"),
+                        RaftLucidePathSpec("M 15.0 5.0 A 3.0 3.0 0 1 0 21.0 5.0 A 3.0 3.0 0 1 0 15.0 5.0 Z"),
+                    ),
+                )
             RaftLucideIconName.BellOff ->
                 RaftLucideIconSpec(
                     "bell-off",

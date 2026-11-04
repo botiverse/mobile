@@ -60,6 +60,7 @@ internal fun SettingsNativeDetailPage.productSettingsTab(): RaftSettingsTab? =
         // The shared contract has `theme` (SETTINGS_PAGE_TABS); RaftSettingsTab does not mirror it yet,
         // so no page_viewed rather than a wrong tab.
         SettingsNativeDetailPage.Theme,
+        SettingsNativeDetailPage.ServerNotifications,
         SettingsNativeDetailPage.Developer,
         SettingsNativeDetailPage.OpenSourceLicenses,
         SettingsNativeDetailPage.ApiEnvironment,

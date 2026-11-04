@@ -28,6 +28,12 @@ internal enum class SettingsNativeDetailPage(
      * snapshot of its own; Appearance's is the nearest (the server theme reads the stored session).
      */
     Theme("theme", SharedSettingsDestination.Appearance),
+    /**
+     * How the current server notifies the member (web Settings > On {server} > Notifications,
+     * `CurrentServerNotificationsCard`): the server's notification level alone. It reads the
+     * Notifications snapshot, which holds that level.
+     */
+    ServerNotifications("server-notifications", SharedSettingsDestination.Notifications),
     Mobile("mobile", SharedSettingsDestination.Mobile),
     Server("server", SharedSettingsDestination.Server),
     About("about", SharedSettingsDestination.About),

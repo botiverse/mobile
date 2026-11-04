@@ -24,6 +24,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Ban("ban"),
     BadgeInfo("badge-info"),
     Bell("bell"),
+    BellDot("bell-dot"),
     BellOff("bell-off"),
     BellRing("bell-ring"),
     Blend("blend"),
