@@ -536,7 +536,6 @@ internal fun ThreadMessageVisualScreenContent() {
             Spacer(modifier = Modifier.weight(1f))
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
-                selectableCount = messages.size,
                 onCancel = {},
                 onForward = {},
                 onExportImage = {},

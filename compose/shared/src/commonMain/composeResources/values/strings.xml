@@ -1063,6 +1063,9 @@
     <string name="thread_forward_open_attachment">Open %1$s</string>
     <string name="thread_forward_selected">%1$d selected</string>
     <string name="thread_share_selection_toolbar_label">Selected message actions</string>
+    <string name="thread_share_selection_all_selected">All %1$d selected</string>
+    <string name="thread_share_selection_all_selected_one">%1$d selected</string>
+    <string name="thread_share_selection_select_all_in_thread">Select all messages in this thread</string>
     <string name="thread_share_selection_more_actions">More selected message actions</string>
     <string name="thread_forward_placeholder_one">FORWARDED 1 MESSAGE</string>
     <string name="thread_forward_placeholder_many">FORWARDED %1$d MESSAGES</string>
