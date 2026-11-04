@@ -30,6 +30,7 @@ import build.raft.app.data.JointSameAdminContext
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.errorPresentationOrNull
 import build.raft.app.data.jointRetryAfterSeconds
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -70,6 +71,8 @@ internal fun CreateJointChannelDialogHost(
     sameAdminContext: JointSameAdminContext? = null,
     onDismiss: () -> Unit,
     onOpenChannel: (JointChannelAccepted) -> Unit,
+    /** Open Channel on a name collision: the archived joint channel, read-only. */
+    onOpenArchivedChannel: (ChannelId) -> Unit,
     onOpenBilling: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -81,9 +84,11 @@ internal fun CreateJointChannelDialogHost(
     LaunchedEffect(store, sameAdminContext) { store.dispatch(CreateJointChannelIntent.SetSameAdminContext(sameAdminContext)) }
     val state by store.state.collectAsState()
     val latestOpen by rememberUpdatedState(onOpenChannel)
+    val latestOpenArchived by rememberUpdatedState(onOpenArchivedChannel)
     LaunchedEffect(state.effect) {
         when (val effect = state.effect) {
             is CreateJointChannelEffect.Open -> latestOpen(effect.channel)
+            is CreateJointChannelEffect.OpenArchived -> latestOpenArchived(effect.channelId)
             null -> Unit
         }
         if (state.effect != null) store.dispatch(CreateJointChannelIntent.ConsumeEffect)
@@ -177,24 +182,15 @@ internal fun CreateJointChannelDialog(
                 )
             }
             state.collision?.let { collision ->
-                RaftBanner(
-                    description = stringResource(Res.string.joint_create_archived_name_held, collision.archivedChannelName),
-                    status = RaftBannerStatus.Warning,
-                    size = RaftBannerSize.Sm,
-                    action = {
-                        if (collision.canUnarchive) {
-                            RaftButton(
-                                text = stringResource(Res.string.joint_create_unarchive),
-                                onClick = { onIntent(CreateJointChannelIntent.UnarchiveCollision) },
-                                enabled = !state.submitting,
-                            )
-                        }
-                        RaftButton(
-                            text = stringResource(Res.string.joint_create_change_name),
-                            onClick = { onIntent(CreateJointChannelIntent.ChangeCollidingName) },
-                            variant = RaftButtonVariant.Ghost,
-                        )
-                    },
+                ArchivedNameCollisionBanner(
+                    archivedChannelName = collision.archivedChannelName,
+                    canUnarchive = collision.canUnarchive,
+                    unarchiving = state.submitting,
+                    onUnarchive = { onIntent(CreateJointChannelIntent.UnarchiveCollision) },
+                    onOpen = { onIntent(CreateJointChannelIntent.OpenCollision) },
+                    onChangeName = { onIntent(CreateJointChannelIntent.ChangeCollidingName) },
+                    // Web CreateJointChannelDialog: `showHint={false}`.
+                    showHint = false,
                 )
             }
             RaftField(label = stringResource(Res.string.joint_create_name_label), required = true, enabled = !state.submitting) {

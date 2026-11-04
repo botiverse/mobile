@@ -249,6 +249,66 @@ class ChannelRepositoryDataSourceTest {
         val error = assertIs<DataResult.Error>(result).error
         assertEquals("archived_name_collision", error.code)
         assertEquals(false, error.retryable)
+        // No archived channel named: no Open Channel offer, the plain error line stays.
+        assertEquals(null, error.archivedNameCollisionOrNull())
+    }
+
+    @Test
+    fun createChannelCarriesTheArchivedChannelHoldingTheName() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseCode = 409,
+                responseBody =
+                    """{"code":"archived_name_collision","error":"Channel name \"review\" is held by an archived channel",""" +
+                        """"archivedChannelId":"ch-old","archivedChannelName":"review","archivedChannelType":"private",""" +
+                        """"canUnarchiveArchivedChannel":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val error = assertIs<DataResult.Error>(repository.createChannel(CreateChannelRequest(name = "review"))).error
+
+        assertEquals(
+            ArchivedNameCollision(ChannelId("ch-old"), "review", "private", canUnarchive = true),
+            error.archivedNameCollisionOrNull()
+        )
+    }
+
+    @Test
+    fun archivedNameCollisionIsOnlyAnArchivedChannelCreateChannelCanOffer() {
+        val fields =
+            mapOf(
+                ARCHIVED_CHANNEL_ID_FIELD to "ch-old",
+                ARCHIVED_CHANNEL_NAME_FIELD to "review",
+                ARCHIVED_CHANNEL_TYPE_FIELD to "channel",
+            )
+        val collision = ScreenError(code = ARCHIVED_NAME_COLLISION, serverFields = fields)
+        // Without the permission flag (or with it false) Unarchive is not offered.
+        assertEquals(
+            ArchivedNameCollision(ChannelId("ch-old"), "review", "channel", canUnarchive = false),
+            collision.archivedNameCollisionOrNull()
+        )
+        // Web parseArchivedNameCollision(err, ["channel", "private"]): never an archived joint channel.
+        assertEquals(
+            null,
+            collision.copy(serverFields = fields + (ARCHIVED_CHANNEL_TYPE_FIELD to "joint")).archivedNameCollisionOrNull()
+        )
+        assertEquals(null, collision.copy(serverFields = fields - ARCHIVED_CHANNEL_ID_FIELD).archivedNameCollisionOrNull())
+        assertEquals(null, collision.copy(serverFields = fields - ARCHIVED_CHANNEL_NAME_FIELD).archivedNameCollisionOrNull())
+        // The plain "already taken" refusal (someone who cannot see the archived channel).
+        assertEquals(null, ScreenError(code = "http_409", serverFields = fields).archivedNameCollisionOrNull())
+    }
+
+    @Test
+    fun plainNameTakenRefusalCarriesNoArchivedChannel() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(responseCode = 409, responseBody = """{"error":"Channel name \"review\" is already taken"}""")
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val error = assertIs<DataResult.Error>(repository.createChannel(CreateChannelRequest(name = "review"))).error
+
+        assertEquals("http_409", error.code)
+        assertEquals(emptyMap(), error.serverFields)
+        assertEquals(null, error.archivedNameCollisionOrNull())
     }
 
     @Test

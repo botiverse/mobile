@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.raftDedupeKey
+import build.raft.app.data.ArchivedNameCollision
+import build.raft.app.data.archivedNameCollisionOrNull
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
@@ -2134,6 +2136,7 @@ private fun RaftAppShellReadyContent(
     val notificationSignInMessage = stringResource(Res.string.home_error_notification_sign_in)
     val channelCreatedMessage = stringResource(Res.string.thread_action_card_success_channel)
     val channelNotCreatedMessage = stringResource(Res.string.channel_create_error_not_created)
+    val channelUnarchiveFailedMessage = stringResource(Res.string.channel_create_failed_unarchive)
     val conversationUnavailableMessage = stringResource(Res.string.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
     val timestampDisplayState =
@@ -3059,6 +3062,8 @@ private fun RaftAppShellReadyContent(
             RaftAnnouncementsRemindersApiClient(NetworkRaftAnnouncementsRemindersApi(appShellNetworkClient))
         }
     var createChannelError by remember { mutableStateOf<String?>(null) }
+    // Web ArchivedNameCollisionBanner (slock #12614): an archived channel holds the name.
+    var createChannelCollision by remember { mutableStateOf<ArchivedNameCollision?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
     val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
@@ -5312,6 +5317,7 @@ private fun RaftAppShellReadyContent(
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
             createChannelError = null
+            createChannelCollision = null
             return true
         }
         if (homeState.serverSwitcherExpanded) {
@@ -5595,6 +5601,7 @@ private fun RaftAppShellReadyContent(
     fun openCreateChannelDialog() {
         createChannelDialogOpen = true
         createChannelError = null
+        createChannelCollision = null
         createChannelMembers = emptyList()
         loadCreateChannelMembers()
     }
@@ -5612,6 +5619,7 @@ private fun RaftAppShellReadyContent(
         }
         createChannelSubmitting = true
         createChannelError = null
+        createChannelCollision = null
         appShellCoroutineScope.launch {
             try {
                 when (
@@ -5642,7 +5650,15 @@ private fun RaftAppShellReadyContent(
                         createChannelError = channelNotCreatedMessage
                     }
                     is DataResult.Error -> {
-                        createChannelError = result.error.code
+                        // An archived channel the user can see holds the name: say so and offer
+                        // Open Channel / Unarchive / Change Name (web, slock #12614). Any other
+                        // refusal, including the plain "already taken", keeps the error line.
+                        val collision = result.error.archivedNameCollisionOrNull()
+                        if (collision != null) {
+                            createChannelCollision = collision
+                        } else {
+                            createChannelError = result.error.code
+                        }
                     }
                     is DataResult.NoPermission -> {
                         createChannelError = result.blocker.code
@@ -5652,6 +5668,58 @@ private fun RaftAppShellReadyContent(
                 throw cancellation
             } catch (_: Throwable) {
                 createChannelError = "channel_create_failed"
+            } finally {
+                createChannelSubmitting = false
+            }
+        }
+    }
+
+    // Web Open Channel: leave the dialog for the archived channel, read-only.
+    fun openCreateChannelCollision() {
+        val collision = createChannelCollision ?: return
+        if (createChannelSubmitting) return
+        createChannelDialogOpen = false
+        createChannelError = null
+        createChannelCollision = null
+        openHomeConversation(
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Channel,
+                channelId = collision.archivedChannelId,
+                channelType = collision.archivedChannelType,
+            ),
+            "create_channel_archived_open",
+        )
+    }
+
+    // Web Unarchive: restore the archived channel, then leave the dialog for it.
+    fun unarchiveCreateChannelCollision() {
+        val collision = createChannelCollision ?: return
+        if (createChannelSubmitting || !collision.canUnarchive) return
+        createChannelSubmitting = true
+        createChannelError = null
+        appShellCoroutineScope.launch {
+            try {
+                when (val result = channelRepository.unarchiveChannel(collision.archivedChannelId)) {
+                    is DataResult.Content -> {
+                        createChannelDialogOpen = false
+                        createChannelCollision = null
+                        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
+                        openHomeConversation(result.data.toThreadLaunchConversationIdentity(), "create_channel_archived_unarchive")
+                    }
+                    is DataResult.Error -> {
+                        createChannelError = result.error.serverMessage ?: channelUnarchiveFailedMessage
+                    }
+                    is DataResult.NoPermission -> {
+                        createChannelError = result.blocker.serverMessage ?: channelUnarchiveFailedMessage
+                    }
+                    is DataResult.Empty -> {
+                        createChannelError = channelUnarchiveFailedMessage
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                createChannelError = channelUnarchiveFailedMessage
             } finally {
                 createChannelSubmitting = false
             }
@@ -8858,6 +8926,17 @@ private fun RaftAppShellReadyContent(
                                 readySession?.jointSameAdminContext(jointHomeSnapshot?.server?.id?.value)
                             },
                         onDismiss = { createJointChannelDialogOpen = false },
+                        onOpenArchivedChannel = { channelId ->
+                            createJointChannelDialogOpen = false
+                            openHomeConversation(
+                                buildThreadLaunchConversationIdentity(
+                                    kind = ConversationKind.Joint,
+                                    channelId = channelId,
+                                    channelType = "joint",
+                                ),
+                                "create_joint_channel_archived_open",
+                            )
+                        },
                         onOpenChannel = { channel ->
                             createJointChannelDialogOpen = false
                             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
@@ -8882,11 +8961,16 @@ private fun RaftAppShellReadyContent(
                         membersLoading = createChannelMembersLoading,
                         members = createChannelMembers,
                         errorMessage = createChannelError,
+                        archivedCollision = createChannelCollision,
+                        onOpenArchivedCollision = { openCreateChannelCollision() },
+                        onUnarchiveArchivedCollision = { unarchiveCreateChannelCollision() },
+                        onClearArchivedCollision = { createChannelCollision = null },
                         agentStatusResolver = createChannelAgentStatusResolver,
                         onDismiss = {
                             if (!createChannelSubmitting) {
                                 createChannelDialogOpen = false
                                 createChannelError = null
+                                createChannelCollision = null
                             }
                         },
                         onSubmit = { name, description, visibility, agentMemberIds, userMemberIds ->
@@ -11771,6 +11855,10 @@ private fun SharedCreateChannelDialog(
     membersLoading: Boolean,
     members: List<MemberProfile>,
     errorMessage: String?,
+    archivedCollision: ArchivedNameCollision? = null,
+    onOpenArchivedCollision: () -> Unit = {},
+    onUnarchiveArchivedCollision: () -> Unit = {},
+    onClearArchivedCollision: () -> Unit = {},
     initialName: String = "",
     initialDescription: TextFieldValue = TextFieldValue(""),
     initialVisibility: SharedCreateChannelVisibility = SharedCreateChannelVisibility.Public,
@@ -11799,13 +11887,16 @@ private fun SharedCreateChannelDialog(
         onDispose { createChannelScrollCoordinator.invalidate() }
     }
     var memberSearchFocused by remember { mutableStateOf(false) }
+    // The member picker's item in the list below: after name, description and visibility, and
+    // after the archived-name warning when one is shown above them.
+    val memberPickerItemIndex = if (archivedCollision != null) 4 else 3
 
     fun scrollToMemberPicker() {
         val requestGeneration = createChannelScrollCoordinator.begin()
         val job = createChannelScrollScope.launch {
             raftUnifiedDialogScrollToTargetItem(
                 keyboardHeight = 1f,
-                targetItemIndex = 3,
+                targetItemIndex = memberPickerItemIndex,
                 targetItemScrollOffset = 0,
                 awaitRelayoutFrame = { withFrameNanos { } },
                 scrollToItem = { index, scrollOffset ->
@@ -11872,7 +11963,7 @@ private fun SharedCreateChannelDialog(
                 if (memberSearchFocused) {
                     raftUnifiedDialogScrollToTargetItem(
                         keyboardHeight = params.height,
-                        targetItemIndex = 3,
+                        targetItemIndex = memberPickerItemIndex,
                         targetItemScrollOffset = 0,
                         awaitRelayoutFrame = { withFrameNanos { } },
                         scrollToItem = { index, scrollOffset ->
@@ -11922,6 +12013,23 @@ private fun SharedCreateChannelDialog(
                         .onGloballyPositioned { createChannelViewport = it.boundsInRoot() },
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+            // Web CreateChannelDialog: the archived-name warning sits above the name it is about.
+            archivedCollision?.let { collision ->
+                item(key = "archived-name-collision") {
+                    ArchivedNameCollisionBanner(
+                        archivedChannelName = collision.archivedChannelName,
+                        canUnarchive = collision.canUnarchive,
+                        unarchiving = submitting,
+                        onUnarchive = onUnarchiveArchivedCollision,
+                        onOpen = onOpenArchivedCollision,
+                        // Web `handleChangeCollidingName`: drop the warning and clear the name.
+                        onChangeName = {
+                            name = ""
+                            onClearArchivedCollision()
+                        },
+                    )
+                }
+            }
             item {
                 RaftField(
                     label = stringResource(Res.string.channel_create_label_name),

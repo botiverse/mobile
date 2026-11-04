@@ -168,6 +168,26 @@ class CreateJointChannelStoreTest {
     }
 
     @Test
+    fun openCollisionLeavesForTheArchivedChannelWithoutUnarchiving() = runTest {
+        val collision = CreateJointChannelOutcome.ArchivedNameCollision(ChannelId("ch-old"), "launch", canUnarchive = false)
+        val dataSource = FakeCreateJointDataSource(createResult = collision)
+        val store = filledStore(dataSource, "launch", "partner-co", "@ada")
+
+        // Nothing to open before a collision.
+        store.dispatch(CreateJointChannelIntent.OpenCollision)
+        assertNull(store.state.value.effect)
+
+        store.dispatch(CreateJointChannelIntent.Submit)
+        runCurrent()
+        store.dispatch(CreateJointChannelIntent.OpenCollision)
+
+        assertEquals(ChannelId("ch-old"), assertIs<CreateJointChannelEffect.OpenArchived>(store.state.value.effect).channelId)
+        assertNull(store.state.value.collision)
+        assertTrue(dataSource.unarchived.isEmpty())
+        assertEquals("launch", store.state.value.name)
+    }
+
+    @Test
     fun errorCopyLocalizesInviteRejectionsLikeWeb() {
         val copy =
             CreateJointErrorCopy(

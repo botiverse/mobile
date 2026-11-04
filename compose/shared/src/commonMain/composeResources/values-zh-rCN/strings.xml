@@ -3317,6 +3317,11 @@
     <string name="joint_create_archived_name_held">名称 #%1$s 已被一个已归档的频道占用。</string>
     <string name="joint_create_unarchive">取消归档</string>
     <string name="joint_create_change_name">修改名称</string>
+    <string name="channel_create_open_archived">打开频道</string>
+    <string name="channel_create_archived_can_manage">取消归档可保留其历史记录，或者改用其他名称。</string>
+    <string name="channel_create_archived_cannot_manage">请改用其他名称，或请管理员取消归档。</string>
+    <string name="channel_create_unarchiving">正在取消归档…</string>
+    <string name="channel_create_failed_unarchive">取消归档频道失败</string>
     <string name="joint_create_name_label">名称</string>
     <string name="joint_create_name_placeholder">例如 partner-launch</string>
     <string name="joint_create_description_label">描述</string>

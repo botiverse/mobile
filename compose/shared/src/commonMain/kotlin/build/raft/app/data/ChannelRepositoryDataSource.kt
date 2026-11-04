@@ -582,7 +582,12 @@ private fun buildChannelActivityMuteBody(muted: Boolean): String =
 @Serializable
 private data class ChannelErrorBody(
     val code: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    // `archived_name_collision` (409 from `POST channels`): the archived channel holding the name.
+    val archivedChannelId: String? = null,
+    val archivedChannelName: String? = null,
+    val archivedChannelType: String? = null,
+    val canUnarchiveArchivedChannel: Boolean? = null
 )
 
 private data class SharedChannelServerContext(
@@ -626,9 +631,29 @@ private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> {
                 ScreenError(
                     code = channelErrorCode("http_$code"),
                     retryable = false,
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverFields = channelErrorServerFields()
                 )
             )
+    }
+}
+
+/**
+ * The structured fields of a refusal the caller needs beyond its code: for
+ * `archived_name_collision`, the archived channel holding the name (see
+ * [archivedNameCollisionOrNull]). Empty for every other refusal.
+ */
+private fun HomeNetworkResponse.channelErrorServerFields(): Map<String, String> {
+    val payload = bodyText ?: errorBodyText ?: return emptyMap()
+    val body =
+        runCatching { channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload) }.getOrNull()
+            ?: return emptyMap()
+    if (body.code?.trim() != ARCHIVED_NAME_COLLISION) return emptyMap()
+    return buildMap {
+        body.archivedChannelId?.trim()?.takeIf(String::isNotBlank)?.let { put(ARCHIVED_CHANNEL_ID_FIELD, it) }
+        body.archivedChannelName?.trim()?.takeIf(String::isNotBlank)?.let { put(ARCHIVED_CHANNEL_NAME_FIELD, it) }
+        body.archivedChannelType?.trim()?.takeIf(String::isNotBlank)?.let { put(ARCHIVED_CHANNEL_TYPE_FIELD, it) }
+        put(CAN_UNARCHIVE_ARCHIVED_CHANNEL_FIELD, (body.canUnarchiveArchivedChannel == true).toString())
     }
 }
 
