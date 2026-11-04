@@ -48,6 +48,8 @@ import build.raft.designsystem.components.RaftSidebarItemMeta
 import build.raft.designsystem.components.RaftQuietUnreadDot
 import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
+import build.raft.designsystem.components.RaftScrollbarTrigger
+import build.raft.designsystem.components.raftScrollbar
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftPointerInput
@@ -2741,6 +2743,9 @@ private fun RaftStructuralHomeShellContent(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
+                                        // raft-ui 0.60 SidebarContent: ScrollArea `trigger="scroll"`, the
+                                        // overlay scrollbar shows only while the list scrolls (slock #12568).
+                                        .raftScrollbar(listState, trigger = RaftScrollbarTrigger.Scroll)
                                         .touchListener { type, _ ->
                                             if (type == TouchType.Move) {
                                                 homeUserScrollGeneration.value += 1
