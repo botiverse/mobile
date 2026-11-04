@@ -891,6 +891,23 @@ data class AgentTypingUpdated(
     val taskId: String? = null,
 ) : RealtimeEvent
 
+/**
+ * `thread:reply_updated` (slock `messageService.emitExternalLinkedMessageUpdateToFrontend`, sent to the
+ * parent channel's room when a bridged (Slack) thread reply is edited): the edited reply, for the
+ * parent's inline replies. Never a new reply, never a count change.
+ */
+@Serializable
+data class ThreadReplyUpdated(
+    val parentMessageId: MessageId,
+    val parentChannelId: ChannelId,
+    val parentChannelType: String,
+    val threadChannelId: ChannelId,
+    val messageId: MessageId,
+    val seq: Long,
+    val content: String,
+    val updatedAt: String,
+) : RealtimeEvent
+
 @Serializable
 data class ThreadUpdated(
     val parentMessageId: MessageId,

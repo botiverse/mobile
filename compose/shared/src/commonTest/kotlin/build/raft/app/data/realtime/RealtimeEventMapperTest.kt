@@ -24,6 +24,7 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.isAgentProfileUpdate
 import kotlin.test.Test
@@ -664,6 +665,51 @@ class RealtimeEventMapperTest {
         assertEquals("external_projection", reply.senderType)
         assertEquals("Yezi", reply.senderDisplayName)
         assertEquals("https://example.test/slack-avatar.png", reply.senderAvatarUrl)
+    }
+
+    @Test
+    fun threadReplyUpdatedMapsTheEditedReplyAndItsParent() {
+        // slock `emitExternalLinkedMessageUpdateToFrontend`: the enriched reply + `conversationContext`.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadReplyUpdated,
+                """
+                {
+                  "id": "reply-1",
+                  "channelId": "thread-1",
+                  "seq": 7,
+                  "senderType": "external_projection",
+                  "senderId": "projection-1",
+                  "senderName": "Yezi",
+                  "content": "edited in Slack",
+                  "createdAt": "2026-10-21T09:00:00.000Z",
+                  "updatedAt": "2026-10-21T09:05:00.000Z",
+                  "conversationContext": {
+                    "channelType": "thread",
+                    "parentMessageId": "parent-1",
+                    "parentChannelId": "channel-1",
+                    "parentChannelType": "channel"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<ThreadReplyUpdated>(event)
+        assertEquals("parent-1", updated.parentMessageId.value)
+        assertEquals("channel-1", updated.parentChannelId.value)
+        assertEquals("channel", updated.parentChannelType)
+        assertEquals("thread-1", updated.threadChannelId.value)
+        assertEquals("reply-1", updated.messageId.value)
+        assertEquals(7L, updated.seq)
+        assertEquals("edited in Slack", updated.content)
+        assertEquals("2026-10-21T09:05:00.000Z", updated.updatedAt)
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadReplyUpdated,
+                """{"id":"m-1","channelId":"c-1","seq":1,"content":"x","updatedAt":"2026-10-21T09:05:00.000Z","conversationContext":{"channelType":"channel"}}""",
+            ),
+            "a top-level message is never a thread reply update",
+        )
     }
 
     @Test

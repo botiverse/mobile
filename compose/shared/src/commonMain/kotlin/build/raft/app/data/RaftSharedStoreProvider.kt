@@ -4622,6 +4622,8 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
             "thread:updated:$serverId:${threadChannelId.value}:${parentMessageId.value}:$replyCount:${unreadCount ?: -1}:" +
                 "${firstUnreadMessageId?.value.orEmpty()}:${lastReplyAt.orEmpty()}:" +
                 "${latestReply?.messageId.orEmpty()}:${latestReply?.seq ?: -1L}"
+        is build.raft.app.model.ThreadReplyUpdated ->
+            "thread:reply_updated:$serverId:${threadChannelId.value}:${messageId.value}:$seq:$updatedAt"
         is TaskCreated ->
             "task:created:$serverId:${tasks.joinToString("|") { it.taskDomainKey() }}"
         is TaskUpdated ->

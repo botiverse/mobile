@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import kotlinx.serialization.Serializable
 
 /**
@@ -37,6 +38,8 @@ data class ReplyPreview(
     val senderAvatarUrl: String? = null,
     val createdAt: String,
     val senderDisplayName: String? = null,
+    /** Last content change (slock `ThreadSummaryLatestReply.updatedAt`); null falls back to [createdAt]. */
+    val updatedAt: String? = null,
 )
 
 /** The maintained latest-N reply-preview window pushed by `listenLatestNReplies`. */
@@ -129,6 +132,30 @@ fun ThreadRepliesReadModel.applyReplyFrame(
     return if (newWindow == replies && mergedCount == replyCount) this
     else copy(replies = newWindow, replyCount = mergedCount)
 }
+
+/**
+ * Fold an edit of a reply this window already holds (`thread:reply_updated`, web
+ * `threadRepliesReadModel.ts` `applyThreadReplyUpdate`): match by messageId AND seq, replace the content
+ * only when [updatedAt] is newer than the retained one. Never inserts, reorders or changes the count;
+ * returns the SAME instance when nothing changes.
+ */
+fun ThreadRepliesReadModel.applyReplyUpdate(
+    messageId: String,
+    seq: Long,
+    content: String,
+    updatedAt: String,
+): ThreadRepliesReadModel {
+    val version = parseRaftTimestampEpochMillisOrNull(updatedAt) ?: return this
+    val index = replies.indexOfFirst { it.messageId == messageId && it.seq == seq }
+    val existing = replies.getOrNull(index) ?: return this
+    if (version <= existing.contentVersion()) return this
+    val next = replies.toMutableList()
+    next[index] = existing.copy(content = content, updatedAt = updatedAt)
+    return copy(replies = next)
+}
+
+private fun ReplyPreview.contentVersion(): Long =
+    parseRaftTimestampEpochMillisOrNull(updatedAt ?: createdAt) ?: 0L
 
 private fun ReplyPreview.isSystemReply(): Boolean = senderType.equals("system", ignoreCase = true)
 

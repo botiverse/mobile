@@ -146,6 +146,7 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.data.TaskConversationChannelRef
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
@@ -10015,6 +10016,14 @@ internal class SharedThreadStore(
                             event = event,
                             baseline = currentPayload.inlineRepliesBaselineFor(event),
                         )
+                    } else if (event is ThreadReplyUpdated && repliesPageIdentity != null) {
+                        // An edited (Slack-bridged) reply: rewrite its inline row under the parent.
+                        threadRepliesSyncHost.ingestReplyUpdate(
+                            page = repliesPageIdentity,
+                            event = event,
+                            baseline =
+                                currentPayload.inlineRepliesBaselineFor(event.parentMessageId, event.threadChannelId),
+                        )
                     } else {
                         null
                     }
@@ -10029,6 +10038,9 @@ internal class SharedThreadStore(
                             "page=${repliesPageIdentity?.let { "${it.serverId}:${it.parentScopeKind}:${it.parentScopeId}" }.orEmpty()} " +
                             "envelope=${envelope?.let { "${it.parentScopeServerId}:${it.parentScopeKind}:${it.parentScopeId}" }.orEmpty()}"
                     )
+                }
+                if (event is ThreadReplyUpdated && acceptedRepliesProjection != null) {
+                    dataSource.recordReplyWindows(listOf(acceptedRepliesProjection))
                 }
                 if (event is ThreadUpdated && acceptedRepliesProjection != null) {
                     dataSource.recordReplyWindows(listOf(acceptedRepliesProjection))
@@ -13838,12 +13850,18 @@ internal fun RaftThreadScreenPayload.withSeededReplyWindows(
  * sync host has not accepted yet (cold cache / last-known payload). A parent whose own thread
  * channel names a different scope contributes nothing.
  */
-private fun RaftThreadScreenPayload.inlineRepliesBaselineFor(event: ThreadUpdated): ThreadRepliesReadModel? {
+private fun RaftThreadScreenPayload.inlineRepliesBaselineFor(event: ThreadUpdated): ThreadRepliesReadModel? =
+    inlineRepliesBaselineFor(event.parentMessageId, event.threadChannelId)
+
+private fun RaftThreadScreenPayload.inlineRepliesBaselineFor(
+    parentMessageId: MessageId,
+    threadChannelId: ChannelId,
+): ThreadRepliesReadModel? {
     val parent =
-        (messages + listOfNotNull(originMessage)).firstOrNull { it.id == event.parentMessageId.value }
+        (messages + listOfNotNull(originMessage)).firstOrNull { it.id == parentMessageId.value }
             ?: return null
     val ownThreadChannelId = parent.threadChannelId?.trim()?.takeIf { it.isNotBlank() }
-    if (ownThreadChannelId != null && ownThreadChannelId != event.threadChannelId.value) return null
+    if (ownThreadChannelId != null && ownThreadChannelId != threadChannelId.value) return null
     return parent.inlineReplies?.takeIf { it.replies.isNotEmpty() }
 }
 

@@ -3,6 +3,7 @@ package build.raft.app.network.sync
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -115,6 +116,45 @@ class ThreadRepliesSyncDomainTest {
         )
     }
 
+    @Test
+    fun replyUpdateRewritesAnAcceptedReplyAndSurvivesTheNextCreate() {
+        // Task #73: `thread:reply_updated` (a Slack edit) rewrites the inline row, as web
+        // `consumeThreadReplyUpdateWithSyncCore`; a later create must not bring the old text back.
+        val host = ThreadRepliesSyncHost()
+        assertEquals(true, host.beginAuthoritativeRebaseline(page, 1))
+        accepted(host, 1, replies = 1L..3L, count = 3)
+
+        val edited = assertNotNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "edited")))
+        assertEquals(listOf("reply 1", "edited", "reply 3"), edited.model.replies.map { it.content })
+        assertEquals(3, edited.model.replyCount)
+
+        val next = assertNotNull(host.ingestFrame(page, frame(seq = 4, count = 4)))
+        assertEquals(listOf("edited", "reply 3", "reply 4"), next.model.replies.map { it.content })
+    }
+
+    @Test
+    fun replyUpdateIgnoresStaleUnknownAndForeignScopeEdits() {
+        val host = ThreadRepliesSyncHost()
+        assertEquals(true, host.beginAuthoritativeRebaseline(page, 1))
+        accepted(host, 1, replies = 1L..3L, count = 3)
+        assertNotNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "new", updatedAt = "2026-07-25T00:02:00Z")))
+
+        // An older edit than the one already applied, a reply outside the window, another parent scope.
+        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "old", updatedAt = "2026-07-25T00:01:00Z")))
+        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 9, content = "x")))
+        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 3, content = "x").copy(parentChannelId = ChannelId("channel-2"))))
+    }
+
+    @Test
+    fun replyUpdateSeedsANeverSeenScopeFromTheRenderedWindow() {
+        val host = ThreadRepliesSyncHost()
+        val rendered = initialThreadRepliesReadModel(listOf(reply(1), reply(2)), replyCount = 2, limit = InlineThreadReplyPreviewLimit)
+
+        assertNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "edited")))
+        val edited = assertNotNull(host.ingestReplyUpdate(page, replyUpdate(seq = 2, content = "edited"), baseline = rendered))
+        assertEquals(listOf("reply 1", "edited"), edited.model.replies.map { it.content })
+    }
+
     private fun accepted(
         host: ThreadRepliesSyncHost,
         generation: Long,
@@ -164,6 +204,22 @@ class ThreadRepliesSyncDomainTest {
                     scopeCursor = null,
                     epoch = null,
                 ),
+        )
+
+    private fun replyUpdate(
+        seq: Long,
+        content: String,
+        updatedAt: String = "2026-07-25T00:05:00Z",
+    ): ThreadReplyUpdated =
+        ThreadReplyUpdated(
+            parentMessageId = MessageId("parent-1"),
+            parentChannelId = ChannelId("channel-1"),
+            parentChannelType = "channel",
+            threadChannelId = ChannelId("thread-1"),
+            messageId = MessageId("reply-$seq"),
+            seq = seq,
+            content = content,
+            updatedAt = updatedAt,
         )
 
     private fun reply(seq: Long, senderType: String = "user"): ReplyPreview =

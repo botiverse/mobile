@@ -332,6 +332,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is PerReceiverNotificationPrefsChanged,
         is PerReceiverPinnedChanged -> true
         is MemberPresenceUpdated -> false
+        // An edited thread reply only rewrites the parent's inline reply rows; no Home row changes.
+        is build.raft.app.model.ThreadReplyUpdated -> false
         // The server's answer to this app's own agent activity subscribe: no Home row changes.
         is build.raft.app.model.AgentActivitySubscribed -> false
         // read_receipts_v0: other participants' read positions only decorate the open message list.

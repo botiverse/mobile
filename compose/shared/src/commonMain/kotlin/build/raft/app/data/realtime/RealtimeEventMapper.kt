@@ -94,6 +94,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadFollowersUpdated
+import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
@@ -266,6 +267,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ScopeReadUpdatedWire.serializer(), element)?.toScopeReadUpdated()
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ThreadReplyUpdated ->
+                decodeOrNull(ThreadReplyUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ChannelUpdated ->
                 decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
             RealtimeSocketEvents.ChannelMembersUpdated ->
@@ -591,6 +594,45 @@ private data class CommentRefWireDto(
 @Serializable
 private data class ThreadFollowersUpdatedDto(val threadChannelId: String)
 
+/**
+ * `thread:reply_updated`: the edited reply as the enriched message payload (slock
+ * `emitExternalLinkedMessageUpdateToFrontend`, `projectRichMessageSocketPayload`) with its
+ * `conversationContext` (`FrontendConversationContext`). Only the fields the parent's inline
+ * replies need are read.
+ */
+@Serializable
+private data class ThreadReplyUpdatedDto(
+    val id: String = "",
+    val channelId: String = "",
+    val seq: Long? = null,
+    val content: String? = null,
+    val updatedAt: String? = null,
+    val conversationContext: ThreadReplyConversationContextDto? = null,
+)
+
+@Serializable
+private data class ThreadReplyConversationContextDto(
+    val channelType: String = "",
+    val parentMessageId: String? = null,
+    val parentChannelId: String? = null,
+    val parentChannelType: String? = null,
+)
+
+private fun ThreadReplyUpdatedDto.toDomain(): ThreadReplyUpdated? {
+    val context = conversationContext ?: return null
+    if (context.channelType != "thread") return null
+    return ThreadReplyUpdated(
+        parentMessageId = MessageId(context.parentMessageId?.takeIf { it.isNotBlank() } ?: return null),
+        parentChannelId = ChannelId(context.parentChannelId?.takeIf { it.isNotBlank() } ?: return null),
+        parentChannelType = context.parentChannelType?.takeIf { it.isNotBlank() } ?: return null,
+        threadChannelId = ChannelId(channelId.takeIf { it.isNotBlank() } ?: return null),
+        messageId = MessageId(id.takeIf { it.isNotBlank() } ?: return null),
+        seq = seq?.takeIf { it > 0L } ?: return null,
+        content = content ?: return null,
+        updatedAt = updatedAt?.takeIf { it.isNotBlank() } ?: return null,
+    )
+}
+
 @Serializable
 private data class ThreadUpdatedDto(
     val parentMessageId: String,
@@ -656,6 +698,7 @@ private data class ThreadLatestReplyDto(
     val senderDisplayName: String? = null,
     val senderAvatarUrl: String? = null,
     val createdAt: String = "",
+    val updatedAt: String? = null,
     val messageType: String? = null,
     /** The reply is the enriched message payload, so it carries `mentions` like `message:new`. */
     val mentions: List<MessageMentionWireDto>? = null,
@@ -1225,6 +1268,7 @@ private fun ThreadLatestReplyDto.toReplyPreview(): ReplyPreview? {
         senderAvatarUrl = senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() },
         createdAt = createdAt.trim(),
         senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
+        updatedAt = updatedAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

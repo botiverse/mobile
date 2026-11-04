@@ -16629,6 +16629,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is MessageUpdated -> "message_updated"
         is DirectMessageCreated -> "dm_new"
         is ThreadFollowersUpdated -> "thread_followers_updated"
+        is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
         is ScopeReadUpdated -> "scope_read_updated"
         is AgentTypingUpdated -> "agent_typing"
         is ThreadUpdated -> "thread_updated"
@@ -16666,6 +16667,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is MessageNew,
         is MessageUpdated,
         is ThreadFollowersUpdated,
+        is build.raft.app.model.ThreadReplyUpdated,
         is ScopeReadUpdated,
         is AgentTypingUpdated,
         is ThreadUpdated,

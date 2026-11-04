@@ -6018,6 +6018,7 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.ServerAppearanceUpdated -> "appearance_updated"
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.AgentActivitySubscribed -> "agent_activity_subscribed"
+        is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
         // Never dirty Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.NotificationLevelChanged -> "notification_level_changed"
         is build.raft.app.model.NotificationAccountSettingsChanged -> "notification_account_settings_changed"
