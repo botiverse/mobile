@@ -471,10 +471,17 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
     )
 }
 
+/**
+ * Sender types a thread reply preview carries on the wire: slock `ThreadSummaryLatestReply.senderType`
+ * (channelService.ts) and the `thread:updated` `latestReply` message payload. `external_projection` is a
+ * Slack-bridge reply; dropping it hid every Slack thread reply from the inline replies.
+ */
+internal val ReplyPreviewWireSenderTypes: Set<String> = setOf("user", "agent", "system", "external_projection")
+
 private fun WireThreadReplyPreview.toDomain(): ReplyPreview? {
     val cleanMessageId = messageId.trim().takeIf { it.isNotBlank() } ?: return null
     val cleanSenderType = senderType.trim().lowercase()
-    if (cleanSenderType !in setOf("user", "agent", "system")) return null
+    if (cleanSenderType !in ReplyPreviewWireSenderTypes) return null
     return ReplyPreview(
         messageId = cleanMessageId,
         seq = seq,

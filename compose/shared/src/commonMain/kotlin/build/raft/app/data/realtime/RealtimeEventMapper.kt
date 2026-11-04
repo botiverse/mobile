@@ -4,6 +4,7 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.data.ReplyPreviewWireSenderTypes
 import build.raft.app.data.TaskSourceMessageIdAbsent
 import build.raft.app.data.reportedSourceMessageId
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -1213,7 +1214,7 @@ private fun ThreadLatestReplyDto.toReplyPreview(): ReplyPreview? {
         } else {
             senderType.trim().lowercase()
         }
-    if (projectedSenderType !in setOf("user", "agent", "system")) return null
+    if (projectedSenderType !in ReplyPreviewWireSenderTypes) return null
     val cleanSenderName = senderName.trim()
     return ReplyPreview(
         messageId = cleanMessageId,

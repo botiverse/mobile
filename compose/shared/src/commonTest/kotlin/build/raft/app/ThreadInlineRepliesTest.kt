@@ -43,6 +43,14 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
+    fun slackBridgeReplyUsesItsOwnAvatarInsteadOfAMemberLookup() {
+        val slackReply = reply("r-1", 1, senderType = "external_projection").copy(senderAvatarUrl = "https://example.test/a.png")
+        assertEquals("https://example.test/a.png", threadInlineReplyAvatarWireValue(slackReply, memberAvatarWireValue = "pixel:robot"))
+        assertNull(threadInlineReplyAvatarWireValue(slackReply.copy(senderAvatarUrl = null), memberAvatarWireValue = "pixel:robot"))
+        assertEquals("pixel:robot", threadInlineReplyAvatarWireValue(reply("r-2", 2), memberAvatarWireValue = "pixel:robot"))
+    }
+
+    @Test
     fun replyMetadataDoesNotQualifyForTheRetiredFooterChip() {
         assertFalse(
             RaftThreadMessageItem(

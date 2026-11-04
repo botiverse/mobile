@@ -32331,8 +32331,12 @@ private fun ThreadInlineReplyRow(
             enabled = memberAvatarResolver.jointSurface
         )
     val resolvedAvatar =
-        rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
-            ?: jointSender?.renderedAvatarWireValue()
+        threadInlineReplyAvatarWireValue(
+            reply = reply,
+            memberAvatarWireValue =
+                rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
+                    ?: jointSender?.renderedAvatarWireValue(),
+        )
     val displayName =
         reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
             ?: participant?.displayName?.trim()?.takeIf { it.isNotBlank() }
@@ -32386,6 +32390,21 @@ private fun ThreadInlineReplyRow(
             },
     )
 }
+
+/**
+ * A Slack-bridge reply (`external_projection`) has no member profile: its avatar is the frozen one the
+ * reply preview carries (web InlineThreadReplies uses `senderAvatarUrl` the same way). Members keep
+ * the resolver's live avatar.
+ */
+internal fun threadInlineReplyAvatarWireValue(
+    reply: build.raft.app.network.sync.ReplyPreview,
+    memberAvatarWireValue: String?,
+): String? =
+    if (reply.senderType.trim().equals("external_projection", ignoreCase = true)) {
+        reply.senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() }
+    } else {
+        memberAvatarWireValue
+    }
 
 internal fun threadInlineReplyPreviewText(content: String): String = markdownToPreviewText(content)
 

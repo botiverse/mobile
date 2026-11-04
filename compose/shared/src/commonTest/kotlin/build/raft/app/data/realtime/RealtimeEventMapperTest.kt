@@ -30,6 +30,7 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -627,6 +628,42 @@ class RealtimeEventMapperTest {
         assertEquals("dm-reply-1", updated.latestReply?.messageId)
         assertEquals("MingQi", updated.latestReply?.senderName)
         assertEquals("明启", updated.latestReply?.senderDisplayName)
+    }
+
+    @Test
+    fun threadUpdatedKeepsSlackBridgeLatestReply() {
+        // Task #73: slock `projectThreadLatestReplyPayload` sends a Slack thread reply as the enriched
+        // message (`senderType: external_projection`, avatar from `externalAuthor`). A null latestReply
+        // made the replies host reject the frame, so the reply never reached the inline rows.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadUpdated,
+                """
+                {
+                  "parentMessageId": "parent-1",
+                  "threadChannelId": "thread-1",
+                  "replyCount": 1,
+                  "latestReply": {
+                    "id": "reply-1",
+                    "seq": 3,
+                    "content": "from slack",
+                    "senderId": "projection-1",
+                    "senderType": "external_projection",
+                    "senderName": "Yezi",
+                    "senderDisplayName": "Yezi",
+                    "senderAvatarUrl": "https://example.test/slack-avatar.png",
+                    "messageType": "chat",
+                    "createdAt": "2026-07-24T08:00:00Z"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        val reply = assertNotNull(assertIs<ThreadUpdated>(event).latestReply)
+        assertEquals("reply-1", reply.messageId)
+        assertEquals("external_projection", reply.senderType)
+        assertEquals("Yezi", reply.senderDisplayName)
+        assertEquals("https://example.test/slack-avatar.png", reply.senderAvatarUrl)
     }
 
     @Test
