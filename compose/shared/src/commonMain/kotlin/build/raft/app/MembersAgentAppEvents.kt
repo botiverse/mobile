@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -122,7 +123,14 @@ internal fun MembersAgentAppEventsSection(
                     if (cursor == null) events = emptyList()
                     nextCursor = null
                 }
-                else -> error = loadFailed
+                else -> {
+                    // A failed first page (another filter, a refresh) drops what the last one showed.
+                    if (cursor == null) {
+                        events = emptyList()
+                        nextCursor = null
+                    }
+                    error = loadFailed
+                }
             }
             loading = false
         }
@@ -178,13 +186,15 @@ internal fun MembersAgentAppEventsSection(
         } else if (events.isNotEmpty()) {
             RaftListRowGroup(Modifier.fillMaxWidth()) {
                 events.forEachIndexed { index, event ->
-                    MembersAgentAppEventRow(
-                        agentId = agentId,
-                        event = event,
-                        divider = index > 0,
-                        detailLoader = detailLoader,
-                        timeContext = timeContext,
-                    )
+                    key(event.id) {
+                        MembersAgentAppEventRow(
+                            agentId = agentId,
+                            event = event,
+                            divider = index > 0,
+                            detailLoader = detailLoader,
+                            timeContext = timeContext,
+                        )
+                    }
                 }
             }
         }
@@ -227,8 +237,17 @@ private fun MembersAgentAppEventRow(
                 open = !open
                 val callback = detailLoader
                 if (open && payloadText == null && callback != null) {
+                    error = null
                     scope.launch {
-                        when (val result = runCatching { callback(agentId, event.id) }.getOrNull()) {
+                        val result =
+                            try {
+                                callback(agentId, event.id)
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (_: Throwable) {
+                                null
+                            }
+                        when (result) {
                             is DataResult.Content -> payloadText = result.data.payloadText
                             else -> error = loadFailed
                         }

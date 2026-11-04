@@ -469,31 +469,31 @@ private fun HomeNetworkResponse.mapAgentIntegrations(agentId: MemberId): DataRes
 private fun HomeNetworkResponse.agentIntegrationsFailure(): DataResult<Nothing> {
     val serverMessage = agentIntegrationsServerErrorTextOrNull()
     return when (code) {
-            401 ->
-                DataResult.NoPermission(
-                    PermissionBlocker(
-                        code = "auth_required",
-                        requiredCapability = "auth_session",
-                        serverMessage = serverMessage
-                    )
+        401 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "auth_required",
+                    requiredCapability = "auth_session",
+                    serverMessage = serverMessage
                 )
-            403 ->
-                DataResult.NoPermission(
-                    PermissionBlocker(
-                        code = "server_admin_required",
-                        requiredCapability = "manage_integrations",
-                        serverMessage = serverMessage
-                    )
+            )
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = "server_admin_required",
+                    requiredCapability = "manage_integrations",
+                    serverMessage = serverMessage
                 )
-            else ->
-                DataResult.Error(
-                    ScreenError(
-                        code = if (code >= 500) "server_unavailable" else "http_$code",
-                        retryable = code >= 500,
-                        serverMessage = serverMessage
-                    )
+            )
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = if (code >= 500) "server_unavailable" else "http_$code",
+                    retryable = code >= 500,
+                    serverMessage = serverMessage
                 )
-        }
+            )
+    }
 }
 
 /** Exact non-2xx envelope for `GET /api/integrations/agents/:agentId`. */
