@@ -5,7 +5,7 @@ platforms:
   - android
   - ios
   - desktop
-pull_request: https://github.com/botiverse/mobile/pull/4269
+pull_request: https://github.com/botiverse/mobile/pull/4365
 rollout: full
 ---
 
