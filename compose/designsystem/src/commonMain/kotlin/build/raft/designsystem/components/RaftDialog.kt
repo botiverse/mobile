@@ -104,10 +104,13 @@ fun RaftDialogSurface(
             RaftDialogHeader(title = title, onClose = onClose, closeLabel = closeLabel)
             val hasBody = description != null || content != null
             if (hasBody) {
+                val bodyScroll = rememberScrollState()
                 Column(
                     Modifier
                         .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
+                        // raft-ui 0.60 ScrollArea: the dialog body's overlay scrollbar.
+                        .raftScrollbar(bodyScroll)
+                        .verticalScroll(bodyScroll)
                         .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
@@ -343,10 +346,13 @@ internal fun RaftSheetSurfaceImpl(
                 if (fillContent) {
                     Column(Modifier.fillMaxWidth().weight(1f), content = content)
                 } else {
+                    val bodyScroll = rememberScrollState()
                     Column(
                         Modifier
                             .weight(1f, fill = false)
-                            .verticalScroll(rememberScrollState())
+                            // raft-ui 0.60 ScrollArea: the sheet body's overlay scrollbar.
+                            .raftScrollbar(bodyScroll)
+                            .verticalScroll(bodyScroll)
                             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
                         content = content,
                     )

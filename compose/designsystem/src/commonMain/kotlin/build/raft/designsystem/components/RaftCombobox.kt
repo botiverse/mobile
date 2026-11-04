@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -723,11 +724,14 @@ private fun RaftComboboxPopoverFrame(
                 }
             },
         ) {
+            val listScroll = rememberScrollState()
             Column(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(max = RaftComboboxPopoverListMaxHeight)
-                    .verticalScroll(rememberScrollState()),
+                    // raft-ui 0.60 ScrollArea: a popup list's overlay scrollbar.
+                    .raftScrollbar(listScroll)
+                    .verticalScroll(listScroll),
                 content = rows,
             )
         }
@@ -1211,7 +1215,8 @@ private fun <T> RaftComboboxList(
         return
     }
     val rows = remember(options) { raftComboboxRows(options) }
-    LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(6.dp)) {
+    val listState = rememberLazyListState()
+    LazyColumn(Modifier.fillMaxWidth().raftScrollbar(listState), state = listState, contentPadding = PaddingValues(6.dp)) {
         if (createQuery != null && onCreate != null) {
             item {
                 RaftComboboxOptionRow(
