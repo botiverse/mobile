@@ -532,8 +532,15 @@ internal class SharedTasksViewModel(
      * safe.
      */
     private fun boardSeedStatuses(): List<TaskStatus> =
-        // Unknown is not a server status: it has no page of its own to seed.
-        state.value.availableFilters.ifEmpty { TaskStatus.known }.filter { it.isKnown }
+        state.value.availableFilters.ifEmpty { TaskStatus.known }
+
+    /**
+     * The servers this store has seen a backlog task on (in a loaded page or a realtime patch folded
+     * into its content). Only there does the Board ask for the Backlog column's own page: a server
+     * without backlog (before slock #12962) answers 400 to `status=backlog`, so until one shows up
+     * the collapsed Backlog column renders from the tasks already loaded, with no request of its own.
+     */
+    private val backlogSeenServerIds = mutableSetOf<String>()
 
     /**
      * Seed every board column's own cursor (task #363). Called after a load that
@@ -546,13 +553,16 @@ internal class SharedTasksViewModel(
      * the columns are few). Any failure simply leaves that column unpublished
      * (hasMore=false) — fail-closed, matching the global path's behaviour.
      */
-    private fun seedStatusPages(statuses: List<TaskStatus>) {
-        if (scope != SharedTasksScope.Server || statuses.isEmpty()) return
+    private fun seedStatusPages(candidateStatuses: List<TaskStatus>) {
+        if (scope != SharedTasksScope.Server || candidateStatuses.isEmpty()) return
         statusSeedJob?.cancel()
         statusSeedJob =
             runtimeScope.launch {
                 val requestServerId = useCase.currentServerId()?.value ?: return@launch
                 val requestOwner = sharedTasksDataStore?.currentOwnerSnapshot()
+                val loadedTasks = (state.value.loadState as? ScreenLoadState.Content)?.data?.tasks.orEmpty()
+                if (loadedTasks.any { it.status == TaskStatus.Backlog }) backlogSeenServerIds += requestServerId
+                val statuses = tasksBoardSeedStatuses(candidateStatuses, backlogSeen = requestServerId in backlogSeenServerIds)
                 for (status in statuses) {
                     val result = useCase.loadServerTasksPage(
                         limit = TASKS_SERVER_PAGE_LIMIT,
@@ -1937,6 +1947,15 @@ fun List<TaskSummary>.toTasksUiStateForThreadTasks(): TasksUiState =
                 )
             }
     )
+
+/**
+ * The statuses whose Board column gets its own first-page request. Unknown is not a server status,
+ * so it never has one. Backlog only once a backlog task has been seen ([backlogSeen]): a server
+ * without backlog (before slock #12962) answers 400 to `status=backlog`, and the app has no other
+ * signal that the server knows it. Until then the Backlog column shows what the loaded pages hold.
+ */
+internal fun tasksBoardSeedStatuses(availableFilters: List<TaskStatus>, backlogSeen: Boolean): List<TaskStatus> =
+    availableFilters.ifEmpty { TaskStatus.known }.filter { it.isKnown && (backlogSeen || it != TaskStatus.Backlog) }
 
 /**
  * One column per status, in board order (raft-design tasks.md: Backlog, Todo, In Progress, Done,

@@ -224,7 +224,7 @@ class TasksPerStatusPaginationTest {
  */
 class TasksPerStatusBoardSeedWiringTest {
 
-    private class RecordingApi(val emptyStatuses: Set<String>) : RaftTasksApi {
+    private class RecordingApi(val emptyStatuses: Set<String>, val firstPageStatus: String = "todo") : RaftTasksApi {
         val requests = mutableListOf<Pair<String?, String?>>() // (cursor, status)
         override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
             HomeNetworkResponse(code = 500, bodyText = null)
@@ -245,7 +245,7 @@ class TasksPerStatusBoardSeedWiringTest {
             // An "empty" status returns zero rows but still has no more pages.
             val rows = if (status in emptyStatuses) "" else
                 """{"id":"$status-1","messageId":"m","channelId":"c1","channelName":"alpha","taskNumber":1,
-                    "title":"T","status":"${(status ?: "todo").lowercase()}","createdByName":"x","createdAt":"2026-01-01T00:00:00Z",
+                    "title":"T","status":"${(status ?: firstPageStatus).lowercase()}","createdByName":"x","createdAt":"2026-01-01T00:00:00Z",
                     "updatedAt":"2026-01-01T00:00:00Z","source":"tasks","hasDescription":false,"descriptionBytes":0}"""
             return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[$rows],"next_cursor":null}""")
         }
@@ -257,6 +257,9 @@ class TasksPerStatusBoardSeedWiringTest {
             return """{"tasks":[$items],${next?.let { "\"next_cursor\":\"$it\"" } ?: "\"next_cursor\":null"}}"""
         }
     }
+
+    /** No backlog task seen yet: the Backlog column gets no `status=backlog` request (a pre-#12962 server 400s it). */
+    private val boardSeedWithoutBacklog = TaskStatus.known.filter { it != TaskStatus.Backlog }.map { it.toWireValue() }.toSet()
 
     private fun viewModel(api: RecordingApi) = SharedTasksViewModel(
         authStore = InMemoryRaftAuthSessionStore(
@@ -287,18 +290,36 @@ class TasksPerStatusBoardSeedWiringTest {
         // later column-end would fall back to the global cursor.
         withTimeout(5_000) {
             while (api.requests.drop(callsBeforeBoard).mapNotNull { it.second }.toSet() !=
-                TaskStatus.known.map { it.toWireValue() }.toSet()
+                boardSeedWithoutBacklog
             ) {
                 kotlinx.coroutines.delay(5)
             }
         }
         val seeded = api.requests.drop(callsBeforeBoard)
-        assertEquals(TaskStatus.known.map { it.toWireValue() }.toSet(),
+        assertEquals(boardSeedWithoutBacklog,
             seeded.mapNotNull { it.second }.toSet(),
             "every rendered column (incl. empty ones) is seeded with its own status filter")
         assertTrue(seeded.all { it.first == null }, "each seed is a first page (cursor=null)")
         assertEquals(seeded.size, seeded.mapNotNull { it.second }.toSet().size,
             "exactly one first-page request per column")
+    }
+
+    @Test
+    fun theBacklogColumnIsSeededOnlyAfterABacklogTaskWasSeen() = runBlocking {
+        val api = RecordingApi(emptyStatuses = emptySet(), firstPageStatus = "backlog")
+        val vm = viewModel(api)
+        vm.dispatch(SharedTasksRouteIntent.Start)
+        withTimeout(5_000) { vm.state.first { it.loadState is ScreenLoadState.Content } }
+        val callsBeforeBoard = api.requests.size
+
+        vm.dispatch(SharedTasksRouteIntent.EnterBoard)
+        val everyColumn = TaskStatus.known.map { it.toWireValue() }.toSet()
+        withTimeout(5_000) {
+            while (api.requests.drop(callsBeforeBoard).mapNotNull { it.second }.toSet() != everyColumn) {
+                kotlinx.coroutines.delay(5)
+            }
+        }
+        assertEquals(everyColumn, api.requests.drop(callsBeforeBoard).mapNotNull { it.second }.toSet())
     }
 
     @Test

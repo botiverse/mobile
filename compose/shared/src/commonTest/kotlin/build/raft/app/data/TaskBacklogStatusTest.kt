@@ -89,6 +89,16 @@ class TaskBacklogStatusTest {
     }
 
     @Test
+    fun theBoardAsksForTheBacklogColumnOnlyOnceABacklogTaskWasSeen() {
+        // A server without backlog (pre-#12962) answers 400 to status=backlog: no request until one is seen.
+        assertEquals(
+            listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed),
+            tasksBoardSeedStatuses(TaskStatus.entries, backlogSeen = false),
+        )
+        assertEquals(TaskStatus.known, tasksBoardSeedStatuses(TaskStatus.entries, backlogSeen = true))
+    }
+
+    @Test
     fun anUnknownStatusTaskGetsItsOwnLastColumnOnlyWhileItHasOne() {
         assertTrue(content(task("t", TaskStatus.Todo)).boardColumns(0, taskV2Enabled = true).none { it.status == TaskStatus.Unknown })
         val columns = content(task("u", TaskStatus.Unknown), task("t", TaskStatus.Todo)).boardColumns(0, taskV2Enabled = true)
