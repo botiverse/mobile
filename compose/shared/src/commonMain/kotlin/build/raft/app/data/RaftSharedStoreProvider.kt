@@ -2511,10 +2511,8 @@ internal class RaftSharedStoreProvider private constructor(
             onPrediction = { prediction ->
                 // The user read it here: its system notification (Android) goes too.
                 RaftConversationReadHost.conversationRead(prediction.owner.serverId, prediction.channelId.value)
-                activityUnreadSummaryStore.invalidate(
-                    prediction.owner.toProcessActivityUnreadOwner(),
-                    reason = "read_prediction:${prediction.revision}"
-                )
+                // No summary read here: the prediction adjusts the count locally (Activity's fact) and the
+                // receipt's result ("read_result") is the mark-read's one summary read.
                 homeStores.entries().forEach { (shellScope, store) ->
                     runOnStoreScope(homeStoreScopes.get(shellScope)) {
                         store.dispatch(SharedHomeIntent.ApplyReadReceiptPrediction(prediction))
@@ -3051,7 +3049,7 @@ internal class RaftSharedStoreProvider private constructor(
                     projectionCache = processActivityUnreadProjectionCache,
                     scope = CoroutineScope(SupervisorJob()),
                     logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread")
-                )
+                ).also { store -> store.followAppLifecycle() }
             // ONE sink instance shared by the legacy and every scoped realtime
             // owner — the single production presence write edge.
             val memberPresenceRealtimeSink =

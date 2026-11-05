@@ -2318,14 +2318,45 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadMessageSharePreview() {
+        // The generated share image (Copy / Download), not the dialog: a phone-width card.
+        captureThreadShareImageCase(caseId = "components.thread.message-share.preview", cardWidthDp = 390)
+    }
+
+    @Test
+    fun captureThreadMessageSharePreviewDesktop() {
+        // The same message exported from a desktop chat column (web: a 640px row).
+        captureThreadShareImageCase(caseId = "components.thread.message-share.preview-desktop", cardWidthDp = 640)
+    }
+
+    /**
+     * The share image for the `share_image` message, [cardWidthDp] wide, cropped to the image
+     * the host draws pixel for pixel at the top left. A card wider than the pinned 390dp screen
+     * widens the display for the capture (as full-length cases grow it) and restores it after.
+     */
+    private fun captureThreadShareImageCase(caseId: String, cardWidthDp: Int) {
+        val instanceId = "visual-thread-message-share-image-$cardWidthDp"
+        var baseDisplay: Pair<Int, Int>? = null
+        val widen = cardWidthDp > 390
+        val widenDisplay: () -> Unit = {
+            val base = currentDisplaySizePx().also { baseDisplay = it }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            resizeDisplayWidth(caseId, (cardWidthDp * density).roundToInt(), base.second)
+        }
+        val restoreDisplay: () -> Unit = {
+            baseDisplay?.let { restoreDisplaySize(caseId, it) }
+        }
         captureKmpComponentCase(
-            caseId = "components.thread.message-share.preview",
+            caseId = caseId,
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
-                    .put("instanceId", "visual-thread-message-share-preview")
-                    .put("visualFixture", "share_preview"),
-            crop = FULL_VIEWPORT_CROP
+                    .put("instanceId", instanceId)
+                    .put("visualFixture", "share_image")
+                    .put("shareImageWidth", cardWidthDp),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = widenDisplay.takeIf { widen },
+            afterScreenshot = restoreDisplay.takeIf { widen },
+            cropOverride = { awaitThreadRowContentCrop(caseId, instanceId, widthDp = cardWidthDp) }
         )
     }
 
@@ -5784,6 +5815,22 @@ class KmpVisualScreenshotCaptureTest {
         val actual = currentDisplaySizePx()
         if (actual.second != heightPx) {
             throw AssertionError("$caseId full-length: window is ${actual.first}x${actual.second} after wm size ${widthPx}x$heightPx")
+        }
+        waitForIdleBounded()
+        Thread.sleep(FULL_LENGTH_RESIZE_SETTLE_MS)
+    }
+
+    /** Widens the display to [widthPx] (height kept), waiting until the window reports it. */
+    private fun resizeDisplayWidth(caseId: String, widthPx: Int, heightPx: Int) {
+        runShellCommand("wm size ${widthPx}x$heightPx")
+        val deadline = SystemClock.uptimeMillis() + FULL_LENGTH_RESIZE_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (currentDisplaySizePx().first == widthPx) break
+            Thread.sleep(FULL_HEIGHT_POLL_MS)
+        }
+        val actual = currentDisplaySizePx()
+        if (actual.first != widthPx) {
+            throw AssertionError("$caseId: window is ${actual.first}x${actual.second} after wm size ${widthPx}x$heightPx")
         }
         waitForIdleBounded()
         Thread.sleep(FULL_LENGTH_RESIZE_SETTLE_MS)

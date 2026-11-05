@@ -9009,9 +9009,15 @@ private fun RaftAppShellReadyContent(
                                 "create_joint_channel",
                             )
                         },
-                        onOpenBilling = {
+                        onOpenBilling = { gate ->
                             createJointChannelDialogOpen = false
-                            pager.openSettingsBillingPage(storeScope)
+                            // The upgrade dialog for the limit hit (web `paywallUpgrade(billingError)`);
+                            // iOS view-only Billing: "View your plan", the view-only page.
+                            if (settingsBillingOffersUpgrade()) {
+                                pager.openRaftUpgradeDialog(gate, storeScope)
+                            } else {
+                                pager.openSettingsBillingPage(storeScope)
+                            }
                         },
                     )
                 }

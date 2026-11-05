@@ -40,11 +40,14 @@ class ThreadFollowerRowActionsTest {
     @Test fun removeButtonIsEnabledOnlyForRemovableFollowersWhileIdle() {
         val local = follower("local")
         val peer = follower("peer", serverId = "server-b", currentServer = false)
+        val peerLocked = follower("peer-locked", serverId = "server-b", currentServer = false, canRemove = false)
         val locked = follower("locked", canRemove = false)
         data class Case(val name: String, val agent: ThreadAgentFollower, val state: ThreadAgentFollowersState, val expected: Boolean)
         listOf(
             Case("local follower", local, state(local), true),
-            Case("peer server follower", peer, state(peer), false),
+            // #13093: the host's admins and channel managers may remove another server's agent.
+            Case("peer server follower the server lets us remove", peer, state(peer), true),
+            Case("peer server follower the server keeps", peerLocked, state(peerLocked), false),
             Case("server forbids removal", locked, state(locked), false),
             Case("viewer cannot manage", local, state(local, canManage = false), false),
             Case("removal in flight", local, state(local).copy(mutating = true), false),

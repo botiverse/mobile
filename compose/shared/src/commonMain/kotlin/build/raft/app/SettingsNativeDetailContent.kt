@@ -214,7 +214,15 @@ internal fun SettingsNativeDetailScreen() {
         serverPublicVisibilityRepository = environment.serverPublicVisibilityRepository,
         serverAppearanceRepository = environment.serverAppearanceRepository,
         authStore = environment.authStore,
-        onOpenBillingPage = { pager.openSettingsBillingPage(environment.storeScope) },
+        // Only the Pro theme gate opens it: the upgrade dialog (`pro_theme`) where the app offers
+        // upgrades, the view-only Plan & Billing page on iOS.
+        onOpenBillingPage = {
+            if (settingsBillingOffersUpgrade()) {
+                pager.openRaftUpgradeDialog(RaftUpgradeGate.ProTheme, environment.storeScope)
+            } else {
+                pager.openSettingsBillingPage(environment.storeScope)
+            }
+        },
         webBaseUrl = environment.webBaseUrl,
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )

@@ -2597,7 +2597,10 @@ internal fun MembersPageContent(
                         (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
                     },
                     copyToPasteboard = bridge::copyToPasteboard,
-                    onDismiss = onDismiss
+                    onDismiss = onDismiss,
+                    // Web InviteHumanDialog `seat_limit_invite`; iOS: the error alone (no add-seats entry).
+                    onSeatLimit =
+                        if (settingsBillingOffersUpgrade()) ({ pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitInvite, storeScope) }) else null,
                 )
             }
         } else {
@@ -2707,8 +2710,9 @@ internal fun MembersPageContent(
             createAgentTakenAgentNames = localMembers.takenAgentNames(),
             createAgentViewPlan =
                 if (settingsBillingOffersUpgrade()) null else ({ pager.openSettingsBillingPage(storeScope) }),
+            // Web CreateAgentDialog `seat_limit_agent_create`: Free → upgrade, Pro → add seats.
             createAgentUpgrade =
-                if (settingsBillingOffersUpgrade()) ({ pager.openSettingsBillingPage(storeScope) }) else null,
+                if (settingsBillingOffersUpgrade()) ({ pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope) }) else null,
             createAgentAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
         ),
         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
@@ -4678,7 +4682,15 @@ internal fun MemberDetailPageContent(
                                                 flags?.isEnabled(current.server.id, AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY) == true
                                             },
                                         computers = migrationComputers,
-                                        onOpenBilling = { pager.openSettingsBillingPage(provider.storeScope) },
+                                        // Upgrade: the upgrade dialog (web `agent_migration`); iOS view-only
+                                        // Billing: "View your plan", the view-only page.
+                                        onOpenBilling = {
+                                            if (settingsBillingOffersUpgrade()) {
+                                                pager.openRaftUpgradeDialog(RaftUpgradeGate.AgentMigration, provider.storeScope)
+                                            } else {
+                                                pager.openSettingsBillingPage(provider.storeScope)
+                                            }
+                                        },
                                         onAgentPlacementChanged = { localAgentDetailRefreshKey += 1 }
                                     )
                                 }

@@ -357,7 +357,9 @@ private const val ThreadMessageVisualInlineImageUri =
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
-internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
+// The message the share image cases export (components.thread.message-share.preview[-desktop]):
+// avatar, name, a body line and a link line, as in artin's report.
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE = "share_image"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF = "md_link_ref"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP = "wide_markdown_wrap"
@@ -1088,43 +1090,37 @@ internal fun threadVisualFixture(
                         enabled = false
                     )
             )
-        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW ->
+        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE ->
             RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
-                title = "#design",
-                subtitle = "Share selected messages fixture",
+                title = "#visual-testing",
+                subtitle = "Share image fixture",
                 status = "content",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                streamChannelId = "channel-design",
-                sourceThreadId = "channel-design",
+                streamChannelId = "channel-visual-testing",
+                sourceThreadId = "channel-visual-testing",
                 selectedTab = "chat",
                 showModeTabs = false,
                 alignOwnMessagesRight = false,
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
+                        // slock VisualTestingCases.tsx THREAD_MESSAGE_SHARE_IMAGE, byte for byte.
                         RaftThreadMessageItem(
-                            id = "msg-share-visual-a",
+                            id = "msg_share_image_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "06/27 09:20",
+                            timestampLabel = "07/25 16:20",
                             messageType = "Chat",
-                            body = "Selected the two discussion points that should become a summarized handoff message."
-                        ),
-                        RaftThreadMessageItem(
-                            id = "msg-share-visual-b",
-                            authorId = "visual-user",
-                            authorName = "artin",
-                            authorKind = "human",
-                            avatarLabel = "AR",
-                            timestampLabel = "06/27 09:24",
-                            messageType = "Chat",
-                            body = "Generate a message from these selected items, but keep it editable in the composer before sending."
+                            body =
+                                "Share image check: the avatar, name, body and link line should sit where the web puts them.\n\n" +
+                                    "https://github.com/botiverse/mobile/pull/4325"
                         )
                     ),
                 members =
@@ -1135,13 +1131,6 @@ internal fun threadVisualFixture(
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
-                        ),
-                        RaftThreadMemberItem(
-                            id = "visual-user",
-                            displayName = "artin",
-                            handle = "artin",
-                            kind = "human",
-                            avatarLabel = "AR"
                         )
                     ),
                 showComposer = false,
