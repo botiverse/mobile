@@ -1,5 +1,7 @@
 package build.raft.app.assistant
 
+import build.raft.designsystem.components.LocalRaftBarButtons
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.unit.Dp
 import kotlin.math.roundToInt
 import build.raft.designsystem.components.RaftPopoverSurface
@@ -138,64 +140,69 @@ internal fun ThreadAssistantPanel(
 ) {
     val colors = RaftTheme.colors
     Column(modifier.fillMaxSize().background(colors.layerCanvas).testTag(ThreadAssistantPanelTestTag)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(ThreadAssistantPanelHeadHeight)
-                .padding(start = 16.dp, end = 3.dp)
-                .testTag(ThreadAssistantPanelHeaderTestTag),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(32.dp).clipToBounds(), contentAlignment = Alignment.BottomCenter) {
-                Image(
-                    painter = painterResource(Res.drawable.assistant_otter_curious),
-                    contentDescription = null,
-                    modifier = Modifier.requiredSize(38.dp, 26.dp),
-                )
-            }
-            Column(Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
+        // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
+        CompositionLocalProvider(LocalRaftBarButtons provides true) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(ThreadAssistantPanelHeadHeight)
+                    // The collapse button's 18dp chevron ends on the 16dp line: 3dp out for the 44dp
+                    // button, 11dp for the 28dp bar button under a mouse or trackpad (sizing v12).
+                    .padding(start = 16.dp, end = 16.dp - (RaftTheme.controls.barButtonSize - 18.dp) / 2)
+                    .testTag(ThreadAssistantPanelHeaderTestTag),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(32.dp).clipToBounds(), contentAlignment = Alignment.BottomCenter) {
+                    Image(
+                        painter = painterResource(Res.drawable.assistant_otter_curious),
+                        contentDescription = null,
+                        modifier = Modifier.requiredSize(38.dp, 26.dp),
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        RaftText(
+                            name,
+                            Modifier.weight(1f, fill = false).semantics { heading() },
+                            style = RaftTheme.typography.headline,
+                            color = colors.foreground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (paused) {
+                            // Web AssistantPausedChip: the agent state chip with the offline light and "Paused".
+                            RaftBadge(
+                                text = stringResource(Res.string.assistant_paused_chip),
+                                modifier = Modifier.testTag(ThreadAssistantPanelPausedTestTag),
+                                appearance = RaftBadgeAppearance.Soft,
+                                variant = RaftBadgeVariant.Muted,
+                                icon = { RaftStatusDot(presence = RaftPresence.Offline) },
+                            )
+                        }
+                    }
                     RaftText(
-                        name,
-                        Modifier.weight(1f, fill = false).semantics { heading() },
-                        style = RaftTheme.typography.headline,
-                        color = colors.foreground,
-                        maxLines = 1,
+                        stringResource(assistantPanelMeta(mood, readsDms)),
+                        style = RaftTheme.typography.caption,
+                        color = colors.foregroundHint,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (paused) {
-                        // Web AssistantPausedChip: the agent state chip with the offline light and "Paused".
-                        RaftBadge(
-                            text = stringResource(Res.string.assistant_paused_chip),
-                            modifier = Modifier.testTag(ThreadAssistantPanelPausedTestTag),
-                            appearance = RaftBadgeAppearance.Soft,
-                            variant = RaftBadgeVariant.Muted,
-                            icon = { RaftStatusDot(presence = RaftPresence.Offline) },
-                        )
-                    }
                 }
-                RaftText(
-                    stringResource(assistantPanelMeta(mood, readsDms)),
-                    style = RaftTheme.typography.caption,
-                    color = colors.foregroundHint,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            // A finger's 44dp (`Lg`, the phone top bar's icon button): the 32dp `Md` left most of
-            // the head's height round the chevron dead, and taps there did nothing.
-            RaftIconButton(
-                onClick = onCollapse,
-                tooltip = stringResource(Res.string.assistant_otter_collapse),
-                modifier = Modifier.testTag(ThreadAssistantPanelCollapseTestTag),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg,
-            ) {
-                RaftGlyphIcon(RaftGlyph.ChevronDown, size = 18.dp)
+                // A finger's 44dp (`Lg`, the phone top bar's icon button): the 32dp `Md` left most of
+                // the head's height round the chevron dead, and taps there did nothing.
+                RaftIconButton(
+                    onClick = onCollapse,
+                    tooltip = stringResource(Res.string.assistant_otter_collapse),
+                    modifier = Modifier.testTag(ThreadAssistantPanelCollapseTestTag),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Lg,
+                ) {
+                    RaftGlyphIcon(RaftGlyph.ChevronDown, size = 18.dp)
+                }
             }
         }
         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
@@ -401,7 +408,10 @@ internal fun ThreadAssistantPanelPopoverSurface(
 internal fun threadForegroundBannerOnPage(inAssistantPanel: Boolean, assistantPanelOpen: Boolean): Boolean =
     !inAssistantPanel && !assistantPanelOpen
 
-private val ThreadAssistantPanelHeadHeight = 56.dp
+// 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+private val ThreadAssistantPanelHeadHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headHeight
 
 /** Web `data-testid`s: `assistant-otter-sheet`, `assistant-otter-popover`, `assistant-otter-panel`, its header and collapse. */
 internal const val ThreadAssistantPanelPopoverTestTag = "assistant-otter-popover"

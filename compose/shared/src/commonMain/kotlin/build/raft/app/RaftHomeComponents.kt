@@ -296,7 +296,10 @@ private const val HomeServerDrawerWidthFraction = 0.84f
 private const val HomeServerDrawerLandscapeWidthFraction = 0.50f
 private val HomeServerDrawerMaxWidth = 360.dp
 private val HomeServerDrawerSwipeDismissThreshold = 72.dp
-private val HomeServerDrawerHeaderHeight = 56.dp
+// 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+private val HomeServerDrawerHeaderHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headHeight
 private val HomeServerDrawerSectionHeaderHeight = 28.dp
 private val HomeServerDrawerConversationHorizontalPadding = 16.dp
 

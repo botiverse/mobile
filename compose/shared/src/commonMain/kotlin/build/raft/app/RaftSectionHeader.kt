@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.LocalRaftBarButtons
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
@@ -128,7 +132,8 @@ internal fun RaftTopPageHeader(
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
     topSafeAreaOverride: Dp? = null,
-    headerHeight: Dp = RaftAppSize.PageHeaderHeight,
+    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+    headerHeight: Dp = RaftTheme.controls.headHeight,
     // [onBack] sets the Back button's 3dp edge inset and the 6dp gap after it.
     contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentStartPadding,
     contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
@@ -348,41 +353,44 @@ internal fun RaftPanelBackHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (onBack != null) {
-                RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
-            }
-            leadingContent?.invoke()
-            Column(
-                // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                modifier =
-                    Modifier.weight(1f).clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = onTitleClick != null
-                    ) { onTitleClick?.invoke() },
-            ) {
-                Text(
-                    text = title,
-                    style = RaftPanelHeaderTitleStyle,
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                subtitle?.takeIf { it.isNotBlank() }?.let {
+            // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
+            CompositionLocalProvider(LocalRaftBarButtons provides true) {
+                if (onBack != null) {
+                    RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
+                }
+                leadingContent?.invoke()
+                Column(
+                    // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                    modifier =
+                        Modifier.weight(1f).clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = onTitleClick != null
+                        ) { onTitleClick?.invoke() },
+                ) {
                     Text(
-                        text = it,
-                        style = RaftType.Caption,
-                        color = RaftColor.ForegroundHint,
+                        text = title,
+                        style = RaftPanelHeaderTitleStyle,
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    subtitle?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = it,
+                            style = RaftType.Caption,
+                            color = RaftColor.ForegroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            }
-            if (refreshing) {
-                RaftHeaderRefreshIndicator()
-            }
-            if (trailingContent != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, content = trailingContent)
+                if (refreshing) {
+                    RaftHeaderRefreshIndicator()
+                }
+                if (trailingContent != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, content = trailingContent)
+                }
             }
         }
         Box(
@@ -396,7 +404,10 @@ internal fun RaftPanelBackHeader(
     }
 }
 
-private val RaftPanelHeaderHeight = 56.dp
+// 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+private val RaftPanelHeaderHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headHeight
 
 
 // raft-ui `text-headline`: 17/22 700, no tracking.
@@ -408,7 +419,8 @@ internal fun RaftTopPageHeaderFrame(
     modifier: Modifier = Modifier,
     backgroundColor: Color = RaftColor.Canvas,
     topSafeArea: Dp = 0.dp,
-    headerHeight: Dp = RaftAppSize.PageHeaderHeight,
+    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+    headerHeight: Dp = RaftTheme.controls.headHeight,
     contentStartPadding: Dp = RaftTopPageHeaderContentStartPadding,
     contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
     contentSpacing: Dp = RaftTopPageHeaderContentSpacing,
@@ -443,8 +455,10 @@ internal fun RaftTopPageHeaderFrame(
                     .padding(start = contentStartPadding, end = contentEndPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(contentSpacing),
-            content = content,
-        )
+        ) {
+            // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
+            CompositionLocalProvider(LocalRaftBarButtons provides true) { content() }
+        }
         // raft-ui panel head: a 1dp seam splits the head from the body (no ink rule). Flattened
         // onto the canvas first so it rounds like the web (a draw-time 8-bit blend lands a level dark).
         Box(
