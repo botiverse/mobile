@@ -157,7 +157,7 @@ class MessageCardTest {
                 "four tags" to base.replace(""""title":"T"""", """"title":"T","tags":[${List(4) { """{"text":"a","tone":"info"}""" }.joinToString(",")}]"""),
                 "a two-line subtitle" to base.replace(""""title":"T"""", """"title":"T","subtitle":"a\nb""""),
                 "a header that is not an object" to base.replace("""{"title":"T"}""", "\"T\""),
-                "an empty Markdown" to base.replace(""""content":"x"""", """"content":""""),
+                "an empty Markdown" to base.replace(""""content":"x"""", "\"content\":\"\""),
                 "a Divider with a prop" to base.replace("""{"type":"Markdown","props":{"content":"x"}}""", """{"type":"Divider","props":{"x":1}}"""),
                 "nine Fields" to
                     base.replace(
