@@ -34,7 +34,7 @@ import org.robolectric.annotation.GraphicsMode
  * message rows and the composer) in a 1024x768 tablet window. The type follows the window width
  * alone, so both captures take the wide type; the controls follow the input (artin 2026-11-02):
  *  - `scale.wide.touch`: nothing pinned, as a tablet resolves it with a finger: wide type, 44dp controls;
- *  - `scale.wide.fine`: a mouse or trackpad in use (the Mac, or a tablet with one): wide type, 32dp controls.
+ *  - `scale.wide.fine`: a mouse or trackpad in use (the Mac, or a tablet with one): wide type, 34dp controls, 44dp heads and top bar, the compact rail (sizing v12).
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
