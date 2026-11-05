@@ -13,6 +13,8 @@ import coil3.toBitmap
 
 internal actual fun coil3.Image.toRaftImageBitmap(): ImageBitmap = toBitmap().asComposeImageBitmap()
 
+internal actual fun ImageBitmap.raftSoftwareImageBitmap(): ImageBitmap = this
+
 internal actual val raftKeyboardHeightExcludesNavigationBars: Boolean = false
 
 /**

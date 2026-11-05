@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import build.raft.app.compat.ui.raftSoftwareImageBitmap
 import kotlinx.coroutines.delay
 
 /**
@@ -63,7 +64,7 @@ internal fun ThreadShareImageVisualCase(
         // Let the row settle (avatar, status dot, markdown layout) before the snapshot.
         repeat(6) { withFrameNanos {} }
         delay(ThreadShareImageVisualSettleMs)
-        val rowImage = layer.toImageBitmap()
+        val rowImage = layer.toImageBitmap().raftSoftwareImageBitmap()
         image = renderThreadShareImage(listOf(rowImage), exportDensity, measurer, RaftColor.SurfaceWhite)
     }
     Box(

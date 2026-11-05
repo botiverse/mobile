@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import coil3.toBitmap
 
@@ -13,6 +14,8 @@ import coil3.toBitmap
  * other loader/cached value, because drawing a `HARDWARE` bitmap into a software Canvas throws.
  */
 internal actual fun coil3.Image.toRaftImageBitmap(): ImageBitmap = toBitmap().raftSoftwareBitmap().asImageBitmap()
+
+internal actual fun ImageBitmap.raftSoftwareImageBitmap(): ImageBitmap = asAndroidBitmap().raftSoftwareBitmap().asImageBitmap()
 
 internal fun Bitmap.raftSoftwareBitmap(): Bitmap =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && config == Bitmap.Config.HARDWARE) {
