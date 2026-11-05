@@ -119,7 +119,7 @@ class MessageCardTest {
     }
 
     @Test
-    fun `a v2 card reads its header and its Markdown, Fields and Divider`() {
+    fun `a v2 card reads its header and its Markdown and Fields and Divider`() {
         val card =
             assertNotNull(
                 parseV2(
@@ -155,8 +155,7 @@ class MessageCardTest {
                 "a header tone (the header has no colour)" to base.replace(""""title":"T"""", """"title":"T","tone":"danger""""),
                 "a tag tone outside the status tones" to base.replace(""""title":"T"""", """"title":"T","tags":[{"text":"a","tone":"review"}]"""),
                 "four tags" to base.replace(""""title":"T"""", """"title":"T","tags":[${List(4) { """{"text":"a","tone":"info"}""" }.joinToString(",")}]"""),
-                "a two-line subtitle" to base.replace(""""title":"T"""", """"title":"T","subtitle":"a
-b""""),
+                "a two-line subtitle" to base.replace(""""title":"T"""", """"title":"T","subtitle":"a\nb""""),
                 "a header that is not an object" to base.replace("""{"title":"T"}""", "\"T\""),
                 "an empty Markdown" to base.replace(""""content":"x"""", """"content":""""),
                 "a Divider with a prop" to base.replace("""{"type":"Markdown","props":{"content":"x"}}""", """{"type":"Divider","props":{"x":1}}"""),
