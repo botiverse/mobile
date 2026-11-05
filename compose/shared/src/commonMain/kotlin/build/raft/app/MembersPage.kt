@@ -13629,7 +13629,7 @@ private fun MembersCreateAgentAction(
             )
             RaftMenuItem(
                 text = stringResource(Res.string.agent_create_action_create_external),
-                leadingIcon = { MembersMenuIcon(RaftLucideIconName.Link2) },
+                leadingIcon = { MembersMenuIcon(RaftLucideIconName.Plug) },
                 onClick = { onSelect(MembersCreateAgentMode.External) }
             )
         }
