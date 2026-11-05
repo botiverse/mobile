@@ -210,7 +210,7 @@ internal fun readLinkCardV2Element(raw: JsonElement, readAction: (JsonElement?) 
 }
 
 /** `{type, props}` with props among [allowed] (strict), or null. */
-private fun JsonObject.elementProps(allowed: Set<String>): JsonObject? {
+internal fun JsonObject.elementProps(allowed: Set<String>): JsonObject? {
     if (!hasOnlyKeys(setOf("type", "props"))) return null
     val props = this["props"] as? JsonObject ?: return null
     return props.takeIf { it.hasOnlyKeys(allowed) }

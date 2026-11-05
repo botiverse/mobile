@@ -3,6 +3,7 @@ package build.raft.app.data
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
@@ -26,6 +27,14 @@ import kotlinx.serialization.json.JsonObject
  * card's JSON, its revision and when it was last updated. It is read again, strictly, only where
  * it is drawn ([readMessageCardFromMetadata]); anything this client can't read is drawn as the
  * fallback text, never a blank card and never as one of Raft's own action cards.
+ *
+ * v2.0 (RFC 082 §4.8; botiverse/slock #13224 + #13237, staging @ acf01e4f9703975febb80183251c3d7d22b81e01,
+ * `messageCard.ts` `messageCardHeaderSchema`, `messageCardMarkdownElement`,
+ * `messageCardFieldsElement`, `messageCardDividerElement`): an optional card `header` next to
+ * `root` ([RaftMessageCardHeader]) and the `Markdown`, `Fields` and `Divider` elements
+ * ([RaftMessageCardElement]). The card stays version 1; this reader stays all-or-nothing, so
+ * anything it doesn't know still shows the whole fallback. The shared contract vectors
+ * (`messageCard.v1.vector.json`, vendored for the unit tests) pin it.
  */
 
 /** `actionMetadata.kind` of a card message (`MESSAGE_CARD_KIND`). */
@@ -51,6 +60,8 @@ data class RaftMessageCard(
     val card: RaftAppLinkCardV2,
     val revision: Int,
     val updatedAt: String?,
+    /** The sender's header (v2.0), drawn at the top of the card; null when the card has none. */
+    val header: RaftMessageCardHeader? = null,
 ) {
     /** "Updated 3 min ago" once the card has been replaced (RFC 082 §5, web `messageCardShowsUpdated`). */
     val showsUpdated: Boolean get() = revision > 1 && updatedAt != null
@@ -113,9 +124,10 @@ internal fun readMessageCardFromMetadata(metadata: Map<String, String>): RaftMes
     val read =
         card?.let {
             RaftMessageCard(
-                card = it,
+                card = it.card,
                 revision = revision,
                 updatedAt = key.updatedAt?.takeIf(::isMessageCardTime),
+                header = it.header,
             )
         }
     messageCardCache.update { current ->
@@ -138,29 +150,163 @@ internal fun messageCardToRender(metadata: Map<String, String>, cardsEnabled: Bo
 /** `updatedAt` as the server writes it (`Date.toISOString()`); the web draws "Updated" only for a time `Date.parse` reads. */
 private fun isMessageCardTime(value: String): Boolean = isStrictRfc3339Utc(value)
 
+/** A stored card as [parseRaftMessageCard] reads it: the element tree and the optional header (v2.0). */
+data class RaftParsedMessageCard(
+    val card: RaftAppLinkCardV2,
+    val header: RaftMessageCardHeader? = null,
+)
+
 /**
- * Reads a stored card as `messageCardSchema` does: strict `{ version: 1, root, elements }`, the
- * link card v2 elements (Stack, Text, Badge, RelativeTime, Duration, Button) with their bounds (16
- * elements, depth 4, one tree, 12 children a Stack, at most 4 Buttons), every Button a `navigate`
- * to a public HTTPS URL (any host: a card is not tied to a link's origin). An element type this
- * client doesn't know refuses the whole card (the fallback text is drawn). Like the link card
- * reader, a Badge tone it doesn't know reads neutral (every badge is drawn neutral).
+ * Reads a stored card as `messageCardSchema` does: strict `{ version: 1, header?, root, elements }`,
+ * the link card v2 elements (Stack, Text, Badge, RelativeTime, Duration, Button) with their bounds
+ * (16 elements, depth 4, one tree, 12 children a Stack, at most 4 Buttons), every Button a
+ * `navigate` to a public HTTPS URL (any host: a card is not tied to a link's origin), and the v2.0
+ * parts: the header ([readMessageCardHeader]; no element, so not one of the 16) and the
+ * `Markdown`, `Fields` and `Divider` elements ([readMessageCardOwnElement]). An element type or a
+ * key this client doesn't know refuses the whole card (the fallback text is drawn). Like the link
+ * card reader, a Badge tone it doesn't know reads neutral (every badge is drawn neutral).
+ *
+ * Two of the Server's checks are the Server's alone: the 8 KiB size (of the JSON the sender sent;
+ * a stored card carries its defaults too) and the Markdown subset, which a client enforces as it
+ * draws instead ([build.raft.app.markdown.raftCardMarkdownViolations]: a node outside it is drawn
+ * as its source text, RFC 082 §4.8), so a stored card never depends on the Server having been right.
  */
-fun parseRaftMessageCard(element: JsonElement): RaftAppLinkCardV2? {
+fun parseRaftMessageCard(element: JsonElement): RaftParsedMessageCard? {
     val obj = element as? JsonObject ?: return null
-    if (obj.keys != setOf("version", "root", "elements")) return null
+    if (obj.keys - MessageCardHeaderKey != setOf("version", "root", "elements")) return null
     if (obj["version"].cardSafeInteger() != MESSAGE_CARD_VERSION.toLong()) return null
+    val header = if (MessageCardHeaderKey in obj) readMessageCardHeader(obj[MessageCardHeaderKey]) ?: return null else null
     val root = obj["root"].cardString()?.takeIf(CARD_ELEMENT_ID::matches) ?: return null
     val rawElements = obj["elements"] as? JsonObject ?: return null
     val elements = LinkedHashMap<String, CardElement>()
     for ((id, raw) in rawElements) {
         if (!CARD_ELEMENT_ID.matches(id)) return null
-        elements[id] = readLinkCardV2Element(raw, ::readMessageCardButtonAction) ?: return null
+        elements[id] =
+            when ((raw as? JsonObject)?.get("type").cardString()) {
+                "Markdown", "Fields", "Divider" -> readMessageCardOwnElement(raw as JsonObject)
+                else -> readLinkCardV2Element(raw, ::readMessageCardButtonAction)
+            } ?: return null
     }
     if (checkCardBoundedTree(root, elements, RAFT_APP_LINK_CARD_MAX_ELEMENTS, RAFT_APP_LINK_CARD_MAX_DEPTH) != null) return null
     if (elements.values.count { it is RaftLinkCardV2Element.Button } > MESSAGE_CARD_MAX_BUTTONS) return null
-    return RaftAppLinkCardV2(root, elements)
+    return RaftParsedMessageCard(RaftAppLinkCardV2(root, elements), header)
 }
+
+private const val MessageCardHeaderKey = "header"
+
+/** Tags in a card's header at most (`MESSAGE_CARD_LIMITS.maxHeaderTags`). */
+internal const val MESSAGE_CARD_MAX_HEADER_TAGS = 3
+
+/** Rows of one Fields element at most (`MESSAGE_CARD_LIMITS.maxFields`). */
+internal const val MESSAGE_CARD_MAX_FIELDS = 8
+
+/** A Markdown element's content at most, in code points (`MESSAGE_CARD_LIMITS.markdownMaxCodePoints`). */
+internal const val MESSAGE_CARD_MARKDOWN_MAX_CODE_POINTS = 2000
+
+/**
+ * A card's header (RFC 082 §4.8, `messageCardHeaderSchema`): a [title] (1-100 code points), a
+ * one-line [subtitle] (1-100) and at most three [tags], all plain text. Not an element. The header
+ * itself has no colour: only its tags carry a tone.
+ */
+data class RaftMessageCardHeader(
+    val title: String,
+    val subtitle: String? = null,
+    val tags: List<RaftMessageCardTag> = emptyList(),
+)
+
+/** One header tag: [text] 1-24 code points in a status [tone]. */
+data class RaftMessageCardTag(val text: String, val tone: RaftMessageCardTagTone)
+
+/** `MESSAGE_CARD_HEADER_TAG_TONES`: the design system's status tones, nothing else (no pink, no yellow). */
+enum class RaftMessageCardTagTone(val wire: String) {
+    Neutral("neutral"),
+    Info("info"),
+    Success("success"),
+    Warning("warning"),
+    Danger("danger"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): RaftMessageCardTagTone? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/** The message card's own elements (v2.0): link cards and action cards don't have them. */
+sealed interface RaftMessageCardElement : CardElement {
+    /** `Markdown`: [content] (1-2000 code points) in the card Markdown subset, drawn restricted to it. */
+    data class Markdown(val content: String) : RaftMessageCardElement
+
+    /** `Fields`: 1-8 label and value rows, plain text. */
+    data class Fields(val items: List<RaftMessageCardField>) : RaftMessageCardElement
+
+    /** `Divider`: a separator. */
+    data object Divider : RaftMessageCardElement
+}
+
+/** One Fields row: [label] 1-40 and [value] 1-200 code points; [mono] for machine-written values. */
+data class RaftMessageCardField(val label: String, val value: String, val mono: Boolean = false)
+
+/** Every separator a universal-newline reader splits on (`CARD_LINE_BREAK`): a subtitle is one line. */
+private val MESSAGE_CARD_LINE_BREAK = Regex("\r\n|[\n\r\u000B\u000C\u001C\u001D\u001E\u0085\u2028\u2029]")
+
+/** `messageCardHeaderSchema` (strict): `{ title, subtitle?, tags?: [{ text, tone }] }`; no `tone` of its own. */
+private fun readMessageCardHeader(raw: JsonElement?): RaftMessageCardHeader? {
+    val obj = raw as? JsonObject ?: return null
+    if (!obj.hasOnlyKeys(setOf("title", "subtitle", "tags"))) return null
+    val title = obj["title"].cardString()?.takeIf { isCardText(it, 1, 100) } ?: return null
+    val subtitle =
+        if ("subtitle" in obj) {
+            obj["subtitle"].cardString()?.takeIf { isCardText(it, 1, 100) && !MESSAGE_CARD_LINE_BREAK.containsMatchIn(it) } ?: return null
+        } else {
+            null
+        }
+    val tags =
+        if ("tags" in obj) {
+            val array = obj["tags"] as? JsonArray ?: return null
+            if (array.size > MESSAGE_CARD_MAX_HEADER_TAGS) return null
+            array.map { item ->
+                val tag = item as? JsonObject ?: return null
+                if (tag.keys != setOf("text", "tone")) return null
+                val text = tag["text"].cardString()?.takeIf { isCardText(it, 1, 24) } ?: return null
+                val tone = RaftMessageCardTagTone.fromWire(tag["tone"].cardString()) ?: return null
+                RaftMessageCardTag(text, tone)
+            }
+        } else {
+            emptyList()
+        }
+    return RaftMessageCardHeader(title, subtitle, tags)
+}
+
+/** `Markdown`, `Fields` or `Divider` (strict, as `messageCardElementSchema`), or null. */
+private fun readMessageCardOwnElement(obj: JsonObject): CardElement? =
+    when (obj["type"].cardString()) {
+        "Markdown" -> {
+            val props = obj.elementProps(setOf("content")) ?: return null
+            val content = props["content"].cardString()?.takeIf { isCardText(it, 1, MESSAGE_CARD_MARKDOWN_MAX_CODE_POINTS) } ?: return null
+            RaftMessageCardElement.Markdown(content)
+        }
+        "Fields" -> {
+            val props = obj.elementProps(setOf("items")) ?: return null
+            val items = props["items"] as? JsonArray ?: return null
+            if (items.size !in 1..MESSAGE_CARD_MAX_FIELDS) return null
+            RaftMessageCardElement.Fields(
+                items.map { raw ->
+                    val item = raw as? JsonObject ?: return null
+                    if (!item.hasOnlyKeys(setOf("label", "value", "mono"))) return null
+                    val label = item["label"].cardString()?.takeIf { isCardText(it, 1, 40) } ?: return null
+                    val value = item["value"].cardString()?.takeIf { isCardText(it, 1, 200) } ?: return null
+                    val mono = if ("mono" in item) item["mono"].cardBoolean() ?: return null else false
+                    RaftMessageCardField(label, value, mono)
+                },
+            )
+        }
+        "Divider" -> {
+            val props = obj.elementProps(emptySet()) ?: return null
+            if (props.isNotEmpty()) return null
+            RaftMessageCardElement.Divider
+        }
+        else -> null
+    }
 
 /** `messageCardNavigateAction`: `{ kind: "navigate", url }`, a public HTTPS URL. Nothing else: a card is display only. */
 private fun readMessageCardButtonAction(raw: JsonElement?): RaftLinkCardButtonAction? {

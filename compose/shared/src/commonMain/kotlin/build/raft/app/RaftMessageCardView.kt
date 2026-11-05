@@ -5,7 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -15,6 +21,19 @@ import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardV2Element
 import build.raft.app.data.MESSAGE_CARDS_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftMessageCard
+import build.raft.app.data.RaftMessageCardElement
+import build.raft.app.data.RaftMessageCardHeader
+import build.raft.app.data.RaftMessageCardTagTone
+import build.raft.app.markdown.LocalRaftAppLinkChips
+import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
+import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.raftCardMarkdownRenderSource
+import build.raft.app.markdown.raftCardMarkdownTagValid
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.app.data.messageCardRevisionOf
 import build.raft.app.data.messageCardToRender
 import build.raft.app.data.rememberServerFeatureLatched
@@ -63,6 +82,10 @@ internal fun rememberThreadMessageCard(metadata: Map<String, String>): RaftMessa
  *   is disabled (no ↗) and the first reason is a caption under them, as touch has no hover. A URL
  *   this client can't open is never drawn ([onOpenUrl] gets only public HTTPS URLs).
  * - Once replaced (revision > 1) the footer says when ("Updated 3 min ago").
+ * - v2.0 (RFC 082 §4.8, web #13225 `MessageCardHeaderView`): the sender's header first, inside
+ *   the card under the sender's name: the title in the headline style (700), the subtitle muted,
+ *   the tags as soft badges in their status tone on a line of their own. The header has no
+ *   colour of its own. Markdown links open through [onOpenUrl] ([LocalRaftMessageCardOpenUrl]).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -81,7 +104,10 @@ internal fun RaftMessageCardView(
             },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftAppLinkCardV2Body(card.card)
+            card.header?.let { RaftMessageCardHeaderView(it) }
+            CompositionLocalProvider(LocalRaftMessageCardOpenUrl provides onOpenUrl) {
+                RaftAppLinkCardV2Body(card.card)
+            }
             if (buttons.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     buttons.forEach { button -> RaftMessageCardLink(button, onOpenUrl) }
@@ -111,3 +137,85 @@ private fun RaftMessageCardLink(button: RaftLinkCardV2Element.Button, onOpenUrl:
         )
     }
 }
+
+/** Where a card's Markdown links open (the row's URL handler), provided by [RaftMessageCardView]. */
+internal val LocalRaftMessageCardOpenUrl = staticCompositionLocalOf<(String) -> Unit> { {} }
+
+/** A header tag's tone as a soft badge's colour (web `TAG_VARIANT`): the status tones only. */
+internal fun RaftMessageCardTagTone.badgeVariant(): RaftBadgeVariant =
+    when (this) {
+        RaftMessageCardTagTone.Neutral -> RaftBadgeVariant.Default
+        RaftMessageCardTagTone.Info -> RaftBadgeVariant.Information
+        RaftMessageCardTagTone.Success -> RaftBadgeVariant.Success
+        RaftMessageCardTagTone.Warning -> RaftBadgeVariant.Warning
+        RaftMessageCardTagTone.Danger -> RaftBadgeVariant.Danger
+    }
+
+/**
+ * The card's header (RFC 082 §4.8): the title (headline, 700), the subtitle muted under it, the
+ * tags as soft badges on a line of their own that wraps (three long tags beside the title would
+ * leave it no room). All plain text; no colour of its own.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun RaftMessageCardHeaderView(header: RaftMessageCardHeader) {
+    val typography = RaftTheme.typography
+    val colors = RaftTheme.colors
+    Column(modifier = Modifier.testTag(RaftMessageCardHeaderTestTag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftText(
+            text = header.title,
+            modifier = Modifier.semantics { heading() },
+            style = typography.headline.copy(fontWeight = FontWeight.Bold),
+            color = colors.foreground,
+        )
+        header.subtitle?.let { RaftText(text = it, style = typography.callout, color = colors.foregroundMuted) }
+        if (header.tags.isNotEmpty()) {
+            FlowRow(
+                modifier = Modifier.padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                header.tags.forEach { tag -> RaftBadge(text = tag.text, appearance = RaftBadgeAppearance.Soft, variant = tag.tone.badgeVariant()) }
+            }
+        }
+    }
+}
+
+internal const val RaftMessageCardHeaderTestTag = "thread_message_card_header"
+
+/**
+ * A card's `Markdown` element (RFC 082 §4.8; web `MessageCardMarkdown`): the message markdown
+ * renderer at the card's text size, restricted to the card subset. A node outside it is drawn as
+ * its source text ([raftCardMarkdownRenderSource]); `@name` and `#channel` stay text (no chips),
+ * as do message permalinks and App links (no chips, no hover cards): only plain http(s) and mailto links.
+ */
+@Composable
+internal fun RaftMessageCardMarkdown(content: String) {
+    val source = remember(content) { raftCardMarkdownRenderSource(content) }
+    if (source.isBlank()) return
+    val onOpenUrl = LocalRaftMessageCardOpenUrl.current
+    CompositionLocalProvider(
+        LocalRaftAppLinkChips provides null,
+        LocalRaftMarkdownRenderConfig provides LocalRaftMarkdownRenderConfig.current.copy(renderMessagePermalinksAsTag = false),
+    ) {
+        RaftMarkdownBody(
+            body = source,
+            textStyle = RaftTheme.typography.callout.copy(color = RaftTheme.colors.foreground),
+            isTagValid = raftCardMarkdownTagValid,
+            onOpenUrl = onOpenUrl,
+        )
+    }
+}
+
+/**
+ * `Fields` (RFC 082 §4.8; web `MessageCardFields`): raft-ui DescriptionList, horizontal: the label
+ * muted on the left and the value on the right, each label above its value below 384dp of its own
+ * width (a phone). Values wrap, never truncate; a `mono` value is set in the code face.
+ */
+@Composable
+internal fun RaftMessageCardFields(fields: RaftMessageCardElement.Fields) {
+    RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+        fields.items.forEach { item -> Item(term = item.label, value = item.value, mono = item.mono) }
+    }
+}
+
