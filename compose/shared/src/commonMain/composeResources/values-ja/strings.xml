@@ -720,7 +720,7 @@
     <string name="thread_quoted_permalink_loading">メッセージを読み込み中…</string>
     <string name="thread_message_loading_full">メッセージ全文を読み込み中…</string>
     <string name="thread_quoted_permalink_no_content">（内容なし）</string>
-    <string name="thread_quoted_permalink_unavailable">メッセージプレビューを利用できません</string>
+    <string name="thread_quoted_permalink_unavailable_link">リンク先のメッセージを利用できません</string>
     <string name="thread_quoted_permalink_thread">スレッド</string>
     <string name="thread_quoted_permalink_archived">アーカイブ済み</string>
     <string name="thread_quoted_permalink_direct_message">ダイレクトメッセージ</string>

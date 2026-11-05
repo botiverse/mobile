@@ -718,7 +718,7 @@
     <string name="thread_quoted_permalink_loading">Cargando mensaje…</string>
     <string name="thread_message_loading_full">Cargando mensaje completo…</string>
     <string name="thread_quoted_permalink_no_content">(sin contenido)</string>
-    <string name="thread_quoted_permalink_unavailable">Vista previa del mensaje no disponible</string>
+    <string name="thread_quoted_permalink_unavailable_link">Mensaje vinculado no disponible</string>
     <string name="thread_quoted_permalink_thread">Hilo</string>
     <string name="thread_quoted_permalink_archived">Archivado</string>
     <string name="thread_quoted_permalink_direct_message">Mensaje directo</string>
