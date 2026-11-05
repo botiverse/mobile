@@ -17,7 +17,7 @@ import org.w3c.dom.Element
  * artin 2026-10-31: the Alpha build says "Raft Alpha" on every surface Android shows outside the
  * app (two identical "Raft 正在接收消息" lock-screen notifications, one per build, were
  * indistinguishable). The mechanism is the alpha source set's resource overrides
- * (src/alpha/res/values{,-zh-rCN,-ja,-es,-pt-rBR,-ko,-zh-rTW}/strings.xml); production keeps "Raft".
+ * (src/alpha/res/values{,-zh-rCN,-ja,-es,-pt-rBR,-ko,-zh-rTW,-ru}/strings.xml); production keeps "Raft".
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
@@ -28,7 +28,7 @@ class AlphaAppNameResourcesTest {
 
     @Test
     fun appNameResolvesPerBuildTypeInEveryLocale() {
-        for (qualifiers in listOf("en", "zh-rCN", "ja", "es", "pt-rBR", "ko", "zh-rTW")) {
+        for (qualifiers in listOf("en", "zh-rCN", "ja", "es", "pt-rBR", "ko", "zh-rTW", "ru")) {
             RuntimeEnvironment.setQualifiers(qualifiers)
             assertEquals("app_name [$qualifiers] on ${BuildConfig.BUILD_TYPE}", expectedAppName, context.getString(R.string.app_name))
             val keepAliveTitle = context.getString(R.string.raft_background_connection_notification_title)
@@ -82,7 +82,7 @@ class AlphaAppNameResourcesTest {
     }
 
     private companion object {
-        val LocaleDirs = listOf("values", "values-zh-rCN", "values-ja", "values-es", "values-pt-rBR", "values-ko", "values-zh-rTW")
+        val LocaleDirs = listOf("values", "values-zh-rCN", "values-ja", "values-es", "values-pt-rBR", "values-ko", "values-zh-rTW", "values-ru")
 
         /** Strings Android shows outside the app that name it: add a key here and to the alpha overrides together. */
         val SystemVisibleAppNameKeys =
