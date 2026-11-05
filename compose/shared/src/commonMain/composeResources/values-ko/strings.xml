@@ -3692,6 +3692,12 @@
     <string name="action_card_form_channels_search">채널 검색</string>
     <string name="action_card_form_channels_no_matches">‘%1$s’와(과) 일치하는 채널이 없어요</string>
     <string name="action_card_form_channels_empty">선택할 수 있는 채널이 없어요</string>
+    <string name="action_card_question_page">질문 %1$d/%2$d</string>
+    <string name="action_card_question_back">뒤로</string>
+    <string name="action_card_question_next">다음</string>
+    <string name="action_card_question_choose_first">먼저 옵션을 선택해 주세요.</string>
+    <string name="action_card_question_write_first">먼저 답변을 입력해 주세요.</string>
+    <string name="action_card_question_other_placeholder">답변을 입력하세요</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">최신 버전은 v%1$d</string>

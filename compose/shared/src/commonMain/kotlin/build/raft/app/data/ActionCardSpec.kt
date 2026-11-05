@@ -66,7 +66,8 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
 // submitted through execute), and the four intents whose native path the App has: create_channel
 // and add_members run the card as the typed card's button does, create_agent opens the create-agent
 // dialog, feedback_form the Feedback page (dropped per viewer when that page is off:
-// [raftAppActionCardCapabilities]). S0.3: intent.feedback_ticket, a done feedback card's "View in
+// [raftAppActionCardCapabilities]). schemaVersion 8: field.choice, the question card's Choice and its form's steps
+// (the form sheet, ActionCardFormSheet). S0.3: intent.feedback_ticket, a done feedback card's "View in
 // Settings", which opens Settings › Feedback on the sender's ticket; shown only to the sender and
 // only for a ticket filed into this App (`showsFeedbackTicket`), else removed. Not
 // intent.upgrade_dialog or intent.add_seats: the App has no upgrade or add-seats dialog for a card, so
@@ -75,7 +76,7 @@ val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
     listOf(
         "card.v1", "confirm.v1", "form.v1",
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
-        "field.agent_picker",
+        "field.agent_picker", "field.choice",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
         "intent.feedback_ticket",
     )

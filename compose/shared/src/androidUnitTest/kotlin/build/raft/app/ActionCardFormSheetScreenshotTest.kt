@@ -73,6 +73,49 @@ class ActionCardFormSheetScreenshotTest {
     fun submitLabelsDark() =
         capture("action-card.form.submit-labels.dark", RaftAppAppearance.Dark, mapOf("decision" to ActionCardFormValue.Text("approve")), form = decisionForm)
 
+    /** The vector's question card form (schemaVersion 8): three steps, a single and a multiple Choice with Other, and a TextArea. */
+    private val questionForm by lazy { checkNotNull(ActionCardSpecFixtures.card("question_card").forms?.get("answers")) }
+
+    private fun questionValues(vararg overrides: Pair<String, ActionCardFormValue>) = initialActionCardFormValues(questionForm) + overrides
+
+    // Step 1: a required single Choice with Other chosen and its own answer typed (radios, Other's input, Next).
+    @Test
+    fun questionChoiceOtherLight() =
+        capture("action-card.question.choice-other", RaftAppAppearance.Light, questionValues("window" to ActionCardFormValue.Choice(emptyList(), "周五上午")), form = questionForm)
+
+    @Test
+    fun questionChoiceOtherDark() =
+        capture("action-card.question.choice-other.dark", RaftAppAppearance.Dark, questionValues("window" to ActionCardFormValue.Choice(emptyList(), "周五上午")), form = questionForm)
+
+    // Step 1 untouched: Next is held back and the line under the list says why.
+    @Test
+    fun questionPendingLight() = capture("action-card.question.pending", RaftAppAppearance.Light, questionValues(), form = questionForm)
+
+    // Step 2 of 3: a multiple Choice (checkboxes) with one option ticked and Other typed, under the back arrow.
+    @Test
+    fun questionMultipleStepLight() =
+        capture(
+            "action-card.question.steps-multiple",
+            RaftAppAppearance.Light,
+            questionValues("envs" to ActionCardFormValue.Choice(listOf("staging"), "preview-eu")),
+            form = questionForm,
+            page = 1,
+        )
+
+    @Test
+    fun questionMultipleStepDark() =
+        capture(
+            "action-card.question.steps-multiple.dark",
+            RaftAppAppearance.Dark,
+            questionValues("envs" to ActionCardFormValue.Choice(listOf("staging"), "preview-eu")),
+            form = questionForm,
+            page = 1,
+        )
+
+    // Step 3 of 3: the optional free text, and the form's own submit label.
+    @Test
+    fun questionLastStepLight() = capture("action-card.question.steps-last", RaftAppAppearance.Light, questionValues(), form = questionForm, page = 2)
+
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,
@@ -80,6 +123,7 @@ class ActionCardFormSheetScreenshotTest {
         issues: List<ActionCardFormIssue> = emptyList(),
         submitting: Boolean = false,
         form: ActionCardSpecForm = fixtures.form,
+        page: Int = 0,
     ) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
@@ -98,6 +142,7 @@ class ActionCardFormSheetScreenshotTest {
                             submitting = submitting,
                             candidates = fixtures.candidates,
                             modifier = Modifier.fillMaxSize(),
+                            page = page,
                         )
                     }
                 }

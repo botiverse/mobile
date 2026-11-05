@@ -3692,6 +3692,12 @@
     <string name="action_card_form_channels_search">Search channels</string>
     <string name="action_card_form_channels_no_matches">No channels match “%1$s”</string>
     <string name="action_card_form_channels_empty">No channels to choose from</string>
+    <string name="action_card_question_page">Question %1$d of %2$d</string>
+    <string name="action_card_question_back">Back</string>
+    <string name="action_card_question_next">Next</string>
+    <string name="action_card_question_choose_first">Choose an option first.</string>
+    <string name="action_card_question_write_first">Write your answer first.</string>
+    <string name="action_card_question_other_placeholder">Write your answer</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">Latest is v%1$d</string>

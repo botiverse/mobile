@@ -3692,6 +3692,12 @@
     <string name="action_card_form_channels_search">搜索频道</string>
     <string name="action_card_form_channels_no_matches">没有符合「%1$s」的频道</string>
     <string name="action_card_form_channels_empty">没有可选的频道</string>
+    <string name="action_card_question_page">第 %1$d 题，共 %2$d 题</string>
+    <string name="action_card_question_back">上一步</string>
+    <string name="action_card_question_next">下一步</string>
+    <string name="action_card_question_choose_first">请先选择一个选项。</string>
+    <string name="action_card_question_write_first">请先写下你的回答。</string>
+    <string name="action_card_question_other_placeholder">写下你的回答</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">最新是 v%1$d</string>
