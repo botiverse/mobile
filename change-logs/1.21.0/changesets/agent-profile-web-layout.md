@@ -4,7 +4,7 @@ area: members
 platforms:
   - android
   - ios
-pull_request: TBD
+pull_request: https://github.com/botiverse/mobile/pull/4363
 rollout: full
 ---
 
