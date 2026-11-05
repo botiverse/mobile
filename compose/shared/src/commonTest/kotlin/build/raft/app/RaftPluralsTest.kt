@@ -1,15 +1,27 @@
 package build.raft.app
 
+import build.raft.app.resources.parseRaftPluralForms
+import build.raft.app.resources.raftPluralBaseKey
 import build.raft.app.resources.raftPluralCategory
-import build.raft.app.resources.resolveRaftPluralBlocks
+import build.raft.app.resources.raftPluralCount
+import build.raft.app.resources.raftPluralFormFor
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class RaftPluralsTest {
-    private val messages =
-        "{%1\$d, plural, one {%1\$d сообщение} few {%1\$d сообщения} many {%1\$d сообщений} other {%1\$d сообщения}}"
+    private val forms =
+        parseRaftPluralForms(
+            """
+            {
+              "thread_message_count": { "one": "%1${'$'}d сообщение", "few": "%1${'$'}d сообщения", "many": "%1${'$'}d сообщений" },
+              "settings_billing_vo_count_seats": { "few": "%1${'$'}d · %2${'$'}s места" },
+              "thread_history_paywall_replies_title": { "many": "%1${'$'}s ответов старше %2${'$'}d дней" }
+            }
+            """.trimIndent(),
+        )
 
-    private fun ru(count: Long) = resolveRaftPluralBlocks(messages.replace("%1\$d", count.toString()), "ru")
+    private fun ru(key: String, vararg args: Any) = raftPluralFormFor(forms, "ru", key, args.toList())
 
     @Test
     fun russianCategoriesFollowCldr() {
@@ -34,44 +46,42 @@ class RaftPluralsTest {
     }
 
     @Test
-    fun aBlockPicksTheBranchOfTheSubstitutedCount() {
-        assertEquals("1 сообщение", ru(1))
-        assertEquals("21 сообщение", ru(21))
-        assertEquals("2 сообщения", ru(2))
-        assertEquals("24 сообщения", ru(24))
-        assertEquals("5 сообщений", ru(5))
-        assertEquals("11 сообщений", ru(11))
-        assertEquals("12 сообщений", ru(12))
-        assertEquals("0 сообщений", ru(0))
+    fun theBaseKeyDropsTheCountSuffix() {
+        assertEquals("thread_message_count", raftPluralBaseKey("thread_message_count_one"))
+        assertEquals("thread_message_count", raftPluralBaseKey("thread_message_count_many"))
+        assertEquals("file_preview_csv_rows", raftPluralBaseKey("file_preview_csv_rows_other"))
+        assertEquals("saved_count", raftPluralBaseKey("saved_count"))
     }
 
     @Test
-    fun blocksSitInsideSurroundingTextAndRepeat() {
-        val template = "Показано {3, plural, one {# запись} few {# записи} many {# записей} other {# записи}}, ещё {7, plural, few {a} many {b} other {c}}."
-        assertEquals("Показано # записи, ещё b.", resolveRaftPluralBlocks(template, "ru"))
+    fun theFormForTheCountIsUsedWhateverKeyTheCallSiteChose() {
+        assertEquals("1 сообщение", ru("thread_message_count_one", 1))
+        assertEquals("21 сообщение", ru("thread_message_count_many", 21))
+        assertEquals("3 сообщения", ru("thread_message_count_many", 3))
+        assertEquals("12 сообщений", ru("thread_message_count_many", 12))
     }
 
     @Test
-    fun anExactBranchBeatsTheCategoryAndAMissingOneFallsToOther() {
-        assertEquals("ни одного", resolveRaftPluralBlocks("{0, plural, =0 {ни одного} many {много} other {x}}", "ru"))
-        // No few branch: the other text is shown, as for a Russian string without few / many forms.
-        assertEquals("x", resolveRaftPluralBlocks("{2, plural, one {o} other {x}}", "ru"))
+    fun aMissingEntryOrCategoryFallsBackToTheCatalogString() {
+        assertNull(ru("unknown_count_many", 3))
+        // The entry has no one / many form: the _other text the call site chose is shown.
+        assertNull(ru("settings_billing_vo_count_seats_other", 5, "x"))
+        assertEquals("3 · x места", ru("settings_billing_vo_count_seats_other", 3, "x"))
+        assertNull(ru("thread_message_count_many", "not a number"))
     }
 
     @Test
-    fun groupedCountsAndNegativeCountsAreRead() {
-        assertEquals("many", resolveRaftPluralBlocks("{1,200, plural, one {one} few {few} many {many} other {other}}", "ru"))
-        assertEquals("one", resolveRaftPluralBlocks("{-1, plural, one {one} other {other}}", "en"))
+    fun aCountPassedAsGroupedTextIsRead() {
+        assertEquals(1200L, raftPluralCount(listOf("1,200", 30)))
+        assertEquals(30L, raftPluralCount(listOf("1,200", 30), position = 2))
+        assertEquals("1,200 ответов старше 30 дней", ru("thread_history_paywall_replies_title_other", "1,200", 30))
+        // "arg" names the count when it is not the first number.
+        assertEquals("в 3 года", raftPluralFormFor(parseRaftPluralForms("""{"k":{"arg":2,"few":"в %2${'$'}d года"}}"""), "ru", "k_other", listOf(99, 3)))
     }
 
     @Test
-    fun textWithoutAWellFormedBlockIsUnchanged() {
-        listOf(
-            "21 сообщение",
-            "{first} and {second} are typing…",
-            "plural of {x}",
-            "{3, plural, one {unclosed",
-            "{3, plural, one {x}}",
-        ).forEach { assertEquals(it, resolveRaftPluralBlocks(it, "ru"), it) }
+    fun malformedFormsFileYieldsNoForms() {
+        assertEquals(emptyMap(), parseRaftPluralForms("not json"))
+        assertEquals(emptyMap(), parseRaftPluralForms("[]"))
     }
 }

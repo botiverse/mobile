@@ -135,20 +135,36 @@ private fun rememberRaftResourceEnvironment(): ResourceEnvironment {
 private fun StringDesc.resolveIn(environment: ResourceEnvironment): String =
     when (this) {
         is RawStringDesc -> string
-        is ResourceStringDesc -> runBlocking { getString(environment, stringRes) }.withPluralsResolved()
+        is ResourceStringDesc -> runBlocking { getString(environment, stringRes) }
         is ResourceFormattedStringDesc -> {
             // kmmresource resolved StringDesc arguments before formatting; keep that.
             val resolvedArgs = args.map { arg -> (arg as? StringDesc)?.resolveIn(environment) ?: arg }
-            runBlocking { getString(environment, stringRes, *resolvedArgs.toTypedArray()) }.withPluralsResolved()
+            raftLanguagePluralForm(stringRes.key, resolvedArgs)
+                ?: runBlocking { getString(environment, stringRes, *resolvedArgs.toTypedArray()) }
         }
     }
 
-/** A catalog string's `{N, plural, ...}` blocks (see RaftPlurals.kt) resolved for the catalog's language. */
-private fun String.withPluralsResolved(): String =
-    if (contains("plural")) {
-        resolveRaftPluralBlocks(this, raftResourceLocale(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()).language)
-    } else {
-        this
+/**
+ * The count string [resourceKey] in the app language's own plural form (few / many for Russian), or
+ * null to show the catalog string the caller chose. See RaftPlurals.kt.
+ */
+private fun raftLanguagePluralForm(resourceKey: String, args: List<Any>): String? {
+    val language = raftResourceLocale(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()).language
+    val forms = raftPluralFormsFor(language)
+    return if (forms.isEmpty()) null else raftPluralFormFor(forms, language, resourceKey, args)
+}
+
+private val raftPluralFormsByLanguage = HashMap<String, RaftPluralForms>()
+
+/** The language's `files/plurals/<language>.json`, read once; empty when the language has none. */
+private fun raftPluralFormsFor(language: String): RaftPluralForms =
+    raftPluralFormsByLanguage.getOrPut(language) {
+        if (language != "ru") {
+            emptyMap()
+        } else {
+            runCatching { parseRaftPluralForms(runBlocking { Res.readBytes("files/plurals/$language.json") }.decodeToString()) }
+                .getOrDefault(emptyMap())
+        }
     }
 
 /** Language and region of the catalog [localeType] selects ("" = no region). */

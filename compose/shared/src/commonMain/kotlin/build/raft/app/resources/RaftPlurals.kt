@@ -1,23 +1,28 @@
 package build.raft.app.resources
 
 import kotlin.math.abs
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 /*
  * CLDR plural categories for count strings.
  *
- * The catalogs have no <plurals>. English (and es, pt, ko, ja, zh) choose between two keys at the
- * call site: `<name>_one` for a count of 1 and `<name>_many` / `<name>_other` (or the bare name)
- * for the rest. Russian needs one / few / many / other (1, 21, 101 / 2-4, 22-24 / 0, 5-20, 25-30 /
- * fractions), which two keys cannot express, so a catalog string may carry the web's ICU plural
- * syntax for the count it formats:
+ * The catalogs have no <plurals>. The call site chooses `<base>_one` for a count of 1 and
+ * `<base>_many` / `<base>_other` (or the bare `<base>`) otherwise, which cannot express Russian's
+ * one / few / many / other (1, 21, 101 / 2-4, 22-24 / 0, 5-20, 25-30). The extra forms live in a
+ * separate optional file per language, `composeResources/files/plurals/<language>.json`:
  *
- *   <string name="thread_message_count_many">{%1$d, plural, one {%1$d сообщение} few {%1$d сообщения} many {%1$d сообщений} other {%1$d сообщения}}</string>
+ *   { "thread_message_count": { "one": "%1$d сообщение", "few": "%1$d сообщения", "many": "%1$d сообщений" } }
  *
- * The app's string layer ([stringResource], [StringDesc.resolve]) resolves the block after the
- * `%N$d` placeholders are filled in, so the selector is the number itself. A string without a block,
- * which is every English string and every Russian string not yet given few / many forms, is shown
- * as is: Russian falls back to its `_many` / `_other` text for few / many, never to an error.
- * A branch is chosen by `=N` first (`=0`, `=1`), then by category, then `other`.
+ * An entry may name the 1-based argument that holds the count (`"arg": 2`); by default it is the first
+ * argument that is an integer or reads as a grouped number. `<base>` is the resource key without its `_one` / `_many` / `_other` suffix. Each form is a normal
+ * format string (`%N$d`, `%N$s`). The string layer ([stringResource], [StringDesc.resolve]) uses a
+ * form when the language has an entry for the base of the key being resolved and the entry has the
+ * category the count falls in; in every other case (no file, no entry, a category the entry lacks,
+ * no numeric argument) the catalog string the call site chose is shown, so `_other` text is the
+ * fallback for few / many. Only ru has a file today; en, es, pt, ko, ja and zh keep their two forms.
  */
 
 /** The CLDR plural category of the integer [count] in [language] (`one`, `few`, `many`, `other`). */
@@ -39,64 +44,53 @@ internal fun raftPluralCategory(language: String, count: Long): String {
     }
 }
 
-// The selector is the substituted count: digits, or a count a call site already grouped ("1,200").
-private val PluralHeader = Regex("""\{\s*(-?\d[\d,.]*)\s*,\s*plural\s*,""")
+/** Plural forms per language: base key to category to format string. */
+internal typealias RaftPluralForms = Map<String, Map<String, String>>
+
+/** Parses a `files/plurals/<language>.json` document; malformed input yields no forms. */
+internal fun parseRaftPluralForms(json: String): RaftPluralForms =
+    runCatching {
+        Json.parseToJsonElement(json).jsonObject.mapValues { (_, value) ->
+            (value as JsonObject).mapNotNull { (category, text) -> (text as? JsonPrimitive)?.let { category to it.content } }.toMap()
+        }
+    }.getOrDefault(emptyMap())
+
+private val PluralSuffixes = listOf("_one", "_many", "_other")
+
+/** The base key of a count string: its resource key without the `_one` / `_many` / `_other` suffix. */
+internal fun raftPluralBaseKey(resourceKey: String): String =
+    PluralSuffixes.firstOrNull { resourceKey.endsWith(it) }?.let { resourceKey.removeSuffix(it) } ?: resourceKey
 
 /**
- * [text] with every `{N, plural, one {...} few {...} many {...} other {...}}` block replaced by the
- * branch [language] selects for N. Text without a well-formed block is returned unchanged.
+ * The count a string formats: the 1-based argument [position] when given, else the first argument
+ * that is an integer or reads as a grouped number ("1,200", a count the call site formatted).
  */
-internal fun resolveRaftPluralBlocks(text: String, language: String): String {
-    if (!text.contains("plural")) return text
-    val out = StringBuilder()
-    var cursor = 0
-    while (cursor < text.length) {
-        val header = PluralHeader.find(text, cursor) ?: break
-        val parsed = parsePluralBranches(text, header.range.last + 1)
-        val count = header.groupValues[1].filter(Char::isDigit).toLongOrNull()?.let { if (header.groupValues[1].startsWith("-")) -it else it }
-        val chosen =
-            if (parsed == null || count == null) {
-                null
-            } else {
-                val (branches, end) = parsed
-                (branches["=${abs(count)}"] ?: branches[raftPluralCategory(language, count)] ?: branches["other"])?.let { it to end }
-            }
-        if (chosen == null) {
-            // Malformed or no usable branch: keep the text through the header and look further on.
-            out.append(text, cursor, header.range.last + 1)
-            cursor = header.range.last + 1
-        } else {
-            out.append(text, cursor, header.range.first)
-            out.append(chosen.first)
-            cursor = chosen.second
+internal fun raftPluralCount(args: List<Any>, position: Int? = null): Long? {
+    fun Any?.asCount(): Long? =
+        when (this) {
+            is Int, is Long, is Short, is Byte -> (this as Number).toLong()
+            is String ->
+                takeIf { text -> text.isNotEmpty() && text.all { it.isDigit() || it == ',' || it == '.' } }
+                    ?.filter(Char::isDigit)?.toLongOrNull()
+            else -> null
         }
-    }
-    out.append(text, cursor, text.length)
-    return out.toString()
+    if (position != null) return args.getOrNull(position - 1).asCount()
+    return args.firstNotNullOfOrNull { it.asCount() }
 }
 
-/** The `selector {branch}` pairs after a header up to the block's closing brace, and the index after it. */
-private fun parsePluralBranches(text: String, start: Int): Pair<Map<String, String>, Int>? {
-    val branches = LinkedHashMap<String, String>()
-    var i = start
-    while (true) {
-        while (i < text.length && text[i].isWhitespace()) i++
-        if (i >= text.length) return null
-        if (text[i] == '}') return branches to (i + 1)
-        val selectorStart = i
-        while (i < text.length && !text[i].isWhitespace() && text[i] != '{' && text[i] != '}') i++
-        val selector = text.substring(selectorStart, i)
-        while (i < text.length && text[i].isWhitespace()) i++
-        if (selector.isEmpty() || i >= text.length || text[i] != '{') return null
-        var depth = 0
-        val bodyStart = i + 1
-        while (i < text.length) {
-            if (text[i] == '{') depth++
-            if (text[i] == '}') depth--
-            i++
-            if (depth == 0) break
-        }
-        if (depth != 0) return null
-        branches[selector] = text.substring(bodyStart, i - 1)
+/** [template] with the positional `%N$s` / `%N$d` placeholders filled from [args]. */
+internal fun raftFillPlaceholders(template: String, args: List<Any>): String =
+    Regex("""%(\d+)\$[sd]""").replace(template) { match ->
+        args.getOrNull(match.groupValues[1].toInt() - 1)?.toString() ?: match.value
     }
+
+/**
+ * The language's own form for the count in [args] of the string [resourceKey], or null when the
+ * string should be shown as the catalog has it (see the file comment).
+ */
+internal fun raftPluralFormFor(forms: RaftPluralForms, language: String, resourceKey: String, args: List<Any>): String? {
+    val entry = forms[raftPluralBaseKey(resourceKey)] ?: return null
+    val count = raftPluralCount(args, entry["arg"]?.toIntOrNull()) ?: return null
+    val template = entry[raftPluralCategory(language, count)] ?: return null
+    return raftFillPlaceholders(template, args)
 }
