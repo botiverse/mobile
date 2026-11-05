@@ -549,15 +549,43 @@ internal fun ThreadMessageVisualScreenContent() {
         }
         return
     }
-    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW) {
-        Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-            ThreadSharePreviewModal(
-                messages = payload.toThreadTimelineSlice().messages,
-                image = null,
-                onDismiss = {},
-                onCopyMarkdown = {},
-                onDownloadImage = {}
-            )
+    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE) {
+        val message = payload.toThreadTimelineSlice().messages.first()
+        ThreadShareImageVisualCase(
+            cardWidth = params.optInt("shareImageWidth", 390).dp,
+            onImageBottom = { bottom ->
+                visualReadyBridge.log("thread_visual_content_bounds instanceId=$instanceId contentBottomPx=$bottom")
+            },
+        ) {
+            // The export captures rows in share-capture mode (no viewer-only previews).
+            CompositionLocalProvider(LocalThreadShareCaptureActive provides true) {
+                ThreadMessageCard(
+                    memberAvatarResolver = ThreadVisualMemberAvatarResolver,
+                    message = message,
+                    messageBodyTextStyle = messageBodyTextStyle,
+                    agentStatusResolver = agentStatusResolver,
+                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
+                    highlightedMentions = highlightedMentions,
+                    memberModelLabelResolver = ThreadMessageVisualModelLabels,
+                    showReplyAction = payload.showReplyActions,
+                    taskOpenEnabled = payload.showTaskOpenActions,
+                    taskStatusActionsEnabled = payload.showTaskStatusActions,
+                    showReactionAddAction = payload.showReactionActions,
+                    isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
+                    timestampLabel = message.timestampLabel,
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = { _, _ -> },
+                    onOpenMarkdownUrl = {},
+                    outerPadding = RaftAppSpacing.Sm
+                )
+            }
         }
         return
     }
@@ -1219,6 +1247,7 @@ private fun threadMessageVisualAgentStatusResolver(
             // React markdown specimens render her with that status badge.
             THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF,
+            THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_IMAGE,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY,
