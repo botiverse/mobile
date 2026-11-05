@@ -1064,6 +1064,7 @@
     <string name="thread_forward_badge">転送済み</string>
     <string name="thread_forward_from_source">%1$s から</string>
     <string name="thread_forward_from_thread">%1$s のスレッドから</string>
+    <string name="thread_forward_from_task">%1$s · %2$s から</string>
     <string name="thread_forward_open_source">元のメッセージを開く</string>
     <string name="thread_forward_open_attachment">%1$s を開く</string>
     <string name="thread_forward_selected">%1$d 件選択中</string>
@@ -1080,6 +1081,8 @@
     <string name="thread_forward_selected_from">%2$s から %1$d 件を選択</string>
     <string name="thread_forward_search_targets">転送先を検索</string>
     <string name="thread_forward_recent">最近</string>
+    <string name="thread_forward_conversations">スレッドとタスク</string>
+    <string name="thread_forward_current_conversation">現在</string>
     <string name="thread_forward_select_multiple">複数選択</string>
     <string name="thread_forward_destination">転送先</string>
     <string name="thread_forward_messages_selected">%1$d 件のメッセージを選択中</string>

@@ -33,6 +33,7 @@ new product concept gets a Japanese rendering.
 | Saved | 保存済み | Bookmark feature |
 | Pinned / Pin | ピン留め | Unpin = ピン留めを解除 |
 | Follow (thread) | フォロー | Unfollow = フォロー解除 |
+| Forward picker "Threads & tasks" / "Current" | スレッドとタスク / 現在 | The Forward picker's group of threads and task discussions and the badge on the one it was opened from; copied from the web ja catalog (`message.forwardComposer.conversations`, `message.forwardComposer.currentConversation`, botiverse/slock #12621) |
 | Archive | アーカイブ | |
 | Mute / Unmute | ミュート / ミュートを解除 | |
 | Inbox | 受信トレイ | Agent-permission surface too |

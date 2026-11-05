@@ -52,6 +52,13 @@ internal data class WireForwardedBundleItem(
     val sourceTargetId: String? = null,
     val sourceThreadId: String? = null,
     val parentChannelId: String? = null,
+    /**
+     * slock #12620 (messageForwardService @ b088f8467e): a task discussion's source, public sources
+     * only. Absent (not null) for a viewer who cannot see the source (#12663).
+     */
+    val sourceTaskId: String? = null,
+    val sourceTaskNumber: Int? = null,
+    val sourceTaskTitle: String? = null,
     val sourceMessageId: String? = null,
     val sourceAuthorSnapshot: WireForwardedBundleAuthor? = null,
     val sourceCreatedAt: String? = null,
@@ -207,6 +214,8 @@ internal fun WireForwardedBundleItem.visibleForwardSource(): ForwardMessageSourc
     return ForwardMessageSource(
         label = label,
         thread = thread,
+        // web `sourceLabel`: `from #android:#7 · <task title>`; older bundles keep the plain label.
+        taskTitle = sourceTaskTitle?.trim()?.takeIf { target.type == "task" && it.isNotBlank() },
         channelId = channelId?.takeIf { messageId != null },
         messageId = messageId?.takeIf { channelId != null }
     )
