@@ -407,8 +407,8 @@ internal fun raftUpgradeGateCopy(gate: RaftUpgradeGate): RaftUpgradeGateCopy =
     }
 
 /**
- * The upgrade dialog (see the file comment), in the app's dialog frame: a bottom sheet on a phone
- * with its action in the head, a centred card on a wide window with the action in the footer.
+ * The upgrade dialog (see the file comment), in the app's dialog card: eyebrow, a title of up to
+ * three lines, the limit, what Pro adds, who finishes it, and the action in the footer.
  * Every string takes the server name as `%1$s` (unused where the copy has none).
  */
 @Composable
@@ -461,10 +461,6 @@ internal fun RaftUpgradeDialog(
         onDismiss = onDismiss,
         maxWidth = 480.dp,
         titleMaxLines = 3,
-        presentation = RaftDialogPresentation.Sheet,
-        commitLabel = action,
-        onCommit = onOpenWeb,
-        commitIcon = leavesRaft,
     ) {
         RaftText(
             text = hint,
@@ -497,13 +493,9 @@ internal fun RaftUpgradeDialog(
                 color = RaftTheme.colors.foregroundMuted,
             )
         }
+        // Web UpgradeDialog's footer: the one action (× closes), on a phone too, where the dialog
+        // sheet's one-line head would cut the title and the long action short.
         RaftDialogFooter {
-            RaftButton(
-                text = stringResource(Res.string.upgrade_dialog_not_now),
-                onClick = onDismiss,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg,
-            )
             RaftButton(
                 text = action,
                 onClick = onOpenWeb,

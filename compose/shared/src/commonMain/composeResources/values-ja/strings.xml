@@ -3896,7 +3896,6 @@
     <string name="upgrade_dialog_continue_owner">ウェブでアップグレード</string>
     <string name="upgrade_dialog_continue_member">ウェブでオーナーに依頼</string>
     <string name="upgrade_dialog_open_again">ウェブをもう一度開く</string>
-    <string name="upgrade_dialog_not_now">今はしない</string>
     <string name="upgrade_dialog_waiting">ウェブで手続きを完了してください。%1$s が Pro になると、この画面は自動的に閉じます。</string>
     <string name="upgrade_dialog_paid_toast">%1$s が Pro になりました</string>
     <string name="upgrade_dialog_seats_title">%1$s にシートを追加</string>

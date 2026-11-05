@@ -3896,7 +3896,6 @@
     <string name="upgrade_dialog_continue_owner">Upgrade on the web</string>
     <string name="upgrade_dialog_continue_member">Ask an owner on the web</string>
     <string name="upgrade_dialog_open_again">Open the web again</string>
-    <string name="upgrade_dialog_not_now">Not now</string>
     <string name="upgrade_dialog_waiting">Finish on the web. When %1$s turns Pro, this closes by itself.</string>
     <string name="upgrade_dialog_paid_toast">%1$s is on Pro</string>
     <string name="upgrade_dialog_seats_title">Add seats to %1$s</string>

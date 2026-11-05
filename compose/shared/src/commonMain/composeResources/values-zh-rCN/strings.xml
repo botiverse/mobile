@@ -3896,7 +3896,6 @@
     <string name="upgrade_dialog_continue_owner">在网页上升级</string>
     <string name="upgrade_dialog_continue_member">在网页上联系所有者</string>
     <string name="upgrade_dialog_open_again">再次打开网页</string>
-    <string name="upgrade_dialog_not_now">暂不</string>
     <string name="upgrade_dialog_waiting">请在网页上完成。%1$s 升级到 Pro 后，这里会自动关闭。</string>
     <string name="upgrade_dialog_paid_toast">%1$s 已升级到 Pro</string>
     <string name="upgrade_dialog_seats_title">给 %1$s 加席位</string>
