@@ -1500,6 +1500,7 @@ class SharedActivityStore internal constructor(
                         }
                     if (!shouldReconcile) return@launch
                     awaitCurrentLoadIdle()
+                    var returnRead = false
                     val next =
                         synchronized(realtimeOwnerLock) {
                             val foldBase = resumeFoldLoads
@@ -1520,6 +1521,8 @@ class SharedActivityStore internal constructor(
                                         realtimeBackgroundReconcileDirty = false
                                         ReconcileStep.Again
                                     } else {
+                                        // The one read owed for the return to the foreground.
+                                        returnRead = true
                                         ReconcileStep.Load
                                     }
                                 realtimeBackgroundRefreshWaitMillisLocked() > 0L -> {
@@ -1537,7 +1540,8 @@ class SharedActivityStore internal constructor(
                         pullRefresh = false,
                         backgroundRefresh = true,
                         intent = SharedActivityIntent.Refresh,
-                        fetchReason = InboxFetchReason.RealtimeFallback
+                        fetchReason =
+                            if (returnRead) InboxFetchReason.Visibility else InboxFetchReason.RealtimeFallback
                     )
                     awaitCurrentLoadIdle()
                 }
@@ -1853,6 +1857,12 @@ class SharedActivityStore internal constructor(
                 val current = _state.value
                 val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
                 if (backgroundRefresh && inFlightLoad != null) return@synchronized null
+                if (backgroundRefresh && !appForeground.value) {
+                    // No inbox read in the background (stale recovery, reconcile): one is owed for the return.
+                    realtimeReconcileOwedOnForeground = true
+                    diagnosticsLogger("store_load domain=activity phase=deferred reason=app_background")
+                    return@synchronized null
+                }
                 if (pullRefresh && inFlightLoad != null) {
                     // Hands f6c3f3a6: a pull over a visible refresh still in flight joins it and
                     // shows the pull spinner, instead of throwing the pages it already read away.
@@ -4578,7 +4588,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
     }
 
-private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
+internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
     when (this) {
         SharedActivityIntent.MarkAllRead,
         is SharedActivityIntent.MarkDone,
@@ -4586,7 +4596,6 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.FollowThread,
         is SharedActivityIntent.MarkRead,
         is SharedActivityIntent.MarkUnread,
-        is SharedActivityIntent.ApplyReadReceiptPrediction,
         is SharedActivityIntent.ApplyReadReceiptFailure,
         is SharedActivityIntent.ApplyRealtimeEvent,
         is SharedActivityIntent.UndoObjectDone,
@@ -4600,6 +4609,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         SharedActivityIntent.PullRefresh,
         SharedActivityIntent.LoadMore,
         is SharedActivityIntent.SetFilter,
+        is SharedActivityIntent.ApplyReadReceiptPrediction,
         is SharedActivityIntent.ApplyReadReceiptResult,
         is SharedActivityIntent.PrewarmVisibleReplyThreads,
         is SharedActivityIntent.PrewarmActivityTail,

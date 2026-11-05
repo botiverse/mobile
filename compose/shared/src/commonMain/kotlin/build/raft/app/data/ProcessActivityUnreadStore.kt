@@ -17,7 +17,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -105,7 +107,21 @@ internal class ProcessActivityUnreadStore(
     },
     private val projectionCache: ProcessActivityUnreadProjectionCache? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    /**
+     * Throttle window (leading + trailing), like the Activity list's realtime reconcile (web
+     * `requestInboxBackgroundRefresh`): the first read after a quiet window runs at once; reads
+     * requested inside the window collapse into ONE trailing read at its end.
+     */
+    private val throttleMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
+    /** Monotonic clock for the throttle window; injectable for virtual time. */
+    private val nowMillis: () -> Long = activityMonotonicClock(),
+    /**
+     * The process is in the foreground ([RaftStaleReadRecoverySignals.foreground]). No read starts
+     * while it is false (the socket keeps running for notifications, so events still arrive); the
+     * return does one read, reason `app_foreground_return` (`visibility`).
+     */
+    private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground
 ) {
     private val mutex = Mutex()
     private val entries = linkedMapOf<ProcessActivityUnreadOwner, Entry>()
@@ -113,6 +129,35 @@ internal class ProcessActivityUnreadStore(
     internal val projections: StateFlow<Map<ProcessActivityUnreadOwner, ActivityUnreadSummaryProjection>> = _projections
     private var nextRevision = 0L
     private var processGeneration = 0L
+
+    /**
+     * Reads once on every background -> foreground return of [appForeground]. Started by the host
+     * (not by the constructor): the collector never completes, so a store built on a test scope
+     * would otherwise keep that scope from finishing.
+     */
+    fun followAppLifecycle(): Job =
+        scope.launch {
+            var previous = appForeground.value
+            appForeground.collect { foreground ->
+                val returned = foreground && !previous
+                previous = foreground
+                if (returned) onReturnedToForeground()
+            }
+        }
+
+    /** One read per known owner for the return; a resume read already started by the shell folds into it. */
+    private suspend fun onReturnedToForeground() {
+        val owners = mutex.withLock { entries.keys.toList() }
+        owners.forEach { owner ->
+            request(
+                serverId = ServerId(owner.serverId),
+                foregroundEpoch = null,
+                force = true,
+                reason = "app_foreground_return",
+                expectedOwner = owner
+            )
+        }
+    }
 
     fun projectionFlow(serverId: ServerId): Flow<ActivityUnreadSummaryProjection> {
         val normalizedServerId = serverId.value.trim()
@@ -308,6 +353,27 @@ internal class ProcessActivityUnreadStore(
                     return@withLock
                 }
                 val entry = entries.getOrPut(owner) { Entry(projection = initialProjection(owner)) }
+                if (!appForeground.value) {
+                    // Nothing reads in the background; the return reads once (onReturnedToForeground).
+                    logger(
+                        "process_activity_unread_request result=deferred reason=app_background " +
+                            "${owner.diagnosticsKey} source=$reason"
+                    )
+                    return@withLock
+                }
+                if (activityUnreadSummaryFetchReason(reason) == InboxFetchReason.Visibility) {
+                    // The shell's resume read and the store's own return read are one read.
+                    val now = nowMillis()
+                    val lastVisibility = entry.lastVisibilityRequestAtMillis
+                    if (lastVisibility != null && now - lastVisibility < throttleMillis) {
+                        logger(
+                            "process_activity_unread_request result=coalesced reason=visibility_window " +
+                                "${owner.diagnosticsKey} source=$reason"
+                        )
+                        return@withLock
+                    }
+                    entry.lastVisibilityRequestAtMillis = now
+                }
                 if (eventMarker != null) {
                     if (eventMarker in entry.pendingEventMarkers || eventMarker in entry.inFlightEventMarkers) {
                         logger(
@@ -383,9 +449,37 @@ internal class ProcessActivityUnreadStore(
 
     private suspend fun runRefreshLoop(owner: ProcessActivityUnreadOwner) {
         while (true) {
+            // Throttle: a read starts at once after a quiet window; inside it the loop waits for the
+            // window's end, and every request made meanwhile folds into the one pending read.
+            val waitMillis =
+                mutex.withLock {
+                    entries[owner]?.lastAttemptStartedAtMillis
+                        ?.let { startedAt -> throttleMillis - (nowMillis() - startedAt) }
+                        ?.coerceAtLeast(0L)
+                        ?: 0L
+                }
+            if (waitMillis > 0L) delay(waitMillis)
             val attempt =
                 mutex.withLock {
                     val entry = entries[owner] ?: return
+                    if (!appForeground.value) {
+                        // Went to the background while a read was queued: stop; the return reads once.
+                        entry.active = false
+                        entry.pending = false
+                        entry.pendingEventMarkers = emptySet()
+                        entry.projection =
+                            entry.projection.copy(
+                                freshness = ActivityUnreadSummaryFreshness.Stale,
+                                revision = nextProjectionRevision()
+                            )
+                        publish(owner, entry)
+                        logger(
+                            "process_activity_unread_load result=deferred reason=app_background " +
+                                "${owner.diagnosticsKey} source=${entry.pendingReason}"
+                        )
+                        return
+                    }
+                    entry.lastAttemptStartedAtMillis = nowMillis()
                     entry.pending = false
                     entry.canonicalDirty = false
                     entry.requestGeneration += 1L
@@ -626,6 +720,8 @@ internal class ProcessActivityUnreadStore(
         var pending: Boolean = false,
         var pendingReason: String = "unspecified",
         var acceptedForegroundEpoch: Long = 0L,
+        var lastAttemptStartedAtMillis: Long? = null,
+        var lastVisibilityRequestAtMillis: Long? = null,
         var requestGeneration: Long = 0L,
         var factRevision: Long = 0L,
         var canonicalDirty: Boolean = false,

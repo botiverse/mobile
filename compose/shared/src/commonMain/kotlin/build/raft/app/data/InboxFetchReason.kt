@@ -64,7 +64,7 @@ internal fun activityUnreadSummaryFetchReason(source: String): InboxFetchReason?
             base == "server_switch" ||
             base == "server_ready" -> InboxFetchReason.Initial
         // onForeground("app_shell_<lifecycle event>")
-        base.startsWith("app_shell_") -> InboxFetchReason.Visibility
+        base.startsWith("app_shell_") || base == "app_foreground_return" -> InboxFetchReason.Visibility
         base == "manual" || base == "manual_home_refresh" -> InboxFetchReason.Manual
         // "fact_reconcile": a realtime fact landed while a read was in flight, so the store reads again.
         base == "fact_reconcile" ||
