@@ -97,6 +97,17 @@ internal data class CreateJointChannelState(
     /** Web `billingError`: the failure is a plan limit, so the banner links to Billing. */
     val showsBillingLink: Boolean
         get() = (error as? CreateJointChannelError.Server)?.let(::createJointErrorIsBillingGate) == true
+
+    /**
+     * Web CreateJointChannelDialog `billingError`: `joint_free_server_limit` is the channel's Free
+     * places (`joint_channel_free_cap`); the rest (`joint_channel_free_limit_reached`, "requires the
+     * Pro plan") the servers it hosts (`joint_channel_host_limit`). Null when not a plan limit.
+     */
+    val billingGate: RaftUpgradeGate?
+        get() {
+            val server = (error as? CreateJointChannelError.Server)?.takeIf(::createJointErrorIsBillingGate) ?: return null
+            return if (server.details?.code == JOINT_FREE_SERVER_LIMIT) RaftUpgradeGate.JointChannelFreeCap else RaftUpgradeGate.JointChannelHostLimit
+        }
 }
 
 internal fun createJointErrorIsBillingGate(error: CreateJointChannelError.Server): Boolean {

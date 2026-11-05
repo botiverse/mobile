@@ -718,7 +718,7 @@
     <string name="thread_quoted_permalink_loading">正在載入訊息…</string>
     <string name="thread_message_loading_full">正在載入完整訊息…</string>
     <string name="thread_quoted_permalink_no_content">（無內容）</string>
-    <string name="thread_quoted_permalink_unavailable">無法預覽訊息</string>
+    <string name="thread_quoted_permalink_unavailable_link">連結的訊息無法使用</string>
     <string name="thread_quoted_permalink_thread">討論串</string>
     <string name="thread_quoted_permalink_archived">已封存</string>
     <string name="thread_quoted_permalink_direct_message">私訊</string>
@@ -3040,7 +3040,7 @@
     <string name="thread_mention_agent_unread">尚未讀取</string>
     <string name="thread_followers_removed">已將 %1$s 從此討論串的追蹤者中移除。</string>
     <string name="thread_followers_restored">已將 %1$s 恢復為追蹤者。</string>
-    <string name="thread_followers_peer_remove_unavailable">請切換到 %1$s 以移除此追蹤者。</string>
+    <string name="thread_followers_peer_remove_host_only">只有發起這個聯合頻道的伺服器的管理員和頻道管理員，可以移除其他伺服器的 Agent。</string>
     <string name="thread_followers_remove">將 %1$s 從追蹤者中移除</string>
     <string name="joint_over_limit_grace_title">聯合頻道已超出上限</string>
     <string name="joint_over_limit_grace_detail">此聯合頻道在 %1$s 前處於寬限期，成員數已超出上限。需要其中一個伺服器的管理員升級，或讓一個免費版伺服器退出。</string>

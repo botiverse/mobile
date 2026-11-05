@@ -74,7 +74,8 @@ class ProcessActivityUnreadRealtimeCoalesceTest {
                     DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 3, totalCount = 5))
                 },
                 ownerResolver = { serverId -> owner.takeIf { it.serverId == serverId } },
-                scope = storeScope
+                scope = storeScope,
+                throttleMillis = 0L
             )
         val context =
             ProcessPresenceAuthContext(

@@ -73,7 +73,8 @@ internal fun CreateJointChannelDialogHost(
     onOpenChannel: (JointChannelAccepted) -> Unit,
     /** Open Channel on a name collision: the archived joint channel, read-only. */
     onOpenArchivedChannel: (ChannelId) -> Unit,
-    onOpenBilling: () -> Unit,
+    /** The plan limit the server answered with ([CreateJointChannelState.billingGate]); web `paywallUpgrade(billingError)`. */
+    onOpenBilling: (RaftUpgradeGate) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val store =
@@ -102,7 +103,7 @@ internal fun CreateJointChannelDialogHost(
         agentStatusResolver = agentStatusResolver,
         onIntent = store::dispatch,
         onDismiss = { if (!state.submitting) onDismiss() },
-        onOpenBilling = onOpenBilling,
+        onOpenBilling = { onOpenBilling(state.billingGate ?: RaftUpgradeGate.JointChannelHostLimit) },
     )
 }
 

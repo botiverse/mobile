@@ -402,17 +402,17 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.ServerSelected -> scope.launch { selectServer(intent) }
             SharedActivityIntent.LoadInitial -> {
                 activitySurfaceHidden = false
-                load(refresh = true, headerIndicator = true, intent = intent)
+                load(refresh = true, headerIndicator = true, intent = intent, fetchReason = InboxFetchReason.Initial)
             }
             SharedActivityIntent.Refresh -> {
                 activitySurfaceHidden = false
-                load(refresh = true, pullRefresh = false, headerIndicator = shownRowsAreOld(), intent = intent)
+                load(refresh = true, pullRefresh = false, headerIndicator = shownRowsAreOld(), intent = intent, fetchReason = InboxFetchReason.Visibility)
             }
             SharedActivityIntent.PullRefresh -> {
                 activitySurfaceHidden = false
                 // Pull-to-refresh is the user moving on: the rows read this visit leave with it.
                 releaseRetainedReadRows(intent)
-                load(refresh = true, pullRefresh = true, intent = intent)
+                load(refresh = true, pullRefresh = true, intent = intent, fetchReason = InboxFetchReason.Manual)
             }
             SharedActivityIntent.LoadMore -> load(refresh = false, intent = intent)
             SharedActivityIntent.MarkAllRead -> markAllRead()
@@ -1095,7 +1095,7 @@ class SharedActivityStore internal constructor(
                 true
             }
         if (!changed) return
-        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.SetFilter(filter))
+        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.SetFilter(filter), fetchReason = InboxFetchReason.Manual)
     }
 
     /**
@@ -1141,7 +1141,7 @@ class SharedActivityStore internal constructor(
             "store_load domain=activity phase=server_selected serverId=$serverId " +
                 "cached=${_state.value.snapshot != null}"
         )
-        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.LoadInitial)
+        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.LoadInitial, fetchReason = InboxFetchReason.Initial)
     }
 
     private suspend fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
@@ -1500,6 +1500,7 @@ class SharedActivityStore internal constructor(
                         }
                     if (!shouldReconcile) return@launch
                     awaitCurrentLoadIdle()
+                    var returnRead = false
                     val next =
                         synchronized(realtimeOwnerLock) {
                             val foldBase = resumeFoldLoads
@@ -1520,6 +1521,8 @@ class SharedActivityStore internal constructor(
                                         realtimeBackgroundReconcileDirty = false
                                         ReconcileStep.Again
                                     } else {
+                                        // The one read owed for the return to the foreground.
+                                        returnRead = true
                                         ReconcileStep.Load
                                     }
                                 realtimeBackgroundRefreshWaitMillisLocked() > 0L -> {
@@ -1536,7 +1539,9 @@ class SharedActivityStore internal constructor(
                         refresh = true,
                         pullRefresh = false,
                         backgroundRefresh = true,
-                        intent = SharedActivityIntent.Refresh
+                        intent = SharedActivityIntent.Refresh,
+                        fetchReason =
+                            if (returnRead) InboxFetchReason.Visibility else InboxFetchReason.RealtimeFallback
                     )
                     awaitCurrentLoadIdle()
                 }
@@ -1843,13 +1848,21 @@ class SharedActivityStore internal constructor(
         pullRefresh: Boolean = false,
         backgroundRefresh: Boolean = false,
         headerIndicator: Boolean = false,
-        intent: SharedActivityIntent
+        intent: SharedActivityIntent,
+        /** Why the first page is read; sent as `X-Raft-Fetch-Reason` (see [InboxFetchReason]). */
+        fetchReason: InboxFetchReason? = null
     ) {
         val job =
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
                 val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
                 if (backgroundRefresh && inFlightLoad != null) return@synchronized null
+                if (backgroundRefresh && !appForeground.value) {
+                    // No inbox read in the background (stale recovery, reconcile): one is owed for the return.
+                    realtimeReconcileOwedOnForeground = true
+                    diagnosticsLogger("store_load domain=activity phase=deferred reason=app_background")
+                    return@synchronized null
+                }
                 if (pullRefresh && inFlightLoad != null) {
                     // Hands f6c3f3a6: a pull over a visible refresh still in flight joins it and
                     // shows the pull spinner, instead of throwing the pages it already read away.
@@ -2069,7 +2082,7 @@ class SharedActivityStore internal constructor(
                         val result =
                             if (refresh) {
                                 val depth =
-                                    loadCanonicalDepth(serverId, filter, refreshLimit) { fetched ->
+                                    loadCanonicalDepth(serverId, filter, refreshLimit, fetchReason) { fetched ->
                                         publishRefreshPage(
                                             fetched = fetched,
                                             generation = generation,
@@ -2308,10 +2321,14 @@ class SharedActivityStore internal constructor(
         serverId: ServerId,
         filter: InboxFilter,
         depth: Int,
+        fetchReason: InboxFetchReason? = null,
         onPageMerged: suspend (InboxSnapshot) -> Unit = {}
     ): ActivityCanonicalDepthResult {
         val targetDepth = depth.coerceAtLeast(SharedActivityPageSize)
-        val initial = inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
+        val initial =
+            withInboxFetchReason(fetchReason) {
+                inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
+            }
         if (initial !is DataResult.Content) return ActivityCanonicalDepthResult(initial)
 
         var combined = initial.data.copy(items = initial.data.items.dedupeActivityItems())
@@ -2625,7 +2642,7 @@ class SharedActivityStore internal constructor(
             return false
         }
         // Single-flight: a background load joins nothing while another load runs (that one settles).
-        load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+        load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.RealtimeFallback)
         return true
     }
 
@@ -3039,7 +3056,7 @@ class SharedActivityStore internal constructor(
                     // Web refreshes in the background after a successful read-all
                     // (slock 1bb70cbeb, inboxStore.ts:1405-1408); the read hold keeps a
                     // lagging copy from undoing the local clear.
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
                 } else {
                     readOverlay.forgetAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
@@ -3073,7 +3090,7 @@ class SharedActivityStore internal constructor(
                 "activity_mark_done result=refused reason=${if (item == null) "row_not_held" else "invalid_done_frontier"} " +
                     "itemKey=${requestedItem.key}"
             )
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
             return
         }
         val targetChannelId = item.readReceiptChannelId()
@@ -3106,7 +3123,7 @@ class SharedActivityStore internal constructor(
                     doneOverlay.confirmAll(overlayOwner, doneGenerations)
                     onUnreadCountsChanged()
                     // Web refreshes after a confirmed Done with the hold still armed.
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
                 }
             }
         }
@@ -3153,7 +3170,7 @@ class SharedActivityStore internal constructor(
             val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Undone, row)
             if (result !is DataResult.Content) diagnosticsLogger("activity_object_undone result=failed key=${item.key}")
             onUnreadCountsChanged()
-            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
         }
     }
 
@@ -3367,7 +3384,7 @@ class SharedActivityStore internal constructor(
             if (result.isAcceptedThreadFollowMutation()) {
                 onUnreadCountsChanged()
                 if (currentItem == null) {
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
                 }
             } else {
                 refreshAfterFailure(previous, result.failureCodeOr("activity_follow_failed"))
@@ -3592,7 +3609,7 @@ class SharedActivityStore internal constructor(
                 true
             }
         if (shouldRefresh) {
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
         }
     }
 
@@ -3851,7 +3868,7 @@ class SharedActivityStore internal constructor(
         code: String
     ) {
         _state.value = previous.copy(loading = false, refreshing = false, pullRefreshing = false, loadingMore = false, errorCode = code)
-        load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+        load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
     }
 
     private fun setLoadError(code: String, append: Boolean = false) {
@@ -4571,7 +4588,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
     }
 
-private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
+internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
     when (this) {
         SharedActivityIntent.MarkAllRead,
         is SharedActivityIntent.MarkDone,
@@ -4579,7 +4596,6 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.FollowThread,
         is SharedActivityIntent.MarkRead,
         is SharedActivityIntent.MarkUnread,
-        is SharedActivityIntent.ApplyReadReceiptPrediction,
         is SharedActivityIntent.ApplyReadReceiptFailure,
         is SharedActivityIntent.ApplyRealtimeEvent,
         is SharedActivityIntent.UndoObjectDone,
@@ -4593,6 +4609,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         SharedActivityIntent.PullRefresh,
         SharedActivityIntent.LoadMore,
         is SharedActivityIntent.SetFilter,
+        is SharedActivityIntent.ApplyReadReceiptPrediction,
         is SharedActivityIntent.ApplyReadReceiptResult,
         is SharedActivityIntent.PrewarmVisibleReplyThreads,
         is SharedActivityIntent.PrewarmActivityTail,

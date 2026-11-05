@@ -23,6 +23,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.compat.ui.ProvideRaftPlatformImeInsets
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.RaftProvideTextRendering
+import build.raft.app.RaftUpgradeDialogHost
+import build.raft.app.RaftUpgradeDialogState
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftProvideDesignSystemMisuse
 import build.raft.app.components.RaftProvideDesignSystemCopy
 import build.raft.app.components.RaftProvideDesignSystemStrings
@@ -249,6 +252,10 @@ fun RaftPagerHost(
                             // a side status bar): content and controls never run under it.
                             RaftPageHorizontalSafeAreaShell {
                                 (pager as? ComposeContainer)?.composedContent?.invoke()
+                                // The upgrade dialog this page opened (RaftUpgradeDialog.kt), if any.
+                                if (RaftUpgradeDialogState.request?.pagerId == pager.pagerId) {
+                                    RaftDesignSystemTheme { RaftUpgradeDialogHost(pager) }
+                                }
                             }
                         }
                     }
