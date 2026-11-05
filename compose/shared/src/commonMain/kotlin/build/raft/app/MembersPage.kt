@@ -13645,7 +13645,7 @@ private fun MembersCreateAgentAction(
 
 /** A menu row's 16dp icon in the row's icon ink. */
 @Composable
-private fun MembersMenuIcon(name: RaftLucideIconName) {
+internal fun MembersMenuIcon(name: RaftLucideIconName) {
     RaftLucideIcon(name, Modifier.size(16.dp), color = raftArgbHex(LocalRaftContentColor.current))
 }
 

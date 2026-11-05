@@ -28,7 +28,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Add Member's "Create External Agent" (web ChannelMembers `createAgentFooter`, slock staging
- * 947bd94): who may use it, the rows it shows, and what it sends: `POST /agents` with
+ * 947bd94): who may use it, the row and menu it shows, and what it sends: `POST /agents` with
  * `{ name, description, avatarUrl: "pixel:…", external: true }` and no Computer or runtime, then
  * the channel join as a one-agent batch.
  */
@@ -44,34 +44,32 @@ class ChannelAddMemberCreateExternalAgentTest {
     }
 
     @Test
-    fun theFooterListsCreateAgentThenCreateExternalAgent() {
-        val specs = threadAddMemberCreateRowSpecs(canCreateAgents = true, createName = "", adding = false)
-        assertEquals(listOf(MembersCreateAgentMode.Managed, MembersCreateAgentMode.External), specs.map { it.mode })
-        assertTrue(specs.all { it.enabled && it.showsAutoJoin && !it.promoted && it.initialName.isEmpty() })
+    fun theMenuListsCreateAgentThenCreateExternalAgent() {
+        assertEquals(listOf(MembersCreateAgentMode.Managed, MembersCreateAgentMode.External), ThreadAddMemberCreateMenuModes)
+        val spec = threadAddMemberCreateRowSpec(canCreateAgents = true, createName = "", adding = false)
+        assertTrue(spec.enabled && spec.showsAutoJoin && !spec.promoted && spec.initialName.isEmpty())
     }
 
     @Test
-    fun aSearchThatFoundNoOneNamesOnlyTheManagedRow() {
-        val (managed, external) = threadAddMemberCreateRowSpecs(canCreateAgents = true, createName = "mia", adding = false)
-        assertEquals("mia", managed.initialName)
-        assertTrue(managed.promoted)
-        assertEquals("", external.initialName)
-        assertFalse(external.promoted)
+    fun aSearchThatFoundNoOneNamesTheRowAndOnlyTheManagedItemCarriesIt() {
+        val spec = threadAddMemberCreateRowSpec(canCreateAgents = true, createName = "mia", adding = false)
+        assertTrue(spec.promoted)
+        assertEquals("mia", spec.nameFor(MembersCreateAgentMode.Managed))
+        assertEquals("", spec.nameFor(MembersCreateAgentMode.External))
     }
 
     @Test
-    fun withoutPermissionBothRowsStayListedButDisabled() {
-        val specs = threadAddMemberCreateRowSpecs(canCreateAgents = false, createName = "mia", adding = false)
-        assertEquals(listOf(MembersCreateAgentMode.Managed, MembersCreateAgentMode.External), specs.map { it.mode })
-        assertTrue(specs.none { it.enabled || it.showsAutoJoin || it.promoted })
-        assertTrue(specs.all { it.initialName.isEmpty() })
+    fun withoutPermissionTheWholeRowStaysListedButDisabled() {
+        val spec = threadAddMemberCreateRowSpec(canCreateAgents = false, createName = "mia", adding = false)
+        assertFalse(spec.enabled || spec.showsAutoJoin || spec.promoted)
+        assertEquals("", spec.initialName)
     }
 
     @Test
-    fun bothRowsAreDisabledWhileABatchIsBeingAdded() {
-        val specs = threadAddMemberCreateRowSpecs(canCreateAgents = true, createName = "", adding = true)
-        assertTrue(specs.none { it.enabled })
-        assertTrue(specs.all { it.showsAutoJoin })
+    fun theRowIsDisabledWhileABatchIsBeingAdded() {
+        val spec = threadAddMemberCreateRowSpec(canCreateAgents = true, createName = "", adding = true)
+        assertFalse(spec.enabled)
+        assertTrue(spec.showsAutoJoin)
     }
 
     @Test

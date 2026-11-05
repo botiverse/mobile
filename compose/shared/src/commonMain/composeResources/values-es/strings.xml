@@ -3085,6 +3085,7 @@
     <string name="thread_members_channel_admin">Administrador del canal</string>
     <string name="thread_members_add_selected">Agregar seleccionados (%1$d)</string>
     <string name="thread_members_create_agent">Crear agente</string>
+    <string name="thread_add_member_create_external_agent">Crear agente externo</string>
     <string name="thread_members_create_no_permission">Puedes agregar miembros aquí, pero para crear agentes en este servidor se necesita un propietario o administrador. Pídele a uno que te dé el permiso o que cree el agente para que tú lo agregues.</string>
     <string name="thread_members_created_join_failed">Se creó el agente, pero no se pudo unir a este canal. Vuelve a intentar unirlo sin crear otro agente.</string>
     <string name="thread_members_create_named_agent">Crear agente “%1$s”</string>
