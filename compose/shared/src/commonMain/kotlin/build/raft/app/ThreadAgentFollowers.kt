@@ -380,11 +380,13 @@ internal fun ThreadAgentFollowersPanel(
                         ?: agent.serverSlug?.takeIf { it.isNotBlank() }
                         ?: stringResource(Res.string.thread_followers_peer_server)
                     val canManage = state.roster?.canManage == true
-                    val canRemove = agent.canRemove && agent.isCurrentServer
+                    // The server decides (#13093): in a joint channel the host's admins and channel
+                    // managers can remove another server's agent without switching servers.
+                    val canRemove = agent.canRemove
                     // Web: the X names the action, or why a peer server's agent cannot be removed here.
                     val removeLabel =
-                        if (canRemove) stringResource(Res.string.thread_followers_remove, agent.label)
-                        else stringResource(Res.string.thread_followers_peer_remove_unavailable, server)
+                        if (canRemove || agent.isCurrentServer) stringResource(Res.string.thread_followers_remove, agent.label)
+                        else stringResource(Res.string.thread_followers_peer_remove_host_only)
                     // Task #20: the same live source (and external-agent tiering) as the
                     // message avatar; collected as state so the row follows it while open.
                     val indicator = threadFollowerStatusIndicator(
@@ -454,10 +456,10 @@ internal fun threadFollowerProfileIdentity(agent: ThreadAgentFollower): MemberDe
         sourceServerId = agent.serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId),
     )
 
-/** Web: removable only on this server, and not while a removal (or its undo window) is pending. */
+/** Web: removable when the server says so (`canRemove`), and not while a removal (or its undo window) is pending. */
 internal fun threadFollowerRemoveEnabled(agent: ThreadAgentFollower, state: ThreadAgentFollowersState): Boolean =
     state.roster?.canManage == true &&
-        agent.canRemove && agent.isCurrentServer &&
+        agent.canRemove &&
         !state.mutating && state.undo == null
 
 @Composable
