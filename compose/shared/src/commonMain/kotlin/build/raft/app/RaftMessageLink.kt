@@ -4,6 +4,9 @@ import build.raft.app.data.RaftAppLogin
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.SharedApiEnvironmentStore
+import build.raft.app.links.isRaftPermalinkChannelId
+import build.raft.app.links.isRaftPermalinkMessageId
+import build.raft.app.links.parseRaftConversationLink
 import build.raft.app.model.ConversationKind
 import kotlin.time.Clock
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -53,9 +56,11 @@ internal val RaftMessageLinkProductionHosts: Set<String> = setOf("app.raft.build
  * host (and scheme/port) of [configuredWebUrl], the Developer environment's web URL (AGENTS.md
  * "Environment Web Link URL Rule"), so a staging build also takes its staging links.
  *
- * Rejected as a whole: any other path, an empty or extra segment, an id with characters outside
- * `[A-Za-z0-9_-]`, a malformed `thread`, and a `thread` whose channel id differs from the path's.
- * `app=missing` (the open.raft.build fallback marker) and unknown query keys are ignored.
+ * The path and query are the web's permalink grammar ([parseRaftConversationLink]): rejected as a
+ * whole are any other path, an empty or extra segment, ids that are not hex (UUID or 8-hex short id),
+ * a malformed `thread`, and a `thread` whose channel id differs from the path's. A UUID followed by
+ * more text (a link glued to prose) is read as the UUID. `app=missing` (the open.raft.build fallback
+ * marker) and unknown query keys are ignored.
  */
 internal fun parseRaftMessageLink(
     url: String,
@@ -66,42 +71,16 @@ internal fun parseRaftMessageLink(
      */
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
 ): RaftMessageLink? {
-    val parsed = url.toRaftLinkUrl() ?: return null
-    if (!parsed.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
-    val segments = parsed.path.removePrefix("/").split('/')
-    if (segments.size != 4 || segments[0] != "s") return null
-    val serverSlug = segments[1].raftLinkPercentDecode()?.takeIf(::isRaftLinkIdentifier) ?: return null
-    val routeKind =
-        when (segments[2]) {
-            "channel" -> ConversationKind.Channel
-            "dm" -> ConversationKind.DirectMessage
-            else -> return null
-        }
-    val channelId = segments[3].raftLinkPercentDecode()?.takeIf(::isRaftLinkIdentifier) ?: return null
-    val query = parsed.queryParameters() ?: return null
-    val messageId =
-        when (val raw = query["msg"]) {
-            null -> null
-            else -> raw.takeIf(::isRaftLinkIdentifier) ?: return null
-        }
-    val threadParentMessageId =
-        when (val raw = query["thread"]) {
-            null -> null
-            else -> {
-                val parts = raw.split(':')
-                if (parts.size != 2) return null
-                val threadChannelId = parts[0].takeIf(::isRaftLinkIdentifier) ?: return null
-                // The thread's channel must be the path's channel; otherwise the whole link is refused.
-                if (threadChannelId != channelId) return null
-                parts[1].takeIf(::isRaftLinkIdentifier) ?: return null
-            }
-        }
+    val origin = url.toRaftLinkUrl() ?: return null
+    if (!origin.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
+    // The origin is decided above; the path and query are the web's grammar (links/RaftMessageLinks).
+    val link = parseRaftConversationLink(url, setOf(origin.host)) ?: return null
     return RaftMessageLink(
-        serverSlug = serverSlug,
-        routeKind = routeKind,
-        channelId = channelId,
-        messageId = messageId,
-        threadParentMessageId = threadParentMessageId,
+        serverSlug = link.serverSlug,
+        routeKind = link.routeKind,
+        channelId = link.channelId.value,
+        messageId = link.messageId?.value,
+        threadParentMessageId = link.threadParentMessageId?.value,
     )
 }
 
@@ -137,8 +116,8 @@ internal fun raftSchemeLinkToWebLink(url: String, webUrl: String?): String? {
 }
 
 internal fun buildRaftMessageLink(link: RaftMessageLink, webUrl: String?): String? {
-    val ids = listOfNotNull(link.serverSlug, link.channelId, link.messageId, link.threadParentMessageId)
-    if (!ids.all(::isRaftLinkIdentifier)) return null
+    if (!isRaftLinkIdentifier(link.serverSlug) || !isRaftPermalinkChannelId(link.channelId)) return null
+    if (!listOfNotNull(link.messageId, link.threadParentMessageId).all(::isRaftPermalinkMessageId)) return null
     val routeKind =
         when (link.routeKind) {
             ConversationKind.DirectMessage -> "dm"
