@@ -17618,6 +17618,9 @@ internal fun ThreadPageHeader(
      * docs/contracts/notifications.md §1.1); null leaves it out.
      */
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
+    /** MOCK (convhdr): Task v2 header toggles; null = today's header. */
+    mockTasksOpen: Boolean? = null,
+    mockFilesOpen: Boolean = false,
 ) {
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
@@ -17838,6 +17841,10 @@ internal fun ThreadPageHeader(
                     val replyThreadMenu = headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread
                     if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
+                    }
+                    if (mockTasksOpen != null) {
+                        MockHeaderToggle(RaftLucideIconName.ListTodo, mockTasksOpen)
+                        MockHeaderToggle(RaftLucideIconName.Paperclip, mockFilesOpen)
                     }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Settings, onClick = onShowSettings)
@@ -18171,6 +18178,22 @@ private fun ThreadDmPeerAvatarTile(
             cacheServerId = cacheServerId,
             fallbackFill = fallbackFill
         )
+    }
+}
+
+/** MOCK: raft-ui PanelToggleAction; pressed = `bg-selected`, 1.5dp `sticker-ink` edge, `sticker-ink` icon. */
+@Composable
+private fun MockHeaderToggle(icon: RaftLucideIconName, pressed: Boolean) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(RaftAppRadius.Control)
+    ThreadHeaderActionButton(
+        onClick = {},
+        modifier =
+            if (pressed) {
+                Modifier.background(build.raft.designsystem.tokens.RaftUiPalette.selected, shape)
+                    .border(1.5.dp, build.raft.designsystem.tokens.RaftUiPalette.stickerInk, shape)
+            } else Modifier,
+    ) {
+        RaftLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = raftArgbHex(RaftColor.TextBlack))
     }
 }
 
