@@ -214,7 +214,7 @@ fun RaftMessageQuotedPreview(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             QuotedDot(Modifier.padding(end = 2.dp))
-                            RaftGlyphIcon(RaftGlyph.MessageSquare, size = 14.dp, color = colors.foregroundHint)
+                            RaftGlyphIcon(RaftGlyph.Thread, size = 14.dp, color = colors.foregroundHint)
                             RaftText(threadLabel, style = hintPart, color = colors.foregroundHint, maxLines = 1)
                         }
                     }
