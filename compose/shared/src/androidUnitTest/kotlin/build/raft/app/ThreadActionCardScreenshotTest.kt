@@ -212,7 +212,7 @@ private fun ThreadActionCardsExpiredVisualContent() {
                 displayLocale = "en",
             )
             ThreadActionCardView(
-                card = ThreadActionCard(type = "seats:add", state = "expired", presentationTitle = "Add 1 seat"),
+                card = ThreadActionCard(type = "seats:add", state = "expired", presentationTitle = "Add 1 seat", requesterUserId = "u-ada"),
                 pending = false,
                 onCommit = {},
             )

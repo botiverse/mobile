@@ -873,6 +873,8 @@
     <string name="thread_action_card_status_expired">Vencida</string>
     <string name="thread_action_card_status_withdrawn">Retirada</string>
     <string name="thread_action_card_expired_line">Venció el %1$s. Pide al agente que envíe una nueva solicitud.</string>
+    <string name="thread_action_card_expired_line_own">Venció el %1$s. Envía una nueva solicitud.</string>
+    <string name="thread_action_card_expired_line_from_person">Venció el %1$s. Pide a %2$s que envíe una nueva solicitud.</string>
     <string name="thread_action_card_seats_expired_line">Ningún propietario respondió en 7 días; no se cambió nada.</string>
     <string name="thread_action_card_reconfirm">Volver a confirmar</string>
     <string name="thread_action_card_reconfirm_failed">No se pudo volver a confirmar</string>

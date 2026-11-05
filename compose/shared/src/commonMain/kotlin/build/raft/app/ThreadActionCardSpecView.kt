@@ -104,23 +104,72 @@ internal fun ActionCardSpecCard.withChangingButtonsLabelled(label: ActionCardSpe
 }
 
 /**
- * An ended card's line under its title (web `useExpiredCardLine`): a person's request (a seat or
- * Pro request) "No owner answered within 7 days", else for an expired card "Expired on {date}"
- * from its [ThreadActionCard.expiresAt] in the app's time format, and to ask the agent for a new
- * one. None for a question card (the web has its own ended lines) or a withdrawn one, nor
- * without a date (a 409 on a card that had none) or a live time context to write it.
+ * Types that keep their own deadline rule (shared `isActionCardExpiryExempt`, slock #13254): a
+ * person's request among them keeps its own "No owner answered" line when it expires.
+ */
+internal val ActionCardExpiryExemptTypes: Set<String> =
+    setOf(QuestionAskActionCardType, "agent:approve_call", "assistant:owner_action", SeatsAddActionCardType, "plan:upgrade")
+
+/** Which line an expired card says under its title (web `useExpiredCardLine`, slock #13275). */
+internal sealed interface ActionCardExpiredLine {
+    /** A person's request with its own deadline (a seat or Pro request): "No owner answered within 7 days". */
+    data object PersonRequest : ActionCardExpiredLine
+
+    /** The viewer sent it: "Expired on {date}. Send a new request." */
+    data class Own(val date: String) : ActionCardExpiredLine
+
+    /** A person sent it under the 30-day rule and is a member here: "Ask {owner} to send a new request." */
+    data class FromPerson(val date: String, val owner: String) : ActionCardExpiredLine
+
+    /** An agent's card, or its sender is no longer known here: "Ask the agent to send a new request." */
+    data class FromAgent(val date: String) : ActionCardExpiredLine
+}
+
+/**
+ * The line for an expired card ([ActionCardExpiredLine]), or null: not expired, a question card
+ * (the web has its own ended lines), or no date. [formatDate] writes `expiresAt` as the done line
+ * writes its time (null: it can't); [requesterName] is the requester's name from this server's
+ * member directory (null when not a member here); [viewerUserId] is the signed-in person.
+ */
+internal fun ThreadActionCard.actionCardExpiredLine(
+    viewerUserId: String?,
+    requesterName: String?,
+    formatDate: (String) -> String?,
+): ActionCardExpiredLine? {
+    if (!isExpired || type.equals(QuestionAskActionCardType, ignoreCase = true)) return null
+    val requester = requesterUserId
+    if (requester != null && ActionCardExpiryExemptTypes.any { it.equals(type, ignoreCase = true) }) return ActionCardExpiredLine.PersonRequest
+    val at = expiresAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val date = formatDate(at)?.takeIf { it.isNotBlank() } ?: return null
+    return when {
+        requester != null && requester == viewerUserId?.trim() -> ActionCardExpiredLine.Own(date)
+        requester != null && !requesterName.isNullOrBlank() -> ActionCardExpiredLine.FromPerson(date, requesterName)
+        else -> ActionCardExpiredLine.FromAgent(date)
+    }
+}
+
+/**
+ * An ended card's line under its title ([actionCardExpiredLine]): the requester by name from the
+ * thread's member lookup ([LocalThreadActionCardNames]), the viewer from the spec host, the date
+ * in the app's time format (never the raw wire timestamp, nothing without a live time context).
  */
 @Composable
 internal fun ThreadActionCard.actionCardEndedLine(): String? {
-    if (!isExpired || type.equals(QuestionAskActionCardType, ignoreCase = true)) return null
-    if (requesterUserId != null || type.equals(SeatsAddActionCardType, ignoreCase = true)) {
-        return stringResource(Res.string.thread_action_card_seats_expired_line)
+    if (!isExpired) return null
+    val viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId
+    val names = LocalThreadActionCardNames.current
+    val context = currentRaftTimeContextProvider?.current
+    val requesterName = requesterUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }
+    val line =
+        actionCardExpiredLine(viewerUserId, requesterName) { at ->
+            context?.formatTimestampLabel(at)?.takeIf { it != at }
+        } ?: return null
+    return when (line) {
+        ActionCardExpiredLine.PersonRequest -> stringResource(Res.string.thread_action_card_seats_expired_line)
+        is ActionCardExpiredLine.Own -> stringResource(Res.string.thread_action_card_expired_line_own, line.date)
+        is ActionCardExpiredLine.FromPerson -> stringResource(Res.string.thread_action_card_expired_line_from_person, line.date, line.owner)
+        is ActionCardExpiredLine.FromAgent -> stringResource(Res.string.thread_action_card_expired_line, line.date)
     }
-    val at = expiresAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val context = currentRaftTimeContextProvider?.current ?: return null
-    // Never the raw wire timestamp: a context without a day formats nothing.
-    val date = context.formatTimestampLabel(at).takeIf { it.isNotBlank() && it != at } ?: return null
-    return stringResource(Res.string.thread_action_card_expired_line, date)
 }
 
 /** An app string as a card Msg: the same words in [displayLocale] and as the English fallback. */

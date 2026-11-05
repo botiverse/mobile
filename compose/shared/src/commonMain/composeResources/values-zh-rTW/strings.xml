@@ -873,6 +873,8 @@
     <string name="thread_action_card_status_expired">已過期</string>
     <string name="thread_action_card_status_withdrawn">已撤回</string>
     <string name="thread_action_card_expired_line">已於 %1$s 過期。請讓 Agent 重新傳送請求。</string>
+    <string name="thread_action_card_expired_line_own">已於 %1$s 過期。請重新傳送請求。</string>
+    <string name="thread_action_card_expired_line_from_person">已於 %1$s 過期。請讓 %2$s 重新傳送請求。</string>
     <string name="thread_action_card_seats_expired_line">沒有任何擁有者在 7 天內回應，因此未做任何變更。</string>
     <string name="thread_action_card_reconfirm">重新確認</string>
     <string name="thread_action_card_reconfirm_failed">重新確認失敗</string>

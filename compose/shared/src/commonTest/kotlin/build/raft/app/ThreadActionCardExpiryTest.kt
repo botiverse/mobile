@@ -233,6 +233,30 @@ class ThreadActionCardExpiryTest {
     }
 
     @Test
+    fun theExpiredLineSaysWhoToAskAsTheWebDoes() {
+        val date: (String) -> String? = { "10-30 09:30" }
+        val expired = card(type = "agent:create", state = "expired")
+        // An agent's card: ask the agent.
+        assertEquals(ActionCardExpiredLine.FromAgent("10-30 09:30"), expired.actionCardExpiredLine("u-viewer", null, date))
+        // A person sent it under the 30-day rule: ask them by name; to the sender, send a new one.
+        val fromPerson = expired.copy(requesterUserId = "u-wendy")
+        assertEquals(ActionCardExpiredLine.FromPerson("10-30 09:30", "Wendy"), fromPerson.actionCardExpiredLine("u-viewer", "Wendy", date))
+        assertEquals(ActionCardExpiredLine.Own("10-30 09:30"), fromPerson.actionCardExpiredLine("u-wendy", "Wendy", date))
+        // No longer a member here: as an agent's card.
+        assertEquals(ActionCardExpiredLine.FromAgent("10-30 09:30"), fromPerson.actionCardExpiredLine("u-viewer", null, date))
+        // A person's request with its own deadline keeps its own line, dated or not.
+        for (type in listOf("seats:add", "plan:upgrade")) {
+            val request = card(type = type, state = "expired", expiresAt = null).copy(requesterUserId = "u-wendy")
+            assertEquals(ActionCardExpiredLine.PersonRequest, request.actionCardExpiredLine("u-viewer", "Wendy", date), type)
+        }
+        // No date, a question card, or not expired: no line.
+        assertNull(card(state = "expired", expiresAt = null).actionCardExpiredLine("u-viewer", null, date))
+        assertNull(expired.actionCardExpiredLine("u-viewer", null) { null })
+        assertNull(card(type = "question:ask", state = "expired").actionCardExpiredLine("u-viewer", null, date))
+        assertNull(card().actionCardExpiredLine("u-viewer", null, date))
+    }
+
+    @Test
     fun theServersExpiryRefusalReadsAsExpiry() = runTest {
         val refusal =
             HomeNetworkResponse(

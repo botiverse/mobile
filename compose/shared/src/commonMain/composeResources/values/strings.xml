@@ -873,6 +873,8 @@
     <string name="thread_action_card_status_expired">Expired</string>
     <string name="thread_action_card_status_withdrawn">Withdrawn</string>
     <string name="thread_action_card_expired_line">Expired on %1$s. Ask the agent to send a new request.</string>
+    <string name="thread_action_card_expired_line_own">Expired on %1$s. Send a new request.</string>
+    <string name="thread_action_card_expired_line_from_person">Expired on %1$s. Ask %2$s to send a new request.</string>
     <string name="thread_action_card_seats_expired_line">No owner answered within 7 days; nothing changed.</string>
     <string name="thread_action_card_reconfirm">Reconfirm</string>
     <string name="thread_action_card_reconfirm_failed">Reconfirmation failed</string>
