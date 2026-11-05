@@ -1,6 +1,8 @@
 package build.raft.app.links
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -128,7 +130,14 @@ class RaftMessageLinksTest {
     fun parsesPermalinksOnTheDefaultHosts() {
         for (host in listOf("app.slock.ai", "app.raft.build")) {
             assertEquals(
-                ParsedRaftPermalink(ConversationKind.Channel, "botiverse", channel, message, null),
+                ParsedRaftPermalink(
+                    "https://$host/s/botiverse/channel/$channel?msg=$message",
+                    "botiverse",
+                    ConversationKind.Channel,
+                    ChannelId(channel),
+                    MessageId(message),
+                    null,
+                ),
                 parseRaftPermalink("https://$host/s/botiverse/channel/$channel?msg=$message", hosts),
             )
         }
@@ -141,20 +150,18 @@ class RaftMessageLinksTest {
 
     @Test
     fun parsesThreadPermalinkWithPercentEncodedColon() {
+        val url = "https://app.slock.ai/s/botiverse/channel/$channel?thread=$channel%3A$parent&msg=$message"
         assertEquals(
-            ParsedRaftPermalink(ConversationKind.Channel, "botiverse", channel, message, parent),
-            parseRaftPermalink(
-                "https://app.slock.ai/s/botiverse/channel/$channel?thread=$channel%3A$parent&msg=$message",
-                hosts,
-            ),
+            ParsedRaftPermalink(url, "botiverse", ConversationKind.Channel, ChannelId(channel), MessageId(message), MessageId(parent)),
+            parseRaftPermalink(url, hosts),
         )
     }
 
     @Test
     fun threadOnlyUrlTargetsTheThreadParent() {
         val parsed = parseRaftPermalink("https://app.slock.ai/s/botiverse/channel/$channel?thread=$channel%3A$parent", hosts)
-        assertEquals(parent, parsed?.messageId)
-        assertEquals(parent, parsed?.threadParentMessageId)
+        assertEquals(MessageId(parent), parsed?.messageId)
+        assertEquals(MessageId(parent), parsed?.threadParentMessageId)
     }
 
     @Test
@@ -175,12 +182,12 @@ class RaftMessageLinksTest {
     @Test
     fun keepsOnlyTheLeadingMessageIdWhenCjkTextFollows() {
         val base = "https://app.slock.ai/s/botiverse/channel/$channel"
-        assertEquals(message, parseRaftPermalink("$base?msg=${message}这条你是不是没收到", hosts)?.messageId)
-        assertEquals(message, parseRaftPermalink("$base?msg=$message，看一下", hosts)?.messageId)
-        assertEquals("7556f881", parseRaftPermalink("$base?msg=7556f881这条", hosts)?.messageId)
+        assertEquals(MessageId(message), parseRaftPermalink("$base?msg=${message}这条你是不是没收到", hosts)?.messageId)
+        assertEquals(MessageId(message), parseRaftPermalink("$base?msg=$message，看一下", hosts)?.messageId)
+        assertEquals(MessageId("7556f881"), parseRaftPermalink("$base?msg=7556f881这条", hosts)?.messageId)
         val thread = parseRaftPermalink("$base?thread=$channel%3A${parent}这个", hosts)
-        assertEquals(parent, thread?.messageId)
-        assertEquals(parent, thread?.threadParentMessageId)
+        assertEquals(MessageId(parent), thread?.messageId)
+        assertEquals(MessageId(parent), thread?.threadParentMessageId)
     }
 
     @Test
@@ -205,8 +212,8 @@ class RaftMessageLinksTest {
         val extracted = extractFirstQuotedRaftPermalink("…visual aid @Oscar 来补充\n$raftUrl", hosts, "raft")
         assertNotNull(extracted)
         assertEquals(raftUrl, extracted.rawUrl)
-        assertEquals("e1cf9d25-db9a-4626-9406-be8b3aa8672b", extracted.parsed.messageId)
-        assertEquals("a6e03470-d465-4e0a-801d-945efa952684", extracted.parsed.threadParentMessageId)
+        assertEquals(MessageId("e1cf9d25-db9a-4626-9406-be8b3aa8672b"), extracted.parsed.messageId)
+        assertEquals(MessageId("a6e03470-d465-4e0a-801d-945efa952684"), extracted.parsed.threadParentMessageId)
     }
 
     @Test

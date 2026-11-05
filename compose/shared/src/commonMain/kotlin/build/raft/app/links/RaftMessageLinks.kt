@@ -1,9 +1,12 @@
 package build.raft.app.links
 
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.appLinkPreviewHref
 import build.raft.app.data.parseArtifactLinkTarget
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageId
 import build.raft.app.raftSchemeLinkToWebLink
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
@@ -233,11 +236,13 @@ internal fun planRaftMessageLinks(
 // --- Raft message permalinks (web parseRaftPermalink) -------------------------------------------
 
 internal data class ParsedRaftPermalink(
-    val routeKind: ConversationKind,
+    /** The web URL as written (trimmed). */
+    val rawUrl: String,
     val serverSlug: String,
-    val channelId: String,
-    val messageId: String,
-    val threadParentMessageId: String?,
+    val routeKind: ConversationKind,
+    val channelId: ChannelId,
+    val messageId: MessageId,
+    val threadParentMessageId: MessageId?,
 )
 
 /** web DEFAULT_RAFT_PERMALINK_HOSTNAMES. */
@@ -282,13 +287,23 @@ internal fun parseRaftPermalink(href: String, hostnames: Set<String>): ParsedRaf
     val messageId = explicitId ?: threadParentMessageId ?: return null
 
     return ParsedRaftPermalink(
-        routeKind = if (match.groupValues[2].lowercase() == "dm") ConversationKind.DirectMessage else ConversationKind.Channel,
+        rawUrl = href.trim(),
         serverSlug = match.groupValues[1].percentDecoded() ?: return null,
-        channelId = match.groupValues[3],
-        messageId = messageId,
-        threadParentMessageId = threadParentMessageId,
+        routeKind = if (match.groupValues[2].lowercase() == "dm") ConversationKind.DirectMessage else ConversationKind.Channel,
+        channelId = ChannelId(match.groupValues[3]),
+        messageId = MessageId(messageId),
+        threadParentMessageId = threadParentMessageId?.let(::MessageId),
     )
 }
+
+/**
+ * [parseRaftPermalink] on the hosts this installation knows ([raftPermalinkHostnames]: the defaults,
+ * the client config's `appHosts`, and [configuredWebUrl]'s host).
+ */
+internal fun String.toParsedRaftPermalink(
+    configuredWebUrl: String? = null,
+    appHosts: Collection<String> = RaftClientConfigAppHosts.current,
+): ParsedRaftPermalink? = parseRaftPermalink(this, raftPermalinkHostnames(appHosts, configuredWebUrl))
 
 private fun leadingMessageId(value: String): String? = LeadingMessageId.find(value)?.groupValues?.get(1)
 
