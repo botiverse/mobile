@@ -104,16 +104,19 @@ internal fun ActionCardSpecCard.withChangingButtonsLabelled(label: ActionCardSpe
 }
 
 /**
- * An ended card's line under its title (web `ActionCardSpecCard` headerLine): a seat request's
- * "No owner answered within 7 days", else for an expired card when it expired and to ask the
- * agent for a new one; the date in the app's time format. None for a question card (it has its
- * own ended lines on the web) or a withdrawn one, nor without a live time context to date it.
+ * An ended card's line under its title (web `useExpiredCardLine`): a person's request (a seat or
+ * Pro request) "No owner answered within 7 days", else for an expired card "Expired on {date}"
+ * from its [ThreadActionCard.expiresAt] in the app's time format, and to ask the agent for a new
+ * one. None for a question card (the web has its own ended lines) or a withdrawn one, nor
+ * without a date (a 409 on a card that had none) or a live time context to write it.
  */
 @Composable
 internal fun ThreadActionCard.actionCardEndedLine(): String? {
     if (!isExpired || type.equals(QuestionAskActionCardType, ignoreCase = true)) return null
-    if (type.equals(SeatsAddActionCardType, ignoreCase = true)) return stringResource(Res.string.thread_action_card_seats_expired_line)
-    val at = (expiredAt ?: expiresAt)?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (requesterUserId != null || type.equals(SeatsAddActionCardType, ignoreCase = true)) {
+        return stringResource(Res.string.thread_action_card_seats_expired_line)
+    }
+    val at = expiresAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val context = currentRaftTimeContextProvider?.current ?: return null
     // Never the raw wire timestamp: a context without a day formats nothing.
     val date = context.formatTimestampLabel(at).takeIf { it.isNotBlank() && it != at } ?: return null

@@ -187,7 +187,7 @@ private fun ThreadActionCardsExpiredVisualContent() {
                         name = "release-review",
                         visibility = "private",
                         description = "Coordinate the final release review.",
-                        expiredAt = "2026-10-30T01:30:00.000Z",
+                        expiresAt = "2026-10-30T01:30:00.000Z",
                     ),
                 pending = false,
                 onCommit = {},
@@ -205,7 +205,7 @@ private fun ThreadActionCardsExpiredVisualContent() {
                 state =
                     RaftActionCardFrameState(
                         status = RaftActionCardStatus.Expired,
-                        endedLine = "10-30 09:30 expired — ask the agent to send a new one",
+                        endedLine = "Expired on 10-30 09:30. Ask the agent to send a new request.",
                     ),
                 entityName = { _, _ -> null },
                 onAction = {},

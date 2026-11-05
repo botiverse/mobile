@@ -669,7 +669,7 @@ internal class ThreadActionCardSpecStore(
      */
     private fun expiredOrError(messageId: String, card: ThreadActionCard, error: ScreenError): ThreadActionCardSpecError? {
         if (!error.isActionCardExpiredRefusal()) return error.toThreadActionCardSpecError()
-        applyCard(messageId, card.markedExpired(nowMillis()))
+        applyCard(messageId, card.markedExpired())
         return null
     }
 

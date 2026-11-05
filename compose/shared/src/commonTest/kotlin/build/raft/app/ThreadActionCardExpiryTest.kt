@@ -39,8 +39,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 
 /**
- * Action card expiry (Tenny 11-05, #proj-apps task 40): the top-level `expiresAt` of a prepared
- * card, state `expired` with `expiredAt`, the client clock deciding only whether buttons show and
+ * Action card expiry (Tenny 11-05, #proj-apps task 40, slock #13254): the top-level `expiresAt`
+ * of a prepared card, state `expired` (still carrying `expiresAt`), the client clock deciding only whether buttons show and
  * dialogs open, and the server's 409 drawn as an expired card.
  */
 class ThreadActionCardExpiryTest {
@@ -64,7 +64,6 @@ class ThreadActionCardExpiryTest {
                    "action":{"type":"channel:create","name":"launch"}}""",
             )
         assertEquals(deadline, read.expiresAt)
-        assertNull(read.expiredAt)
         assertEquals("prepared", read.state)
         // Kept through the thread's message metadata, where every card is read from.
         assertEquals(read, actionCardFromMessageMetadata(read.toMessageMetadata()))
@@ -74,22 +73,28 @@ class ThreadActionCardExpiryTest {
     fun aCardWithoutADeadlineHasNoExpiresAtAndNeverExpires() {
         val read = wire("""{"kind":"action-card","action":{"type":"channel:create","name":"launch"}}""")
         assertNull(read.expiresAt)
-        assertNull(read.expiredAt)
         assertFalse(read.isPastExpiry(Long.MAX_VALUE))
         assertEquals(read, read.expiredAsOf(Long.MAX_VALUE))
         assertNull(actionCardFromMessageMetadata(read.toMessageMetadata())?.expiresAt)
     }
 
     @Test
-    fun anExpiredCardReadsItsStateAndExpiredAt() {
+    fun anExpiredCardReadsItsStateAndKeepsItsExpiresAt() {
+        // A 30-day card past its deadline is served `expired` with the same `expiresAt`, no `expiredAt`.
         val read =
             wire(
-                """{"kind":"action-card","state":"expired","expiredAt":"$deadline",
+                """{"kind":"action-card","state":"expired","expiresAt":"$deadline",
                    "action":{"type":"agent:create","name":"Scout"}}""",
             )
         assertTrue(read.isExpired)
         assertTrue(read.hasEnded)
-        assertEquals(deadline, read.expiredAt)
+        assertEquals(deadline, read.expiresAt)
+        assertNull(read.requesterUserId)
+        // A person's request names who asked.
+        assertEquals(
+            "u-1",
+            wire("""{"kind":"action-card","state":"expired","requesterUserId":"u-1","action":{"type":"seats:add"}}""").requesterUserId,
+        )
         assertEquals(read, actionCardFromMessageMetadata(read.toMessageMetadata()))
     }
 
@@ -115,9 +120,9 @@ class ThreadActionCardExpiryTest {
         assertEquals("prepared", card().expiredAsOf(before).state)
         val expired = card().expiredAsOf(after)
         assertEquals("expired", expired.state)
-        assertEquals(deadline, expired.expiredAt)
-        assertEquals("expired", card(state = "reconfirm_required").expiredAsOf(after).state)
-        // Done, frozen or already ended: as the server says.
+        assertEquals(deadline, expired.expiresAt)
+        // Only a prepared card runs out on the clock (web isActionCardShownExpired); the rest are as the server says.
+        assertEquals("reconfirm_required", card(state = "reconfirm_required").expiredAsOf(after).state)
         assertEquals("executed", card(state = "executed").expiredAsOf(after).state)
         assertEquals("frozen", card(state = "frozen").expiredAsOf(after).state)
         assertEquals("withdrawn", card(type = "question:ask", state = "withdrawn").expiredAsOf(after).state)
@@ -147,11 +152,11 @@ class ThreadActionCardExpiryTest {
                 parseActionCardSpec(
                     Json.parseToJsonElement(
                         """
-                        {"catalog":"action-card.v1","title":{"key":"t","text":{"en":"Card"}},
+                        {"catalog":"action-card.v1","title":{"key":"actionCard.test.t","text":{"en":"Card"}},
                          "spec":{"root":"root","elements":{
                            "root":{"type":"Stack","props":{},"children":["go","site"]},
-                           "go":{"type":"Button","props":{"label":{"key":"go","text":{"en":"Go"}},"emphasis":"primary","action":{"kind":"execute"}}},
-                           "site":{"type":"Button","props":{"label":{"key":"site","text":{"en":"Docs"}},"emphasis":"secondary","action":{"kind":"navigate","url":"https://example.com/docs"}}}
+                           "go":{"type":"Button","props":{"label":{"key":"actionCard.test.go","text":{"en":"Go"}},"emphasis":"primary","action":{"kind":"execute"}}},
+                           "site":{"type":"Button","props":{"label":{"key":"actionCard.test.site","text":{"en":"Docs"}},"emphasis":"secondary","action":{"kind":"navigate","url":"https://example.com/docs"}}}
                          }}}
                         """.trimIndent(),
                     ),
@@ -175,9 +180,9 @@ class ThreadActionCardExpiryTest {
                 parseActionCardSpec(
                     Json.parseToJsonElement(
                         """
-                        {"catalog":"action-card.v1","title":{"key":"t","text":{"en":"Card"}},
+                        {"catalog":"action-card.v1","title":{"key":"actionCard.test.t","text":{"en":"Card"}},
                          "spec":{"root":"open","elements":{
-                           "open":{"type":"Button","props":{"label":{"key":"open","text":{"en":"Create Agent"}},"emphasis":"primary","action":{"kind":"open","intent":"create_agent"}}}
+                           "open":{"type":"Button","props":{"label":{"key":"actionCard.test.open","text":{"en":"Create Agent"}},"emphasis":"primary","action":{"kind":"open","intent":"create_agent"}}}
                          }}}
                         """.trimIndent(),
                     ),
@@ -239,13 +244,13 @@ class ThreadActionCardExpiryTest {
         val error = assertIs<DataResult.Error>(client.executeAction(MessageId("m-card"), "{}")).error
         assertTrue(error.isActionCardExpiredRefusal())
         assertTrue(ScreenError(code = "x", serverCode = "QUESTION_EXPIRED").isActionCardExpiredRefusal())
+        assertFalse(ScreenError(code = "x", serverCode = "EXPIRED").isActionCardExpiredRefusal())
         assertFalse(ScreenError(code = "x", serverCode = "STATE_MISMATCH").isActionCardExpiredRefusal())
         assertFalse(ScreenError(code = "x").isActionCardExpiredRefusal())
-        // Drawn as expired, dated by its deadline, else by now.
-        assertEquals("expired" to deadline, card().markedExpired(before).let { it.state to it.expiredAt })
-        assertEquals("expired", card(expiresAt = null).markedExpired(before).state)
-        assertNotNull(card(expiresAt = null).markedExpired(before).expiredAt)
-        assertEquals("executed", card(state = "executed").markedExpired(before).state)
+        // The 409 carries no date: drawn expired with the card's own `expiresAt`, else undated.
+        assertEquals("expired" to deadline, card().markedExpired().let { it.state to it.expiresAt })
+        assertEquals("expired" to null, card(expiresAt = null).markedExpired().let { it.state to it.expiresAt })
+        assertEquals("executed", card(state = "executed").markedExpired().state)
     }
 
     @Test
@@ -263,9 +268,9 @@ class ThreadActionCardExpiryTest {
                 parseActionCardSpec(
                     Json.parseToJsonElement(
                         """
-                        {"catalog":"action-card.v1","title":{"key":"t","text":{"en":"Card"}},
+                        {"catalog":"action-card.v1","title":{"key":"actionCard.test.t","text":{"en":"Card"}},
                          "spec":{"root":"go","elements":{
-                           "go":{"type":"Button","props":{"label":{"key":"go","text":{"en":"Go"}},"emphasis":"primary","action":{"kind":"execute"}}}
+                           "go":{"type":"Button","props":{"label":{"key":"actionCard.test.go","text":{"en":"Go"}},"emphasis":"primary","action":{"kind":"execute"}}}
                          }}}
                         """.trimIndent(),
                     ),

@@ -13760,7 +13760,7 @@ private fun SharedThreadRouteContentContent(
                                     is DataResult.Error ->
                                         if (result.error.isActionCardExpiredRefusal()) {
                                             // The server refused it as expired (409): the card says so itself.
-                                            threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired(defaultNowMillis())))
+                                            threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
                                         } else {
                                             bridge.toast(actionCardReconfirmFailedLabel)
                                         }
@@ -13834,7 +13834,7 @@ private fun SharedThreadRouteContentContent(
                                 is DataResult.Error -> {
                                     if (result.error.isActionCardExpiredRefusal()) {
                                         // The server refused it as expired (409): the card says so itself.
-                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired(defaultNowMillis())))
+                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
                                     } else {
                                         bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
                                     }
