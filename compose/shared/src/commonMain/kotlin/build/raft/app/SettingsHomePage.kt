@@ -5253,8 +5253,14 @@ private fun RaftAppShellReadyContent(
                     )
                     messageLinkNavigationTick += 1
                 }
-                is RaftMessageLinkResolution.NotFound ->
-                    pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
+                is RaftMessageLinkResolution.NotFound -> {
+                    // The page's button goes back to the conversation list (Home tab) on a phone, the
+                    // server's channel list on a wide window: leave the Home tab with nothing open under it.
+                    selectAppShellTab("home")
+                    retainedAppShellTabs = retainedAppShellTabs + "home"
+                    homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+                    pager.openRaftConversationUnavailablePage(navigationStoreScope)
+                }
                 is RaftMessageLinkResolution.PublicPreview ->
                     pager.openRaftMessageLinkPublicPreviewPage(resolution.link, navigationStoreScope)
             }

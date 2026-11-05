@@ -5010,7 +5010,26 @@ private fun ThreadPageScreen(
         }
         openPage()
     }
+    val rootBack: () -> Unit = {
+        val closeRequest = adaptiveCloseRequest
+        if (closeRequest != null) {
+            sharedStores.eventBus.post(
+                eventName = RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                eventData = closeRequest.toJson(),
+                crossProcess = true,
+                source = "adaptive_thread_root_back",
+            )
+        } else {
+            routerModule.closePage()
+        }
+    }
+    val conversationUnavailableNav =
+        ConversationUnavailableNav(
+            wide = adaptivePaneState.layout == RaftAdaptivePaneLayout.DualPane,
+            onBack = rootBack,
+        )
     CompositionLocalProvider(
+        LocalConversationUnavailableNav provides conversationUnavailableNav,
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
@@ -5034,19 +5053,7 @@ private fun ThreadPageScreen(
         eventBus = sharedStores.eventBus,
         active = pageVisible,
         adaptiveCloseRequest = adaptiveCloseRequest,
-        onBack = {
-            val closeRequest = adaptiveCloseRequest
-            if (closeRequest != null) {
-                sharedStores.eventBus.post(
-                    eventName = RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT,
-                    eventData = closeRequest.toJson(),
-                    crossProcess = true,
-                    source = "adaptive_thread_root_back",
-                )
-            } else {
-                routerModule.closePage()
-            }
-        },
+        onBack = rootBack,
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
         onOpenThreadPayloadWithoutAnimation = { nextPayload -> openStandaloneThreadPayload(nextPayload, animated = false) },
@@ -17613,7 +17620,10 @@ private fun ThreadPageContentContent(
                 .fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
         ) {
-            if (renderAccessRetry) {
+            val unavailableNav = LocalConversationUnavailableNav.current
+            if (renderAccessRetry && unavailableNav != null && isConversationUnavailableErrorCode(payload.errorCode)) {
+                RaftConversationUnavailableState(wide = unavailableNav.wide, onBack = unavailableNav.onBack)
+            } else if (renderAccessRetry) {
                 ThreadStateActionMessage(
                     title = stringResource(Res.string.thread_error_load),
                     detail =
@@ -20677,7 +20687,12 @@ private fun ThreadChatTabContent(
                 ThreadLoadingState()
             }
         "error" ->
-            ThreadStateActionMessage(
+            if (LocalConversationUnavailableNav.current != null &&
+                isConversationUnavailableErrorCode(renderConfig.errorCode)
+            ) {
+                val nav = checkNotNull(LocalConversationUnavailableNav.current)
+                RaftConversationUnavailableState(wide = nav.wide, onBack = nav.onBack)
+            } else ThreadStateActionMessage(
                 title = stringResource(Res.string.thread_error_load),
                 detail =
                     userFacingErrorLabels.forErrorCode(renderConfig.errorCode)

@@ -103,6 +103,9 @@
     <string name="message_link_title">消息链接</string>
     <string name="message_link_not_found_title">找不到这条消息</string>
     <string name="message_link_not_found_body">链接可能有误，或者你没有权限查看。</string>
+    <string name="conversation_unavailable_title">这个对话你无法打开</string>
+    <string name="conversation_unavailable_back_conversations">回到会话列表</string>
+    <string name="conversation_unavailable_back_channels">返回频道列表</string>
     <string name="message_link_switched_server">已切换到 %1$s</string>
     <string name="message_link_public_preview_title">公开预览</string>
     <string name="message_link_public_preview_notice">你还没有加入这个服务器，这是它的公开预览。</string>
