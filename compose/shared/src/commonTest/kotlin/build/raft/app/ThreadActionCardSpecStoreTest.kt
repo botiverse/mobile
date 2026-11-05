@@ -116,7 +116,7 @@ class ThreadActionCardSpecStoreTest {
         assertEquals(
             listOf(
                 "card.v1", "confirm.v1", "form.v1", "field.text_input", "field.text_area", "field.select", "field.toggle",
-                "field.member_picker", "field.channel_picker", "field.agent_picker",
+                "field.member_picker", "field.channel_picker", "field.agent_picker", "field.choice",
                 "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
                 "intent.feedback_ticket",
             ),
