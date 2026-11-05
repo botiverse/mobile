@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-05T22:04:02.790Z",
+  "generatedAt": "2026-11-05T22:57:01.397Z",
   "runId": "1e916283-20261105220131",
   "commit": "1e916283-20261105220131",
   "commitSubject": "feat(cards): RFC 082 v2.0 header, Markdown, Fields, Divider (#4367)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 21,
-        "pending": 71
+        "ready": 33,
+        "pending": 59
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 0,
-        "pending": 92
+        "ready": 10,
+        "pending": 82
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 0,
-        "pending": 92
+        "ready": 6,
+        "pending": 86
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 92,
-    "ready": 21,
-    "pending": 71
+    "ready": 33,
+    "pending": 59
   },
   "componentMatrixSummary": {
     "total": 121,

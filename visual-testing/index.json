@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-05T22:04:02.790Z",
+  "generatedAt": "2026-11-05T22:57:01.397Z",
   "latestRunId": "1e916283-20261105220131",
   "latest": {
     "runId": "1e916283-20261105220131",
     "commit": "1e916283-20261105220131",
     "commitSubject": "feat(cards): RFC 082 v2.0 header, Markdown, Fields, Divider (#4367)",
-    "generatedAt": "2026-11-05T22:04:02.790Z",
+    "generatedAt": "2026-11-05T22:57:01.397Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 92,
-      "ready": 21,
-      "pending": 71
+      "ready": 33,
+      "pending": 59
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "1e916283-20261105220131",
       "commit": "1e916283-20261105220131",
       "commitSubject": "feat(cards): RFC 082 v2.0 header, Markdown, Fields, Divider (#4367)",
-      "generatedAt": "2026-11-05T22:04:02.790Z",
+      "generatedAt": "2026-11-05T22:57:01.397Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 92,
-        "ready": 21,
-        "pending": 71
+        "ready": 33,
+        "pending": 59
       },
       "comparisons": [
         "react__android",

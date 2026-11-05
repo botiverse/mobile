@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-05 22:04:02 UTC
+Generated: 2026-11-05 22:57:01 UTC
 Latest run: 1e916283-20261105220131
 Latest commit: 1e916283-20261105220131
 Commit subject: feat(cards): RFC 082 v2.0 header, Markdown, Fields, Divider (#4367)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 92, same 0, pass 1, basic-pass 8, different 76, missing 7
-AI analysis: ready 21 / total 92, pending 71
+AI analysis: ready 33 / total 92, pending 59
 Visual coverage matrix: active 101 / total 121, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
