@@ -39,9 +39,11 @@ class TaskConversationHeaderStoreTest {
     fun statusOptionsAreEveryStatusForEveryone() {
         // Web getTaskStatusOptions: TASK_STATUSES from any status (the server has no transition
         // table); closed -> todo reads "Reopen to Todo". In Review retired: TaskInReviewRetiredTest.
+        // Backlog is offered later, with its reason input (web hideBacklog); Unknown never is.
         TaskStatus.entries.forEach { current ->
             val options = taskStatusOptions(current, inReviewRetired = false)
-            assertEquals(TaskStatus.entries.toList(), options.map { it.status }, "current=$current")
+            val expected = TaskStatus.known.filter { it != TaskStatus.Backlog || current == TaskStatus.Backlog }
+            assertEquals(expected, options.map { it.status }, "current=$current")
             assertEquals(
                 if (current == TaskStatus.Closed) listOf(TaskStatus.Todo) else emptyList(),
                 options.filter { it.reopensToTodo }.map { it.status },

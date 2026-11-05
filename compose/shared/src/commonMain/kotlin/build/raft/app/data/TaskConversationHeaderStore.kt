@@ -35,10 +35,14 @@ internal fun taskStatusOptions(current: TaskStatus, inReviewRetired: Boolean): L
  * conversation ([inReviewRetired], web `opensAsTaskConversation(task, taskV2)`) is not offered it —
  * the server stores In Progress when asked for it — unless the task is still in it, where it stays as
  * the current option. A legacy task, or any task with task v2 off, keeps every status.
+ * [TaskStatus.Unknown] is never a choice.
  */
 internal fun taskStatusChoices(current: TaskStatus, inReviewRetired: Boolean): List<TaskStatus> =
-    TaskStatus.entries.filter { status ->
-        !(inReviewRetired && status == TaskStatus.InReview && current != TaskStatus.InReview)
+    TaskStatus.known.filter { status ->
+        !(inReviewRetired && status == TaskStatus.InReview && current != TaskStatus.InReview) &&
+            // Backlog is offered with its reason input (a later version), as on web (slock #12962
+            // `getTaskStatusOptions` hideBacklog): only a task already in it keeps it as the current option.
+            !(status == TaskStatus.Backlog && current != TaskStatus.Backlog)
     }
 
 /**

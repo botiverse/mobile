@@ -43,7 +43,7 @@ class RaftMarkdownTaskRefChipTest {
                     TaskStatus.Done to (colors.taskStatusDoneSoft to colors.taskStatusDone),
                     TaskStatus.Closed to (colors.taskStatusClosedSoft to colors.taskStatusClosed),
                 )
-            TaskStatus.entries.forEach { status ->
+            expected.keys.forEach { status ->
                 val style = raftMarkdownTaskChipStyle(status, colors)
                 val (soft, pixel) = expected.getValue(status)
                 assertEquals(soft, style.box.backgroundColor, "$status soft fill")
@@ -63,7 +63,7 @@ class RaftMarkdownTaskRefChipTest {
 
     @Test
     fun statusFillsAreDistinctPerStatus() {
-        val fills = TaskStatus.entries.map { raftMarkdownTaskChipStyle(it, RaftUiThemeColors.RaftLight).box.backgroundColor }
+        val fills = TaskStatus.known.map { raftMarkdownTaskChipStyle(it, RaftUiThemeColors.RaftLight).box.backgroundColor }
         assertEquals(fills.size, fills.toSet().size)
     }
 

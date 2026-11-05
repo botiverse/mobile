@@ -60,7 +60,7 @@ internal fun tasksPageOwnerSnapshotStillCurrent(
 data class TasksUiState(
     val loadState: ScreenLoadState<TasksContent>,
     val selectedFilter: TaskStatus? = null,
-    val availableFilters: List<TaskStatus> = TaskStatus.entries,
+    val availableFilters: List<TaskStatus> = TaskStatus.known,
     val navigationErrorCode: String? = null,
     val refreshing: Boolean = false,
     val statusUpdatingTaskId: String? = null,
@@ -122,7 +122,8 @@ enum class TasksViewMode {
  * API: which chip popover is open, what's typed into a popover search box, what columns
  * the user collapsed, which assignee chips are checked.
  *
- * The collapsed-by-default for `done` / `closed` mirrors the React panel — visual focus
+ * The collapsed-by-default for `backlog` / `done` / `closed` (raft-design tasks.md: Backlog is work
+ * not planned now, Done and Closed only grow) mirrors the React panel — visual focus
  * stays on active work; users can expand the terminal states explicitly. Initialized via
  * [TasksPresentationState.Default] (companion factory) so the defaults are tested once.
  */
@@ -130,7 +131,7 @@ data class TasksPresentationState(
     val selectedChannelNames: Set<String> = emptySet(),
     val channelSelectorExpanded: Boolean = false,
     val selectedMode: TasksViewMode = TasksViewMode.Board,
-    val collapsedStatuses: Set<TaskStatus> = setOf(TaskStatus.Done, TaskStatus.Closed),
+    val collapsedStatuses: Set<TaskStatus> = setOf(TaskStatus.Backlog, TaskStatus.Done, TaskStatus.Closed),
     val selectedCreatorIds: Set<String> = emptySet(),
     val selectedAssigneeIds: Set<String> = emptySet(),
     val openFilterId: String? = null,
@@ -531,7 +532,8 @@ internal class SharedTasksViewModel(
      * safe.
      */
     private fun boardSeedStatuses(): List<TaskStatus> =
-        state.value.availableFilters.ifEmpty { TaskStatus.entries.toList() }.toList()
+        // Unknown is not a server status: it has no page of its own to seed.
+        state.value.availableFilters.ifEmpty { TaskStatus.known }.filter { it.isKnown }
 
     /**
      * Seed every board column's own cursor (task #363). Called after a load that
@@ -1937,21 +1939,40 @@ fun List<TaskSummary>.toTasksUiStateForThreadTasks(): TasksUiState =
     )
 
 /**
- * One column per status. [taskV2Enabled]: In Review is retired for task v2 (#wg-task-v2:f7043517,
+ * One column per status, in board order (raft-design tasks.md: Backlog, Todo, In Progress, Done,
+ * Closed). [taskV2Enabled]: In Review is retired for task v2 (#wg-task-v2:f7043517,
  * raft-design decision 0043; web slock #12884 TasksPanel): no empty In Review column, while a
- * pre-v2 task still in it keeps the column so it stays reachable.
+ * pre-v2 task still in it keeps the column so it stays reachable. Backlog is task v2 only: without
+ * it, the column shows only while a task is in it. An [TaskStatus.Unknown] column (a status this
+ * build does not know) shows last, only while it holds a task, so such a task never disappears.
  */
 fun TasksContent.boardColumns(renderLimit: Int, taskV2Enabled: Boolean = false): List<TasksBoardColumn> {
     val tasksByStatus = tasks.groupBy { it.status }
     return TaskStatus.entries.mapNotNull { status ->
         val statusTasks = tasksByStatus[status].orEmpty()
         if (taskV2Enabled && status == TaskStatus.InReview && statusTasks.isEmpty()) return@mapNotNull null
+        if (!taskV2Enabled && status == TaskStatus.Backlog && statusTasks.isEmpty()) return@mapNotNull null
+        if (status == TaskStatus.Unknown && statusTasks.isEmpty()) return@mapNotNull null
         TasksBoardColumn(
             status = status,
             totalCount = statusTasks.size,
             tasks = if (renderLimit > 0) statusTasks.take(renderLimit) else statusTasks
         )
     }
+}
+
+/**
+ * The groups of a conversation's Tasks section (raft-design tasks.md "Tasks beside a conversation":
+ * the work that is moving, then what waits, then what is over): Backlog after the active statuses,
+ * before Done. The Tasks page's list keeps the board order.
+ */
+fun List<TasksBoardColumn>.inConversationSectionOrder(): List<TasksBoardColumn> {
+    val backlog = filter { it.status == TaskStatus.Backlog }
+    if (backlog.isEmpty()) return this
+    val rest = filterNot { it.status == TaskStatus.Backlog }
+    val firstOver = rest.indexOfFirst { it.status == TaskStatus.Done || it.status == TaskStatus.Closed || it.status == TaskStatus.Unknown }
+    val at = if (firstOver < 0) rest.size else firstOver
+    return rest.take(at) + backlog + rest.drop(at)
 }
 
 fun TaskSummary.tasksSourceLabel(): String? =

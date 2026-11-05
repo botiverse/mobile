@@ -27,6 +27,7 @@ import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.designtokens.RaftUiThemeColors
 import build.raft.app.model.TaskStatus
 import build.raft.app.raftSpanStyleForWeight
+import build.raft.app.strictTaskStatusOrNull
 
 /**
  * Status of every task the current surface knows, keyed by task number, for inline `#N` task
@@ -75,7 +76,7 @@ internal fun RaftMarkdownOwnTaskStatusScope(
     val base = LocalRaftMarkdownTaskStatuses.current
     val statuses =
         remember(base, taskNumber, taskStatus) {
-            base.withRaftMarkdownOwnTaskStatus(taskNumber, TaskStatus.fromWireValue(taskStatus))
+            base.withRaftMarkdownOwnTaskStatus(taskNumber, taskStatus.strictTaskStatusOrNull("markdown_own_task", diagnostics = {}))
         }
     if (statuses === base) {
         content()
@@ -160,17 +161,15 @@ internal fun raftMarkdownTaskChipStyle(
         box =
             RaftInlineBoxStyle(
                 backgroundColor = status.raftTaskStatusSoft(colors),
+                borderColor = status.raftTaskStatusOutline(colors) ?: Color.Transparent,
+                borderWidth = if (status.raftTaskStatusOutline(colors) != null) 1.dp else 0.dp,
                 paddingTop = RaftMarkdownTaskChipVerticalPadding,
                 paddingBottom = RaftMarkdownTaskChipVerticalPadding,
                 cornerRadius = RaftAppRadius.Sticker,
                 marginStart = RaftMarkdownTaskChipMargin,
                 marginEnd = RaftMarkdownTaskChipMargin,
             ),
-        pixel =
-            RaftTaskStatusPixelStyle(
-                fill = status.raftTaskStatusColor(colors),
-                stroke = RaftUiPalette.stickerInk,
-            ),
+        pixel = status.raftTaskStatusPixelStyle(colors),
         textColor = colors.foreground,
         fontWeight = FontWeight.SemiBold,
         leadingGap = RaftMarkdownTaskChipPaddingStart + RaftMarkdownTaskChipPixelSize + RaftMarkdownTaskChipIconGap,
@@ -178,9 +177,10 @@ internal fun raftMarkdownTaskChipStyle(
     )
 }
 
-/** `--task-status-*`: the pixel fill. */
+/** `--task-status-*`: the pixel fill. Backlog (and Unknown, drawn like it) has none: the pixel is hollow. */
 internal fun TaskStatus.raftTaskStatusColor(colors: RaftUiThemeColors): Color =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> Color.Transparent
         TaskStatus.Todo -> colors.taskStatusTodo
         // `--task-status-in-progress` is one value in both themes, so it lives on the palette.
         TaskStatus.InProgress -> RaftUiPalette.taskStatusInProgress
@@ -189,15 +189,33 @@ internal fun TaskStatus.raftTaskStatusColor(colors: RaftUiThemeColors): Color =
         TaskStatus.Closed -> colors.taskStatusClosed
     }
 
-/** `--task-status-*-soft`: the chip fill. */
+/** `--task-status-*-soft`: the chip fill. Backlog has no tint: [raftTaskStatusOutline] stands in for it. */
 internal fun TaskStatus.raftTaskStatusSoft(colors: RaftUiThemeColors): Color =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> Color.Transparent
         TaskStatus.Todo -> colors.taskStatusTodoSoft
         TaskStatus.InProgress -> colors.taskStatusInProgressSoft
         TaskStatus.InReview -> colors.taskStatusInReviewSoft
         TaskStatus.Done -> colors.taskStatusDoneSoft
         TaskStatus.Closed -> colors.taskStatusClosedSoft
     }
+
+/** raft-ui `taskStatusSoft` backlog: a `line-hairline` outline in place of the tint; null for a tinted status. */
+internal fun TaskStatus.raftTaskStatusOutline(colors: RaftUiThemeColors): Color? =
+    if (isHollowTaskStatus()) colors.lineHairline else null
+
+/**
+ * raft-ui `TaskStatusPixel`: the status fill inside a sticker-ink edge; Backlog's is hollow with a
+ * `line-strong` edge (sticker-ink would vanish on the dark canvas with nothing inside it).
+ */
+internal fun TaskStatus.raftTaskStatusPixelStyle(colors: RaftUiThemeColors): RaftTaskStatusPixelStyle =
+    RaftTaskStatusPixelStyle(
+        fill = raftTaskStatusColor(colors),
+        stroke = if (isHollowTaskStatus()) colors.lineStrong else RaftUiPalette.stickerInk,
+    )
+
+/** Backlog has no colour (raft-design color.md#statuses); an Unknown status is drawn the same neutral way. */
+private fun TaskStatus.isHollowTaskStatus(): Boolean = this == TaskStatus.Backlog || this == TaskStatus.Unknown
 
 internal fun RaftMarkdownTaskChipStyle.textSpanStyle(): SpanStyle =
     raftSpanStyleForWeight(fontWeight).copy(color = textColor)

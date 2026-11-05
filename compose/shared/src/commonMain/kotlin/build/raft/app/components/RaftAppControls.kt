@@ -110,6 +110,8 @@ internal fun RaftAnchoredMetaChip(
     trailingIconName: RaftLucideIconName? = null,
     trailingIconSize: Dp = iconSize,
     borderWidth: Dp = RaftAppStroke.Thin,
+    /** The edge's colour; null = ink on the fill (the colour-block edge). */
+    borderColor: Color? = null,
     minHeight: Dp = 20.dp,
     horizontalPadding: Dp = 6.dp,
     verticalPadding: Dp = 2.dp,
@@ -210,7 +212,7 @@ internal fun RaftAnchoredMetaChip(
                 .then(modifier)
                 .heightIn(min = minHeight)
                 // A zero width means no edge (a soft chip); Compose would draw 0.dp as a hairline.
-                .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, raftInkOnFill(color, RaftColor.BorderBlack), chipShape) else Modifier)
+                .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, borderColor ?: raftInkOnFill(color, RaftColor.BorderBlack), chipShape) else Modifier)
                 .background(fill, chipShape)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
                 .then(

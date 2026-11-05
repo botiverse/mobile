@@ -100,6 +100,8 @@ private fun RaftTimelineItem(item: RaftTimelineItemSpec, last: Boolean) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val fill = item.taskStatus?.pixelColor(colors) ?: RaftUiPalette.presenceOffline
+    // Backlog's marker is the hollow pixel too: a `line-strong` edge, nothing inside.
+    val markerEdge = item.taskStatus?.pixelEdgeColor(colors) ?: RaftUiPalette.stickerInk
     val hairline = colors.lineHairline
     // Dark mode: the die-cut `sticker-edge` ring around the ink edge, as every sticker has.
     val edge = colors.stickerEdge
@@ -119,15 +121,18 @@ private fun RaftTimelineItem(item: RaftTimelineItemSpec, last: Boolean) {
                 // The axis is on the start side: the right edge in a right-to-left layout.
                 val left = if (layoutDirection == LayoutDirection.Rtl) size.width - markerPx else 0f
                 drawRoundRect(fill, Offset(left + inset, offset + inset), rectSize, radius)
-                drawRoundRect(RaftUiPalette.stickerInk, Offset(left + inset, offset + inset), rectSize, radius, style = Stroke(strokePx))
-                val ringPx = 1.dp.toPx()
-                drawRoundRect(
-                    edge,
-                    Offset(left - ringPx / 2f, offset - ringPx / 2f),
-                    Size(markerPx + ringPx, markerPx + ringPx),
-                    CornerRadius(RaftTimelineMarkerRadius.toPx() + ringPx / 2f),
-                    style = Stroke(ringPx),
-                )
+                drawRoundRect(markerEdge, Offset(left + inset, offset + inset), rectSize, radius, style = Stroke(strokePx))
+                // The hollow Backlog marker is no sticker, so it has no die-cut ring.
+                if (item.taskStatus != RaftTaskStatus.Backlog) {
+                    val ringPx = 1.dp.toPx()
+                    drawRoundRect(
+                        edge,
+                        Offset(left - ringPx / 2f, offset - ringPx / 2f),
+                        Size(markerPx + ringPx, markerPx + ringPx),
+                        CornerRadius(RaftTimelineMarkerRadius.toPx() + ringPx / 2f),
+                        style = Stroke(ringPx),
+                    )
+                }
                 if (!last) {
                     // Runs on through the next item's offset, stopping 2dp short of its marker.
                     val gap = RaftTimelineLineGap.toPx()

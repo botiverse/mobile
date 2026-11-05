@@ -17,9 +17,10 @@ import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftComboboxSheet
 import build.raft.designsystem.components.RaftTaskStatus
 
-/** The app's task status as the design system's (same five, same order). */
+/** The app's task status as the design system's (same order). An Unknown status is drawn neutral, as Backlog (no hue). */
 internal fun TaskStatus.raftTaskStatus(): RaftTaskStatus =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> RaftTaskStatus.Backlog
         TaskStatus.Todo -> RaftTaskStatus.Todo
         TaskStatus.InProgress -> RaftTaskStatus.InProgress
         TaskStatus.InReview -> RaftTaskStatus.InReview

@@ -106,12 +106,25 @@ internal fun String?.strictMessageTypeOrNull(
     parsedMessageTypeOrNull()
         ?: rejectProjectionWireValue(source, "message_type", this, diagnostics)
 
+/**
+ * A task status at an ingest boundary. A present but unknown value (a status a newer server
+ * added) is logged and kept as [TaskStatus.Unknown], so the task still shows; only a missing
+ * or blank status is rejected (null).
+ */
 internal fun String?.strictTaskStatusOrNull(
     source: String,
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
-): TaskStatus? =
-    parsedTaskStatusOrNull()
-        ?: rejectProjectionWireValue(source, "task_status", this, diagnostics)
+): TaskStatus? {
+    parsedTaskStatusOrNull()?.let { return it }
+    // The app's own token for Unknown, re-read from a projection it wrote: no new diagnostic.
+    if (this?.trim()?.lowercase() == TaskStatus.UNKNOWN_WIRE_VALUE) return TaskStatus.Unknown
+    if (this.isNullOrBlank()) return rejectProjectionWireValue(source, "task_status", this, diagnostics)
+    diagnostics(
+        "projection_value_unknown source=${source.strictProjectionDiagnosticToken()} " +
+            "field=task_status value=${strictProjectionDiagnosticToken()}",
+    )
+    return TaskStatus.Unknown
+}
 
 private fun <T> rejectProjectionWireValue(
     source: String,
@@ -131,7 +144,7 @@ internal val strictProjectionDiagnosticsLogger: (String) -> Unit = { message ->
 }
 
 internal val projectionRejectingDiagnosticsLogger: (String) -> Unit = { message ->
-    if (message.startsWith("projection_value_rejected")) {
+    if (message.startsWith("projection_value_rejected") || message.startsWith("projection_value_unknown")) {
         strictProjectionDiagnosticsLogger(message)
     }
 }

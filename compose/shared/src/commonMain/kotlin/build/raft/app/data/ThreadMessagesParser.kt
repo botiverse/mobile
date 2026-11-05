@@ -16,6 +16,7 @@ import build.raft.app.matchesResolvedReplyThreadTimeline
 import build.raft.app.memberKindWireValue
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageType
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.providerLabel
 import build.raft.app.optJsonArray
@@ -354,7 +355,8 @@ private fun WireMessage.toMessageItem(
         isSaved = isSaved,
         taskId = if (hasTaskProjection && resolvedTaskStatus != null) id else null,
         taskNumber = taskNumber?.takeIf { resolvedTaskStatus != null },
-        taskStatus = taskStatus?.takeIf { resolvedTaskStatus != null },
+        // A status this build does not know is kept as the app's Unknown token, so every reader agrees.
+        taskStatus = if (resolvedTaskStatus == TaskStatus.Unknown) TaskStatus.UNKNOWN_WIRE_VALUE else taskStatus?.takeIf { resolvedTaskStatus != null },
         taskAssigneeKind = taskAssigneeKind?.memberKindWireValue(),
         taskAssigneeId = cleanTaskAssigneeId?.takeIf { taskAssigneeKind != null },
         taskAssigneeName =

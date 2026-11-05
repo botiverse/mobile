@@ -287,13 +287,13 @@ class TasksPerStatusBoardSeedWiringTest {
         // later column-end would fall back to the global cursor.
         withTimeout(5_000) {
             while (api.requests.drop(callsBeforeBoard).mapNotNull { it.second }.toSet() !=
-                TaskStatus.entries.map { it.toWireValue() }.toSet()
+                TaskStatus.known.map { it.toWireValue() }.toSet()
             ) {
                 kotlinx.coroutines.delay(5)
             }
         }
         val seeded = api.requests.drop(callsBeforeBoard)
-        assertEquals(TaskStatus.entries.map { it.toWireValue() }.toSet(),
+        assertEquals(TaskStatus.known.map { it.toWireValue() }.toSet(),
             seeded.mapNotNull { it.second }.toSet(),
             "every rendered column (incl. empty ones) is seeded with its own status filter")
         assertTrue(seeded.all { it.first == null }, "each seed is a first page (cursor=null)")

@@ -1788,6 +1788,8 @@
     <string name="tasks_create_hint">Create one with the New Task button.</string>
     <string name="tasks_empty_filtered_detail">Try a different combination or clear the current selection.</string>
     <string name="tasks_empty_server_detail">DM and agent task boards are intentionally excluded from this server-wide view.</string>
+    <string name="tasks_empty_backlog">No backlog tasks</string>
+    <string name="tasks_empty_unknown">No tasks with this status</string>
     <string name="tasks_empty_todo">No todo tasks</string>
     <string name="tasks_empty_in_progress">No in progress tasks</string>
     <string name="tasks_empty_in_review">No in review tasks</string>
@@ -1815,6 +1817,8 @@
     <string name="tasks_assignee_unassigned">Unassigned</string>
     <string name="tasks_detail_task_identifier">Task #%1$d</string>
     <string name="tasks_state_updating">Updating</string>
+    <string name="tasks_status_backlog">Backlog</string>
+    <string name="tasks_status_unknown">Unknown</string>
     <string name="tasks_status_todo">Todo</string>
     <string name="tasks_status_in_progress">In Progress</string>
     <string name="tasks_status_in_review">In Review</string>

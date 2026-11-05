@@ -1786,6 +1786,8 @@
     <string name="tasks_create_hint">使用新建任务按钮创建一个。</string>
     <string name="tasks_empty_filtered_detail">请尝试其他组合，或清除当前筛选条件。</string>
     <string name="tasks_empty_server_detail">此服务器级视图不包含私信和 Agent 任务看板。</string>
+    <string name="tasks_empty_backlog">暂无暂缓的任务</string>
+    <string name="tasks_empty_unknown">暂无此状态的任务</string>
     <string name="tasks_empty_todo">暂无待办任务</string>
     <string name="tasks_empty_in_progress">暂无进行中的任务</string>
     <string name="tasks_empty_in_review">暂无评审中的任务</string>
@@ -1813,6 +1815,8 @@
     <string name="tasks_assignee_unassigned">未分配</string>
     <string name="tasks_detail_task_identifier">任务 #%1$d</string>
     <string name="tasks_state_updating">更新中</string>
+    <string name="tasks_status_backlog">暂缓</string>
+    <string name="tasks_status_unknown">未知</string>
     <string name="tasks_status_todo">待办</string>
     <string name="tasks_status_in_progress">进行中</string>
     <string name="tasks_status_in_review">评审中</string>
