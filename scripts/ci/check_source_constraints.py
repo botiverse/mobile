@@ -312,6 +312,12 @@ RUN_BLOCKING_ALLOWLIST = (
         "Compose resources formatted string lookup, as CMP's own stringResource does; cached "
         "catalog read, no app lock",
     ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
+        "runBlocking { Res.readBytes(",
+        "bundled plural-forms file read once per language, the same synchronous resource read as the "
+        "string lookups above; no app lock",
+    ),
 )
 
 
