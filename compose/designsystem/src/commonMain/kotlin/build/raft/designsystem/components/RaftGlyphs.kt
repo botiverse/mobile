@@ -107,10 +107,19 @@ enum class RaftGlyph(internal vararg val paths: String) {
     /** Lucide `forward`: a forwarded bundle's header label (raft-ui MessageForwardedBundleHeaderLabel). */
     Forward("m15 17 5-5-5-5", "M4 18v-2a4 4 0 0 1 4-4h12"),
 
-    /** Lucide `message-square`: the thread marker of a quoted message (raft-ui MessageQuotedPreviewThread). */
+    /** Lucide `message-square`: the comment count of a task row (raft-ui TaskCompactList). */
     MessageSquare(
         "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16" +
             "a2 2 0 0 1 2 2z",
+    ),
+
+    /**
+     * raft-ui `ThreadIcon` (two overlapping bubbles, the thread marker of a quoted message): its 18 x 18 art
+     * (1.5 stroke) scaled to this 24 grid (2 stroke).
+     */
+    Thread(
+        "M4.6667 15.3333L2.3333 17.6667V5.6667A2.6667 2.6667 0 0 1 5 3H15",
+        "M11 6.6667H19.3333C20.8 6.6667 22 7.8667 22 9.3333V15.6667C22 17.1333 20.8 18.3333 19.3333 18.3333H17.3333V21.6667L13 18.3333H11C9.5333 18.3333 8.3333 17.1333 8.3333 15.6667V9.3333C8.3333 7.8667 9.5333 6.6667 11 6.6667Z",
     ),
 
     /** Lucide `cpu`: the agent profile's runtime chip ([RaftRuntimeChip]). */

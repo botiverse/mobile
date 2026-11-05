@@ -44,8 +44,12 @@ internal enum class IosBillingPresentation {
     ViewOnly,
 }
 
-/** The one switch for iOS Billing (artin 11-02: view-only). */
-internal fun iosBillingPresentation(): IosBillingPresentation = IosBillingPresentation.ViewOnly
+/**
+ * The one switch for iOS Billing (artin 11-02: view-only). [iosExternalPurchaseLinkEnabled] turns
+ * it to the web in the system browser, together with the upgrade dialog's link (RaftUpgradeDialog.kt).
+ */
+internal fun iosBillingPresentation(linkEnabled: Boolean = iosExternalPurchaseLinkEnabled()): IosBillingPresentation =
+    if (linkEnabled) IosBillingPresentation.External else IosBillingPresentation.ViewOnly
 
 /** Where Settings › Plan & Billing opens ([settingsBillingOpenTarget]). */
 internal enum class SettingsBillingOpenTarget {

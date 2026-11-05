@@ -286,6 +286,12 @@ fun rememberRaftWindowLongEdgePx(): Int {
 
 internal expect fun coil3.Image.toRaftImageBitmap(): ImageBitmap
 
+/**
+ * This image as one a software canvas can draw: a graphics-layer snapshot on Android is a
+ * `HARDWARE` bitmap, which a software Canvas refuses. The other platforms return it as is.
+ */
+internal expect fun ImageBitmap.raftSoftwareImageBitmap(): ImageBitmap
+
 /** Kuikly `DrawableResource`: an image addressed by URL/asset path (resolved by the host). */
 class DrawableResource(val path: String)
 

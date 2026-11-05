@@ -20,6 +20,21 @@ class RaftMessagePermalinkPreviewTest {
     }
 
     @Test
+    fun extractsThreadReplyPermalinkWithPercentEncodedThreadParam() {
+        val channel = "1417c3d4-a7c2-47ca-b247-7e84bc5842be"
+        val body =
+            "visual aid @Oscar 来补充\n" +
+                "https://app.raft.build/s/raft/channel/$channel" +
+                "?msg=e1cf9d25-db9a-4626-9406-be8b3aa8672b" +
+                "&thread=$channel%3Aa6e03470-d465-4e0a-801d-945efa952684"
+        val target = body.extractFirstQuotedMessagePermalink(currentServerSlug = "raft")
+        assertNotNull(target)
+        assertEquals(channel, target.channelId.value)
+        assertEquals("e1cf9d25-db9a-4626-9406-be8b3aa8672b", target.messageId.value)
+        assertEquals("a6e03470-d465-4e0a-801d-945efa952684", target.threadParentMessageId?.value)
+    }
+
+    @Test
     fun skipsOtherServerPermalinks() {
         val body = "https://app.raft.build/s/other/channel/c1?msg=m1"
         assertNull(body.extractFirstQuotedMessagePermalink(currentServerSlug = "botiverse"))

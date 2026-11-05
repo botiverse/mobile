@@ -324,6 +324,7 @@ import build.raft.app.markdown.raftTaskStatusOutline
 import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftUnavailableQuotedPermalink
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
@@ -1429,6 +1430,14 @@ private data class ThreadShareCaptureRect(
     val path: String = "",
     val frame: Boolean = true
 )
+
+/**
+ * `exportThreadShareImage`'s `fragments`: each message's capture slices one path per line, a
+ * blank line between messages (Android frames each message as its own row of the share image;
+ * iOS reads the lines and skips the blanks).
+ */
+internal fun threadShareFragmentsParam(messageFragments: List<List<String>>): String =
+    messageFragments.filter { it.isNotEmpty() }.joinToString(separator = "\n\n") { it.joinToString(separator = "\n") }
 
 internal data class ThreadShareCaptureSlice(
     val y: Float,
@@ -4999,6 +5008,7 @@ private fun ThreadPageScreen(
     CompositionLocalProvider(
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
+        LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
     ) {
     SharedThreadRouteContent(
         initialPayload = payload,
@@ -5630,7 +5640,8 @@ private fun ThreadMembersPageScreen() {
                 },
                 onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
                 serverPlan = serverPlan,
-                onUpgrade = { pager.openSettingsBillingPage(storeScope) },
+                // Web CreateAgentDialog `seat_limit_agent_create`: Free → upgrade, Pro → add seats.
+                onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope) },
             )
         }
         removalGate.pending?.let { confirmation ->
@@ -10589,6 +10600,11 @@ private fun SharedThreadRouteContentContent(
         ownerDraftKey: String? = null,
         expectedAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
     ) {
+        // The month's uploads are used up (`FILE_UPLOAD_QUOTA_EXCEEDED`): the upgrade dialog, as web
+        // MessageInput opens it (`upload_monthly_quota`). Nothing opens on a paid plan.
+        if (raftUpgradeGateForErrorCode(errorCode) == RaftUpgradeGate.UploadMonthlyQuota) {
+            pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadMonthlyQuota, storeScope)
+        }
         val draftKey =
             normalizeThreadAttachmentUploadDraftKey(ownerDraftKey)
                 ?: normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
@@ -10654,6 +10670,10 @@ private fun SharedThreadRouteContentContent(
         if (sizeDecision.rejected.isNotEmpty()) {
             val largest = sizeDecision.largestRejectedBytes ?: 0L
             bridge.toast(localizedAttachmentTooLarge(largest, maxBytes))
+            // Free's per-file ceiling: the upgrade dialog too (web `upload_file_size`).
+            if (raftUploadSizeLimitIsFree(maxBytes)) {
+                pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadFileSize, storeScope)
+            }
             bridge.log(
                 "thread_composer_attachment_size_rejected rejected=${sizeDecision.rejected.size} " +
                     "largestBytes=$largest maxBytes=$maxBytes"
@@ -13292,7 +13312,20 @@ private fun SharedThreadRouteContentContent(
                 }
                 if (action == ThreadOpenPlanBillingEvent) {
                     bridge.log("thread_history_paywall_open_billing offersUpgrade=${settingsBillingOffersUpgrade()}")
-                    pager.openSettingsBillingPage(storeScope)
+                    // Upgrade to Pro: the upgrade dialog for the 30-day window (web HistoryPaywall
+                    // `history_30d`). iOS view-only Billing: "View your plan", the view-only page.
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(RaftUpgradeGate.History30d, storeScope)
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
+                    return@ThreadPageContent
+                }
+                if (action == ThreadOpenUpgradeEvent) {
+                    // A banner's Upgrade (web ChannelLimitBanners): [itemId] is the gate's wire name.
+                    RaftUpgradeGate.entries.firstOrNull { it.wire == itemId }?.let { gate ->
+                        pager.openRaftUpgradeDialog(gate, storeScope)
+                    }
                     return@ThreadPageContent
                 }
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
@@ -17241,7 +17274,8 @@ private fun ThreadPageContentContent(
         }
     }
     suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
-        val fragments = mutableListOf<String>()
+        // Capture slices, per message: the share image frames each message on its own.
+        val messageFragments = mutableListOf<MutableList<String>>()
         var completedMessages = 0
         // The click set shareCaptureMode, which drops the rows' viewer-only previews
         // (LocalThreadShareCaptureActive). This screenshot is of the live list, so let that
@@ -17305,6 +17339,7 @@ private fun ThreadPageContentContent(
             var capturedHeight = 0
             var segmentHeight = 0
             var segmentCount = 0
+            val fragments = mutableListOf<String>().also { messageFragments += it }
             while (capturedHeight < initialRect.height.roundToInt() && segmentCount < ThreadShareCaptureMaxSegmentsPerMessage) {
                 val rect = selectedShareBounds[message.id] ?: break
                 val slice =
@@ -17362,22 +17397,23 @@ private fun ThreadPageContentContent(
                 completedMessages += 1
             }
         }
-        if (fragments.isEmpty() || completedMessages != selectedShareMessages.size) {
+        val fragmentCount = messageFragments.sumOf { it.size }
+        if (fragmentCount == 0 || completedMessages != selectedShareMessages.size) {
             diagnosticsLogger(
-                "thread_share_capture_incomplete fragments=${fragments.size} " +
+                "thread_share_capture_incomplete fragments=$fragmentCount " +
                     "completed=$completedMessages selected=${selectedShareMessages.size}"
             )
             return null
         }
         diagnosticsLogger(
-            "thread_share_capture_complete fragments=${fragments.size} completed=$completedMessages"
+            "thread_share_capture_complete fragments=$fragmentCount completed=$completedMessages"
         )
         return ThreadShareCaptureRect(
             x = 0f,
             y = 0f,
             width = 0f,
             height = 0f,
-            path = fragments.joinToString(separator = "\n")
+            path = threadShareFragmentsParam(messageFragments)
         )
     }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
@@ -17958,10 +17994,22 @@ private fun ThreadPageContentContent(
                     size = RaftUiBannerSize.Medium,
                     iconName = RaftLucideIconName.TriangleAlert,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    // Web ChannelLimitBanners: Upgrade opens the upgrade dialog (read-only:
+                    // `joint_channel_read_only`, in its grace period: `joint_channel_over_limit`).
                     // iOS view-only Billing: "View your plan" (the view-only Plan & Billing page).
                     action =
                         if (settingsBillingOffersUpgrade()) {
-                            null
+                            val gate =
+                                if (jointBillingNotice == JointBillingNotice.Locked) RaftUpgradeGate.JointChannelReadOnly
+                                else RaftUpgradeGate.JointChannelOverLimit
+                            ({
+                                RaftButton(
+                                    text = stringResource(Res.string.raft_pro_upgrade),
+                                    onClick = { onThreadEvent(ThreadOpenUpgradeEvent, gate.wire, null, null) },
+                                    variant = RaftButtonVariant.Default,
+                                    size = RaftButtonSize.Md,
+                                )
+                            })
                         } else {
                             val openPlan = LocalThreadActionCardSpecHost.current.openPlan
                             ({ build.raft.app.components.RaftViewPlanButton(onClick = openPlan) })
@@ -28188,6 +28236,13 @@ internal data class ThreadQuotedPermalinkMessage(
 
 internal typealias ThreadQuotedPermalinkLoader = suspend (RaftMessagePermalinkTarget) -> ThreadQuotedPermalinkMessage?
 
+/**
+ * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument
+ * limit, so it reaches [ThreadMessageCard] through this local instead of a parameter chain (the
+ * chain had silently ended in `null` defaults, so no card ever loaded).
+ */
+internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedPermalinkLoader?> { null }
+
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
     data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkUiState
@@ -28217,11 +28272,9 @@ internal fun ThreadQuotedPermalinkCard(
                 label = stringResource(Res.string.thread_quoted_permalink_loading),
                 modifier = modifier
             )
-        ThreadQuotedPermalinkUiState.Unavailable ->
-            build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
-                text = stringResource(Res.string.thread_quoted_permalink_unavailable),
-                modifier = modifier
-            )
+        // The web renders nothing for a quote it cannot read; the row never composes this state (see
+        // threadQuotedPermalinkPreviewVisible), and the permalink chip says so instead.
+        ThreadQuotedPermalinkUiState.Unavailable -> Unit
         // Quoted as one muted line, like an unavailable quote (web QuoteCardContent).
         ThreadQuotedPermalinkUiState.Retracted ->
             build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
@@ -28666,7 +28719,7 @@ private fun ThreadMessageCardContent(
     val onToggleLongMessage = callbacks.onToggleLongMessage
     val onLongPressInputReady = callbacks.onLongPressInputReady
     val longPressGestureInstanceKey = data.longPressGestureInstanceKey
-    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader ?: LocalThreadQuotedPermalinkLoader.current
     val outerPadding = data.outerPadding
     // read_receipts_v0: @mentioned agents' read badges on the viewer's own message (web MentionLink).
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
@@ -29132,8 +29185,10 @@ private fun ThreadMessageCardContent(
                     .fillMaxWidth()
                     // raft-ui 0.61 `MessageItem` root (timeline rhythm): a turn's first row
                     // carries `timeline-turn` (8) as a transparent top border the wash doesn't
-                    // paint (`bg-clip-padding`); a continuation row (`compact`) has none.
-                    .padding(top = if (showAuthorChrome) ThreadMessageTimelineTurn else 0.dp)
+                    // paint (`bg-clip-padding`); a continuation row (`compact`) has none. The share
+                    // image replaces it with its own 2dp row frame (web selectScreenshot.ts sets the
+                    // clone's `border: 2px solid transparent`), so a captured row has no band.
+                    .padding(top = if (showAuthorChrome && !shareCaptureActive) ThreadMessageTimelineTurn else 0.dp)
                     // The row wash spans the whole row; the content sits at px-2
                     // `py-timeline-row` (4) inside it.
                     .background(rowFill)
@@ -29542,7 +29597,13 @@ private fun ThreadMessageCardContent(
                                                               enabled = message.pendingSendContext == null,
                                                           ) {
                                                           // A tap on a code block is not the row's tap (web skips `pre, code`).
-                                                          CompositionLocalProvider(LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver) {
+                                                          CompositionLocalProvider(
+                                                            LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver,
+                                                            LocalRaftUnavailableQuotedPermalink provides
+                                                                quotedPermalinkTarget.takeIf {
+                                                                    quotedPermalinkState.value == ThreadQuotedPermalinkUiState.Unavailable
+                                                                }
+                                                          ) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
                                                                 fillWidth = !alignOwnMessageRight,

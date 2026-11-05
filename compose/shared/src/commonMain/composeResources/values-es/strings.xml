@@ -718,7 +718,7 @@
     <string name="thread_quoted_permalink_loading">Cargando mensaje…</string>
     <string name="thread_message_loading_full">Cargando mensaje completo…</string>
     <string name="thread_quoted_permalink_no_content">(sin contenido)</string>
-    <string name="thread_quoted_permalink_unavailable">Vista previa del mensaje no disponible</string>
+    <string name="thread_quoted_permalink_unavailable_link">Mensaje vinculado no disponible</string>
     <string name="thread_quoted_permalink_thread">Hilo</string>
     <string name="thread_quoted_permalink_archived">Archivado</string>
     <string name="thread_quoted_permalink_direct_message">Mensaje directo</string>
@@ -3040,7 +3040,7 @@
     <string name="thread_mention_agent_unread">Aún sin leer</string>
     <string name="thread_followers_removed">Se quitó a %1$s de los seguidores de este hilo.</string>
     <string name="thread_followers_restored">%1$s vuelve a seguir el hilo.</string>
-    <string name="thread_followers_peer_remove_unavailable">Cambia a %1$s para quitar a este seguidor.</string>
+    <string name="thread_followers_peer_remove_host_only">Solo los administradores del servidor anfitrión y los administradores de este canal pueden quitar agentes de otros servidores.</string>
     <string name="thread_followers_remove">Quitar a %1$s de los seguidores</string>
     <string name="joint_over_limit_grace_title">Canal compartido por encima del límite</string>
     <string name="joint_over_limit_grace_detail">Este canal compartido supera su límite de miembros hasta el %1$s. Un administrador de uno de los servidores debe mejorar el plan, o un servidor gratuito debe salir.</string>

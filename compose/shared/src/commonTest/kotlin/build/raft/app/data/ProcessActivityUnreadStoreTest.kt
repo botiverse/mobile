@@ -531,7 +531,9 @@ class ProcessActivityUnreadStoreTest {
             ownerFlowResolver = { serverId ->
                 ownerFlow.map { owner -> owner?.takeIf { it.serverId == serverId } }
             },
-            projectionCache = projectionCache
+            projectionCache = projectionCache,
+            // These tests run on real time and count reads; the throttle has its own suite.
+            throttleMillis = 0L
         )
 
     private suspend fun awaitFresh(

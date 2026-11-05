@@ -96,7 +96,9 @@ class ThreadShareCaptureModeTest {
                 Row("normal-raft", RaftLinkMessage, capture = false, heights = heights)
                 Row("capture-raft", RaftLinkMessage, capture = true, heights = heights)
                 Row("capture-plain", PlainLinkMessage, capture = true, heights = heights)
-                Row("never-quoted-raft", RaftLinkMessage, capture = false, heights = heights, loader = null)
+                // Captured too: a captured row also drops its timeline-turn band (the share image
+                // draws its own row frame), so only the preview may differ.
+                Row("never-quoted-raft", RaftLinkMessage, capture = true, heights = heights, loader = null)
             }
 
         // Normal mode: the quote preview is drawn under the link.
@@ -157,8 +159,10 @@ class ThreadShareCaptureModeTest {
 
     @Test
     fun policyStripsOnlyInCaptureMode() {
-        val loaded = ThreadQuotedPermalinkUiState.Unavailable
+        val loaded = ThreadQuotedPermalinkUiState.Retracted
         assertTrue(threadQuotedPermalinkPreviewVisible(loaded, shareCaptureActive = false))
+        // The web draws no card for a quote it cannot read.
+        assertFalse(threadQuotedPermalinkPreviewVisible(ThreadQuotedPermalinkUiState.Unavailable, shareCaptureActive = false))
         assertFalse(threadQuotedPermalinkPreviewVisible(loaded, shareCaptureActive = true))
         assertFalse(threadQuotedPermalinkPreviewVisible(null, shareCaptureActive = false))
         assertTrue(threadAppLinkPreviewsEnabled(sentMessage = true, shareCaptureActive = false))
