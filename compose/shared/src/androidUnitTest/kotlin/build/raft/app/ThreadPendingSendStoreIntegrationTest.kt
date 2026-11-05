@@ -15,6 +15,7 @@ import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadPendingSendJournalFailureInjector
 import build.raft.app.data.WireMessage
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.shared.data.local.RaftDatabase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -599,6 +600,108 @@ class ThreadPendingSendStoreIntegrationTest {
             authGeneration = authGeneration,
             selectionGeneration = selectionGeneration,
         )
+
+    /**
+     * Feedback (DM with @PM, 11-04): a send that failed on 11-02 09:20 stayed under every message
+     * that came after it, days later. A failed send sits where it was sent, newer messages land
+     * below it, and that holds after a restart; Retry sends it again as a new message, at the bottom.
+     */
+    @Test
+    fun failedSendKeepsItsPlaceAcrossRestartAndRetryMovesItToTheBottom() = runTest {
+        withDatabase { path ->
+            val identity = identity()
+            val routePayload = basePayload()
+            val failedLocalId = "local-send-failed-chronological"
+            val first =
+                open(path, FakeThreadApi(bodyText = datedPageResponse("m10" to "2026-11-02T09:00:00Z")), identity)
+            first.store.accept(SharedThreadIntent.Start(routePayload))
+            val route = first.store.state.value.payload.resolveThreadRouteIdentity()
+            assertTrue(
+                first.store.admitLocalSend(
+                    message = pendingMessage(failedLocalId, "random-chronological", createdAt = epoch("2026-11-02T09:20:00Z")),
+                    expectedProvenance = requireNotNull(first.dataSource.currentReplyCacheProvenance()),
+                    expectedRoute = route
+                )
+            )
+            assertEquals(listOf("m10", failedLocalId), first.store.state.value.payload.messages.map { it.id })
+            assertTrue(
+                first.journal.markFailed(identity.toProvenance(), route, failedLocalId, "thread_send_network", "offline")
+            )
+            first.scope.cancel()
+            first.driver.close()
+
+            // Restart days later: the conversation moved on.
+            val second =
+                open(
+                    path,
+                    FakeThreadApi(
+                        bodyText =
+                            datedPageResponse(
+                                "m10" to "2026-11-02T09:00:00Z",
+                                "m11" to "2026-11-03T10:00:00Z",
+                                "m12" to "2026-11-04T02:14:00Z",
+                            )
+                    ),
+                    identity
+                )
+            second.store.accept(SharedThreadIntent.Start(routePayload))
+            val restored = second.store.state.value.payload.messages
+            assertEquals(listOf("m10", failedLocalId, "m11", "m12"), restored.map { it.id })
+            val failed = restored.single { it.id == failedLocalId }
+            assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
+
+            // Retry with a device clock a minute behind the newest message: still the bottom row,
+            // stamped with the retry's time (not 11-02 09:20), and the journal keeps that order.
+            val retryLabel = "2026-11-04T02:13:00Z"
+            assertTrue(
+                second.store.admitLocalSend(
+                    message =
+                        failed.restampedForLocalSendRetry(retryLabel).copy(
+                            deliveryState = ThreadMessageDeliverySending,
+                            pendingSendErrorCode = null,
+                            pendingSendErrorMessage = null
+                        ),
+                    expectedProvenance = requireNotNull(second.dataSource.currentReplyCacheProvenance()),
+                    expectedRoute = route
+                )
+            )
+            val afterRetry = second.store.state.value.payload.messages
+            assertEquals(listOf("m10", "m11", "m12", failedLocalId), afterRetry.map { it.id })
+            val retried = afterRetry.last()
+            assertEquals(retryLabel, retried.timestampLabel)
+            assertEquals(ThreadMessageDeliverySending, retried.deliveryState)
+            val journaled = second.journal.restore(identity.toProvenance(), route).single { it.id == failedLocalId }
+            assertTrue(
+                requireNotNull(journaled.createdAtEpochMillis) >= epoch("2026-11-04T02:14:00Z"),
+                "the retry is journaled after the newest message: ${journaled.createdAtEpochMillis}"
+            )
+            second.scope.cancel()
+            second.driver.close()
+        }
+    }
+
+    private fun epoch(iso: String): Long = requireNotNull(parseRaftTimestampEpochMillisOrNull(iso))
+
+    /** A latest page whose messages carry their own creation times, oldest first (seq follows order). */
+    private fun datedPageResponse(vararg messages: Pair<String, String>): String =
+        messages.withIndex().joinToString(
+            prefix = """{"historyLimited": false, "messages": [""",
+            postfix = "]}",
+        ) { (index, message) ->
+            """
+            {
+              "id": "${message.first}",
+              "seq": ${10 + index},
+              "channelId": "channel-1",
+              "content": "${message.first}",
+              "createdAt": "${message.second}",
+              "senderId": "u2",
+              "senderName": "PM",
+              "senderType": "agent",
+              "messageType": "chat"
+            }
+            """.trimIndent()
+        }
 
     private fun basePayload(): RaftThreadScreenPayload =
         RaftThreadScreenPayload(

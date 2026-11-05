@@ -3467,6 +3467,16 @@ private fun buildThreadPendingSendMessage(
     )
 }
 
+/**
+ * Retry sends the message again as a new send (web: a failed send goes back to the composer and is
+ * sent anew): it takes the retry's time, so it moves to the bottom instead of staying where the
+ * failed attempt sits in the timeline.
+ */
+internal fun RaftThreadMessageItem.restampedForLocalSendRetry(timestampLabel: String): RaftThreadMessageItem {
+    val retriedAt = parseRaftTimestampEpochMillisOrNull(timestampLabel) ?: return this
+    return copy(timestampLabel = timestampLabel, createdAtEpochMillis = retriedAt)
+}
+
 private fun buildThreadPendingSendTimestampLabel(
     bridge: build.raft.app.base.BridgeModule,
     fallbackNowEpochMillis: Long?
@@ -14484,11 +14494,15 @@ private fun SharedThreadRouteContentContent(
                     val admitted =
                         threadViewModel.admitLocalSend(
                             message =
-                                message.copy(
-                                    deliveryState = ThreadMessageDeliverySending,
-                                    pendingSendErrorCode = null,
-                                    pendingSendErrorMessage = null
-                                ),
+                                message
+                                    .restampedForLocalSendRetry(
+                                        buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
+                                    )
+                                    .copy(
+                                        deliveryState = ThreadMessageDeliverySending,
+                                        pendingSendErrorCode = null,
+                                        pendingSendErrorMessage = null
+                                    ),
                             expectedProvenance = sendAuthority.provenance,
                             expectedRoute = sendAuthority.route
                         )
