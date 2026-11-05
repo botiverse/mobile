@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ComposeUiTest
@@ -105,12 +106,23 @@ class ComputerRuntimeUsageTimeContextUiTest {
         onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
+    /** artin 11-05: an agent profile opened from a DM has no page clock; the sheet keeps its own. */
+    @Test
+    fun noPageScopeStillResolvesTimes() = runRobolectricComposeUiTest {
+        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
+        showSheet(runtimeVersion = null, pageScope = false)
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("整个账户 · ", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
     private fun ComposeUiTest.assertShown(text: String) {
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText(text, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText(text, useUnmergedTree = true).assertExists()
     }
 
-    private fun ComposeUiTest.showSheet(runtimeVersion: String?) {
+    private fun ComposeUiTest.showSheet(runtimeVersion: String?, pageScope: Boolean = true) {
         setContent {
             val access =
                 remember {
@@ -127,11 +139,7 @@ class ComputerRuntimeUsageTimeContextUiTest {
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
                 RaftTheme(appearance = RaftAppearance.Light) {
-                    ProvideStandaloneRaftTimeContext(
-                        clock = { NOW_MILLIS },
-                        foundationOwner = fixedZone,
-                        capabilities = RaftTimeCapabilities(localOffsetMinutes = 8 * 60, timeFormat = RaftTimeFormat24Hour),
-                    ) {
+                    val sheet: @Composable () -> Unit = {
                         RaftComputersTheme {
                             ComputerRuntimeUsageSheetHost(
                                 runtimeLabel = "Claude Code",
@@ -141,6 +149,15 @@ class ComputerRuntimeUsageTimeContextUiTest {
                                 onDismiss = {},
                             )
                         }
+                    }
+                    if (pageScope) {
+                        ProvideStandaloneRaftTimeContext(
+                            clock = { NOW_MILLIS },
+                            foundationOwner = fixedZone,
+                            capabilities = RaftTimeCapabilities(localOffsetMinutes = 8 * 60, timeFormat = RaftTimeFormat24Hour),
+                        ) { sheet() }
+                    } else {
+                        sheet()
                     }
                 }
             }

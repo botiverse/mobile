@@ -402,6 +402,21 @@ internal fun ComputerRuntimeUsageSheetHost(
     runtimeVersion: String?,
     onDismiss: () -> Unit,
 ) {
+    // A page without its own clock would read every reset as "unknown time"; keep a live one
+    // here, reusing the page's when it has one.
+    ProvideStandaloneRaftTimeContext {
+        ComputerRuntimeUsageSheetHostContent(runtimeLabel, key, access, runtimeVersion, onDismiss)
+    }
+}
+
+@Composable
+private fun ComputerRuntimeUsageSheetHostContent(
+    runtimeLabel: String,
+    key: RuntimeAccountUsageKey,
+    access: MembersRuntimeAccountUsageAccess,
+    runtimeVersion: String?,
+    onDismiss: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val controller =
         remember(key, access.store) {
@@ -756,7 +771,6 @@ internal fun ComputerRuntimeUsagePreviewCard(
     trigger: @Composable () -> Unit,
 ) {
     val state = rememberRaftPreviewCardState(closeDelayMillis = ComputerRuntimeUsagePreviewCardCloseDelayMillis)
-    val timeContext = LocalRaftTimeContextProvider.current?.current
     if (state.isOpen) {
         LaunchedEffect(controller) {
             controller.onOpen()
@@ -768,20 +782,24 @@ internal fun ComputerRuntimeUsagePreviewCard(
     }
     RaftPreviewCard(
         card = {
-            ComputerRuntimeUsageCard(
-                runtimeLabel = runtimeLabel,
-                state =
-                    ComputerRuntimeUsageSheetState(
-                        controller.load,
-                        controller.loading,
-                        controller.refresh,
-                        controller.cooldownLeftMillis,
-                        runtimeVersion,
-                    ),
-                timeContext = timeContext,
-                onRefresh = controller::refreshNow,
-                onClose = state::dismiss,
-            )
+            // An agent profile opened from a DM has no page clock: without this every reset and
+            // the updated line read "未知时间" (artin 11-05). Live only while the card is open.
+            ProvideStandaloneRaftTimeContext {
+                ComputerRuntimeUsageCard(
+                    runtimeLabel = runtimeLabel,
+                    state =
+                        ComputerRuntimeUsageSheetState(
+                            controller.load,
+                            controller.loading,
+                            controller.refresh,
+                            controller.cooldownLeftMillis,
+                            runtimeVersion,
+                        ),
+                    timeContext = LocalRaftTimeContextProvider.current?.current,
+                    onRefresh = controller::refreshNow,
+                    onClose = state::dismiss,
+                )
+            }
         },
         modifier = modifier,
         state = state,
