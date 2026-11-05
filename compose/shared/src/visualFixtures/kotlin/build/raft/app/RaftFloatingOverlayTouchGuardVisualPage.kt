@@ -274,11 +274,13 @@ internal fun RaftTaskStatusMenuTouchVisualScreen() {
 
 private fun TaskStatus.touchFixtureLabel(): String =
     when (this) {
+        TaskStatus.Backlog -> "Backlog"
         TaskStatus.Todo -> "Todo"
         TaskStatus.InProgress -> "In Progress"
         TaskStatus.InReview -> "In Review"
         TaskStatus.Done -> "Done"
         TaskStatus.Closed -> "Closed"
+        TaskStatus.Unknown -> "Unknown"
     }
 
 @Composable
