@@ -20,8 +20,8 @@ compose/shared/src/commonMain/composeResources/values-ja/strings.xml
 - No ASCII leading/trailing spaces (Android trims them, iOS keeps them): use
   `&#160;`. Fix automatically with
   `python3 scripts/ci/check_string_edge_spaces.py --fix`.
-- The later catalogs `values-es`, `values-pt-rBR`, `values-ko`, `values-zh-rTW` (the web's es,
-  pt-br, ko, zh-tw) are partial like the web's: add the key there too when you can (copy the web's
+- The later catalogs `values-es`, `values-pt-rBR`, `values-ru`, `values-ko`, `values-zh-rTW` (the web's es,
+  pt-br, ru, ko, zh-tw) are partial like the web's: add the key there too when you can (copy the web's
   wording from the same message id), but a key they lack shows the English
   (`RaftNewLocaleCatalogTest`). They may never hold a key `values/` lacks.
 - Placeholders: positional only (`%1$s`, `%2$d`), the same set in every locale

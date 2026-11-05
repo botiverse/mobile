@@ -21,6 +21,7 @@ class LocalPreferencesTest {
                 AppLocale.English,
                 AppLocale.Spanish,
                 AppLocale.BrazilianPortuguese,
+                AppLocale.Russian,
                 AppLocale.Korean,
                 AppLocale.Japanese,
                 AppLocale.SimplifiedChinese,
@@ -61,6 +62,7 @@ class LocalPreferencesTest {
                 AppLocale.English,
                 AppLocale.Spanish,
                 AppLocale.BrazilianPortuguese,
+                AppLocale.Russian,
                 AppLocale.Korean,
                 AppLocale.Japanese,
                 AppLocale.SimplifiedChinese,
@@ -91,6 +93,9 @@ class LocalPreferencesTest {
         assertEquals(AppLocale.BrazilianPortuguese, AppLocale.fromStorageKey("pt-BR"))
         assertEquals(AppLocale.Spanish, AppLocale.fromStorageKey("es"))
         assertEquals(AppLocale.Korean, AppLocale.fromStorageKey("ko"))
+        assertEquals(AppLocale.Russian, AppLocale.fromStorageKey("ru"))
+        assertEquals(AppLocale.Russian, AppLocale.fromStorageKey("ru-RU"))
+        assertEquals(AppLocale.Russian, AppLocale.fromStorageKey("ru_RU"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("auto"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("default"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("system"))
@@ -223,6 +228,8 @@ class LocalPreferencesTest {
                 Triple(AppLocale.System, "zh_TW", "zh-tw"),
                 Triple(AppLocale.System, "ko-KR", "ko"),
                 Triple(AppLocale.System, "es-MX", "es"),
+                Triple(AppLocale.System, "ru-RU", "ru"),
+                Triple(AppLocale.Russian, "en-US", "ru"),
                 Triple(AppLocale.System, "pt-PT", "pt-br"),
                 Triple(AppLocale.TraditionalChinese, "en-US", "zh-tw"),
                 Triple(AppLocale.BrazilianPortuguese, "en-US", "pt-br"),
@@ -247,11 +254,11 @@ class LocalPreferencesTest {
     @Test
     fun everyExplicitLocaleHasTheWebDisplayLocaleCodeInTheWebPickerOrder() {
         assertEquals(
-            listOf("en", "es", "pt-br", "ko", "ja", "zh-cn", "zh-tw"),
+            listOf("en", "es", "pt-br", "ru", "ko", "ja", "zh-cn", "zh-tw"),
             AppLocale.entries.mapNotNull { it.webDisplayLocale }
         )
         assertEquals(
-            listOf("English", "Español", "Português (Brasil)", "한국어", "日本語", "简体中文", "繁體中文"),
+            listOf("English", "Español", "Português (Brasil)", "Русский", "한국어", "日本語", "简体中文", "繁體中文"),
             AppLocale.entries.filter { it != AppLocale.System }.map { it.nativeLabel }
         )
         AppLocale.entries.filter { it != AppLocale.System }.forEach { locale ->

@@ -533,6 +533,7 @@
 				"zh-Hans",
 				es,
 				"pt-BR",
+				ru,
 				ko,
 				"zh-Hant",
 				Base,

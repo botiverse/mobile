@@ -31,7 +31,8 @@ object TranslationTargetLanguages {
             TranslationTargetLanguageOption("fr", "French"),
             TranslationTargetLanguageOption("de", "German"),
             TranslationTargetLanguageOption("pt-br", "Portuguese (Brazil)"),
-            TranslationTargetLanguageOption("it", "Italian")
+            TranslationTargetLanguageOption("it", "Italian"),
+            TranslationTargetLanguageOption("ru", "Russian")
         )
 
     private val supportedKeys = options.drop(1).mapTo(mutableSetOf()) { it.key }
@@ -52,6 +53,7 @@ object TranslationTargetLanguages {
             "ja" -> "ja"
             "ko" -> "ko"
             "es" -> "es"
+            "ru" -> "ru"
             "pt" -> "pt-br"
             "zh" -> {
                 val subtags = parts.drop(1).toSet()

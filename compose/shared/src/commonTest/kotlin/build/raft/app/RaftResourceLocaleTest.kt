@@ -14,6 +14,7 @@ class RaftResourceLocaleTest {
     private val spanish = RaftResourceLocale("es", "")
     private val brazilianPortuguese = RaftResourceLocale("pt", "BR")
     private val korean = RaftResourceLocale("ko", "")
+    private val russian = RaftResourceLocale("ru", "")
 
     private fun system(vararg tags: String) = raftResourceLocale(StringDesc.LocaleType.System, tags.toList())
 
@@ -27,6 +28,7 @@ class RaftResourceLocaleTest {
             "es" to spanish,
             "pt-BR" to brazilianPortuguese,
             "ko" to korean,
+            "ru" to russian,
         ).forEach { (tag, expected) ->
             assertEquals(expected, raftResourceLocale(StringDesc.LocaleType.Custom(tag), listOf("fr-FR")), tag)
         }
@@ -61,6 +63,9 @@ class RaftResourceLocaleTest {
             listOf("pt-BR") to brazilianPortuguese,
             listOf("pt-PT") to brazilianPortuguese,
             listOf("ko-KR") to korean,
+            listOf("ru-RU") to russian,
+            listOf("ru") to russian,
+            listOf("fr-FR", "ru-RU", "ja-JP") to russian,
             listOf("fr-FR", "ko-KR", "ja-JP") to korean,
         ).forEach { (tags, expected) -> assertEquals(expected, system(*tags.toTypedArray()), "$tags") }
     }

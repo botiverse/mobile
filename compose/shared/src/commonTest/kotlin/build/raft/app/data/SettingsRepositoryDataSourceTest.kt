@@ -306,7 +306,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(true, languageRegion.data.autoTranslation.available)
         assertEquals("en", languageRegion.data.browserLanguage.selectedKey)
         assertEquals(
-            listOf("browser", "en", "zh-cn", "zh-tw", "ja", "ko", "es", "fr", "de", "pt-br", "it"),
+            listOf("browser", "en", "zh-cn", "zh-tw", "ja", "ko", "es", "fr", "de", "pt-br", "it", "ru"),
             languageRegion.data.browserLanguage.options.map { it.key }
         )
         assertEquals("Asia/Shanghai", languageRegion.data.timezone.selectedKey)

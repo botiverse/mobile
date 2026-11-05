@@ -18,7 +18,7 @@ internal const val DEFAULT_HOME_SERVER_AVATAR_ENABLED = true
  * The app UI languages. Entries after [System] are in the web's Settings picker order
  * (botiverse/slock `DISPLAY_LOCALES` in packages/shared/src/displayLocales.ts: endonyms sorted by
  * Unicode root collation), and [webDisplayLocale] is the web's canonical display-locale code, the
- * value the web stores as the account's `displayLanguage` (`en`, `es`, `pt-br`, `ko`, `ja`,
+ * value the web stores as the account's `displayLanguage` (`en`, `es`, `pt-br`, `ru`, `ko`, `ja`,
  * `zh-cn`, `zh-tw`). [nativeLabel] is the web's `nativeName`.
  */
 enum class AppLocale(
@@ -56,6 +56,13 @@ enum class AppLocale(
         englishLabel = "Portuguese (Brazil)",
         nativeLabel = "Português (Brasil)",
         webDisplayLocale = "pt-br"
+    ),
+    Russian(
+        storageKey = "ru",
+        languageTag = "ru",
+        englishLabel = "Russian",
+        nativeLabel = "Русский",
+        webDisplayLocale = "ru"
     ),
     Korean(
         storageKey = "ko",
@@ -103,6 +110,7 @@ enum class AppLocale(
                 "ja-jp" -> Japanese
                 "pt", "pt-rbr", "pt-pt" -> BrazilianPortuguese
                 "ko-kr" -> Korean
+                "ru-ru" -> Russian
                 else ->
                     entries.firstOrNull {
                         it.storageKey.lowercase() == normalized ||
@@ -123,7 +131,7 @@ enum class AppLocale(
 /**
  * #85 follow-up: BCP-47 tag used by `StringDesc.LocaleType.Custom(tag)` to pick a
  * composeResources folder at runtime, the same tags as the folders (`values-zh-rCN`,
- * `values-zh-rTW`, `values-pt-rBR`, `values-es`, `values-ko`, `values-ja`).
+ * `values-zh-rTW`, `values-pt-rBR`, `values-es`, `values-ru`, `values-ko`, `values-ja`).
  *
  * English falls through to the base `values/` folder. Chinese and Brazilian Portuguese are
  * region folders; a key a catalog lacks resolves from `values/` (English), never from another
@@ -136,6 +144,7 @@ val AppLocale.kmmResourceLocaleTag: String?
             AppLocale.English -> "en"
             AppLocale.Spanish -> "es"
             AppLocale.BrazilianPortuguese -> "pt-BR"
+            AppLocale.Russian -> "ru"
             AppLocale.Korean -> "ko"
             AppLocale.Japanese -> "ja"
             AppLocale.SimplifiedChinese -> "zh-CN"
@@ -152,6 +161,7 @@ internal fun appLocaleForResourceLocale(language: String, region: String): AppLo
         "ja" -> AppLocale.Japanese
         "es" -> AppLocale.Spanish
         "pt" -> AppLocale.BrazilianPortuguese
+        "ru" -> AppLocale.Russian
         "ko" -> AppLocale.Korean
         else -> AppLocale.English
     }

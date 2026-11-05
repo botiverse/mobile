@@ -135,17 +135,25 @@ private fun rememberRaftResourceEnvironment(): ResourceEnvironment {
 private fun StringDesc.resolveIn(environment: ResourceEnvironment): String =
     when (this) {
         is RawStringDesc -> string
-        is ResourceStringDesc -> runBlocking { getString(environment, stringRes) }
+        is ResourceStringDesc -> runBlocking { getString(environment, stringRes) }.withPluralsResolved()
         is ResourceFormattedStringDesc -> {
             // kmmresource resolved StringDesc arguments before formatting; keep that.
             val resolvedArgs = args.map { arg -> (arg as? StringDesc)?.resolveIn(environment) ?: arg }
-            runBlocking { getString(environment, stringRes, *resolvedArgs.toTypedArray()) }
+            runBlocking { getString(environment, stringRes, *resolvedArgs.toTypedArray()) }.withPluralsResolved()
         }
+    }
+
+/** A catalog string's `{N, plural, ...}` blocks (see RaftPlurals.kt) resolved for the catalog's language. */
+private fun String.withPluralsResolved(): String =
+    if (contains("plural")) {
+        resolveRaftPluralBlocks(this, raftResourceLocale(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()).language)
+    } else {
+        this
     }
 
 /** Language and region of the catalog [localeType] selects ("" = no region). */
 internal data class RaftResourceLocale(val language: String, val region: String) {
-    /** BCP 47 tag of the catalog (`en`, `es`, `pt-BR`, `ko`, `ja`, `zh-CN`, `zh-TW`), the web's `displayLocaleTag`. */
+    /** BCP 47 tag of the catalog (`en`, `es`, `pt-BR`, `ru`, `ko`, `ja`, `zh-CN`, `zh-TW`), the web's `displayLocaleTag`. */
     val languageTag: String get() = if (region.isEmpty()) language else "$language-$region"
 }
 
@@ -174,7 +182,7 @@ internal fun raftSystemResourceLocale(
 /**
  * Catalog selection, matching what the platform resource lookups did for kmmresource: an
  * explicit tag picks its catalog; for the system language the first preferred language with a
- * shipped catalog wins (English, Spanish, Brazilian Portuguese for any Portuguese, Korean,
+ * shipped catalog wins (English, Spanish, Brazilian Portuguese for any Portuguese, Russian, Korean,
  * Japanese; Traditional Chinese for a Hant script or a TW/HK/MO region without a script, else
  * Simplified Chinese), the same matching as the web's `matchDisplayLocale`. Unsupported
  * languages are skipped; with no match the English base catalog applies.
@@ -210,6 +218,7 @@ private fun raftSupportedResourceLocale(tag: String): RaftResourceLocale? {
         "ja" -> RaftResourceLocale("ja", "")
         "en" -> RaftResourceLocale("en", "")
         "es" -> RaftResourceLocale("es", "")
+        "ru" -> RaftResourceLocale("ru", "")
         "ko" -> RaftResourceLocale("ko", "")
         // One Portuguese catalog, Brazilian, for every region (pt-PT too), as on the web.
         "pt" -> RaftResourceLocale("pt", "BR")
