@@ -1018,7 +1018,8 @@ class RaftMarkdownTest {
                     (range.item as? LinkAnnotation.Clickable)
                         ?.let { annotated.raftInlineBoxWithin(range.start, range.end) } != null
                 }
-                .map { range -> annotated.text.substring(range.start, range.end) }
+                // Chip labels carry word joiners where they must not wrap (withRaftInlineChipGlue).
+                .map { range -> annotated.text.substring(range.start, range.end).raftCopyText() }
 
         assertEquals(
             listOf("#31", "@Android-Developer-4", "#521", "#521", "#31", "#521"),

@@ -376,7 +376,16 @@ private fun BoxScope.ThreadTimeRevealLabelSlot(
         modifier =
             Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = RaftAppSpacing.Sm)
+                // The row's first line: `timeline-row` (4) under its top, plus a turn's
+                // `timeline-turn` (8) band above an author row (raft-ui timeline rhythm).
+                .padding(
+                    top =
+                        if (continuation) {
+                            ThreadMessageTimelineRowInset
+                        } else {
+                            ThreadMessageTimelineTurn + ThreadMessageTimelineRowInset
+                        }
+                )
                 .widthIn(min = ThreadTimeRevealGutterWidth)
                 // The first line: the 18dp compact time slot, or the author header's line.
                 .height(if (continuation) 18.dp else 20.dp)

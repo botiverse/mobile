@@ -537,6 +537,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -902,14 +903,34 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
 internal val ThreadMessageHeaderBodyGap = 1.dp
 
 /**
- * The header gives back the column's 4dp step down to [ThreadMessageHeaderBodyGap]: it reports a
- * height that much shorter (drawing as before), so the body starts 1dp under it.
+ * A message's content column with the header first: [Arrangement.spacedBy] 4dp, except the body
+ * starts [ThreadMessageHeaderBodyGap] under the header. The column still measures every gap at
+ * 4dp, so the space the first gap gives back is left empty at its end, and
+ * [threadMessageHeaderBodyGapTrim] takes it off: every child keeps its own height (and hit area).
  */
-private fun Modifier.threadMessageHeaderBodyGap(): Modifier =
+internal object ThreadMessageHeaderFirstArrangement : Arrangement.Vertical {
+    override val spacing: Dp = RaftAppSpacing.Xs
+
+    override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
+        val firstGapPx = ThreadMessageHeaderBodyGap.roundToPx()
+        val gapPx = spacing.roundToPx()
+        var y = 0
+        sizes.forEachIndexed { index, size ->
+            outPositions[index] = y
+            y += size + if (index == 0) firstGapPx else gapPx
+        }
+    }
+
+    override fun toString(): String = "ThreadMessageHeaderFirstArrangement"
+}
+
+/** Takes off the empty end [ThreadMessageHeaderFirstArrangement] leaves under the last child. */
+private fun Modifier.threadMessageHeaderBodyGapTrim(): Modifier =
     layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        val pull = (RaftAppSpacing.Xs - ThreadMessageHeaderBodyGap).roundToPx()
-        layout(placeable.width, (placeable.height - pull).coerceAtLeast(0)) { placeable.place(0, 0) }
+        val placeable = measurable.measure(constraints.copy(minHeight = 0))
+        val trim = (RaftAppSpacing.Xs - ThreadMessageHeaderBodyGap).roundToPx()
+        val height = (placeable.height - trim).coerceAtLeast(0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(placeable.width, height) { placeable.place(0, 0) }
     }
 
 /** raft-ui `--spacing-timeline-row`: every message row's inset above and below its text. */
@@ -27815,7 +27836,14 @@ internal fun ThreadSystemMessageRow(
             Modifier.fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
-                .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Xs),
+                // raft-ui SystemMessage `pt-timeline-lead pb-timeline-row`: an event line starts a
+                // turn, 16 from the text on either side (spacing.md#timeline-rhythm).
+                .padding(
+                    start = RaftAppSpacing.Md,
+                    end = RaftAppSpacing.Md,
+                    top = ThreadMessageTimelineTurn + ThreadMessageTimelineRowInset,
+                    bottom = ThreadMessageTimelineRowInset
+                ),
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.Top
     ) {
@@ -27959,8 +27987,19 @@ internal fun ThreadHistoryStatusRow(
 
 @Composable
 private fun ThreadDateDivider(label: String) {
+    // raft-ui MessageListDateDivider: the rule sits a section (24) from the text on both sides
+    // (spacing.md#timeline-rhythm), taking back the row above's inset (4) and the row below's
+    // lead (12): pt = 24 - 4 - line/2, pb = 24 - 12 - line/2 on its 16dp line.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = RaftAppSpacing.Md,
+                    end = RaftAppSpacing.Md,
+                    top = ThreadDateDividerPaddingTop,
+                    bottom = ThreadDateDividerPaddingBottom
+                ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -27970,11 +28009,20 @@ private fun ThreadDateDivider(label: String) {
             style = threadDateDividerTextStyle(),
             color = RaftColor.TextMutedGray,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.height(ThreadDateDividerLineHeight)
         )
         Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.TextMutedGray.copy(alpha = 0.35f)))
     }
 }
+
+/** raft `timeline-gap-section`: a boundary's distance from the text on each side. */
+private val ThreadTimelineSection = 24.dp
+private val ThreadDateDividerLineHeight = 16.dp
+internal val ThreadDateDividerPaddingTop =
+    ThreadTimelineSection - ThreadMessageTimelineRowInset - ThreadDateDividerLineHeight / 2
+internal val ThreadDateDividerPaddingBottom =
+    ThreadTimelineSection - (ThreadMessageTimelineTurn + ThreadMessageTimelineRowInset) - ThreadDateDividerLineHeight / 2
 
 /** raft-ui `MessageListDateDivider`: `font-mono text-mono-meta` (12/16 regular), Caption's size in Space Mono Regular. */
 internal fun threadDateDividerTextStyle(): TextStyle =
@@ -29035,15 +29083,18 @@ private fun ThreadMessageCardContent(
                     Column(
                         modifier =
                             Modifier
+                                .then(if (showAuthorChrome) Modifier.threadMessageHeaderBodyGapTrim() else Modifier)
                                 .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                        // raft-ui MessageItemHeader `mb-px`: the body starts 1px under the header;
+                        // the parts after the body keep the 4dp step.
+                        verticalArrangement =
+                            if (showAuthorChrome) ThreadMessageHeaderFirstArrangement else Arrangement.spacedBy(RaftAppSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
                         if (showAuthorChrome) {
                             Box(
                                 modifier =
                                     Modifier
-                                        .threadMessageHeaderBodyGap()
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .padding(end = if (reserveInlineTrailingSpace) 30.dp else 0.dp)
                                         .background(Color.Transparent)
@@ -29650,7 +29701,11 @@ private fun ThreadMessageCardContent(
                         .align(Alignment.TopEnd)
                         .offset(
                             x = -RaftMessageItemToolbarDefaults.EndInset,
-                            y = RaftMessageItemToolbarDefaults.TopOffset
+                            // web `top-[-18px]` is measured inside the row's border, below a turn's
+                            // transparent `timeline-turn` band.
+                            y =
+                                RaftMessageItemToolbarDefaults.TopOffset +
+                                    if (showAuthorChrome) ThreadMessageTimelineTurn else 0.dp
                         )
             )
         }
