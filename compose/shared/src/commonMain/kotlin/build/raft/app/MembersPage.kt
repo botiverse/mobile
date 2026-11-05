@@ -6553,6 +6553,7 @@ private fun MembersDetailContent(
                                         )
                                     MembersAgentDetailTab.Workspace ->
                                         MembersAgentWorkspaceTab(
+                                            agentId = member.id.value,
                                             treeState = workspaceTreeState,
                                             expandedDirs = expandedWorkspaceDirs,
                                             loadedDirs = loadedWorkspaceDirs,
@@ -13149,6 +13150,7 @@ private fun MembersAgentReminderCard(
 
 @Composable
 private fun MembersAgentWorkspaceTab(
+    agentId: String,
     treeState: MembersAgentWorkspaceTreeState,
     expandedDirs: Set<String>,
     loadedDirs: Map<String, List<RaftWorkspaceNode>>,
@@ -13168,11 +13170,10 @@ private fun MembersAgentWorkspaceTab(
     // a 24dp copy icon) over a seam; the tree pane with its own seam head (`py-1.5 pr-1.5
     // pl-3`, the Workspace eyebrow, 32dp icon buttons) and a seam on its right edge.
     Column(modifier = modifier.fillMaxWidth()) {
-        val workspacePath =
-            (treeState as? MembersAgentWorkspaceTreeState.Content)?.snapshot?.rootPath
-                ?.takeIf { it.isNotBlank() }
-                ?.let { if (it.endsWith("/")) it else "$it/" }
-        if (workspacePath != null) {
+        // web: the runtime profile's workspace path, else the agent's default directory.
+        // The files endpoint does not return the path, so this is that default.
+        val workspacePath = "~/.slock/agents/$agentId/"
+        if (treeState !is MembersAgentWorkspaceTreeState.NoPermission) {
             var copied by remember(workspacePath) { mutableStateOf(false) }
             Row(
                 modifier = Modifier
