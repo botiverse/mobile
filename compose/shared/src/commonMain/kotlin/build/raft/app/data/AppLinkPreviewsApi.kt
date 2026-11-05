@@ -95,12 +95,21 @@ sealed interface AppLinkResult {
         val cardV2: RaftAppLinkCardV2? = null,
         /** A v2 answer's inline label: its title is the chip's words ([chipTitle]). */
         val inline: AppLinkInline? = null,
+        /** A version 3 `card` item with `placement: "block"`: drawn after the link's paragraph, never in a chip's card. */
+        val block: AppLinkBlockCard? = null,
+        /**
+         * Whether the link is drawn as the chip. Always, except a version 3 answer that lists a block
+         * card and no `inline`: the link stays the author's plain link and only the card is drawn.
+         */
+        val chip: Boolean = true,
+        /** A version 3 `connect_account` item: the chip's card asks the reader to connect, with one button to this URL. */
+        val connectUrl: String? = null,
     ) : AppLinkResult {
         /** The words on the chip (web `appLinkChipTitle`): the inline title, else [title]. The card always shows [title]. */
         val chipTitle: String get() = inline?.title ?: title
 
         /** Whether the App sent a card body to open (v1 [card] or v2 [cardV2]). */
-        val hasCardBody: Boolean get() = card != null || cardV2 != null
+        val hasCardBody: Boolean get() = card != null || cardV2 != null || connectUrl != null
     }
 
     /** The viewer hasn't answered this App: a grey chip that asks first. */

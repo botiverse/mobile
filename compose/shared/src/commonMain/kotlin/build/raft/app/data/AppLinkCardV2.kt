@@ -109,6 +109,9 @@ sealed interface RaftLinkCardButtonAction {
     data class Execute(val actionId: String, val confirm: Boolean, val undoWindowMs: Long? = null) : RaftLinkCardButtonAction
 }
 
+/** A version 3 `card` item with `placement: "block"`: [title] (the card's, up to 160) and its tree, drawn after the link's paragraph. */
+data class AppLinkBlockCard(val title: String, val card: RaftAppLinkCardV2)
+
 /** A v2 answer's inline label (`linkCardInlineSchema`): [title] replaces the chip's words; the badge is never drawn on the chip. */
 data class AppLinkInline(val title: String, val badge: AppLinkInlineBadge? = null)
 
@@ -317,7 +320,7 @@ private fun readLinkCardReadItem(raw: JsonElement): LinkCardReadItem? {
             val content = readAppLinkPreviewContent(preview, APP_LINK_PREVIEW_CONTENT_KEYS) ?: return null
             LinkCardReadItem.V1(url, AppLinkResult.Card(url = url, app = app, title = content.first, card = content.second))
         }
-        "v2" -> {
+        "v2", "v3" -> {
             if (obj.keys != setOf("kind", "url", "app", "preview", "ticket", "actions")) return null
             val app = readLinkCardReadApp(obj["app"]) ?: return null
             val ticket =
@@ -334,6 +337,7 @@ private fun readLinkCardReadItem(raw: JsonElement): LinkCardReadItem? {
                 if (entry["handle"].cardString()?.length !in 1..4096) return null
             }
             val preview = obj["preview"] as? JsonObject ?: return null
+            if (obj["kind"].cardString() == "v3") return readLinkCardV3Preview(url, app, ticket, preview)
             if (!preview["version"].isJsonNumberLiteral(2.0)) return null
             when (preview["display"].cardString()) {
                 "card" -> {
@@ -346,7 +350,8 @@ private fun readLinkCardReadItem(raw: JsonElement): LinkCardReadItem? {
                     val inline = if ("inline" in preview) readAppLinkInline(preview["inline"]) ?: return null else null
                     LinkCardReadItem.Card(url, AppLinkResult.Card(url = url, app = app, title = title, cardV2 = card, inline = inline), ticket)
                 }
-                // Step 1 draws no connect-account card: the link stays plain. `link` is no item, as on the web.
+                // The link stays plain: `link` is no item, as on the web, and a version 2 connect_account is not drawn
+                // (a client that declares `preview.v3` gets it as a version 3 item).
                 else -> null
             }
         }
@@ -369,9 +374,9 @@ private fun readLinkCardReadApp(raw: JsonElement?): AppLinkApp? {
 }
 
 /** `linkCardInlineSchema`; a badge tone this client does not know reads neutral. */
-private fun readAppLinkInline(raw: JsonElement?): AppLinkInline? {
+private fun readAppLinkInline(raw: JsonElement?, typed: Boolean = false): AppLinkInline? {
     val obj = raw as? JsonObject ?: return null
-    if (!obj.hasOnlyKeys(setOf("title", "badge"))) return null
+    if (!obj.hasOnlyKeys(if (typed) setOf("type", "title", "badge") else setOf("title", "badge"))) return null
     val title = obj["title"].cardString()?.takeIf { isCardText(it, 1, 80) } ?: return null
     val badge =
         if ("badge" in obj) {
@@ -383,6 +388,104 @@ private fun readAppLinkInline(raw: JsonElement?): AppLinkInline? {
             null
         }
     return AppLinkInline(title, badge)
+}
+
+/** A version 3 answer's items at most (`APP_LINK_PREVIEW_MAX_ITEMS`). */
+internal const val APP_LINK_PREVIEW_V3_MAX_ITEMS = 8
+
+/** Every item's `type`, known or not (`APP_LINK_PREVIEW_ITEM_TYPE`). */
+private val APP_LINK_V3_ITEM_TYPE = Regex("^[a-z0-9._]{1,32}$")
+
+/**
+ * A version 3 answer (RFC 076 §14; botiverse/slock #13109 `appLinkPreviewV3ResponseSchema` and
+ * `parseAppLinkPreviewV3`): `{ version: 3, items }`, at most 8 items, each an object with a `type` of
+ * 1-32 characters from `a-z 0-9 . _`. A type this client does not know is skipped and the rest
+ * stands (display only: executable content comes with a capability of its own); a known item is as
+ * strict as in version 2. At most one `inline` and one `card`, and a `connect_account` only alone.
+ * Any failure leaves the link plain. A top-level `title` (the design system's example has one; the
+ * server's schema has none) is tolerated.
+ *
+ * What the items draw (raft-design #1010, "What an app's answer lists"):
+ *  - `inline`: the link is the chip with the item's title ([AppLinkResult.Card.inline]);
+ *  - `card` `hover`: the chip's card ([AppLinkResult.Card.cardV2]); without `inline` the chip takes the card's title;
+ *  - `card` `block`: [AppLinkResult.Card.block], drawn after the link's paragraph; the link is the
+ *    chip only when the answer lists `inline` ([AppLinkResult.Card.chip]), else the author's plain link;
+ *  - `connect_account`: [AppLinkResult.Card.connectUrl];
+ *  - nothing known (`[]`): no result, the author's plain link.
+ */
+private fun readLinkCardV3Preview(url: String, app: AppLinkApp, ticket: String?, preview: JsonObject): LinkCardReadItem? {
+    if (!preview["version"].isJsonNumberLiteral(3.0)) return null
+    if (!preview.hasOnlyKeys(setOf("version", "title", "items"))) return null
+    if ("title" in preview && preview["title"].cardString()?.let { isCardText(it, 1, 160) } != true) return null
+    val items = preview["items"] as? JsonArray ?: return null
+    if (items.size > APP_LINK_PREVIEW_V3_MAX_ITEMS) return null
+    val origin = appLinkHrefOrigin(url)
+    var inline: AppLinkInline? = null
+    var card: AppLinkV3Card? = null
+    var connectUrl: String? = null
+    for (raw in items) {
+        val item = raw as? JsonObject ?: return null
+        val type = item["type"].cardString()?.takeIf(APP_LINK_V3_ITEM_TYPE::matches) ?: return null
+        when (type) {
+            "inline" -> {
+                if (inline != null) return null
+                inline = readAppLinkInline(item, typed = true) ?: return null
+            }
+            "card" -> {
+                if (card != null) return null
+                card = readAppLinkV3Card(item, origin) ?: return null
+            }
+            "connect_account" -> {
+                if (connectUrl != null || !item.hasOnlyKeys(setOf("type", "connect_url"))) return null
+                val target = item["connect_url"].cardString()?.takeIf { isCardPublicUrl(it) } ?: return null
+                if (appLinkHrefOrigin(target) != origin) return null
+                connectUrl = target
+            }
+            // An item type this client does not know: skipped.
+            else -> Unit
+        }
+    }
+    val chipLabel = inline
+    val blockOrHover = card
+    if (connectUrl != null && (chipLabel != null || blockOrHover != null)) return null
+    val result =
+        if (connectUrl != null) {
+            AppLinkResult.Card(url = url, app = app, title = app.name, connectUrl = connectUrl)
+        } else if (blockOrHover == null) {
+            // An `inline` alone is the chip and nothing to open; no known item at all is the plain link.
+            if (chipLabel == null) return null
+            AppLinkResult.Card(url = url, app = app, title = chipLabel.title, inline = chipLabel)
+        } else if (blockOrHover.block) {
+            AppLinkResult.Card(
+                url = url,
+                app = app,
+                title = blockOrHover.title,
+                inline = chipLabel,
+                block = AppLinkBlockCard(blockOrHover.title, blockOrHover.card),
+                chip = chipLabel != null,
+            )
+        } else {
+            AppLinkResult.Card(url = url, app = app, title = blockOrHover.title, cardV2 = blockOrHover.card, inline = chipLabel)
+        }
+    return LinkCardReadItem.Card(url, result, ticket)
+}
+
+/** A version 3 `card` item: [block] false is `hover`. */
+private class AppLinkV3Card(val block: Boolean, val title: String, val card: RaftAppLinkCardV2)
+
+private fun readAppLinkV3Card(item: JsonObject, origin: String): AppLinkV3Card? {
+    if (!item.hasOnlyKeys(setOf("type", "placement", "title", "card_revision", "business_revision", "card"))) return null
+    val block =
+        when (item["placement"].cardString()) {
+            "block" -> true
+            "hover" -> false
+            else -> return null
+        }
+    val title = item["title"].cardString()?.takeIf { isCardText(it, 1, 160) } ?: return null
+    if (item["card_revision"].cardString()?.length !in 1..512) return null
+    if (item["business_revision"].cardString()?.length !in 1..512) return null
+    val card = parseRaftAppLinkCardV2(item["card"] ?: return null, origin) ?: return null
+    return AppLinkV3Card(block, title, card)
 }
 
 /** A JSON number equal to [value] (zod `z.literal(2)`). */
