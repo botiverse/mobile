@@ -1402,6 +1402,9 @@
     <string name="member_section_created_agents">Agentes criados</string>
     <string name="member_section_runtime_config">Configuração do runtime</string>
     <string name="member_section_skills_count">Habilidades (%1$s)</string>
+    <string name="member_section_skills">Habilidades</string>
+    <string name="member_skills_global">Global</string>
+    <string name="member_skills_workspace">Espaço de trabalho</string>
     <string name="member_section_agent_channels_dms">Canais e mensagens diretas do agente</string>
     <string name="member_section_channels">Canais</string>
     <string name="member_section_private_chats">Chats privados do agente</string>

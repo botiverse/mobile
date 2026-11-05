@@ -1402,6 +1402,9 @@
     <string name="member_section_created_agents">만든 에이전트</string>
     <string name="member_section_runtime_config">런타임 설정</string>
     <string name="member_section_skills_count">스킬(%1$s)</string>
+    <string name="member_section_skills">스킬</string>
+    <string name="member_skills_global">전역</string>
+    <string name="member_skills_workspace">워크스페이스</string>
     <string name="member_section_agent_channels_dms">에이전트 채널 및 DM</string>
     <string name="member_section_channels">채널</string>
     <string name="member_section_private_chats">에이전트 비공개 대화</string>

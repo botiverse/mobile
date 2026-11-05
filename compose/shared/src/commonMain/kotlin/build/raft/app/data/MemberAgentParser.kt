@@ -683,12 +683,17 @@ fun parseSharedAgentSkillsSnapshot(
     agentId: MemberId,
 ): AgentSkillsSnapshot? = runCatching {
     val decoded = memberAgentJson.decodeFromString(WireAgentSkillsResponse.serializer(), bodyText)
+    // Web AgentSkills: with any skill at all both sub-sections show (an empty one says so);
+    // with none, the section is its header alone.
+    val hasSkills = decoded.global.isNotEmpty() || decoded.workspace.isNotEmpty()
     AgentSkillsSnapshot(
         agentId = agentId,
-        groups = listOf(
-            decoded.global.toSkillGroup("Global"),
-            decoded.workspace.toSkillGroup("Workspace"),
-        ).filter { group -> group.paths.any { it.skills.isNotEmpty() } },
+        groups =
+            if (hasSkills) {
+                listOf(decoded.global.toSkillGroup("Global"), decoded.workspace.toSkillGroup("Workspace"))
+            } else {
+                emptyList()
+            },
     )
 }.getOrNull()
 
@@ -696,7 +701,8 @@ private fun List<WireSkillInfo>.toSkillGroup(title: String): AgentSkillGroup =
     AgentSkillGroup(
         title = title,
         count = size,
-        paths = groupBy { it.sourcePath ?: title }
+        // Web `groupByPath`: `skill.sourcePath || "unknown"`.
+        paths = groupBy { it.sourcePath?.takeIf { path -> path.isNotBlank() } ?: "unknown" }
             .map { (path, skills) ->
                 AgentSkillPathGroup(
                     path = path,
@@ -705,6 +711,7 @@ private fun List<WireSkillInfo>.toSkillGroup(title: String): AgentSkillGroup =
                         AgentSkillSummary(
                             name = it.displayName.takeIf { display -> display.isNotBlank() } ?: it.name,
                             detail = it.description.takeIf { description -> description.isNotBlank() },
+                            command = it.name.takeIf { name -> it.userInvocable && name.isNotBlank() },
                         )
                     },
                 )

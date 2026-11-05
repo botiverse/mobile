@@ -1411,6 +1411,9 @@
     <string name="member_section_created_agents">作成したエージェント</string>
     <string name="member_section_runtime_config">ランタイム設定</string>
     <string name="member_section_skills_count">スキル（%1$s）</string>
+    <string name="member_section_skills">スキル</string>
+    <string name="member_skills_global">グローバル</string>
+    <string name="member_skills_workspace">ワークスペース</string>
     <string name="member_section_agent_channels_dms">エージェントのチャンネルと DM</string>
     <string name="member_section_channels">チャンネル</string>
     <string name="member_section_private_chats">エージェントのプライベートチャット</string>
