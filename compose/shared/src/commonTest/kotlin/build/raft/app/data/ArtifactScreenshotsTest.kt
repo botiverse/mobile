@@ -122,7 +122,7 @@ class ArtifactScreenshotsTest {
         val network = FakeBytesNetwork { HomeNetworkBytesResponse(200, bytes, "image/png") }
         val read = NetworkArtifactScreenshotFetcher(network).fetch(ArtifactScreenshotKey(server, cardId, "of_phone"))
         assertContentEquals(bytes, read)
-        assertEquals(listOf(Triple("objects/artifact/$cardId/files/of_phone", ServerId(server), ARTIFACT_SCREENSHOT_MAX_FILE_BYTES)), network.reads)
+        assertEquals(listOf<Triple<String, ServerId?, Int>>(Triple("objects/artifact/$cardId/files/of_phone", ServerId(server), ARTIFACT_SCREENSHOT_MAX_FILE_BYTES)), network.reads)
     }
 
     @Test
