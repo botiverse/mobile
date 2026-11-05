@@ -2,6 +2,8 @@ package build.raft.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +31,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
@@ -624,7 +625,7 @@ internal fun SettingsNotificationToggleRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(enabled = enabled) { onCheckedChange(!checked) }
+                .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -639,7 +640,7 @@ internal fun SettingsNotificationToggleRow(
             )
             SettingsFormDetailText(detail)
         }
-        RaftSwitchButton(checked = checked, enabled = enabled)
+        RaftSwitch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

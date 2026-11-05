@@ -518,8 +518,13 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   squared box). Touch never shows it.
 - **Small icon buttons.** raft-ui 0.21 has two icon-button sizes, `icon-md` (32dp) and
   `icon-lg` (44dp); `icon-xs` / `icon-sm` are old names of `icon-md`, and "28px is not a
-  Button size". `RaftIconButtonSize` is `Md` and `Lg`. The one 24dp button, the sidebar
-  section control, sizes itself (`RaftSizedIconButton`, internal) with a 44dp touch target.
+  Button size". Besides `Md` and `Lg`, `RaftIconButtonSize` has `Xs` (24dp) and `Sm` (28dp)
+  for the actions raft-ui draws inside a component rather than as a Button: the message
+  attachment card's action (`size-6 rounded-chip`, `before:-inset-1`), a banner's close and
+  the code block's Copy (28dp from raft-ui 0.20; 0.60 makes it 32dp). They round at
+  `radius-chip`, keep their box in the layout, widen their touch target to 44dp and (`Xs`)
+  their pointer target to 28dp, so a mouse gets the web's overhang too. The sidebar section
+  control still sizes itself (`RaftSizedIconButton`, internal).
 - **TextLink inside a sentence** is a span of the sentence's text (`appendRaftTextLink`),
   with a click target over its words on each line it takes (one node for focus and
   screen readers, on its first line), and its underline and focus ring drawn under the

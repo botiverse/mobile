@@ -1,5 +1,12 @@
 package build.raft.app
 
+import build.raft.app.resources.Res
+import build.raft.app.resources.common_close
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import org.jetbrains.compose.resources.stringResource
+
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
@@ -451,12 +458,13 @@ private fun RaftForegroundBannerActionIcon(
     iconName: RaftLucideIconName,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier =
-            Modifier
-                .size(24.dp)
-                .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center
+    RaftIconButton(
+        onClick = onClick,
+        // No tooltip: a long press on the banner stays a drag / the banner's own gesture.
+        tooltip = null,
+        contentDescription = stringResource(Res.string.common_close),
+        variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Xs,
     ) {
         RaftLucideIcon(
             iconName,

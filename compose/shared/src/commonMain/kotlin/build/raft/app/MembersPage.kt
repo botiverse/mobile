@@ -3,9 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
-import build.raft.app.components.RaftSurfaceListItem
 import build.raft.app.components.RaftAnchorPlacement
-import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.getDefaultModel
 import androidx.compose.runtime.setValue
@@ -27,6 +25,7 @@ import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -12026,9 +12025,9 @@ private fun MembersAgentReminderCard(
     // web AgentRemindersSection `ReminderCard`: a non-interactive raft-ui SurfaceListItem with the
     // title (`text-subhead font-semibold`), then `mt-1` when it fires (`text-caption` muted,
     // relative, then the date in Space Mono), then its recurrence and the message it points at.
-    RaftSurfaceListItem(interactive = false) {
+    RaftCard(modifier = Modifier.fillMaxWidth(), variant = RaftCardVariant.Inset) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             RaftText(
