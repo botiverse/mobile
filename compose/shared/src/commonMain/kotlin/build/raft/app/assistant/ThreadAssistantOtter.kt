@@ -1,5 +1,6 @@
 package build.raft.app.assistant
 
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -74,7 +75,15 @@ internal class ThreadAssistantOtter(
     val panelOpen: Boolean = false,
     val onPanelOpenChange: (Boolean) -> Unit = {},
     val panelEmbed: ThreadAssistantPanelEmbed? = null,
+    /** Where the otter rests on its composer: a wide window's panel opens above it. */
+    val rest: ThreadAssistantOtterRest = ThreadAssistantOtterRest(),
 )
+
+/** The otter's rest box in window coordinates (web `restRef`), reported by the composer drawing it. */
+@Stable
+internal class ThreadAssistantOtterRest {
+    var bounds: Rect? by mutableStateOf(null)
+}
 
 /** The current conversation's otter, or null where it has none. */
 internal val LocalThreadAssistantOtter = compositionLocalOf<ThreadAssistantOtter?> { null }
@@ -250,7 +259,8 @@ internal fun rememberThreadAssistantOtter(
         remember(agentId, server, dmChannelId) {
             ThreadAssistantPanelEmbed(agentId = agentId, onWaitingActionCard = { waitingActionCard = it })
         }
-    return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelEmbed) {
+    val rest = remember(server, dmChannelId) { ThreadAssistantOtterRest() }
+    return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelEmbed, rest) {
         ThreadAssistantOtter(
             hostId = hostId,
             hosts = store.otterHosts,
@@ -267,6 +277,7 @@ internal fun rememberThreadAssistantOtter(
             panelOpen = panelOpen,
             onPanelOpenChange = { panelOpen = it },
             panelEmbed = panelEmbed,
+            rest = rest,
         )
     }
 }
@@ -304,6 +315,7 @@ internal fun ThreadAssistantOtterFrameEdge(
         scale = otter.scale,
         endInset = otter.endInset,
         animateEntrance = animateEntrance,
+        onRestBounds = { otter.rest.bounds = it },
     )
 }
 

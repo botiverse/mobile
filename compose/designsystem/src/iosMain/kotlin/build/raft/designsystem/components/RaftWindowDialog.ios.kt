@@ -16,6 +16,9 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
         useSoftwareKeyboardInset = !properties.contentHandlesKeyboard,
         // RaftWindowDialog draws RaftTheme.scrim.
         scrimColor = Color.Transparent,
+        // Compose's own transition (fade in while growing from 95%), unless the content moves
+        // itself (RaftDrawer's slide).
+        animateTransition = properties.platformTransition,
     )
 
 /**

@@ -2,6 +2,10 @@ package build.raft.designsystem.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -431,37 +435,87 @@ fun RaftSheet(
  * the scrim and Back calling [onDismissRequest], and the 82% height cap. [surface] draws
  * the sheet with the modifier it is given (the caller's [modifier] plus the slide, the
  * tap guard and the cap); pass it a [RaftSheetSurfaceImpl] with `clearNavigationBar`.
+ *
+ * [RaftDrawer] asks for the full drawer motion (raft-ui drawer.recipe.ts, Motion "A scrim moves
+ * with its surface") with [slideMotion]: the scrim fades in with the slide (same 240ms,
+ * `ease-slide`); the slide starts only after the window's first frame, so content that is heavy to
+ * compose (a whole conversation) does not eat the slide's first frames; and [visible] false
+ * slides the surface down again with the scrim fading out (180ms), then calls [onHidden], so the
+ * caller keeps the window composed until then. [overlay] is drawn over the scrim and the surface,
+ * across the whole window (not padded for the status bar).
  */
 @Composable
 internal fun RaftSheetWindow(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    slideMotion: Boolean = false,
+    visible: Boolean = true,
+    onHidden: () -> Unit = {},
+    overlay: @Composable BoxScope.() -> Unit = {},
     surface: @Composable (Modifier) -> Unit,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
-    RaftWindowDialog(onDismissRequest = onDismissRequest) {
+    val hidden by rememberUpdatedState(onHidden)
+    RaftWindowDialog(
+        onDismissRequest = onDismissRequest,
+        // The drawer slides itself: no platform window transition stacked on the slide (iOS).
+        properties = RaftWindowDialogProperties(drawScrim = !slideMotion, platformTransition = !slideMotion),
+    ) {
         val slide = remember { Animatable(1f) }
-        LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftMotion.EaseSlide)) }
-        Box(
-            Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) { detectTapGestures { dismiss() } }
-                // Never under the status bar or a side cutout; the bottom is the sheet's own.
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            surface(
-                modifier
-                    .graphicsLayer { translationY = size.height * slide.value }
-                    .pointerInput(Unit) { detectTapGestures { } }
-                    .layout { measurable, constraints ->
-                        val placeable = measurable.measure(raftSheetConstraints(constraints))
-                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                    },
-            )
+        if (slideMotion) {
+            LaunchedEffect(visible) {
+                if (visible) {
+                    // The first frame composes and measures the content: start after it.
+                    withFrameNanos { }
+                    slide.animateTo(0f, tween(RaftSheetSlideInMillis, easing = RaftMotion.EaseSlide))
+                } else {
+                    slide.animateTo(1f, tween(RaftSheetSlideOutMillis, easing = RaftMotion.EaseSlide))
+                    hidden()
+                }
+            }
+        } else {
+            LaunchedEffect(Unit) { slide.animateTo(0f, tween(RaftSheetSlideInMillis, easing = RaftMotion.EaseSlide)) }
+        }
+        Box(Modifier.fillMaxSize()) {
+            if (slideMotion) {
+                val scrim = RaftTheme.scrim
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .testTag(RaftSheetScrimTestTag)
+                        .graphicsLayer { alpha = 1f - slide.value }
+                        .background(scrim),
+                )
+            }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { dismiss() } }
+                    // Never under the status bar or a side cutout; the bottom is the sheet's own.
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                surface(
+                    modifier
+                        .graphicsLayer { translationY = size.height * slide.value }
+                        .pointerInput(Unit) { detectTapGestures { } }
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(raftSheetConstraints(constraints))
+                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                        },
+                )
+            }
+            overlay()
         }
     }
 }
+
+/** raft-ui drawer.recipe.ts: the popup's `duration-240` in, `180ms` out. */
+internal const val RaftSheetSlideInMillis = 240
+internal const val RaftSheetSlideOutMillis = 180
+
+/** The scrim [RaftSheetWindow] draws itself with `slideMotion` (tests read its alpha). */
+internal const val RaftSheetScrimTestTag = "raft-sheet-scrim"
 
 /**
  * CSS negative margins: the element reports itself [end] narrower and [vertical] shorter

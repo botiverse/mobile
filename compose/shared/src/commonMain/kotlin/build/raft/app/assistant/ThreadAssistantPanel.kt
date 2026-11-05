@@ -1,9 +1,29 @@
 package build.raft.app.assistant
 
+import androidx.compose.ui.unit.Dp
+import kotlin.math.roundToInt
+import build.raft.designsystem.components.RaftPopoverSurface
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import build.raft.designsystem.components.RaftIconButtonSize
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -166,11 +186,14 @@ internal fun ThreadAssistantPanel(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // A finger's 44dp (`Lg`, the phone top bar's icon button): the 32dp `Md` left most of
+            // the head's height round the chevron dead, and taps there did nothing.
             RaftIconButton(
                 onClick = onCollapse,
                 tooltip = stringResource(Res.string.assistant_otter_collapse),
                 modifier = Modifier.testTag(ThreadAssistantPanelCollapseTestTag),
                 variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg,
             ) {
                 RaftGlyphIcon(RaftGlyph.ChevronDown, size = 18.dp)
             }
@@ -197,24 +220,39 @@ internal fun ColumnScope.ThreadAssistantPanelConversationMissing(name: String) {
 }
 
 /**
- * The otter's panel over the page while it is open (web AssistantOtter's phone `Drawer`,
- * `--drawer-content-height: 82vh`): a [RaftDrawer] holding [ThreadAssistantPanel] with
- * [conversation] as its body. Back, a tap on the scrim and collapse close it. The conversation's
- * composer pads for the home indicator and the keyboard itself; the drawer is its own window, so
- * the keyboard is that window's (no host IME report).
+ * The otter's panel over the page while it is open, as web AssistantOtter shows it:
+ *
+ * - A phone window (narrower than [ThreadAssistantPanelWideMinWidth], web `PHONE_MEDIA_QUERY`):
+ *   the `Drawer`, `--drawer-content-height: 82vh`, a [RaftDrawer] holding [ThreadAssistantPanel]
+ *   with [conversation] as its body. Back, a tap on the scrim and collapse close it; it slides up
+ *   as it opens and back down as it closes (the drawer stays composed until that ends). The
+ *   drawer is its own window, so the keyboard is that window's (no host IME report).
+ *   [windowOverlay] is drawn over the whole drawer window: the page's notification banner while
+ *   the panel is open (see [threadForegroundBannerOnPage]).
+ * - A wider window: the `Popover` ([ThreadAssistantPanelPopover]), anchored to where the otter
+ *   rests on its composer; no scrim, and it appears and goes at once (raft-ui Popover has no
+ *   motion). The page keeps its own banner.
+ *
+ * [onCoversPageChange] reports whether a drawer is over the page now (the page then hands its
+ * banner to [windowOverlay]).
  */
 @Composable
 internal fun ThreadAssistantPanelSheet(
     otter: ThreadAssistantOtter,
+    windowOverlay: @Composable BoxScope.() -> Unit = {},
+    onCoversPageChange: (Boolean) -> Unit = {},
     conversation: @Composable ColumnScope.() -> Unit,
 ) {
-    if (!otter.panelOpen) return
+    val wide = threadAssistantPanelWide()
+    // The drawer is composed from opening until its slide down has ended; the popover only while open.
+    var drawerShown by remember { mutableStateOf(false) }
+    if (!wide && otter.panelOpen && !drawerShown) drawerShown = true
+    val coversPage = !wide && otter.panelOpen
+    val coversPageChange by rememberUpdatedState(onCoversPageChange)
+    SideEffect { coversPageChange(coversPage) }
+    if (if (wide) !otter.panelOpen else !drawerShown) return
     val close by rememberUpdatedState { otter.onPanelOpenChange(false) }
-    RaftDrawer(
-        onDismissRequest = { close() },
-        modifier = Modifier.testTag(ThreadAssistantPanelSheetTestTag),
-        clearNavigationBar = false,
-    ) {
+    val panel: @Composable () -> Unit = {
         CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
             ThreadAssistantPanel(
                 name = otter.assistantName,
@@ -234,11 +272,139 @@ internal fun ThreadAssistantPanelSheet(
             )
         }
     }
+    if (wide) {
+        ThreadAssistantPanelPopover(rest = otter.rest.bounds, onDismissRequest = { close() }) { panel() }
+    } else {
+        RaftDrawer(
+            onDismissRequest = { close() },
+            modifier = Modifier.testTag(ThreadAssistantPanelSheetTestTag),
+            clearNavigationBar = false,
+            visible = otter.panelOpen,
+            onHidden = { drawerShown = false },
+            overlay = windowOverlay,
+        ) {
+            panel()
+        }
+    }
 }
+
+/** Web `PHONE_MEDIA_QUERY` `(max-width: 767px)`: from 768dp the panel is a popover. */
+internal val ThreadAssistantPanelWideMinWidth = 768.dp
+
+/** Whether this window shows the panel as a popover (wider than a phone, web `!phone`). */
+@Composable
+internal fun threadAssistantPanelWide(): Boolean {
+    val size = LocalWindowInfo.current.containerSize
+    val width = with(LocalDensity.current) { size.width.toDp() }
+    return width >= ThreadAssistantPanelWideMinWidth
+}
+
+/** Web AssistantOtter `PopoverContent`: `w-[380px] h-[540px]`, `sideOffset={8}`, `collisionPadding={8}`. */
+internal object ThreadAssistantPanelPopoverDefaults {
+    val Width = 380.dp
+    val Height = 540.dp
+    val SideOffset = 8.dp
+    val CollisionPadding = 8.dp
+}
+
+/**
+ * Where the popover goes in a [window] (web `side="top" align="end"` on the otter's rest box,
+ * Floating UI's `size` and `shift`): above [rest], [ThreadAssistantPanelPopoverDefaults.SideOffset]
+ * off it, its end on the rest box's end; as tall as there is room above (at most 540dp) and
+ * kept [ThreadAssistantPanelPopoverDefaults.CollisionPadding] inside the window. Without a rest
+ * box (the otter not measured yet) it sits at the window's bottom end. Pixels in, pixels out.
+ */
+internal fun threadAssistantPanelPopoverBounds(
+    rest: Rect?,
+    window: IntSize,
+    width: Float,
+    height: Float,
+    sideOffset: Float,
+    padding: Float,
+): Rect {
+    val w = width.coerceAtMost(window.width - 2 * padding).coerceAtLeast(0f)
+    val anchorTop = rest?.top ?: (window.height - padding + sideOffset)
+    val anchorEnd = rest?.right ?: (window.width - padding)
+    val bottom = anchorTop - sideOffset
+    val h = height.coerceAtMost(bottom - padding).coerceAtLeast(0f)
+    val left = (anchorEnd - w).coerceIn(padding, (window.width - padding - w).coerceAtLeast(padding))
+    return Rect(left, bottom - h, left + w, bottom)
+}
+
+/**
+ * The panel in raft-ui's Popover chrome ([RaftPopoverSurface]: popover layer, container radius,
+ * seam ring, float shadow) at [threadAssistantPanelPopoverBounds]. It is focusable (the DM's
+ * composer types in it); a press outside and Back call [onDismissRequest].
+ */
+@Composable
+private fun ThreadAssistantPanelPopover(
+    rest: Rect?,
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val density = LocalDensity.current
+    val window = LocalWindowInfo.current.containerSize
+    val bounds =
+        with(density) {
+            threadAssistantPanelPopoverBounds(
+                rest = rest,
+                window = window,
+                width = ThreadAssistantPanelPopoverDefaults.Width.toPx(),
+                height = ThreadAssistantPanelPopoverDefaults.Height.toPx(),
+                sideOffset = ThreadAssistantPanelPopoverDefaults.SideOffset.toPx(),
+                padding = ThreadAssistantPanelPopoverDefaults.CollisionPadding.toPx(),
+            )
+        }
+    val positioner =
+        remember(bounds) {
+            object : PopupPositionProvider {
+                override fun calculatePosition(
+                    anchorBounds: IntRect,
+                    windowSize: IntSize,
+                    layoutDirection: LayoutDirection,
+                    popupContentSize: IntSize,
+                ): IntOffset = IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt())
+            }
+        }
+    Popup(
+        popupPositionProvider = positioner,
+        onDismissRequest = onDismissRequest,
+        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
+    ) {
+        with(density) { ThreadAssistantPanelPopoverSurface(bounds.width.toDp(), bounds.height.toDp(), content) }
+    }
+}
+
+/** [ThreadAssistantPanelPopover]'s surface without its popup window (fixtures draw it in place). */
+@Composable
+internal fun ThreadAssistantPanelPopoverSurface(
+    width: Dp,
+    height: Dp,
+    content: @Composable () -> Unit,
+) {
+    RaftPopoverSurface(
+        modifier = Modifier.height(height).testTag(ThreadAssistantPanelPopoverTestTag),
+        width = width,
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        content()
+    }
+}
+
+/**
+ * Whether a conversation page draws the foreground notification banner itself. One banner shows,
+ * on top of everything: the assistant's DM inside the panel ([inAssistantPanel]) draws none (it
+ * drew a second one, placed from the panel's top), and while a page's panel is open
+ * ([assistantPanelOpen]) the page hands its banner to the panel's window
+ * ([ThreadAssistantPanelSheet] `windowOverlay`), since its own would sit under the scrim.
+ */
+internal fun threadForegroundBannerOnPage(inAssistantPanel: Boolean, assistantPanelOpen: Boolean): Boolean =
+    !inAssistantPanel && !assistantPanelOpen
 
 private val ThreadAssistantPanelHeadHeight = 56.dp
 
-/** Web `data-testid`s: `assistant-otter-sheet`, `assistant-otter-panel`, its header and collapse. */
+/** Web `data-testid`s: `assistant-otter-sheet`, `assistant-otter-popover`, `assistant-otter-panel`, its header and collapse. */
+internal const val ThreadAssistantPanelPopoverTestTag = "assistant-otter-popover"
 internal const val ThreadAssistantPanelSheetTestTag = "assistant-otter-sheet"
 internal const val ThreadAssistantPanelTestTag = "assistant-otter-panel"
 internal const val ThreadAssistantPanelHeaderTestTag = "assistant-otter-panel-header"

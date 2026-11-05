@@ -9,6 +9,7 @@ import build.raft.app.assistant.ThreadAssistantOtterFrameEdge
 import build.raft.app.assistant.assistantOtterDmOpenRequest
 import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
+import build.raft.app.assistant.threadForegroundBannerOnPage
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -12440,32 +12441,56 @@ private fun SharedThreadRouteContentContent(
         )
     }
 
+    // Whether this page's assistant panel is open (set from the content, where the otter lives):
+    // the page's own banner then gives way to the panel window's (threadForegroundBannerOnPage).
+    val assistantPanelOpenOnPage = remember { mutableStateOf(false) }
+    val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
+    val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
+    val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
+        foregroundBannerStore.dismiss(target.id)
+        val request = target.openRequest
+        val bannerPayload =
+            buildAppShellThreadPayload(
+                conversation = request.conversationIdentity,
+                timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
+                alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
+                originFallback = request.originFallback,
+                onWarn = bridge::logWarn
+            )
+        if (bannerPayload == null) {
+            bridge.logWarn("foreground_banner_open_rejected reason=reply_identity_incomplete")
+        } else {
+            onOpenThreadPayload(bannerPayload)
+        }
+    }
+    val onForegroundBannerDismiss: (RaftForegroundMessageBanner) -> Unit = { target -> foregroundBannerStore.dismiss(target.id) }
+
     RaftForegroundBannerHost(
-        banner = foregroundMessageBanner,
-        topSafeArea = raftTopSafeAreaPadding(),
+        banner =
+            foregroundMessageBanner?.takeIf {
+                threadForegroundBannerOnPage(
+                    inAssistantPanel = LocalThreadAssistantPanelEmbed.current != null,
+                    assistantPanelOpen = assistantPanelOpenOnPage.value,
+                )
+            },
+        topSafeArea = foregroundBannerTopSafeArea,
         serverMembersStore = serverMembersStore,
         currentServerStore = foregroundBannerCurrentServerStore,
-        currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
-        onBannerClick = { target ->
-            foregroundBannerStore.dismiss(target.id)
-            val request = target.openRequest
-            val bannerPayload =
-                buildAppShellThreadPayload(
-                    conversation = request.conversationIdentity,
-                    timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
-                    alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
-                    compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
-                    anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
-                    originFallback = request.originFallback,
-                    onWarn = bridge::logWarn
-                )
-            if (bannerPayload == null) {
-                bridge.logWarn("foreground_banner_open_rejected reason=reply_identity_incomplete")
-            } else {
-                onOpenThreadPayload(bannerPayload)
-            }
-        },
-        onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
+        currentServerIdOverride = foregroundBannerServerId,
+        onBannerClick = onForegroundBannerClick,
+        onBannerDismiss = onForegroundBannerDismiss,
+        handoff =
+            RaftForegroundBannerHandoff(
+                banner = foregroundMessageBanner,
+                topSafeArea = foregroundBannerTopSafeArea,
+                serverMembersStore = serverMembersStore,
+                currentServerId = foregroundBannerServerId,
+                onClick = onForegroundBannerClick,
+                onDismiss = onForegroundBannerDismiss,
+                coveredByWindow = assistantPanelOpenOnPage,
+            ),
     ) {
         // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
         // diagnostics OFF the census session Local is NOT part of the vararg
@@ -12522,10 +12547,31 @@ private fun SharedThreadRouteContentContent(
                 replyThread = assistantOtterReplyThread,
                 pageActive = active,
             )
+        // Read through the local, not captured (this lambda is at the JVM's captured-value limit).
+        val bannerHandoff = LocalRaftForegroundBannerHandoff.current
         // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
         // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
         assistantOtter?.let { otter ->
-            ThreadAssistantPanelSheet(otter) {
+            ThreadAssistantPanelSheet(
+                otter,
+                // A phone's drawer covers the page: its banner goes over the drawer instead.
+                onCoversPageChange = { covers -> bannerHandoff?.coveredByWindow?.value = covers },
+                // The page's banner goes over the panel while it is open (threadForegroundBannerOnPage);
+                // once it is closing, the page shows it again.
+                windowOverlay = {
+                    val handoff = bannerHandoff
+                    handoff?.banner?.takeIf { otter.panelOpen }?.let { banner ->
+                        RaftForegroundMessageBannerView(
+                            banner = banner,
+                            topSafeArea = handoff.topSafeArea,
+                            serverMembersStore = handoff.serverMembersStore,
+                            currentServerId = handoff.currentServerId,
+                            onClick = { handoff.onClick(banner) },
+                            onDismiss = { handoff.onDismiss(banner) },
+                        )
+                    }
+                },
+            ) {
                 val dmPageData =
                     remember(otter.serverId, otter.dmChannelId) {
                         val request = assistantOtterDmOpenRequest(otter.serverId, otter.dmChannelId, conversationIdentityProvider)

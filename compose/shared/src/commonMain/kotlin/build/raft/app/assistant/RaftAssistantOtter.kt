@@ -1,5 +1,8 @@
 package build.raft.app.assistant
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
@@ -284,6 +287,8 @@ fun RaftAssistantOtter(
     scale: Float = RaftAssistantOtterDefaults.PhoneScale,
     endInset: Dp = RaftAssistantOtterDefaults.PhoneEndInset,
     animateEntrance: Boolean = true,
+    /** Where the otter rests (its pose's box, in window coordinates, before any tuck or pop). */
+    onRestBounds: ((Rect) -> Unit)? = null,
 ) {
     val reducedMotion = rememberRaftReducedMotion()
     // First appearance on this composer: it runs in and pops up, then settles.
@@ -316,6 +321,7 @@ fun RaftAssistantOtter(
         reducedMotion = reducedMotion,
         popOffset = { pop.value },
         modifier = modifier,
+        onRestBounds = onRestBounds,
     )
 }
 
@@ -348,6 +354,7 @@ internal fun RaftAssistantOtterLayout(
     reducedMotion: Boolean,
     modifier: Modifier = Modifier,
     popOffset: () -> Float = { 0f },
+    onRestBounds: ((Rect) -> Unit)? = null,
 ) {
     val tuckFraction by animateFloatAsState(
         targetValue = tuck.fraction,
@@ -386,6 +393,24 @@ internal fun RaftAssistantOtterLayout(
                                 Modifier
                                     .padding(start = ClipHalfWidth - pose.headX, top = PopHeadroom)
                                     .size(pose.width, pose.height)
+                                    // Before the tuck and the pop: where it rests (web `restRef`).
+                                    .then(
+                                        if (onRestBounds != null) {
+                                            // Corner to corner through the scale, not clipped to the
+                                            // frame (boundsInWindow would cut it at an ancestor's clip).
+                                            Modifier.onGloballyPositioned {
+                                                val size = it.size
+                                                onRestBounds(
+                                                    Rect(
+                                                        it.localToWindow(Offset.Zero),
+                                                        it.localToWindow(Offset(size.width.toFloat(), size.height.toFloat())),
+                                                    ),
+                                                )
+                                            }
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
                                     .graphicsLayer {
                                         translationY = tuckFraction * pose.height.toPx() + popOffset().dp.toPx()
                                     }
