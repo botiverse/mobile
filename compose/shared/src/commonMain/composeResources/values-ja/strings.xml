@@ -369,8 +369,6 @@
     <string name="settings_app_language_detail">システムの言語に従うか、Raft を特定の言語で表示します。</string>
     <string name="settings_app_language_system">システム</string>
     <string name="settings_translation_target_follow_display_language">表示言語と同じ</string>
-    <string name="settings_app_language_english">English</string>
-    <string name="settings_app_language_simplified_chinese">简体中文</string>
     <string name="settings_preferred_translation_language_title">翻訳先の言語</string>
     <string name="settings_preferred_translation_language_detail">メッセージの自動翻訳と手動翻訳の翻訳先言語として使用されます。</string>
     <string name="settings_diagnostics_title">診断</string>
@@ -2974,7 +2972,6 @@
     <string name="settings_channels_loading">チャンネルを読み込み中…</string>
     <string name="settings_channels_empty">送信可能なチャンネルが見つかりません。</string>
     <string name="settings_channels_empty_detail">メッセージと添付ファイルの権限がある参加済みチャンネルが必要です。</string>
-    <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_notifications_show_previews_title">メッセージのプレビューを表示</string>
     <string name="settings_notifications_show_previews_detail">iOS のプッシュ通知にメッセージの詳細を含めます。オフにするとプライバシーに配慮した通知になります。</string>
     <string name="settings_notifications_preview_mode_title">通知のプレビュー</string>

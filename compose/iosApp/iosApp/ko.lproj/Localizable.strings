@@ -1,0 +1,17 @@
+/* Push notification preview modes. The server sends these keys (title-loc-key / loc-key / loc-args)
+   when this device asked for "sender_only" or "hidden" previews; the alert text in the payload is the
+   English fallback. Keys must match the server's PUSH_PREVIEW_KEYS. */
+"push.preview.hidden.title" = "Raft";
+"push.preview.hidden.message" = "새 메시지가 있어요";
+"push.preview.hidden.mention" = "누군가 나를 멘션했어요";
+"push.preview.sender_only.message" = "%@님이 메시지를 보냈어요";
+"push.preview.sender_only.mention" = "%@님이 나를 멘션했어요";
+/* Per-category wording (slock docs/contracts/notifications.md §1.5). */
+"push.preview.sender_only.task" = "%@: 작업 업데이트";
+"push.preview.sender_only.agent" = "%@님이 확인을 기다리고 있어요";
+"push.preview.sender_only.reminder" = "%@: 리마인더";
+"push.preview.sender_only.notice" = "%@: 새 알림";
+"push.preview.hidden.task" = "작업 업데이트가 있어요";
+"push.preview.hidden.agent" = "에이전트가 확인을 기다리고 있어요";
+"push.preview.hidden.reminder" = "리마인더 시간이에요";
+"push.preview.hidden.notice" = "새 알림이 있어요";

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Alpha build: the strings Android shows outside the app (launcher, recents, notifications,
+    notification settings, widget picker, toasts) name the app "Raft Alpha", so an Alpha
+    notification never reads as production's. Each entry is the main string with "Raft" ->
+    "Raft Alpha"; AlphaAppNameResourcesTest keeps every locale list in step with main.
+-->
+<resources>
+    <string name="app_name">Raft Alpha</string>
+    <string name="raft_background_connection_notification_title">Raft Alpha에서 메시지를 받고 있어요</string>
+    <string name="raft_background_connection_channel_description">Google Play 서비스 없이 메시지 알림을 전달하기 위해 Raft Alpha가 백그라운드에서 연결을 유지하는 동안 표시돼요.</string>
+    <string name="settings_notification_test_title">Raft Alpha 알림 테스트</string>
+    <string name="notification_unread_general_channel_description">Raft Alpha의 읽지 않은 메시지에 대한 일반 알림이에요.</string>
+    <string name="inbox_notification_channel_description">Raft Alpha의 읽지 않은 활동 업데이트예요.</string>
+    <string name="slock_activity_widget_name">Raft Alpha 활동</string>
+    <string name="slock_agent_status_widget_name">Raft Alpha 실시간 에이전트</string>
+    <string name="raft_download_notification_tap_retry">다시 시도하려면 Raft Alpha를 여세요</string>
+    <string name="external_share_import_failed_toast">Raft Alpha에서 이 공유 콘텐츠를 가져오지 못했어요</string>
+    <string name="attachment_save_as_failed_toast">Raft Alpha에서 이 파일을 저장하지 못했어요. 다시 시도해 주세요.</string>
+</resources>

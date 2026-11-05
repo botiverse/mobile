@@ -830,6 +830,12 @@ class SharedSettingsStoreTest {
             assertEquals(originalLocaleType, build.raft.app.resources.StringDesc.localeType)
             assertEquals(AppLocale.Japanese, KmmResourceLocaleRuntime.locale.value)
 
+            listOf("es" to AppLocale.Spanish, "pt-BR" to AppLocale.BrazilianPortuguese, "ko" to AppLocale.Korean, "zh-Hant" to AppLocale.TraditionalChinese)
+                .forEach { (tag, expected) ->
+                    assertIs<DataResult.Content<*>>(dataSource.setLocale(tag), tag)
+                    assertEquals(expected, KmmResourceLocaleRuntime.locale.value, tag)
+                }
+
             val result3 = dataSource.setLocale("en")
             assertIs<DataResult.Content<*>>(result3)
             assertEquals(originalLocaleType, build.raft.app.resources.StringDesc.localeType)
@@ -919,7 +925,7 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals(
-            listOf("system", "en", "zh-Hans", "ja"),
+            listOf("system", "en", "es", "pt-BR", "ko", "ja", "zh-Hans", "zh-Hant"),
             mobile.localePreference.options.map { it.key }
         )
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)

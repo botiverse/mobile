@@ -51,6 +51,8 @@ object TranslationTargetLanguages {
             "en" -> "en"
             "ja" -> "ja"
             "ko" -> "ko"
+            "es" -> "es"
+            "pt" -> "pt-br"
             "zh" -> {
                 val subtags = parts.drop(1).toSet()
                 when {

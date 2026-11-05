@@ -145,7 +145,7 @@ private fun StringDesc.resolveIn(environment: ResourceEnvironment): String =
 
 /** Language and region of the catalog [localeType] selects ("" = no region). */
 internal data class RaftResourceLocale(val language: String, val region: String) {
-    /** BCP 47 tag of the catalog (`en`, `zh-CN`, `ja`), as web's react-intl locale. */
+    /** BCP 47 tag of the catalog (`en`, `es`, `pt-BR`, `ko`, `ja`, `zh-CN`, `zh-TW`), the web's `displayLocaleTag`. */
     val languageTag: String get() = if (region.isEmpty()) language else "$language-$region"
 }
 
@@ -174,9 +174,10 @@ internal fun raftSystemResourceLocale(
 /**
  * Catalog selection, matching what the platform resource lookups did for kmmresource: an
  * explicit tag picks its catalog; for the system language the first preferred language with a
- * shipped catalog wins (Japanese; Simplified Chinese, i.e. Chinese that is not Traditional by
- * Hant script or a TW/HK/MO region without a script; English). Unsupported languages are
- * skipped; with no match the English base catalog applies.
+ * shipped catalog wins (English, Spanish, Brazilian Portuguese for any Portuguese, Korean,
+ * Japanese; Traditional Chinese for a Hant script or a TW/HK/MO region without a script, else
+ * Simplified Chinese), the same matching as the web's `matchDisplayLocale`. Unsupported
+ * languages are skipped; with no match the English base catalog applies.
  */
 internal fun raftResourceLocale(
     localeType: StringDesc.LocaleType,
@@ -208,10 +209,14 @@ private fun raftSupportedResourceLocale(tag: String): RaftResourceLocale? {
     return when (language) {
         "ja" -> RaftResourceLocale("ja", "")
         "en" -> RaftResourceLocale("en", "")
+        "es" -> RaftResourceLocale("es", "")
+        "ko" -> RaftResourceLocale("ko", "")
+        // One Portuguese catalog, Brazilian, for every region (pt-PT too), as on the web.
+        "pt" -> RaftResourceLocale("pt", "BR")
         "zh" -> {
             val traditional =
                 script.equals("Hant", ignoreCase = true) || (script.isEmpty() && region in setOf("TW", "HK", "MO"))
-            if (traditional) null else RaftResourceLocale("zh", "CN")
+            if (traditional) RaftResourceLocale("zh", "TW") else RaftResourceLocale("zh", "CN")
         }
         else -> null
     }

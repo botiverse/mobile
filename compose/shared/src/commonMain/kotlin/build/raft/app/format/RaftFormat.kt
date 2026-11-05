@@ -3,6 +3,7 @@ package build.raft.app.format
 import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.data.AppLocale
 import build.raft.app.data.currentSystemLanguageTag
+import build.raft.app.resources.raftSystemResourceLocale
 import kotlin.math.roundToLong
 
 /**
@@ -19,8 +20,8 @@ import kotlin.math.roundToLong
  * - from 1 KB up: one decimal, rounded half up like `toFixed(1)`, `1.5 KB`, `12.0 MB`;
  * - GB is the largest unit, `2048.0 GB`.
  *
- * Locale: the unit words are the same in every UI language (the Web's en, zh-CN and ja catalogs
- * all use `{value} KB`), and so is the decimal separator for the three UI languages the app has.
+ * Locale: the unit words are the same in every UI language (every Web catalog uses `{value} KB`),
+ * and so is the decimal separator.
  * [RaftFormatLocale] carries the separator so a UI language that writes `1,5` adds one row there.
  */
 object RaftFormat {
@@ -72,32 +73,36 @@ object RaftFormat {
 }
 
 /**
- * Number conventions of one UI language. The app's UI languages are English, Simplified Chinese
- * and Japanese ([AppLocale]); a device in any other language shows the English UI, so it formats
- * as [English].
+ * Number conventions of one UI language ([AppLocale]); a device in any other language shows the
+ * English UI, so it formats as [English]. Every UI language writes `1.5 KB`, as the web does
+ * (`toFixed(1)` in all its catalogs, Spanish and Portuguese included).
  */
 enum class RaftFormatLocale(val languageTag: String, val decimalSeparator: Char) {
     English("en", '.'),
+    Spanish("es", '.'),
+    BrazilianPortuguese("pt-BR", '.'),
+    Korean("ko", '.'),
+    Japanese("ja", '.'),
     SimplifiedChinese("zh-CN", '.'),
-    Japanese("ja", '.');
+    TraditionalChinese("zh-TW", '.');
 
     companion object {
         /** The current UI language: the App Language setting, or the device's when it is System. */
         fun current(): RaftFormatLocale =
             when (KmmResourceLocaleRuntime.locale.value) {
                 AppLocale.English -> English
-                AppLocale.SimplifiedChinese -> SimplifiedChinese
+                AppLocale.Spanish -> Spanish
+                AppLocale.BrazilianPortuguese -> BrazilianPortuguese
+                AppLocale.Korean -> Korean
                 AppLocale.Japanese -> Japanese
+                AppLocale.SimplifiedChinese -> SimplifiedChinese
+                AppLocale.TraditionalChinese -> TraditionalChinese
                 null, AppLocale.System -> forLanguageTag(runCatching { currentSystemLanguageTag() }.getOrNull())
             }
 
         fun forLanguageTag(languageTag: String?): RaftFormatLocale {
-            val language = languageTag?.trim()?.lowercase()?.substringBefore('-')?.substringBefore('_')
-            return when (language) {
-                "zh" -> SimplifiedChinese
-                "ja" -> Japanese
-                else -> English
-            }
+            val catalog = raftSystemResourceLocale(listOfNotNull(languageTag))
+            return entries.firstOrNull { it.languageTag == catalog.languageTag } ?: English
         }
     }
 }

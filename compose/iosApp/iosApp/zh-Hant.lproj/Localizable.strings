@@ -1,0 +1,17 @@
+/* Push notification preview modes. The server sends these keys (title-loc-key / loc-key / loc-args)
+   when this device asked for "sender_only" or "hidden" previews; the alert text in the payload is the
+   English fallback. Keys must match the server's PUSH_PREVIEW_KEYS. */
+"push.preview.hidden.title" = "Raft";
+"push.preview.hidden.message" = "你有一則新訊息";
+"push.preview.hidden.mention" = "有人提到了你";
+"push.preview.sender_only.message" = "%@ 傳來一則訊息";
+"push.preview.sender_only.mention" = "%@ 提到了你";
+/* Per-category wording (slock docs/contracts/notifications.md §1.5). */
+"push.preview.sender_only.task" = "%@：任務更新";
+"push.preview.sender_only.agent" = "%@ 需要你處理";
+"push.preview.sender_only.reminder" = "%@：提醒";
+"push.preview.sender_only.notice" = "%@：新通知";
+"push.preview.hidden.task" = "你有一則任務更新";
+"push.preview.hidden.agent" = "有 Agent 需要你處理";
+"push.preview.hidden.reminder" = "有一則提醒到時間了";
+"push.preview.hidden.notice" = "你有一則新通知";

@@ -3,7 +3,7 @@
     Alpha build: the strings Android shows outside the app (launcher, recents, notifications,
     notification settings, widget picker, toasts) name the app "Raft Alpha", so an Alpha
     notification never reads as production's. Each entry is the main string with "Raft" ->
-    "Raft Alpha"; AlphaAppNameResourcesTest keeps the en/zh-CN/ja lists in step with main.
+    "Raft Alpha"; AlphaAppNameResourcesTest keeps every locale list in step with main.
 -->
 <resources>
     <string name="app_name">Raft Alpha</string>
