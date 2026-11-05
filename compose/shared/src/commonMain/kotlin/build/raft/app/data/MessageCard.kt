@@ -28,7 +28,7 @@ import kotlinx.serialization.json.JsonObject
  * it is drawn ([readMessageCardFromMetadata]); anything this client can't read is drawn as the
  * fallback text, never a blank card and never as one of Raft's own action cards.
  *
- * v2.0 (RFC 082 §4.8; botiverse/slock #13224, staging @ 48cf48c24288f88f44c39c1d3e3e8497cbfed4a9,
+ * v2.0 (RFC 082 §4.8; botiverse/slock #13224 + #13237, staging @ acf01e4f9703975febb80183251c3d7d22b81e01,
  * `messageCard.ts` `messageCardHeaderSchema`, `messageCardMarkdownElement`,
  * `messageCardFieldsElement`, `messageCardDividerElement`): an optional card `header` next to
  * `root` ([RaftMessageCardHeader]) and the `Markdown`, `Fields` and `Divider` elements

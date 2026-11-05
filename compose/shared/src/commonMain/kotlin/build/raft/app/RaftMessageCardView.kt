@@ -28,6 +28,7 @@ import build.raft.app.markdown.LocalRaftAppLinkChips
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.raftCardMarkdownRenderSource
+import build.raft.app.markdown.raftCardMarkdownTagValid
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -200,7 +201,7 @@ internal fun RaftMessageCardMarkdown(content: String) {
         RaftMarkdownBody(
             body = source,
             textStyle = RaftTheme.typography.callout.copy(color = RaftTheme.colors.foreground),
-            isTagValid = { false },
+            isTagValid = raftCardMarkdownTagValid,
             onOpenUrl = onOpenUrl,
         )
     }

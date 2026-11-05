@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.markdown.raftCardMarkdownCheck
 import build.raft.app.markdown.raftCardMarkdownLineColumn
 import build.raft.app.markdown.raftCardMarkdownRenderSource
+import build.raft.app.markdown.raftCardMarkdownTagValid
+import build.raft.app.markdown.threadInlineTagMatches
 import java.security.MessageDigest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -19,7 +21,7 @@ import kotlin.test.assertEquals
 
 /**
  * Runs every case of the vendored shared message-card.v1 vector (RFC 082 v2.0 §4.8;
- * botiverse/slock #13224, staging @ 48cf48c24288f88f44c39c1d3e3e8497cbfed4a9,
+ * botiverse/slock #13224 + #13237, staging @ acf01e4f9703975febb80183251c3d7d22b81e01,
  * `packages/shared/src/messageCard.v1.vector.json`, pinned by
  * scripts/check_message_card_v1_vector.sh) through this App's card reader and its card Markdown
  * subset check. Compared as JSON values: key order is irrelevant.
@@ -42,11 +44,11 @@ class MessageCardVectorTest {
     @Test
     fun vendoredVectorIsThePinnedSharedArtifact() {
         val digest = sha256(vectorBytes)
-        assertEquals("abd37d310fddd04af2d0817dab79074ede13c111f96458910b04ac61560ce560", digest)
+        assertEquals("54907dce3369bb88e06a2c8a2b58189126dd55a6bce52594bbd94e42922e839a", digest)
         assertEquals(digest, resource("/messagecard/messageCard.v1.vector.sha256").decodeToString().substringBefore(' ').trim())
         assertEquals("message-card.v1", vector.string("contract"))
         assertEquals("1", vector.getValue("schemaVersion").jsonPrimitive.content)
-        assertEquals(listOf(48, 60), listOf("cards", "markdown").map { vector.getValue(it).jsonArray.size })
+        assertEquals(listOf(48, 61), listOf("cards", "markdown").map { vector.getValue(it).jsonArray.size })
     }
 
     @Test
@@ -116,7 +118,7 @@ class MessageCardVectorTest {
                     if (found.isNotEmpty()) failures += "$name: found $found, the Server accepts it"
                     val nodes = case.getValue("nodes").jsonArray.map { it.jsonPrimitive.content }
                     if (mayDiffer) {
-                        failures += hardRule(name, content, nodes, case["text"]?.jsonPrimitive?.content.orEmpty())
+                        failures += hardRule(name, content, nodes)
                     } else if (check.nodeTypes.sorted() != nodes) {
                         failures += "$name: nodes ${check.nodeTypes.sorted()}, the Server's $nodes"
                     }
@@ -138,24 +140,27 @@ class MessageCardVectorTest {
             if (left.isNotEmpty()) failures += "$name: drawn source ${Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(drawn))} still holds $left"
         }
         assertEquals(emptyList(), failures)
-        assertEquals(60, cases.size)
+        assertEquals(61, cases.size)
     }
 
     /**
-     * The hard rule for a `display: "may_differ"` case: the App may draw it otherwise (4-space
-     * indented lines, an undefined `[ref]`, an entity), but every word of its text stays visible in
-     * what is drawn, and nothing in it becomes a link the Server's tree has none of (or anything
-     * outside the subset, checked for every case). Buttons are never made from Markdown, and card
-     * Markdown draws no mention chips at all (RaftMessageCardMarkdown: no tag is valid).
+     * The hard rule for a `display: "may_differ"` case (an allowed client difference, Tenny: 4-space
+     * indented lines, an undefined `[ref]`, entities, which this App draws as written): how it is
+     * drawn isn't compared, but all of its text stays visible (every word of the source is in what
+     * is drawn), nothing in it becomes a link the Server's tree has none of, nothing outside the
+     * subset is drawn (checked for every case), and no mention chip: card Markdown accepts no tag
+     * ([raftCardMarkdownTagValid]), `&#64;lagoon` included. Markdown never makes a button.
      */
-    private fun hardRule(name: String, content: String, nodes: List<String>, text: String): List<String> {
+    private fun hardRule(name: String, content: String, nodes: List<String>): List<String> {
         val failures = mutableListOf<String>()
         val drawn = raftCardMarkdownCheck(raftCardMarkdownRenderSource(content))
         if ("link" !in nodes && "link" in drawn.nodeTypes) failures += "$name: may differ, but it draws a link the Server's tree has none of"
-        val visible = drawn.content.replace("\\", "")
-        for (word in Regex("[\\p{L}\\p{N}]+").findAll(text).map { it.value }) {
+        val visible = drawn.content.replace("\\", "").replace("\u2060", "")
+        for (word in Regex("[\\p{L}\\p{N}]+").findAll(content).map { it.value }) {
             if (word !in visible) failures += "$name: may differ, but \"$word\" is not drawn"
         }
+        val chips = drawn.content.threadInlineTagMatches().filter { raftCardMarkdownTagValid(it.tag) }
+        if (chips.isNotEmpty()) failures += "$name: may differ, but ${chips.map { it.tag.label }} would be chips"
         return failures
     }
 

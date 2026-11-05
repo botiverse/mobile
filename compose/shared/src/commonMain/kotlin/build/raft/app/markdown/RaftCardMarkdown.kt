@@ -13,7 +13,7 @@ import org.intellij.markdown.parser.MarkdownParser
  * A card message's `Markdown` element (RFC 082 v2.0 §4.8): the card Markdown subset, checked on
  * this App's own parse (the message renderer's parser, [RaftGFMFlavourDescriptor]).
  *
- * Contract: botiverse/slock #13224, staging @ 48cf48c24288f88f44c39c1d3e3e8497cbfed4a9
+ * Contract: botiverse/slock #13224 + #13237, staging @ acf01e4f9703975febb80183251c3d7d22b81e01
  * `packages/shared/src/messageCardMarkdown.ts` (`MESSAGE_CARD_MARKDOWN_NODE_TYPES`,
  * `messageCardMarkdownViolations`) and the shared contract vectors (`messageCard.v1.vector.json`
  * `markdown[]`); the web's drawing is #13225 `remarkMessageCardMarkdown.ts`.
@@ -47,6 +47,9 @@ internal class RaftCardMarkdownCheck(
 
 /** A stretch of the content drawn otherwise: as plain text, with its URL scheme lower-cased ([lowercase]), or as an `<…>` autolink ([autolink]). */
 internal data class RaftCardMarkdownEdit(val start: Int, val end: Int, val lowercase: Boolean = false, val autolink: Boolean = false)
+
+/** No `@name`, `#channel` or task ref in card Markdown is a chip (RFC 082 §4.8): every tag is drawn as its text. */
+internal val raftCardMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = { false }
 
 /** Lists and quotes, together, nest at most this many levels (`MESSAGE_CARD_MARKDOWN_MAX_NESTING`). */
 internal const val RAFT_CARD_MARKDOWN_MAX_NESTING = 3

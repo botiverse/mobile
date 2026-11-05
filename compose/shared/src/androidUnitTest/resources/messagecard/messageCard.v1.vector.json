@@ -1,7 +1,7 @@
 {
   "contract": "message-card.v1",
   "schemaVersion": 1,
-  "notes": "Shared contract for card messages (RFC 082), the v2.0 parts: the card `header` and the `Markdown`, `Fields` and `Divider` elements (RFC 082 §4.8). botiverse/slock packages/shared/src/messageCard.ts and messageCardMarkdown.ts; this file is pinned by messageCard.v1.vector.sha256. Compare as JSON values: key order is irrelevant, an absent key differs from a null one.\nschemaVersion 1 (2026-11-05): Markdown links take a message's schemes, http:, https: and mailto: (Tenny, #13224): bare and angle email autolinks and [x](mailto:…) are allowed; tel: and sms: are refused.\ncards[]: `card` is what a sender sends. `verdict` is the Server's: accept or refuse (400 card_invalid with `problem.path` and `problem.limit`; `problem.node` with limit markdown). On accept: `parsed` is the stored card (defaults filled in: Fields mono false, and the v1 defaults); `agentText` is renderMessageCardMarkdown (what agents read under `card:`, at most 4000 code points); `fallback` is the content Raft stores when the sender wrote none (the same rendering, at most 500 code points, cut with …), or null with `fallbackProblem` when the card has nothing to derive it from (then the sender must write content). A client reads a stored card with the strict schema: every accepted card here is one a client must draw in full (the header, Markdown, Fields, Divider), and one it does not know must make it show the whole fallback, never part of the card.\nmarkdown[]: `content` is one Markdown element's content in { version: 1, root: \"m\", elements: { m: { type: \"Markdown\", props: { content } } } }. The parser is CommonMark + GFM (micromark / mdast-util-from-markdown with GFM, as remark-parse + remark-gfm), with Raft math ($…$ and $$…$$, not money), CJK-friendly emphasis, and indented code off. The allowlist (node types): paragraph, text, break, strong, emphasis, delete, inlineCode, code (fenced), list, listItem (not a task list item), blockquote, link (http:, https: or mailto:, case-insensitive, the schemes a message's links take, so GFM's email autolinks are links; a link must parse as a URL). Lists and quotes together nest at most 3 levels. On refuse: `found` lists every node outside it, outermost first, in document order (nothing inside one is looked at): `node` (the mdast type; taskListItem for a GFM task list item; link for a link to another scheme, such as tel: or sms:; list or blockquote nested too deep), its `source` slice, `line` and `column` (1-based); the Server refuses with the first. A client draws each `found` node as its `source` text (never rendered) and the rest as Markdown; its own parser must find the same nodes. On accept: `nodes` are the node types in the tree (root aside, sorted), `text` the values of its text, inlineCode and code nodes in order with a line break for each break node (what a reader sees, entities decoded), and `agentText` the agent text. No @name or #channel in Markdown is a mention or a channel link: clients draw no chips in it.",
+  "notes": "Shared contract for card messages (RFC 082), the v2.0 parts: the card `header` and the `Markdown`, `Fields` and `Divider` elements (RFC 082 §4.8). botiverse/slock packages/shared/src/messageCard.ts and messageCardMarkdown.ts; this file is pinned by messageCard.v1.vector.sha256. Compare as JSON values: key order is irrelevant, an absent key differs from a null one.\nschemaVersion 1 (2026-11-05): Markdown links take a message's schemes, http:, https: and mailto: (Tenny, #13224): bare and angle email autolinks and [x](mailto:…) are allowed; tel: and sms: are refused.\ndisplay (markdown[], schemaVersion 1, 2026-11-05; Tenny, #proj-apps:#49 0994342b): a case with \"display\": \"may_differ\" holds one of the three constructs RFC 082 §4.8 lets clients display differently: 4-space indentation, an undefined reference ([ref], [text][ref], [^ref] with no definition), character entities (&amp;, &lt;, &#169;, &#x42;, ...). The Server's verdict and agentText stay exact. A client checks such a case against the rule, not against `nodes` and `text`: it shows all of the content (every run of letters and digits in `text` appears in what it shows, in order; the construct's own characters, such as an entity as written or the brackets, may be shown too), it shows no link, no button and no mention chip, and nothing it shows is outside the allowlist (an indented code block drawn as a code block is a code block, which is in it). Every case without `display` is compared exactly. No other client difference is allowed.\ncards[]: `card` is what a sender sends. `verdict` is the Server's: accept or refuse (400 card_invalid with `problem.path` and `problem.limit`; `problem.node` with limit markdown). On accept: `parsed` is the stored card (defaults filled in: Fields mono false, and the v1 defaults); `agentText` is renderMessageCardMarkdown (what agents read under `card:`, at most 4000 code points); `fallback` is the content Raft stores when the sender wrote none (the same rendering, at most 500 code points, cut with …), or null with `fallbackProblem` when the card has nothing to derive it from (then the sender must write content). A client reads a stored card with the strict schema: every accepted card here is one a client must draw in full (the header, Markdown, Fields, Divider), and one it does not know must make it show the whole fallback, never part of the card.\nmarkdown[]: `content` is one Markdown element's content in { version: 1, root: \"m\", elements: { m: { type: \"Markdown\", props: { content } } } }. The parser is CommonMark + GFM (micromark / mdast-util-from-markdown with GFM, as remark-parse + remark-gfm), with Raft math ($…$ and $$…$$, not money), CJK-friendly emphasis, and indented code off. The allowlist (node types): paragraph, text, break, strong, emphasis, delete, inlineCode, code (fenced), list, listItem (not a task list item), blockquote, link (http:, https: or mailto:, case-insensitive, the schemes a message's links take, so GFM's email autolinks are links; a link must parse as a URL). Lists and quotes together nest at most 3 levels. On refuse: `found` lists every node outside it, outermost first, in document order (nothing inside one is looked at): `node` (the mdast type; taskListItem for a GFM task list item; link for a link to another scheme, such as tel: or sms:; list or blockquote nested too deep), its `source` slice, `line` and `column` (1-based); the Server refuses with the first. A client draws each `found` node as its `source` text (never rendered) and the rest as Markdown; its own parser must find the same nodes. On accept: `nodes` are the node types in the tree (root aside, sorted), `text` the values of its text, inlineCode and code nodes in order with a line break for each break node (what a reader sees, entities decoded), and `agentText` the agent text. No @name or #channel in Markdown is a mention or a channel link: clients draw no chips in it.",
   "cards": [
     {
       "name": "header_full",
@@ -2493,9 +2493,10 @@
     },
     {
       "name": "indented_is_text",
-      "note": "Indented code is off, as in chat: four spaces of indentation are a paragraph, never a code block (plain CommonMark would make one).",
+      "note": "Indented code is off, as in chat: four spaces of indentation are a paragraph (plain CommonMark would make a code block). Allowed difference 1 (RFC 082 §4.8): a client may draw a code block.",
       "content": "    not code\n    still text",
       "verdict": "accept",
+      "display": "may_differ",
       "nodes": [
         "paragraph",
         "text"
@@ -2946,15 +2947,29 @@
     },
     {
       "name": "entities_text",
-      "note": "Character references are text: `&lt;div&gt;` shows `<div>`, never an element; `&amp;` shows `&`.",
+      "note": "Character references are text: `&lt;div&gt;` shows `<div>`, never an element; `&amp;` shows `&`. Allowed difference 3 (RFC 082 §4.8): a client may show an entity as written.",
       "content": "a &amp; b &lt;div&gt; &#169; &copy;",
       "verdict": "accept",
+      "display": "may_differ",
       "nodes": [
         "paragraph",
         "text"
       ],
       "text": "a & b <div> © ©",
       "agentText": "a &amp; b &lt;div&gt; &#169; &copy;"
+    },
+    {
+      "name": "entities_numeric",
+      "note": "Numeric character references, decimal and hex, and a named one in a word: text. Allowed difference 3 (RFC 082 §4.8): a client may show an entity as written.",
+      "content": "A&#x42;C &#8212; x&nbsp;y &#38;&#x26;",
+      "verdict": "accept",
+      "display": "may_differ",
+      "nodes": [
+        "paragraph",
+        "text"
+      ],
+      "text": "ABC — x y &&",
+      "agentText": "A&#x42;C &#8212; x&nbsp;y &#38;&#x26;"
     },
     {
       "name": "bare_lt_amp",
@@ -3271,9 +3286,10 @@
     },
     {
       "name": "brackets_without_definition",
-      "note": "`[x]` with no definition is text, as are `[x][y]` and `[^1]` with none.",
+      "note": "`[x]` with no definition is text, as are `[x][y]` and `[^1]` with none. Allowed difference 2 (RFC 082 §4.8): a client may draw an undefined reference differently, never as a link.",
       "content": "[x] and [x][y] and [^1]",
       "verdict": "accept",
+      "display": "may_differ",
       "nodes": [
         "paragraph",
         "text"
@@ -3358,9 +3374,10 @@
     },
     {
       "name": "mentions_in_text",
-      "note": "`@name`, an escaped `\\@name` and `&#64;name` are text; the agent text sets each as inline code (an `@` the Server's parser reads, as in `a\\@b`, or the web's chips read, as in `&#64;name` and `_@name_`), so no reader takes it for a mention.",
+      "note": "`@name`, an escaped `\\@name` and `&#64;name` are text; the agent text sets each as inline code (an `@` the Server's parser reads, as in `a\\@b`, or the web's chips read, as in `&#64;name` and `_@name_`), so no reader takes it for a mention. It holds a character entity (`&#64;`): allowed difference 3 (RFC 082 §4.8).",
       "content": "@artin, \\@sage, &#64;lagoon, _@eric_ and a\\@b",
       "verdict": "accept",
+      "display": "may_differ",
       "nodes": [
         "emphasis",
         "paragraph",
