@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ComposeUiTest
@@ -46,9 +47,12 @@ import org.robolectric.annotation.GraphicsMode
  * xxchan (iOS, Computers page -> "Claude Code usage"): every window read "Used up · resets unknown
  * time" and the footer "Account-wide · updated unknown time", because the standalone Computers page
  * provided no [LocalRaftTimeContextProvider] and the relative-time helper answers Unknown without
- * one. The page now wraps itself in [ProvideStandaloneRaftTimeContext]; this renders the page's
- * sheet host inside that same scope (fixed clock and zone) and checks the web's labels
- * (`machine.runtimeUsage.windowUsedUp` / `.metadata` / `.version` with `formatRelativeTime`).
+ * one. This renders the sheet host in a page scope (fixed clock and zone) and checks the web's
+ * labels (`machine.runtimeUsage.windowUsedUp` / `.metadata` / `.version` with `formatRelativeTime`).
+ *
+ * artin 11-05 (the same "未知时间" on an agent profile opened from a DM): fixed once for every page
+ * by BasePager's [LocalRaftPageBaseTimeContextProvider]; [pageBaseScopeAloneResolvesTimes] renders
+ * the sheet with only that base context, as such a page has.
  */
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -105,12 +109,21 @@ class ComputerRuntimeUsageTimeContextUiTest {
         onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
+    @Test
+    fun pageBaseScopeAloneResolvesTimes() = runRobolectricComposeUiTest {
+        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
+        showSheet(runtimeVersion = null, pageBaseOnly = true)
+        assertShown("已用完 · 明天重置")
+        assertShown("整个账户 · 6 分钟前更新")
+        onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
     private fun ComposeUiTest.assertShown(text: String) {
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText(text, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithText(text, useUnmergedTree = true).assertExists()
     }
 
-    private fun ComposeUiTest.showSheet(runtimeVersion: String?) {
+    private fun ComposeUiTest.showSheet(runtimeVersion: String?, pageBaseOnly: Boolean = false) {
         setContent {
             val access =
                 remember {
@@ -127,11 +140,7 @@ class ComputerRuntimeUsageTimeContextUiTest {
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
                 RaftTheme(appearance = RaftAppearance.Light) {
-                    ProvideStandaloneRaftTimeContext(
-                        clock = { NOW_MILLIS },
-                        foundationOwner = fixedZone,
-                        capabilities = RaftTimeCapabilities(localOffsetMinutes = 8 * 60, timeFormat = RaftTimeFormat24Hour),
-                    ) {
+                    val sheet: @Composable () -> Unit = {
                         RaftComputersTheme {
                             ComputerRuntimeUsageSheetHost(
                                 runtimeLabel = "Claude Code",
@@ -140,6 +149,17 @@ class ComputerRuntimeUsageTimeContextUiTest {
                                 runtimeVersion = runtimeVersion,
                                 onDismiss = {},
                             )
+                        }
+                    }
+                    val capabilities = remember { RaftTimeCapabilities(localOffsetMinutes = 8 * 60, timeFormat = RaftTimeFormat24Hour) }
+                    if (pageBaseOnly) {
+                        // What BasePager gives every page: only the base context, no page provider.
+                        val base =
+                            rememberLiveRaftTimeContext(capabilities = capabilities, clock = { NOW_MILLIS }, foundationOwner = fixedZone)
+                        CompositionLocalProvider(LocalRaftPageBaseTimeContextProvider provides base, content = sheet)
+                    } else {
+                        ProvideStandaloneRaftTimeContext(clock = { NOW_MILLIS }, foundationOwner = fixedZone, capabilities = capabilities) {
+                            sheet()
                         }
                     }
                 }

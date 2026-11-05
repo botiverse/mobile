@@ -421,7 +421,7 @@ internal fun ComputerRuntimeUsageSheetHost(
             delay(1_000L)
         }
     }
-    val timeContext = LocalRaftTimeContextProvider.current?.current
+    val timeContext = currentRaftTimeContextProvider?.current
     ComputerRuntimeUsageSheet(
         runtimeLabel = runtimeLabel,
         state =
@@ -756,7 +756,7 @@ internal fun ComputerRuntimeUsagePreviewCard(
     trigger: @Composable () -> Unit,
 ) {
     val state = rememberRaftPreviewCardState(closeDelayMillis = ComputerRuntimeUsagePreviewCardCloseDelayMillis)
-    val timeContext = LocalRaftTimeContextProvider.current?.current
+    val timeContext = currentRaftTimeContextProvider?.current
     if (state.isOpen) {
         LaunchedEffect(controller) {
             controller.onOpen()

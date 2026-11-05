@@ -1,5 +1,6 @@
 package build.raft.app.base
 
+import build.raft.app.ProvideRaftPageBaseTimeContext
 import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
 import build.raft.app.RAFT_EMBEDDED_CHILD_PAGE_PARAM
@@ -77,7 +78,9 @@ internal abstract class BasePager : ComposeContainer() {
                         sharedStoreBuilt = RaftSharedStoreRegistry.currentOrNull() != null,
                     )
                 }
-            RaftPageLayersContent(layers = layers, content = content)
+            ProvideRaftPageBaseTimeContext(pageVisibleTick = raftPageVisibleResumeTick) {
+                RaftPageLayersContent(layers = layers, content = content)
+            }
         }
     }
 

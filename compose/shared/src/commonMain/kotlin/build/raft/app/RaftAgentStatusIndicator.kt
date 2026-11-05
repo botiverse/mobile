@@ -142,7 +142,7 @@ internal fun rememberRaftAgentStatusIndicatorState(
     // fact. Re-resolve it whenever the live time context ticks (minute
     // boundary) or the underlying state changes, so "online" does not outlive
     // the 120s window without a new agent:seen.
-    val liveNow = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis
+    val liveNow = currentRaftTimeContextProvider?.current?.nowEpochMillis
     val base = status
     return if (base?.external == true && base.lastSeenAt != null) {
         val now = liveNow ?: defaultNowMillis()

@@ -5866,7 +5866,7 @@ internal fun ThreadMembersPageContent(
                         val member = filteredExternal[index]
                         // SSOT audit: the live time context (as rememberRaftAgentStatusIndicatorState
                         // reads it), so the lime/cyan boundary moves on its minute tick.
-                        val now = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+                        val now = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
                         val handlesLine = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" }
                         ChannelMembersRow(
                             title = member.displayName,
@@ -15148,7 +15148,7 @@ private fun SharedThreadRouteContentContent(
             val quoteTarget = selectionQuoteTarget
             // Same time source as the message list: the live provider when there is one, else the payload's.
             val timeContext =
-                LocalRaftTimeContextProvider.current?.current ?: payload.toRaftTimeCapabilities().staticContext()
+                currentRaftTimeContextProvider?.current ?: payload.toRaftTimeCapabilities().staticContext()
             key(message.id, message.body) {
                 ThreadMessageSelectTextSheet(
                     markdown = message.body,
@@ -24767,7 +24767,7 @@ private fun ThreadMessagesListContent(
                 val captureShareBounds =
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
-                val liveTodayEpochDay = LocalRaftTimeContextProvider.current?.todayEpochDay
+                val liveTodayEpochDay = currentRaftTimeContextProvider?.todayEpochDay
                 val dateDividerDay =
                     remember(
                         previousMessage?.timestampLabel,
@@ -28316,7 +28316,7 @@ internal fun ThreadQuotedPermalinkCard(
             val avatarWireValue =
                 resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, item.authorId))
                     ?: item.avatarWireValue
-            val liveTimeContext = LocalRaftTimeContextProvider.current?.current
+            val liveTimeContext = currentRaftTimeContextProvider?.current
             build.raft.designsystem.components.RaftMessageQuotedPreview(
                 authorName = item.localizedAuthorName().ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
@@ -28922,7 +28922,7 @@ private fun ThreadMessageCardContent(
     val compactTimestampGutter = compactConsecutiveMessages
     // Screen readers hear every row's time: a compact row without its header has no visible one
     // (only while pressed), so its avatar slot carries it, as the header would show it.
-    val rowTimeContext = LocalRaftTimeContextProvider.current?.current
+    val rowTimeContext = currentRaftTimeContextProvider?.current
     val rowTimeAccessibilityLabel =
         if (showTimestampInHeader) {
             null
@@ -36733,7 +36733,7 @@ internal fun ThreadForwardBundleCard(
         } else {
             null
         }
-    val liveTimeContext = LocalRaftTimeContextProvider.current?.current
+    val liveTimeContext = currentRaftTimeContextProvider?.current
     build.raft.designsystem.components.RaftMessageForwardedBundle(
         label = stringResource(Res.string.thread_forward_badge),
         countLabel =

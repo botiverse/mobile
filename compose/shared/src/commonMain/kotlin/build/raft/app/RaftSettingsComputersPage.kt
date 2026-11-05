@@ -187,14 +187,10 @@ internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisi
                 )
             }
         }
-    // A standalone page: without its own time context the usage sheet's "resets …" / "updated …"
-    // (and every other relative time here) read "unknown time" (xxchan, iOS).
-    ProvideStandaloneRaftTimeContext(pageVisibleTick = pageVisibleResumeTick) {
-        if (target == null) {
-            RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
-        } else {
-            RaftSettingsComputerDetailScreen(pager, target, pageVisible)
-        }
+    if (target == null) {
+        RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
+    } else {
+        RaftSettingsComputerDetailScreen(pager, target, pageVisible)
     }
 }
 
@@ -610,7 +606,7 @@ internal fun RaftSettingsComputersContent(
     onCopyCommand: (String) -> Unit = {},
 ) {
     // The upgrade's in-flight window (web `computerUpgradeInFlight`) reads the clock.
-    val nowMillis = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+    val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
             RaftComputersListModel.Loading ->
@@ -1636,7 +1632,7 @@ private fun RaftComputerDetailBody(
     val canRemove = model.canRemove
     val currentAction = actionState?.takeIf { it.itemId == machineId }
     var confirmDelete by remember(machineId) { mutableStateOf(false) }
-    val nowMillis = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+    val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val upgrade = raftComputerUpgradeModel(snapshot.computer, computerControl, nowMillis)
     val controls =
         RaftComputerControlsContext(
@@ -1929,7 +1925,7 @@ private fun RaftComputerCreatorAvatar(creator: RaftComputerCreatorModel) {
 private fun raftComputerCreatedDate(createdAt: String?): String? {
     val value = createdAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val context =
-        LocalRaftTimeContextProvider.current?.current
+        currentRaftTimeContextProvider?.current
             ?: RaftTimeContext(localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0))
     return value.membersLocalizedCreatedDateOrNull(context)
 }

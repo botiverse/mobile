@@ -97,7 +97,7 @@ internal fun agentToolStuckText(
 /** The stuck line in this locale; re-read whenever the live clock ticks (once a minute). */
 @Composable
 internal fun localizedAgentToolStuckText(toolStuck: AgentToolStuck): String {
-    val now = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+    val now = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val minutes = agentToolStuckMinutes(toolStuck, now)
     return agentToolStuckText(
         stuckLine = stringResource(Res.string.agent_status_tool_stuck, toolStuck.toolName, minutes.toInt()),
