@@ -89,7 +89,7 @@ internal class SharedThreadAgentFollowersStore(
         if (current.mutating || current.undo != null) return
         val roster = current.roster ?: return
         val agent = roster.agents.singleOrNull { it.id == id } ?: return
-        if (!roster.canManage || !agent.canRemove || !agent.isCurrentServer) return
+        if (!roster.canManage || !agent.canRemove) return
         revision++
         mutableState.value = current.copy(mutating = true, error = null)
         mutationJob = scope.launch {

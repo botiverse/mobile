@@ -77,8 +77,21 @@ class SharedThreadAgentFollowersStoreTest {
         assertNull(store.state.value.error)
     }
 
+    @Test fun hostManagerRemovesAnotherServersAgentWhenTheServerAllowsIt() = runTest {
+        // #13093: in a joint channel the server answers canRemove = true for the host's managers.
+        val peer = follower().copy(isCurrentServer = false, canRemove = true)
+        val repository = FollowerRepositoryFake().apply { roster = roster.copy(agents = listOf(peer)) }
+        val store = SharedThreadAgentFollowersStore(repository, backgroundScope)
+        store.dispatch(ThreadAgentFollowersIntent.Refresh)
+        runCurrent()
+        store.dispatch(ThreadAgentFollowersIntent.Remove(peer.id))
+        runCurrent()
+        assertEquals(1, repository.removals)
+        store.close()
+    }
+
     @Test fun foreignAgentAndMissingPermissionNeverIssueWrites() = runTest {
-        for (agent in listOf(follower().copy(isCurrentServer = false), follower().copy(canRemove = false))) {
+        for (agent in listOf(follower().copy(isCurrentServer = false, canRemove = false), follower().copy(canRemove = false))) {
             val repository = FollowerRepositoryFake().apply { roster = roster.copy(agents = listOf(agent)) }
             val store = SharedThreadAgentFollowersStore(repository, backgroundScope)
             store.dispatch(ThreadAgentFollowersIntent.Refresh)

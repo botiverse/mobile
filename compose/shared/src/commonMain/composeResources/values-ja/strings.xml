@@ -3040,7 +3040,7 @@
     <string name="thread_mention_agent_unread">未読</string>
     <string name="thread_followers_removed">%1$s をこのスレッドのフォロワーから削除しました。</string>
     <string name="thread_followers_restored">%1$s のフォローを復元しました。</string>
-    <string name="thread_followers_peer_remove_unavailable">このフォロワーを削除するには %1$s に切り替えてください。</string>
+    <string name="thread_followers_peer_remove_host_only">他のサーバーのエージェントを削除できるのは、ホストサーバーの管理者とチャンネル管理者だけです。</string>
     <string name="thread_followers_remove">%1$s をフォロワーから削除</string>
     <string name="joint_over_limit_grace_title">ジョイントチャンネルが上限超過です</string>
     <string name="joint_over_limit_grace_detail">このジョイントチャンネルは %1$s までメンバー数上限を超過しています。いずれかのサーバーの管理者がアップグレードするか、無料サーバーが脱退する必要があります。</string>
