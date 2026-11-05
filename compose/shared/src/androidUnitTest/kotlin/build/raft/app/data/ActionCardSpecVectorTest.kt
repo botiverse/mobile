@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Runs every case of the vendored shared action-card.v1 vector (botiverse/slock 05e38737, #11937 schemaVersion 7
+ * Runs every case of the vendored shared action-card.v1 vector (botiverse/slock bffda833, schemaVersion 8 (question cards)
  * `packages/shared/src/actionCard.v1.vector.json`, pinned by scripts/check_action_card_v1_vector.sh)
  * through the Kotlin read parse, strip, Msg rendering and client form checks. Compared as JSON
  * values: key order is irrelevant, an absent key differs from a null one. Emit-mode verdicts are
@@ -29,11 +29,11 @@ class ActionCardSpecVectorTest {
     @Test
     fun vendoredVectorIsThePinnedSharedArtifact() {
         val digest = sha256(vectorBytes)
-        assertEquals("df99645e2c3612d83aa4615bdbb345cc1d8f04f82da16affdf6e74389710a0e8", digest)
+        assertEquals("96497594e344ce842343a3f22a4d90a2e705e15193d16c13ea2a78434d69da57", digest)
         assertEquals(digest, resource("/actioncard/actionCard.v1.vector.sha256").decodeToString().substringBefore(' ').trim())
         assertEquals(ACTION_CARD_SPEC_CATALOG, vector.string("contract"))
-        assertEquals("7", vector.getValue("schemaVersion").jsonPrimitive.content)
-        assertEquals(listOf(228, 14, 10), listOf("cards", "formValues", "messages").map { vector.getValue(it).jsonArray.size })
+        assertEquals("8", vector.getValue("schemaVersion").jsonPrimitive.content)
+        assertEquals(listOf(257, 25, 13), listOf("cards", "formValues", "messages").map { vector.getValue(it).jsonArray.size })
     }
 
     @Test
@@ -72,7 +72,7 @@ class ActionCardSpecVectorTest {
             }
         }
         assertEquals(emptyList(), failures)
-        assertEquals(listOf(85, 143), listOf(accepted, rejected))
+        assertEquals(listOf(101, 156), listOf(accepted, rejected))
         assertEquals(vector.getValue("cards").jsonArray.sumOf { it.jsonObject["strip"]?.jsonObject?.size ?: 0 }, strips)
     }
 
@@ -87,7 +87,7 @@ class ActionCardSpecVectorTest {
                 case.string("name"),
             )
         }
-        assertEquals(14, cases.size)
+        assertEquals(25, cases.size)
     }
 
     @Test
@@ -101,7 +101,7 @@ class ActionCardSpecVectorTest {
                 case.string("name"),
             )
         }
-        assertEquals(10, cases.size)
+        assertEquals(13, cases.size)
     }
 
     private fun resource(path: String): ByteArray = checkNotNull(javaClass.getResourceAsStream(path)) { "missing $path" }.readBytes()

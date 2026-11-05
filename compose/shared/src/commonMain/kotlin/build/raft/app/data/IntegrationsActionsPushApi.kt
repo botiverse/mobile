@@ -19,6 +19,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private val integrationsActionsPushJson = Json {
     ignoreUnknownKeys = true
@@ -772,7 +774,7 @@ internal data class ExecuteActionFormBody(
     val values: Map<String, @Serializable(with = ActionCardFormValueSerializer::class) ActionCardFormValue>,
 )
 
-/** Shared `ActionCardFormValue = string | boolean | string[]`. */
+/** Shared `ActionCardFormValue = string | boolean | string[] | ActionCardChoiceValue` (`{ selected, other? }`, a Choice's). */
 internal object ActionCardFormValueSerializer : KSerializer<ActionCardFormValue> {
     override val descriptor = JsonElement.serializer().descriptor
 
@@ -782,6 +784,11 @@ internal object ActionCardFormValueSerializer : KSerializer<ActionCardFormValue>
                 is ActionCardFormValue.Text -> JsonPrimitive(value.value)
                 is ActionCardFormValue.Toggle -> JsonPrimitive(value.value)
                 is ActionCardFormValue.Ids -> JsonArray(value.ids.map(::JsonPrimitive))
+                is ActionCardFormValue.Choice ->
+                    buildJsonObject {
+                        put("selected", JsonArray(value.selected.map(::JsonPrimitive)))
+                        value.other?.let { put("other", it) }
+                    }
             }
         encoder.encodeSerializableValue(JsonElement.serializer(), element)
     }
@@ -795,6 +802,13 @@ internal object ActionCardFormValueSerializer : KSerializer<ActionCardFormValue>
                     element.booleanOrNull != null -> ActionCardFormValue.Toggle(element.boolean)
                     else -> throw SerializationException("form value")
                 }
+            is JsonObject -> {
+                val selected = element["selected"] as? JsonArray ?: throw SerializationException("choice selected")
+                ActionCardFormValue.Choice(
+                    selected = selected.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: throw SerializationException("choice value") },
+                    other = element["other"]?.let { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: throw SerializationException("choice other") },
+                )
+            }
             else -> throw SerializationException("form value")
         }
 }

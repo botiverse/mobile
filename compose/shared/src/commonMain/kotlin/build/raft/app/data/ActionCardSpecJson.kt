@@ -201,6 +201,20 @@ private fun ActionCardSpecForm.toJsonObject(): JsonObject =
             )
         }
         description?.let { put("description", it.toJsonObject()) }
+        steps?.let { list ->
+            put(
+                "steps",
+                JsonArray(
+                    list.map { step ->
+                        buildJsonObject {
+                            step.title?.let { put("title", it.toJsonObject()) }
+                            put("fields", JsonArray(step.fields.map(::JsonPrimitive)))
+                        }
+                    },
+                ),
+            )
+        }
+        placement?.let { put("placement", it.wire) }
         put("fields", JsonArray(fields.map { it.toJsonObject() }))
     }
 
@@ -241,6 +255,45 @@ private fun ActionCardSpecFormField.toJsonObject(): JsonObject =
             is ActionCardSpecToggleField -> {
                 put("type", "Toggle")
                 field.default?.let { put("default", it) }
+            }
+            is ActionCardSpecChoiceField -> {
+                put("type", "Choice")
+                field.required?.let { put("required", it) }
+                put("multiple", field.multiple)
+                field.minItems?.let { put("minItems", it) }
+                field.maxItems?.let { put("maxItems", it) }
+                put(
+                    "options",
+                    JsonArray(
+                        field.options.map { option ->
+                            buildJsonObject {
+                                put("value", option.value)
+                                put("label", option.label.toJsonObject())
+                                option.description?.let { put("description", it.toJsonObject()) }
+                            }
+                        },
+                    ),
+                )
+                field.other?.let { other ->
+                    put(
+                        "other",
+                        buildJsonObject {
+                            put("label", other.label.toJsonObject())
+                            other.description?.let { put("description", it.toJsonObject()) }
+                            other.placeholder?.let { put("placeholder", it.toJsonObject()) }
+                            put("maxLength", other.maxLength)
+                        },
+                    )
+                }
+                field.default?.let { default ->
+                    put(
+                        "default",
+                        buildJsonObject {
+                            put("selected", JsonArray(default.selected.map(::JsonPrimitive)))
+                            default.other?.let { put("other", it) }
+                        },
+                    )
+                }
             }
             is ActionCardSpecPickerField -> {
                 when (field) {
