@@ -3705,7 +3705,7 @@ class ThreadPayloadTest {
             actions.map { it.subtitle }
         )
         assertEquals(
-            listOf(RaftLucideIconName.Lock, RaftLucideIconName.Archive, RaftLucideIconName.Trash),
+            listOf(RaftLucideIconName.Lock, RaftLucideIconName.Archive, RaftLucideIconName.Trash2),
             actions.map { it.icon }
         )
         assertEquals(true, actions.all { it.destructive })
