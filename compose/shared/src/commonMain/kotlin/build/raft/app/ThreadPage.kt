@@ -4999,6 +4999,7 @@ private fun ThreadPageScreen(
     CompositionLocalProvider(
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
+        LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
     ) {
     SharedThreadRouteContent(
         initialPayload = payload,
@@ -28188,6 +28189,13 @@ internal data class ThreadQuotedPermalinkMessage(
 
 internal typealias ThreadQuotedPermalinkLoader = suspend (RaftMessagePermalinkTarget) -> ThreadQuotedPermalinkMessage?
 
+/**
+ * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument
+ * limit, so it reaches [ThreadMessageCard] through this local instead of a parameter chain (the
+ * chain had silently ended in `null` defaults, so no card ever loaded).
+ */
+internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedPermalinkLoader?> { null }
+
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
     data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkUiState
@@ -28666,7 +28674,7 @@ private fun ThreadMessageCardContent(
     val onToggleLongMessage = callbacks.onToggleLongMessage
     val onLongPressInputReady = callbacks.onLongPressInputReady
     val longPressGestureInstanceKey = data.longPressGestureInstanceKey
-    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader ?: LocalThreadQuotedPermalinkLoader.current
     val outerPadding = data.outerPadding
     // read_receipts_v0: @mentioned agents' read badges on the viewer's own message (web MentionLink).
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
