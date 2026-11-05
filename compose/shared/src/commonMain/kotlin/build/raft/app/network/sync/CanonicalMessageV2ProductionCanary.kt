@@ -1805,7 +1805,7 @@ private fun JsonElement?.toCanonicalActionMetadataV2OrNull(): CanonicalActionMet
     val producer = runCatching {
         canonicalV2ProducerJson.decodeFromJsonElement(
             CanonicalActionMetadataProducer.serializer(),
-            element.withKnownActionCardKeysOnly(),
+            element.withKnownActionCardKeysOnly().withKnownForwardedKeysOnly(),
         )
     }.getOrNull() ?: return null
     return when (producer.kind) {
@@ -1876,24 +1876,21 @@ private fun JsonElement.hasSupportedCanonicalActionProducerShape(): Boolean {
         // Lenient by key (task #43): a key the fact does not carry is dropped
         // ([withKnownActionCardKeysOnly], [toCanonicalActionCardResultV2OrNull]), never the card.
         "action-card" -> root["action"] is JsonObject
+        // Lenient by key too (AppFather 11-05): every forward carries keys the fact does not
+        // (`forwardedBy`, `forwardedAt`, `destinationTargetId`; per item `sourceIsThreadParent`,
+        // `sourceMessageSeq`, `attachmentPolicy`, the source ids; attachment `id` / size / dimensions),
+        // so the exact-key check failed every forwarded message and marked its window discontinuous.
+        // Only the shape is checked here; [withKnownForwardedKeysOnly] drops the rest.
         "forwarded-bundle" -> {
-            if (!root.keys.all(FORWARDED_ROOT_KEYS::contains)) return false
             val items = root["forwardedItems"] as? JsonArray ?: return false
             items.all { itemElement ->
                 val item = itemElement as? JsonObject ?: return@all false
-                if (!item.keys.all(FORWARDED_ITEM_KEYS::contains)) return@all false
                 val author = item["sourceAuthorSnapshot"]
-                if (author != null && author !is JsonNull &&
-                    (author as? JsonObject)?.keys?.all(FORWARDED_AUTHOR_KEYS::contains) != true
-                ) return@all false
+                if (author != null && author !is JsonNull && author !is JsonObject) return@all false
                 val target = item["sourceTargetSnapshot"]
-                if (target != null && target !is JsonNull &&
-                    (target as? JsonObject)?.keys?.all(FORWARDED_TARGET_KEYS::contains) != true
-                ) return@all false
+                if (target != null && target !is JsonNull && target !is JsonObject) return@all false
                 val attachments = item["attachmentSnapshots"] as? JsonArray ?: return@all false
-                attachments.all { attachment ->
-                    (attachment as? JsonObject)?.keys?.all(FORWARDED_ATTACHMENT_KEYS::contains) == true
-                }
+                attachments.all { it is JsonObject }
             }
         }
         else -> false
@@ -1907,6 +1904,31 @@ private fun JsonElement.hasSupportedCanonicalActionProducerShape(): Boolean {
  * was in. Dropped keys: the conversion bookkeeping (`conversionJobId`, `conversionEpoch`, `reconfirmedAt`;
  * the card's `state` already says frozen / reconfirm_required) and whatever a newer server adds.
  */
+/**
+ * A forwarded bundle with only the keys the fact knows ([FORWARDED_ROOT_KEYS] and the item, author,
+ * target and attachment sets); the server's other keys are for the web and the app's own forward card
+ * (ForwardMessageParser reads them from the message row, not from here).
+ */
+private fun JsonElement.withKnownForwardedKeysOnly(): JsonElement {
+    val root = this as? JsonObject ?: return this
+    if ((root["kind"] as? JsonPrimitive)?.content != "forwarded-bundle") return this
+    fun JsonElement?.only(keys: Set<String>): JsonElement? =
+        (this as? JsonObject)?.let { JsonObject(it.filterKeys(keys::contains)) } ?: this
+    val items = (root["forwardedItems"] as? JsonArray)?.map { itemElement ->
+        val item = itemElement as? JsonObject ?: return@map itemElement
+        val kept = item.filterKeys(FORWARDED_ITEM_KEYS::contains).toMutableMap()
+        item["sourceAuthorSnapshot"]?.let { kept["sourceAuthorSnapshot"] = it.only(FORWARDED_AUTHOR_KEYS)!! }
+        item["sourceTargetSnapshot"]?.let { kept["sourceTargetSnapshot"] = it.only(FORWARDED_TARGET_KEYS)!! }
+        (item["attachmentSnapshots"] as? JsonArray)?.let { list ->
+            kept["attachmentSnapshots"] = JsonArray(list.map { it.only(FORWARDED_ATTACHMENT_KEYS)!! })
+        }
+        JsonObject(kept)
+    }
+    val kept = root.filterKeys(FORWARDED_ROOT_KEYS::contains).toMutableMap()
+    if (items != null) kept["forwardedItems"] = JsonArray(items)
+    return JsonObject(kept)
+}
+
 private fun JsonElement.withKnownActionCardKeysOnly(): JsonElement {
     val root = this as? JsonObject ?: return this
     if ((root["kind"] as? JsonPrimitive)?.content != "action-card") return this
