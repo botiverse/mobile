@@ -10,7 +10,7 @@
   },
   "captureViewport": {
     "width": 390,
-    "height": 1463,
+    "height": 1584,
     "density": 3
   },
   "selector": "[data-visual-case='screens.members.agent-detail.profile.computer-missing']",
@@ -21,26 +21,26 @@
       "x": 0,
       "y": 0,
       "width": 390,
-      "height": 1463
+      "height": 1584
     },
     "targetRect": {
       "x": 0,
       "y": 0,
       "width": 390,
-      "height": 1463
+      "height": 1584
     },
     "outset": null
   },
   "fullLength": {
     "requested": true,
     "baseViewportHeight": 844,
-    "expandedViewportHeight": 1463,
-    "initialOverflowPx": 619,
+    "expandedViewportHeight": 1584,
+    "initialOverflowPx": 740,
     "residualOverflowPx": 0,
     "iterations": 1,
     "capped": false,
     "maxHeight": 2700,
     "scroller": "div"
   },
-  "capturedAt": "2026-11-04T09:02:00.304Z"
+  "capturedAt": "2026-11-05T21:39:38.869Z"
 }

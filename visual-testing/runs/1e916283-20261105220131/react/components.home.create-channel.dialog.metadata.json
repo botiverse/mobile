@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.home.create-channel.dialog",
+  "image": "visual-testing-results/react/components.home.create-channel.dialog.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "body",
+  "crop": {
+    "mode": "element",
+    "contract": "modal-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-05T21:38:44.805Z"
+}

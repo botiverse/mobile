@@ -7,20 +7,20 @@
               "stringDescLocale": null,
               "route": {"pageName":"compose_settings_page_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.account.page.png",
-              "viewport": { "width": 1170, "height": 3375, "density": 1 },
+              "viewport": { "width": 1170, "height": 3279, "density": 1 },
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
                 "contract": "viewport-bounds",
-                "rect": { "x": 0, "y": 0, "width": 390, "height": 1125 }
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 1093 }
               },
               "capture": {
                 "method": "app-window-root-draw-viewport-density-resize-full-length",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 592,
-                  "dominantRatio": 0.89328
+                  "uniqueColors": 594,
+                  "dominantRatio": 0.8905394
                 },
                 "readyTokenObserved": false,
                 "readyTokenRequired": false,
@@ -28,26 +28,26 @@
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 3185,
+    "displayHeightPx": 3089,
     "densityDpi": 480,
     "rootWidthPx": 1170,
-    "rootHeightPx": 3375,
+    "rootHeightPx": 3279,
     "hardwareAccelerated": true,
     "totalViews": 8,
     "laidOutViews": 7,
     "visibleContentLeafViews": 0,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4747,
+    "processId": 4685,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "e2b8b98eec4993f2b66da26e3be59440",
-                "bootId": "5e0273ee-19f5-43d6-b4c1-81fbbde48b9d",
-                "capturedAtEpochMs": 1793782974731,
-                "capturedAtMonotonicNs": 132338283683
+                "generation": "5d33b469a2d12bf87a896ea205014a8b",
+                "bootId": "2d5b734c-f3d7-4c06-ac11-fb170cb362a7",
+                "capturedAtEpochMs": 1793914941849,
+                "capturedAtMonotonicNs": 136458472719
               },
               "clampedToShortWindow": false,
-              "fullLength": {"requested":true,"baseViewportHeight":844,"expandedViewportHeight":1125,"initialOverflowDp":281,"residualOverflowDp":0,"iterations":1,"capped":false,"maxHeight":2700,"scroller":"lazy#1788@210..2490"},
-              "capturedAt": "1793782974731"
+              "fullLength": {"requested":true,"baseViewportHeight":844,"expandedViewportHeight":1093,"initialOverflowDp":249,"residualOverflowDp":0,"iterations":1,"capped":false,"maxHeight":2700,"scroller":"lazy#1419@210..2490"},
+              "capturedAt": "1793914941849"
             }

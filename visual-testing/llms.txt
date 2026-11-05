@@ -1,27 +1,29 @@
 # Raft Visual Testing
 
-Generated: 2026-11-04 09:32:28 UTC
-Latest run: bf972e2b-20261104090539
-Latest commit: bf972e2b-20261104090539
-Commit subject: Settings: the Feedback row has the web's feedback icon (#4299)
-Providers: react vs android
-Summary: total 87, same 0, pass 1, basic-pass 7, different 77, missing 2
-AI analysis: ready 30 / total 87, pending 57
-Visual coverage matrix: active 96 / total 116, pending 17, skipped 3
+Generated: 2026-11-05 22:04:02 UTC
+Latest run: 1e916283-20261105220131
+Latest commit: 1e916283-20261105220131
+Commit subject: feat(cards): RFC 082 v2.0 header, Markdown, Fields, Divider (#4367)
+Providers: react vs android, react vs ios, android vs ios
+Summary: total 92, same 0, pass 1, basic-pass 8, different 76, missing 7
+AI analysis: ready 21 / total 92, pending 71
+Visual coverage matrix: active 101 / total 121, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 87, same 0, pass 1, basic-pass 7, different 77, missing 2
+- react__android: total 92, same 0, pass 1, basic-pass 8, different 76, missing 7
+- react__ios: total 92, same 0, pass 9, basic-pass 15, different 46, missing 22
+- android__ios: total 92, same 0, pass 12, basic-pass 25, different 33, missing 22
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 78, pending 3, total 83
+- Components Parity (component-fixture): active 83, pending 3, total 88
 - Screens Parity (real-screen): active 18, pending 14, total 33
 
 ## Provider Coverage
 
-- react: active 86, pending 13, unsupported 0
+- react: active 91, pending 13, unsupported 0
 - android: active 79, pending 18, unsupported 0
 - harmony: active 0, pending 80, unsupported 0
 - ios: active 0, pending 1, unsupported 0
@@ -114,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 1e916283-20261105220131: react vs android, total 92, pass 1, basic-pass 8, different 76, matrix runs/1e916283-20261105220131/component-matrix.json, page runs/1e916283-20261105220131/
 - bf972e2b-20261104090539: react vs android, total 87, pass 1, basic-pass 7, different 77, matrix runs/bf972e2b-20261104090539/component-matrix.json, page runs/bf972e2b-20261104090539/
 - 63a3324a-20261104074137: react vs android, total 93, pass 1, basic-pass 7, different 77, matrix runs/63a3324a-20261104074137/component-matrix.json, page runs/63a3324a-20261104074137/
 - e6d3cbab-20261103232613: react vs android, total 93, pass 2, basic-pass 12, different 77, matrix runs/e6d3cbab-20261103232613/component-matrix.json, page runs/e6d3cbab-20261103232613/

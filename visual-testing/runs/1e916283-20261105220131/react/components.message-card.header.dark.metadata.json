@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.message-card.header.dark",
+  "image": "visual-testing-results/react/components.message-card.header.dark.png",
+  "viewport": {
+    "width": 640,
+    "height": 600,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 640,
+    "height": 600,
+    "density": 2
+  },
+  "selector": "[data-visual-case='components.message-card.header.dark']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 400
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 400
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-05T21:41:07.675Z"
+}
