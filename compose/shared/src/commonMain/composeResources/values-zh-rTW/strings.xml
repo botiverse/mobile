@@ -104,7 +104,7 @@
     <string name="message_link_not_found_title">找不到這則訊息</string>
     <string name="message_link_not_found_body">連結可能有誤，或者你沒有權限查看。</string>
     <string name="conversation_unavailable_title">這個對話你無法開啟</string>
-    <string name="conversation_unavailable_back_conversations">回到會話列表</string>
+    <string name="conversation_unavailable_back_conversations">回到對話列表</string>
     <string name="conversation_unavailable_back_channels">返回頻道列表</string>
     <string name="message_link_switched_server">已切換到 %1$s</string>
     <string name="message_link_public_preview_title">公開預覽</string>
