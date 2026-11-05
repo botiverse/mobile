@@ -324,6 +324,7 @@ import build.raft.app.markdown.raftTaskStatusOutline
 import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftUnavailableQuotedPermalink
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
@@ -5007,6 +5008,7 @@ private fun ThreadPageScreen(
     CompositionLocalProvider(
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
+        LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
     ) {
     SharedThreadRouteContent(
         initialPayload = payload,
@@ -28234,6 +28236,13 @@ internal data class ThreadQuotedPermalinkMessage(
 
 internal typealias ThreadQuotedPermalinkLoader = suspend (RaftMessagePermalinkTarget) -> ThreadQuotedPermalinkMessage?
 
+/**
+ * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument
+ * limit, so it reaches [ThreadMessageCard] through this local instead of a parameter chain (the
+ * chain had silently ended in `null` defaults, so no card ever loaded).
+ */
+internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedPermalinkLoader?> { null }
+
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
     data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkUiState
@@ -28263,11 +28272,9 @@ internal fun ThreadQuotedPermalinkCard(
                 label = stringResource(Res.string.thread_quoted_permalink_loading),
                 modifier = modifier
             )
-        ThreadQuotedPermalinkUiState.Unavailable ->
-            build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
-                text = stringResource(Res.string.thread_quoted_permalink_unavailable),
-                modifier = modifier
-            )
+        // The web renders nothing for a quote it cannot read; the row never composes this state (see
+        // threadQuotedPermalinkPreviewVisible), and the permalink chip says so instead.
+        ThreadQuotedPermalinkUiState.Unavailable -> Unit
         // Quoted as one muted line, like an unavailable quote (web QuoteCardContent).
         ThreadQuotedPermalinkUiState.Retracted ->
             build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
@@ -28712,7 +28719,7 @@ private fun ThreadMessageCardContent(
     val onToggleLongMessage = callbacks.onToggleLongMessage
     val onLongPressInputReady = callbacks.onLongPressInputReady
     val longPressGestureInstanceKey = data.longPressGestureInstanceKey
-    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
+    val quotedPermalinkLoader = callbacks.quotedPermalinkLoader ?: LocalThreadQuotedPermalinkLoader.current
     val outerPadding = data.outerPadding
     // read_receipts_v0: @mentioned agents' read badges on the viewer's own message (web MentionLink).
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
@@ -29590,7 +29597,13 @@ private fun ThreadMessageCardContent(
                                                               enabled = message.pendingSendContext == null,
                                                           ) {
                                                           // A tap on a code block is not the row's tap (web skips `pre, code`).
-                                                          CompositionLocalProvider(LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver) {
+                                                          CompositionLocalProvider(
+                                                            LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver,
+                                                            LocalRaftUnavailableQuotedPermalink provides
+                                                                quotedPermalinkTarget.takeIf {
+                                                                    quotedPermalinkState.value == ThreadQuotedPermalinkUiState.Unavailable
+                                                                }
+                                                          ) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
                                                                 fillWidth = !alignOwnMessageRight,
