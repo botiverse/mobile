@@ -23,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -221,11 +220,10 @@ fun RaftListRow(
     saveStatus: RaftSaveStatusState? = null,
     titleMaxLines: Int = 1,
     /**
-     * A description with marks of its own (a link at its end, web `ListRowDescription` children);
-     * wins over [description] and wraps like it under [wrapDescription].
+     * A description with marks of its own (an [appendRaftTextLink] at its end, web
+     * `ListRowDescription` children); wins over [description] and wraps like it under [wrapDescription].
      */
     richDescription: AnnotatedString? = null,
-    richDescriptionInlineContent: Map<String, InlineTextContent> = emptyMap(),
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -337,7 +335,6 @@ fun RaftListRow(
                                 color = inks.ink2,
                                 maxLines = if (wrapDescription) descriptionMaxLines.coerceAtLeast(1) else 1,
                                 overflow = TextOverflow.Ellipsis,
-                                inlineContent = richDescriptionInlineContent,
                             )
                         } else if (description != null) {
                             RaftText(

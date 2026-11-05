@@ -34,18 +34,8 @@ import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.components.RaftGlyphIcon
-import build.raft.designsystem.components.RaftGlyph
-import androidx.compose.ui.unit.em
-import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.withLink
+import build.raft.designsystem.components.appendRaftTextLink
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.foundation.text.appendInlineContent
-import androidx.compose.foundation.text.InlineTextContent
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftIsDark
 import build.raft.designsystem.theme.RaftTheme
@@ -692,24 +682,13 @@ private fun SettingsAccountUsageDataRow(
     val title = stringResource(Res.string.settings_usage_data_title)
     val description = stringResource(Res.string.settings_usage_data_description)
     val learnMore = stringResource(Res.string.settings_usage_data_learn_more)
-    val colors = RaftTheme.colors
-    // Web: the description ends in the strong "Learn more" TextLink with its ↗ (TextLinkExternalIcon:
-    // 0.857em, 2px after the words), inside the same wrapping line.
+    // Web: the description ends in the strong "Learn more" TextLink, inside the same wrapping line.
     val richDescription =
-        remember(description, learnMore, colors.foreground, onEvent) {
+        remember(description, learnMore, onEvent) {
             buildAnnotatedString {
                 append(description)
                 append(' ')
-                withLink(
-                    LinkAnnotation.Clickable(
-                        tag = SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY,
-                        styles = TextLinkStyles(SpanStyle(color = colors.foreground, fontWeight = FontWeight.SemiBold)),
-                        linkInteractionListener = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) }
-                    )
-                ) {
-                    append(learnMore)
-                    appendInlineContent(SettingsUsageDataExternalIconId, "↗")
-                }
+                appendRaftTextLink(learnMore, onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) })
             }
         }
     RaftListRowGroup(Modifier.fillMaxWidth()) {
@@ -717,7 +696,6 @@ private fun SettingsAccountUsageDataRow(
             title = title,
             variant = RaftListRowVariant.Plain,
             richDescription = richDescription,
-            richDescriptionInlineContent = settingsUsageDataExternalIcon,
             wrapDescription = true,
             trailing = {
                 RaftSwitch(
@@ -732,18 +710,6 @@ private fun SettingsAccountUsageDataRow(
         )
     }
 }
-
-private const val SettingsUsageDataExternalIconId = "settings-usage-data-external"
-
-private val settingsUsageDataExternalIcon: Map<String, InlineTextContent> =
-    mapOf(
-        SettingsUsageDataExternalIconId to
-            InlineTextContent(Placeholder(width = 1.em, height = 1.em, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter)) {
-                Box(Modifier.fillMaxSize().padding(start = 2.dp), contentAlignment = Alignment.Center) {
-                    RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 12.dp, color = RaftTheme.colors.foreground)
-                }
-            }
-    )
 
 @Composable
 private fun SettingsAccountProfileCard(
