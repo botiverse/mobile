@@ -105,6 +105,16 @@ jobs:
       - name: Install playwright chromium
         run: pnpm --filter "@botiverse/raft-web" exec playwright install --with-deps chromium
 
+      # Playwright's deps bring only WenQuanYi Zen Hei and IPA Gothic for CJK, so the
+      # Chinese fixture text drew with glyphs no zh-CN reader sees (their systems ship
+      # a Simplified Chinese face). Noto Sans CJK SC is what fontconfig picks for
+      # lang=zh-CN once installed; the fc-match line records it in the log.
+      - name: Install Simplified Chinese font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends fonts-noto-cjk
+          fc-match "sans-serif:lang=zh-cn"
+
       # continue-on-error: single broken cases must surface as "missing" in the
       # diff report instead of killing the whole pipeline.
       - name: Capture React visuals
