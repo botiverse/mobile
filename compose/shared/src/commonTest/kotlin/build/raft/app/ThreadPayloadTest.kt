@@ -490,18 +490,18 @@ class ThreadPayloadTest {
     fun threadMessagePermalinkMatchesReactChannelRoute() {
         val payload =
             RaftThreadScreenPayload(
-                sourceThreadId = "channel-1",
+                sourceThreadId = "c0c0c0c0-0000-4000-8000-000000000001",
                 channelKind = "channel"
             )
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("message-1", "u-artin", "artin"),
+                message = threadMessage("a0a0a0a0-0000-4000-8000-000000000001", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/channel/channel-1?msg=message-1",
+            "https://app.raft.build/s/workspace/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000001",
             permalink
         )
     }
@@ -511,8 +511,8 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentChannelId = "channel-1",
-                parentMessageId = "parent-1",
+                parentChannelId = "c0c0c0c0-0000-4000-8000-000000000001",
+                parentMessageId = "a0a0a0a0-0000-4000-8000-000000000004",
                 sourceThreadId = "thread-1",
                 streamChannelId = "thread-1",
                 parentChannelKind = "channel"
@@ -520,12 +520,12 @@ class ThreadPayloadTest {
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("reply-1", "u-artin", "artin"),
+                message = threadMessage("a0a0a0a0-0000-4000-8000-000000000003", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/channel/channel-1?msg=reply-1&thread=channel-1%3Aparent-1",
+            "https://app.raft.build/s/workspace/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=c0c0c0c0-0000-4000-8000-000000000001%3Aa0a0a0a0-0000-4000-8000-000000000004",
             permalink
         )
     }
@@ -538,8 +538,8 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentChannelId = "dm-parent",
-                parentMessageId = "parent-1",
+                parentChannelId = "d0d0d0d0-0000-4000-8000-000000000002",
+                parentMessageId = "a0a0a0a0-0000-4000-8000-000000000004",
                 sourceThreadId = "thread-1",
                 streamChannelId = "thread-1",
                 parentChannelKind = "direct"
@@ -547,12 +547,12 @@ class ThreadPayloadTest {
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("reply-1", "u-artin", "artin"),
+                message = threadMessage("a0a0a0a0-0000-4000-8000-000000000003", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/dm/dm-parent?msg=reply-1&thread=dm-parent%3Aparent-1",
+            "https://app.raft.build/s/workspace/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Aa0a0a0a0-0000-4000-8000-000000000004",
             permalink
         )
     }

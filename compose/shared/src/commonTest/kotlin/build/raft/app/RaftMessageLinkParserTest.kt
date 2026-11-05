@@ -49,6 +49,16 @@ class RaftMessageLinkParserTest {
     }
 
     @Test
+    fun aLinkGluedToTextKeepsOnlyTheLeadingId() {
+        // The web's grammar (raft-shared parseRaftPermalink): a UUID may be followed by prose.
+        val expected = RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid, threadParentMessageId = pid)
+        assertEquals(expected, parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid?msg=${mid}这条&thread=$cid:${pid}:$mid"))
+        // Ids that are not hex are not a message.
+        assertNull(parseRaftMessageLink("https://app.raft.build/s/$slug/channel/channel-1"))
+        assertNull(parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid?msg=message-1"))
+    }
+
+    @Test
     fun appMissingAndUnknownQueryKeysAreIgnored() {
         val expected = RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid, threadParentMessageId = pid)
         assertEquals(expected, parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid?msg=$mid&thread=$cid:$pid&app=missing"))
@@ -86,7 +96,6 @@ class RaftMessageLinkParserTest {
                 "https://app.raft.build/s/$slug/channel/$cid?msg=%zz",
                 "https://app.raft.build/s/$slug/channel/$cid?thread=$cid",
                 "https://app.raft.build/s/$slug/channel/$cid?thread=$cid:",
-                "https://app.raft.build/s/$slug/channel/$cid?thread=$cid:$pid:$mid",
                 "http://app.raft.build/s/$slug/channel/$cid",
                 "https://app.raft.build:8443/s/$slug/channel/$cid",
                 "https://user@app.raft.build/s/$slug/channel/$cid",

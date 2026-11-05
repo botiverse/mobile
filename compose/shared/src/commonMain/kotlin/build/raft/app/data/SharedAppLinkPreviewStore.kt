@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.links.raftAppLinkReadUrls
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -129,7 +130,7 @@ fun SharedAppLinkPreviewState.messageView(
     messageId: String,
     content: String,
     conversationId: String,
-    /** Raft's own app hosts: Artifact links on them never count as App links ([isArtifactIdLink]). */
+    /** Raft's own app hosts: Artifact links on them never count as App links ([parseArtifactLinkTarget]). */
     artifactHosts: Collection<String> = emptyList(),
     /** [APP_LINK_READ_MODE_V1], or [AppLinkBatchRead.mode]: answers are kept per mode. */
     mode: String = APP_LINK_READ_MODE_V1,
@@ -147,7 +148,7 @@ fun SharedAppLinkPreviewState.messageView(
     val results = LinkedHashMap(loaded.results)
     var stale = false
     val linkLimit = if (mode == APP_LINK_READ_MODE_V1) APP_LINK_PREVIEW_V1_LINK_LIMIT else APP_LINK_CARD_READ_MAX_URLS
-    val links by lazy { appLinkMessagePreviewUrls(content, linkLimit) { isArtifactIdLink(it, artifactHosts) } }
+    val links by lazy { raftAppLinkReadUrls(content, artifactHosts, linkLimit) }
     for (prompt in prompts) {
         val appKey = appLinkAppKey(viewerKey, prompt.app.id)
         val allowedSince = (epoch[appKey] ?: 0) > (loaded.epochs[appKey] ?: 0)
@@ -266,7 +267,7 @@ class SharedAppLinkPreviewStore internal constructor(
         }
         // Ask only on a link that can become the chip: a bare link of this content.
         val hosts = artifactHosts()
-        val bare = appLinkMessagePreviewUrls(content, linkLimit(batch)) { isArtifactIdLink(it, hosts) }.toSet()
+        val bare = raftAppLinkReadUrls(content, hosts, linkLimit(batch)).toSet()
         val results = answer.results.filterValues { it !is AppLinkResult.Consent || it.url in bare }
         val conversationKey = appLinkConversationKey(viewerKey, conversationId)
         _state.update { state ->

@@ -202,7 +202,11 @@ internal data class RaftMessageLinkPlan(
     val objectCards: List<String>,
     /** Public https links that are not first-party, in message order. */
     val appLinks: List<String>,
-)
+) {
+    /** The Artifact of each card, in message order, each reference once. */
+    val objectTargets: List<ArtifactLinkTarget>
+        get() = objectCards.mapNotNull(objects::get)
+}
 
 internal fun planRaftMessageLinks(
     content: String,
@@ -231,6 +235,16 @@ internal fun planRaftMessageLinks(
     val appLinks = bare.filter { it !in firstParty && appLinkPreviewHref(it) != null }
     return RaftMessageLinkPlan(bare, objects, objectCards, appLinks)
 }
+
+/**
+ * The links an App link read covers (web `appLinkReadUrls`): the bare public-https links of [content]
+ * that are not an Artifact by id (those never count, whatever the Artifacts flag says), once each, in
+ * message order, at most [limit] (3 for the v1 GET, 10 for the batched read).
+ */
+internal fun raftAppLinkReadUrls(content: String, appHosts: Collection<String>, limit: Int): List<String> =
+    raftMessageBareLinks(content)
+        .filter { appLinkPreviewHref(it) != null && parseArtifactLinkTarget(it, appHosts) == null }
+        .take(limit)
 
 // --- Raft message permalinks (web parseRaftPermalink) -------------------------------------------
 
@@ -266,8 +280,25 @@ internal fun raftPermalinkHostnames(appHosts: Collection<String>, configuredWebU
         configuredWebUrl?.let(::parseRaftHttpUrl)?.host?.let(::add)
     }
 
-/** web `parseRaftPermalink`, with the exact-hostname allow-list passed in as [hostnames]. */
-internal fun parseRaftPermalink(href: String, hostnames: Set<String>): ParsedRaftPermalink? {
+/**
+ * A link to a conversation, with the message or thread it points at when it has one: the shapes
+ * the web's `parseRaftPermalink` reads, and the channel-only link (`/s/<slug>/channel/<id>`) the
+ * app also opens ([parseRaftMessageLink]). The web's permalink is the one with a message
+ * ([parseRaftPermalink]).
+ */
+internal data class ParsedRaftConversationLink(
+    /** The web URL as written (trimmed). */
+    val rawUrl: String,
+    val serverSlug: String,
+    val routeKind: ConversationKind,
+    val channelId: ChannelId,
+    /** `msg`, when the link has one. */
+    val messageId: MessageId?,
+    val threadParentMessageId: MessageId?,
+)
+
+/** web `parseRaftPermalink`'s grammar, with the exact-hostname allow-list passed in as [hostnames]. */
+internal fun parseRaftConversationLink(href: String, hostnames: Set<String>): ParsedRaftConversationLink? {
     val url = parseRaftHttpUrl(href) ?: return null
     if (url.host !in hostnames) return null
     val match = PermalinkPath.matchEntire(url.path) ?: return null
@@ -280,18 +311,33 @@ internal fun parseRaftPermalink(href: String, hostnames: Set<String>): ParsedRaf
         if (thread.groupValues[1] != match.groupValues[3]) return null
         threadParentMessageId = leadingMessageId(thread.groupValues[2]) ?: return null
     }
-    // `msg` pinpoints a message; a thread-only URL targets the thread parent.
     val explicitParam = params["msg"]
     val explicitId = explicitParam?.let { leadingMessageId(it) ?: return null }
-    val messageId = explicitId ?: threadParentMessageId ?: return null
 
-    return ParsedRaftPermalink(
+    return ParsedRaftConversationLink(
         rawUrl = href.trim(),
         serverSlug = match.groupValues[1].percentDecoded() ?: return null,
         routeKind = if (match.groupValues[2].lowercase() == "dm") ConversationKind.DirectMessage else ConversationKind.Channel,
         channelId = ChannelId(match.groupValues[3]),
-        messageId = MessageId(messageId),
+        messageId = explicitId?.let(::MessageId),
         threadParentMessageId = threadParentMessageId?.let(::MessageId),
+    )
+}
+
+/**
+ * web `parseRaftPermalink`: a conversation link that points at a message. `msg` pinpoints one; a
+ * thread-only URL (no `msg`) targets the thread parent.
+ */
+internal fun parseRaftPermalink(href: String, hostnames: Set<String>): ParsedRaftPermalink? {
+    val link = parseRaftConversationLink(href, hostnames) ?: return null
+    val messageId = link.messageId ?: link.threadParentMessageId ?: return null
+    return ParsedRaftPermalink(
+        rawUrl = link.rawUrl,
+        serverSlug = link.serverSlug,
+        routeKind = link.routeKind,
+        channelId = link.channelId,
+        messageId = messageId,
+        threadParentMessageId = link.threadParentMessageId,
     )
 }
 
@@ -303,6 +349,12 @@ internal fun String.toParsedRaftPermalink(
     configuredWebUrl: String? = null,
     appHosts: Collection<String> = RaftClientConfigAppHosts.current,
 ): ParsedRaftPermalink? = parseRaftPermalink(this, raftPermalinkHostnames(appHosts, configuredWebUrl))
+
+/** A channel id as the web's permalink path reads it: `[0-9a-f-]+`. */
+internal fun isRaftPermalinkChannelId(value: String): Boolean = Regex("^[0-9a-f-]+$", RegexOption.IGNORE_CASE).matches(value)
+
+/** A message id as the web's permalink reads it: a UUID or an 8-hex short id, with nothing after it. */
+internal fun isRaftPermalinkMessageId(value: String): Boolean = leadingMessageId(value) == value
 
 private fun leadingMessageId(value: String): String? = LeadingMessageId.find(value)?.groupValues?.get(1)
 
