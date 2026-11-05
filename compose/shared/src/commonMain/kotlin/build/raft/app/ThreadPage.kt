@@ -27986,7 +27986,7 @@ internal fun ThreadHistoryStatusRow(
 }
 
 @Composable
-private fun ThreadDateDivider(label: String) {
+internal fun ThreadDateDivider(label: String) {
     // raft-ui MessageListDateDivider: the rule sits a section (24) from the text on both sides
     // (spacing.md#timeline-rhythm), taking back the row above's inset (4) and the row below's
     // lead (12): pt = 24 - 4 - line/2, pb = 24 - 12 - line/2 on its 16dp line.
