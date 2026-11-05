@@ -49,8 +49,9 @@ import coil3.compose.AsyncImagePainter
  * link's paragraph ([build.raft.app.markdown.RaftMarkdownBlockCardHost]). Raft's header names the
  * App from what Raft stores (its icon and name, the link's host), then the App's title (it opens
  * the item), the card's elements as the hover card draws them, and the buttons: the App's
- * navigate buttons in its order and Raft's Open Link, all in the More menu (the title opens the
- * item; this client declares no confirm or undo, so Raft sends no executable button). On a phone
+ * buttons in its order: at most two of its actions on the row (pressed by touch, with Raft's
+ * confirmation or an Undo window: [ThreadAppLinkCardPress]) and the rest, its navigate buttons and
+ * Raft's Open Link in the More menu (the title opens the item). On a phone
  * it takes the message's width; a wide window caps it at 400dp, as the web does.
  */
 @Composable
@@ -58,13 +59,15 @@ internal fun ThreadAppLinkBlockCard(
     card: AppLinkResult.Card,
     openUri: (String) -> Unit,
     modifier: Modifier = Modifier,
+    actions: ThreadAppLinkCardActionHost? = null,
 ) {
     val block = card.block ?: return
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val maxWidth: Dp = if (windowWidth >= RaftAppLinkCardDefaults.PhoneBelow) RaftAppLinkCardDefaults.MaxWidth else Dp.Unspecified
     val host = remember(card.url) { appLinkDomain(card.url)?.let(::raftAppLinkAsciiHost).orEmpty() }
     val openLink = raftAppLinkOpenLinkButton { openUri(card.url) }
-    val buttons = remember(block, card.url, openLink) { block.card.blockCardButtons(card.url, openUri, openLink) }
+    val press = rememberThreadAppLinkCardPress(card, actions)
+    val buttons = block.card.blockCardButtons(card.url, openUri, openLink) { button, action -> press.button(button, action) }
     RaftDesignSystemTheme {
         // Between the paragraph and what follows: the gap a table or an image keeps in the text.
         Box(modifier.padding(top = 8.dp, bottom = 4.dp)) {
@@ -81,6 +84,7 @@ internal fun ThreadAppLinkBlockCard(
                 }
                 RaftAppLinkCardActions(buttons)
             }
+            press.Confirmation()
         }
     }
 }
@@ -110,17 +114,20 @@ private fun ThreadAppLinkCardHeaderIcon(icon: String?) {
 }
 
 /**
- * The buttons of a block card, in order: the App's `navigate` buttons as the card lists them (an
- * `execute` or `read` button is not drawn: this client holds no handle for one), then Raft's
+ * The buttons of a block card, in order: the App's `navigate` buttons as the card lists them and its
+ * `execute` buttons as [execute] makes them (null: not drawn, such as one with no handle; a `read`
+ * button is not drawn), then Raft's
  * [openLink] unless an App button already goes to [url].
  */
 internal fun RaftAppLinkCardV2.blockCardButtons(
     url: String,
     openUri: (String) -> Unit,
     openLink: RaftPreviewCardButton,
+    execute: (RaftLinkCardV2Element.Button, RaftLinkCardButtonAction.Execute) -> RaftPreviewCardButton? = { _, _ -> null },
 ): List<RaftPreviewCardButton> {
     val app =
         buttonsInOrder().mapNotNull { button ->
+            (button.action as? RaftLinkCardButtonAction.Execute)?.let { return@mapNotNull execute(button, it) }
             val action = button.action as? RaftLinkCardButtonAction.Navigate ?: return@mapNotNull null
             RaftPreviewCardButton(
                 label = button.label,

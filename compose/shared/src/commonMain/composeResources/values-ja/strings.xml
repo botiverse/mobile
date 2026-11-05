@@ -3693,6 +3693,7 @@
     <string name="thread_link_preview_open_link">リンクを開く</string>
     <string name="thread_link_preview_connect_title">%1$s に接続</string>
     <string name="thread_link_preview_connect_body">%1$s がこのリンクのプレビューを表示するには、アカウントの接続が必要です。</string>
+    <string name="thread_link_preview_action_failed">この操作を実行できませんでした。もう一度お試しください。</string>
     <string name="thread_link_preview_connect_action">アカウントを接続</string>
     <string name="thread_action_card_scope_group_server">サーバー · 読み取り</string>
     <string name="thread_action_card_scope_group_agent">エージェント · 読み取り</string>

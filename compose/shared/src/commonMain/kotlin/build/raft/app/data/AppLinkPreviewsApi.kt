@@ -39,7 +39,7 @@ private val appLinkPreviewsJson = Json {
  * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
  * result per link, one prompt per App. Where the Server's `interactive_link_cards` flag is on,
  * this client reads with the batched link-card read instead ([AppLinkCardV2.kt]), declaring
- * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `button.v1`, `inline.v1`, `inline.tone.v2`, `preview.v3`).
+ * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
  */
@@ -104,6 +104,8 @@ sealed interface AppLinkResult {
         val chip: Boolean = true,
         /** A version 3 `connect_account` item: the chip's card asks the reader to connect, with one button to this URL. */
         val connectUrl: String? = null,
+        /** The signed handle per `execute` action id Raft gave this card (version 3; see [AppLinkBlockCard]): what a pressed button sends. */
+        val handles: Map<String, String> = emptyMap(),
     ) : AppLinkResult {
         /** The words on the chip (web `appLinkChipTitle`): the inline title, else [title]. The card always shows [title]. */
         val chipTitle: String get() = inline?.title ?: title
@@ -303,6 +305,14 @@ internal interface RaftAppLinkPreviewApi {
      */
     suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse
 
+    /** `POST link-cards/prepare` (RFC 076 section 6.2): the description a `confirm: "prepare"` button shows. */
+    suspend fun prepareLinkCardAction(serverId: String, body: AppLinkPrepareRequestBody): HomeNetworkResponse =
+        throw UnsupportedOperationException("prepareLinkCardAction")
+
+    /** `POST link-cards/execute` (RFC 076 section 6.3). */
+    suspend fun executeLinkCardAction(serverId: String, body: AppLinkExecuteRequestBody): HomeNetworkResponse =
+        throw UnsupportedOperationException("executeLinkCardAction")
+
     /** `POST integrations/clients/:clientId/link-preview-consent`. */
     suspend fun allow(appId: String, serverId: String): HomeNetworkResponse
 
@@ -326,6 +336,25 @@ internal class NetworkRaftAppLinkPreviewApi(
             // The same on-screen decoration as the GET it replaces.
             priority = DataRequestPriority.Visible,
             path = "messages/${messageId.appLinkPathSegment()}/link-cards/read",
+            method = "POST",
+            serverIdOverride = ServerId(serverId),
+            bodyText = body.toJson(),
+        )
+
+    override suspend fun prepareLinkCardAction(serverId: String, body: AppLinkPrepareRequestBody): HomeNetworkResponse =
+        networkClient.request(
+            // A person pressed a button.
+            priority = DataRequestPriority.Foreground,
+            path = "link-cards/prepare",
+            method = "POST",
+            serverIdOverride = ServerId(serverId),
+            bodyText = body.toJson(),
+        )
+
+    override suspend fun executeLinkCardAction(serverId: String, body: AppLinkExecuteRequestBody): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "link-cards/execute",
             method = "POST",
             serverIdOverride = ServerId(serverId),
             bodyText = body.toJson(),
