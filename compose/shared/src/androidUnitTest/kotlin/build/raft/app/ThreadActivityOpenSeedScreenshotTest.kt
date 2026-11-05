@@ -61,6 +61,7 @@ class ThreadActivityOpenSeedScreenshotTest {
 
     // spacing.md#timeline-rhythm: a date line 24 from the text above and below it; an event line
     // 16 from the messages round it (#4325 review).
+    @Config(sdk = [34], qualifiers = "w390dp-h420dp-xxhdpi")
     @Test fun timelineRhythmLight() = capture("thread.timeline-rhythm", RaftAppAppearance.Light) { TimelineRhythmRows() }
 
     @Test fun truncatedPreviewLight() = capture("thread.activity-seed-truncated", RaftAppAppearance.Light) { TruncatedPreviewRows() }
