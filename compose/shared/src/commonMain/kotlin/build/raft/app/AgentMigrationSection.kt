@@ -33,6 +33,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftProBadge
 import build.raft.app.components.RaftProUpgradeDialog
@@ -153,7 +154,9 @@ private val AgentMigrationBlockGap = 12.dp
 internal fun AgentMigrationSection(
     state: AgentMigrationState,
     inputs: AgentMigrationSectionInputs,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The section's own `py-4` bottom; a host list that already spaces its items passes 0. */
+    bottomPadding: Dp = AgentMigrationSectionPaddingY
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -188,7 +191,12 @@ internal fun AgentMigrationSection(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = AgentMigrationSectionPaddingX, vertical = AgentMigrationSectionPaddingY)
+                    .padding(
+                        start = AgentMigrationSectionPaddingX,
+                        end = AgentMigrationSectionPaddingX,
+                        top = AgentMigrationSectionPaddingY,
+                        bottom = bottomPadding
+                    )
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RaftSectionEyebrow(text = stringResource(Res.string.agent_migration_section_title))

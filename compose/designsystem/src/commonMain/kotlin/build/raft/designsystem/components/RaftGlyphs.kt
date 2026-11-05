@@ -123,6 +123,12 @@ enum class RaftGlyph(internal vararg val paths: String) {
     ),
 
     /** Lucide `cpu`: the agent profile's runtime chip ([RaftRuntimeChip]). */
+    /** Lucide `square-terminal`: the agent profile hero's runtime chip (web `agent-profile-runtime-chip`). */
+    SquareTerminal(
+        "m7 11 2-2-2-2",
+        "M11 13h4",
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+    ),
     Cpu(
         "M12 20v2", "M12 2v2", "M17 20v2", "M17 2v2", "M2 12h2", "M2 17h2", "M2 7h2",
         "M20 12h2", "M20 17h2", "M20 7h2", "M7 20v2", "M7 2v2",

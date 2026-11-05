@@ -1079,7 +1079,9 @@ data class AgentSkillPathGroup(
 
 data class AgentSkillSummary(
     val name: String,
-    val detail: String? = null
+    val detail: String? = null,
+    /** The `/command` a user can invoke it with (web `userInvocable` -> `/{name}`); null when not invocable. */
+    val command: String? = null
 )
 
 data class AgentDmSummary(

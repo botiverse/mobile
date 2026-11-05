@@ -1402,6 +1402,9 @@
     <string name="member_section_created_agents">建立的 Agent</string>
     <string name="member_section_runtime_config">執行環境設定</string>
     <string name="member_section_skills_count">技能（%1$s）</string>
+    <string name="member_section_skills">技能</string>
+    <string name="member_skills_global">全域</string>
+    <string name="member_skills_workspace">工作區</string>
     <string name="member_section_agent_channels_dms">Agent 頻道和私訊</string>
     <string name="member_section_channels">頻道</string>
     <string name="member_section_private_chats">Agent 私訊</string>
