@@ -157,8 +157,10 @@ class ThreadShareCaptureModeTest {
 
     @Test
     fun policyStripsOnlyInCaptureMode() {
-        val loaded = ThreadQuotedPermalinkUiState.Unavailable
+        val loaded = ThreadQuotedPermalinkUiState.Retracted
         assertTrue(threadQuotedPermalinkPreviewVisible(loaded, shareCaptureActive = false))
+        // The web draws no card for a quote it cannot read.
+        assertFalse(threadQuotedPermalinkPreviewVisible(ThreadQuotedPermalinkUiState.Unavailable, shareCaptureActive = false))
         assertFalse(threadQuotedPermalinkPreviewVisible(loaded, shareCaptureActive = true))
         assertFalse(threadQuotedPermalinkPreviewVisible(null, shareCaptureActive = false))
         assertTrue(threadAppLinkPreviewsEnabled(sentMessage = true, shareCaptureActive = false))

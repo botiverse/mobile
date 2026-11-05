@@ -2,6 +2,7 @@ package build.raft.app.markdown
 
 import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.links.toParsedRaftPermalink
+import org.jetbrains.compose.resources.stringResource
 import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
@@ -205,6 +206,20 @@ internal typealias RaftMessagePermalinkLabelResolver =
 
 internal val LocalRaftMessagePermalinkLabelResolver =
     compositionLocalOf<RaftMessagePermalinkLabelResolver> { { null } }
+
+/**
+ * The permalink of this message whose quoted message could not be read (web `unavailableQuotedPermalinkUrl`):
+ * its chip says "Unavailable linked message" and opens nothing, and the message shows no quote card.
+ */
+internal val LocalRaftUnavailableQuotedPermalink = compositionLocalOf<ParsedRaftPermalink?> { null }
+
+/** Same message: the web compares the links' identity, not their spelling. */
+private fun ParsedRaftPermalink.sameMessageAs(other: ParsedRaftPermalink): Boolean =
+    serverSlug == other.serverSlug &&
+        routeKind == other.routeKind &&
+        channelId == other.channelId &&
+        threadParentMessageId == other.threadParentMessageId &&
+        messageId == other.messageId
 
 internal data class RaftMarkdownRenderConfig(
     val renderMessagePermalinksAsTag: Boolean = false,
@@ -1422,6 +1437,8 @@ private object RaftMarkdownTextProvider : TextProvider {
         val markdownOverflow = raftMarkdownContentOverflow(overflow)
         val bodyClick = LocalRaftMarkdownBodyClick.current
         val permalinkLabelResolver = LocalRaftMessagePermalinkLabelResolver.current
+        val unavailableQuotedPermalink = LocalRaftUnavailableQuotedPermalink.current
+        val unavailableLinkLabel = stringResource(Res.string.thread_quoted_permalink_unavailable_link)
         val renderMessagePermalinksAsTag =
             LocalRaftMarkdownRenderConfig.current.renderMessagePermalinksAsTag
         val permalinkUriHandler = LocalUriHandler.current
@@ -1433,6 +1450,8 @@ private object RaftMarkdownTextProvider : TextProvider {
             remember(
                 text,
                 permalinkLabelResolver,
+                unavailableQuotedPermalink,
+                unavailableLinkLabel,
                 permalinkUriHandler,
                 renderMessagePermalinksAsTag,
                 permalinkThemeColors,
@@ -1443,6 +1462,8 @@ private object RaftMarkdownTextProvider : TextProvider {
                             renderMessagePermalinksAsTag = renderMessagePermalinksAsTag,
                         ),
                     resolveLabel = permalinkLabelResolver,
+                    unavailable = unavailableQuotedPermalink,
+                    unavailableLabel = unavailableLinkLabel,
                 ) { url ->
                     permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
                 }
@@ -1839,10 +1860,12 @@ internal data class RaftMessagePermalinkChipContent(
 internal fun AnnotatedString.withRaftMessagePermalinkRenderConfig(
     config: RaftMarkdownRenderConfig = RaftMarkdownRenderConfig(),
     resolveLabel: RaftMessagePermalinkLabelResolver = { null },
+    unavailable: ParsedRaftPermalink? = null,
+    unavailableLabel: String = "",
     openUri: (String) -> Unit = {},
 ): RaftMessagePermalinkChipContent =
     if (config.renderMessagePermalinksAsTag) {
-        withRaftMessagePermalinkChipContent(resolveLabel, openUri)
+        withRaftMessagePermalinkChipContent(resolveLabel, unavailable, unavailableLabel, openUri)
     } else {
         RaftMessagePermalinkChipContent(
             text = withoutLinksInsideRaftInlineCode(),
@@ -1852,6 +1875,8 @@ internal fun AnnotatedString.withRaftMessagePermalinkRenderConfig(
 
 private fun AnnotatedString.withRaftMessagePermalinkChipContent(
     resolveLabel: RaftMessagePermalinkLabelResolver = { null },
+    unavailable: ParsedRaftPermalink? = null,
+    unavailableLabel: String = "",
     openUri: (String) -> Unit = {},
 ): RaftMessagePermalinkChipContent {
     val source = withoutLinksInsideRaftInlineCode()
@@ -1873,7 +1898,10 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
     permalinkLinks.forEach { (range, link, target) ->
         if (range.start < cursor || range.end <= range.start) return@forEach
         builder.append(source, cursor, range.start)
-        val targetLabel = target.raftMessagePermalinkChipTargetLabel(resolveLabel(target))
+        // web PermalinkReferenceChip: a quote that could not be read is a plain span (no link, no "msg").
+        val unavailableChip = unavailable != null && target.sameMessageAs(unavailable)
+        val targetLabel =
+            if (unavailableChip) unavailableLabel else target.raftMessagePermalinkChipTargetLabel(resolveLabel(target))
         val kindLabel = target.raftMessagePermalinkChipKindLabel()
         val inlinePrefix = "slock-message-permalink-${range.start}-${range.end}"
         val iconId = "$inlinePrefix-icon"
@@ -1882,37 +1910,45 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
         val chipBox = raftMessagePermalinkChipBoxStyle()
         builder.withRaftInlineChipGaps(chipBox) {
         withRaftInlineBox(chipBox) {
-          withLink(
-            LinkAnnotation.Url(
-                url = link.url,
-                styles = raftMessagePermalinkChipLinkStyles(),
-                linkInteractionListener = LinkInteractionListener { clickedLink: LinkAnnotation ->
-                    val clickedUrl = clickedLink as? LinkAnnotation.Url ?: return@LinkInteractionListener
-                    link.linkInteractionListener?.onClick(clickedUrl) ?: openUri(clickedUrl.url)
-                }
-            )
-        ) {
-            // web PermalinkReferenceChip: MessageReferenceChip variant="link" — a 0.875em inline
-            // chip with the Link icon, the label and a mono "msg" note, each 4px apart.
+          // web PermalinkReferenceChip: MessageReferenceChip variant="link" — a 0.875em inline
+          // chip with the Link icon, the label and a mono "msg" note, each 4px apart.
+          val chipContent: AnnotatedString.Builder.() -> Unit = {
             withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
                 appendInlineContent(iconId, "\uFFFC")
                 appendInlineContent(iconGapId, "\uFFFC")
                 withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack)) {
                     append(targetLabel)
                 }
-                appendInlineContent(suffixGapId, " ")
-                withStyle(
-                    SpanStyle(
-                        color = RaftColor.ForegroundHint,
-                        // raft-ui `font-mono text-label font-normal`.
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Normal,
-                        fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
-                    )
-                ) {
-                    append(kindLabel)
+                if (!unavailableChip) {
+                    appendInlineContent(suffixGapId, " ")
+                    withStyle(
+                        SpanStyle(
+                            color = RaftColor.ForegroundHint,
+                            // raft-ui `font-mono text-label font-normal`.
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
+                        )
+                    ) {
+                        append(kindLabel)
+                    }
                 }
             }
+          }
+          if (unavailableChip) {
+              chipContent()
+          } else {
+              withLink(
+                  LinkAnnotation.Url(
+                      url = link.url,
+                      styles = raftMessagePermalinkChipLinkStyles(),
+                      linkInteractionListener = LinkInteractionListener { clickedLink: LinkAnnotation ->
+                          val clickedUrl = clickedLink as? LinkAnnotation.Url ?: return@LinkInteractionListener
+                          link.linkInteractionListener?.onClick(clickedUrl) ?: openUri(clickedUrl.url)
+                      }
+                  ),
+                  chipContent,
+              )
           }
         }
         }

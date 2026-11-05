@@ -329,6 +329,7 @@ import build.raft.app.markdown.raftTaskStatusOutline
 import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftUnavailableQuotedPermalink
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
@@ -28230,11 +28231,9 @@ internal fun ThreadQuotedPermalinkCard(
                 label = stringResource(Res.string.thread_quoted_permalink_loading),
                 modifier = modifier
             )
-        ThreadQuotedPermalinkUiState.Unavailable ->
-            build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
-                text = stringResource(Res.string.thread_quoted_permalink_unavailable),
-                modifier = modifier
-            )
+        // The web renders nothing for a quote it cannot read; the row never composes this state (see
+        // threadQuotedPermalinkPreviewVisible), and the permalink chip says so instead.
+        ThreadQuotedPermalinkUiState.Unavailable -> Unit
         // Quoted as one muted line, like an unavailable quote (web QuoteCardContent).
         ThreadQuotedPermalinkUiState.Retracted ->
             build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
@@ -29560,7 +29559,13 @@ private fun ThreadMessageCardContent(
                                                               enabled = message.pendingSendContext == null,
                                                           ) {
                                                           // A tap on a code block is not the row's tap (web skips `pre, code`).
-                                                          CompositionLocalProvider(LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver) {
+                                                          CompositionLocalProvider(
+                                                            LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver,
+                                                            LocalRaftUnavailableQuotedPermalink provides
+                                                                quotedPermalinkTarget.takeIf {
+                                                                    quotedPermalinkState.value == ThreadQuotedPermalinkUiState.Unavailable
+                                                                }
+                                                          ) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
                                                                 fillWidth = !alignOwnMessageRight,

@@ -18,11 +18,16 @@ import androidx.compose.runtime.compositionLocalOf
  */
 internal val LocalThreadShareCaptureActive = compositionLocalOf { false }
 
-/** Whether a message row composes its viewer-only quote preview. */
+/**
+ * Whether a message row composes its viewer-only quote preview: never in a share image, and never
+ * for a quote that cannot be read (the web shows no card then, only an "Unavailable linked
+ * message" chip in the text).
+ */
 internal fun threadQuotedPermalinkPreviewVisible(
     state: ThreadQuotedPermalinkUiState?,
     shareCaptureActive: Boolean,
-): Boolean = state != null && !shareCaptureActive
+): Boolean =
+    state != null && state != ThreadQuotedPermalinkUiState.Unavailable && !shareCaptureActive
 
 /** Whether a message row reads (and shows) its App link previews. */
 internal fun threadAppLinkPreviewsEnabled(sentMessage: Boolean, shareCaptureActive: Boolean): Boolean =
