@@ -3691,6 +3691,10 @@
     <string name="thread_link_preview_prompt_decline_failed">%1$s の選択を保存できませんでした。接続を確認して、もう一度お試しください。</string>
     <string name="thread_link_preview_prompt_unavailable">%1$s はこのサーバーではリンクのプレビューを表示できません。</string>
     <string name="thread_link_preview_open_link">リンクを開く</string>
+    <string name="thread_link_preview_connect_title">%1$s のアカウントを接続</string>
+    <string name="thread_link_preview_connect_body">%1$s でアカウントを接続すると、このリンクの内容がここに表示されます。</string>
+    <string name="thread_link_preview_action_failed">この操作を実行できませんでした。もう一度お試しください。</string>
+    <string name="thread_link_preview_connect_action">アカウントを接続</string>
     <string name="thread_action_card_scope_group_server">サーバー · 読み取り</string>
     <string name="thread_action_card_scope_group_agent">エージェント · 読み取り</string>
     <string name="thread_action_card_scope_group_channel">チャンネル · 読み取り</string>

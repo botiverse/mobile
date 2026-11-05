@@ -180,7 +180,7 @@ internal fun ThreadAppLinkCardPopoverHost(
                 onDismiss = cards::close,
                 onOpenLink = {
                     cards.close()
-                    uriHandler.openUri(card.url)
+                    uriHandler.openUri(card.connectUrl ?: card.url)
                 },
             )
         }
@@ -207,7 +207,13 @@ internal fun ThreadAppLinkCardPopover(
     eyebrow: String? = null,
     details: List<RaftPreviewCardDetail> = emptyList(),
 ) {
-    val openLink = raftAppLinkOpenLinkButton(onOpenLink)
+    // onOpenLink opens the card's address: the link, or a connect_account card's connect URL.
+    val openLink =
+        if (card.connectUrl != null) {
+            raftAppLinkCardOpenButton(card) { onOpenLink() }
+        } else {
+            raftAppLinkOpenLinkButton(onOpenLink)
+        }
     ThreadAppLinkCardPopoverFrame(key = card.url, anchor = anchor, onDismiss = onDismiss) { modifier ->
         RaftAppLinkCardView(
             card = card,

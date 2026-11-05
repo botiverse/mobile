@@ -72,10 +72,20 @@ internal fun RaftAppLinkCardView(
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             RaftPreviewCardBody {
                 eyebrow?.let { RaftPreviewCardEyebrow(it) }
-                RaftPreviewCardItemTitle(card.title)
-                RaftPreviewCardMeta(details)
-                card.card?.let { RaftAppLinkCardBody(it, onAction) }
-                card.cardV2?.let { RaftAppLinkCardV2Body(it) }
+                if (card.connectUrl != null) {
+                    // connect_account (version 3): Raft's own words, one button to the App's connect URL.
+                    RaftPreviewCardItemTitle(stringResource(Res.string.thread_link_preview_connect_title, card.app.name))
+                    RaftText(
+                        text = stringResource(Res.string.thread_link_preview_connect_body, card.app.name),
+                        style = RaftTheme.typography.callout,
+                        color = RaftTheme.colors.foregroundMuted,
+                    )
+                } else {
+                    RaftPreviewCardItemTitle(card.title)
+                    RaftPreviewCardMeta(details)
+                    card.card?.let { RaftAppLinkCardBody(it, onAction) }
+                    card.cardV2?.let { RaftAppLinkCardV2Body(it) }
+                }
             }
             RaftPreviewCardItemActions(buttons)
         }
@@ -95,6 +105,21 @@ internal fun raftAppLinkOpenLinkButton(onOpenLink: () -> Unit): RaftPreviewCardB
         kind = RaftPreviewCardButtonKind.Link,
         onClick = onOpenLink,
     )
+
+/**
+ * The button a chip's card offers for [card] ([onOpen] gets the address to open): Open Link to the
+ * link, or, for a `connect_account` answer, Connect account to the App's connect URL, the card's
+ * one button. A link out of Raft (↗), bordered.
+ */
+@Composable
+internal fun raftAppLinkCardOpenButton(card: AppLinkResult.Card, onOpen: (String) -> Unit): RaftPreviewCardButton {
+    val connectUrl = card.connectUrl ?: return raftAppLinkOpenLinkButton { onOpen(card.url) }
+    return RaftPreviewCardButton(
+        label = stringResource(Res.string.thread_link_preview_connect_action),
+        kind = RaftPreviewCardButtonKind.Link,
+        onClick = { onOpen(connectUrl) },
+    )
+}
 
 /**
  * An Artifact link's item card (web `ArtifactLinkPreview.tsx` in core's `ObjectLinkChip` hover

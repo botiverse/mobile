@@ -27,12 +27,16 @@ import kotlinx.serialization.json.JsonObject
  */
 
 /**
- * Capabilities this client declares on the batched read (step 1, read-only): v2 cards, their inline
- * titles and the inline badge's card tones (`inline.tone.v2`: every tone word is read, and every
- * badge is drawn neutral, as the web's CardBadge). No `button.v1`, `confirm.v1` or `undo.v1`, so Raft
- * strips the buttons and signs no handle.
+ * Capabilities this client declares on the batched read: v2 cards, their inline titles and the
+ * inline badge's card tones (`inline.tone.v2`: every tone word is read, and every badge is drawn
+ * neutral, as the web's CardBadge); `preview.v3`, so Raft answers version 3 items whichever version
+ * the App sent (RFC 076 section 14; the block card is drawn after its paragraph, raft-design #1010);
+ * and, as AppFather decided for touch clients (#proj-raft-ui), the full list `button.v1`,
+ * `confirm.v1` and `undo.v1`: a block card's buttons work by touch, with Raft's confirmation and a
+ * plain Undo button (the hover card and the popover stay read-only). `block.v1`, as the web declares
+ * it (it changes nothing in a version 3 answer). The same list and order as the web's desktop one.
  */
-internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> = listOf("card.v2", "inline.v1", "inline.tone.v2")
+internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> = listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3")
 
 /** The batched read's links per message with the flag on (`LINK_CARD_READ_MAX_URLS`). */
 internal const val APP_LINK_CARD_READ_MAX_URLS = 10
@@ -110,7 +114,7 @@ sealed interface RaftLinkCardButtonAction {
 }
 
 /** A version 3 `card` item with `placement: "block"`: [title] (the card's, up to 160) and its tree, drawn after the link's paragraph. */
-data class AppLinkBlockCard(val title: String, val card: RaftAppLinkCardV2)
+data class AppLinkBlockCard(val title: String, val card: RaftAppLinkCardV2, val businessRevision: String = "")
 
 /** A v2 answer's inline label (`linkCardInlineSchema`): [title] replaces the chip's words; the badge is never drawn on the chip. */
 data class AppLinkInline(val title: String, val badge: AppLinkInlineBadge? = null)
@@ -330,14 +334,15 @@ private fun readLinkCardReadItem(raw: JsonElement): LinkCardReadItem? {
                 }
             val actions = obj["actions"] as? JsonArray ?: return null
             if (actions.size > APP_LINK_CARD_V2_MAX_BUTTONS) return null
+            val handles = LinkedHashMap<String, String>()
             for (action in actions) {
                 val entry = action as? JsonObject ?: return null
                 if (entry.keys != setOf("action_id", "handle")) return null
-                if (entry["action_id"].cardString()?.let(LINK_CARD_ACTION_ID::matches) != true) return null
-                if (entry["handle"].cardString()?.length !in 1..4096) return null
+                val actionId = entry["action_id"].cardString()?.takeIf(LINK_CARD_ACTION_ID::matches) ?: return null
+                handles[actionId] = entry["handle"].cardString()?.takeIf { it.length in 1..4096 } ?: return null
             }
             val preview = obj["preview"] as? JsonObject ?: return null
-            if (obj["kind"].cardString() == "v3") return readLinkCardV3Preview(url, app, ticket, preview)
+            if (obj["kind"].cardString() == "v3") return readLinkCardV3Preview(url, app, ticket, preview, handles)
             if (!preview["version"].isJsonNumberLiteral(2.0)) return null
             when (preview["display"].cardString()) {
                 "card" -> {
@@ -413,7 +418,7 @@ private val APP_LINK_V3_ITEM_TYPE = Regex("^[a-z0-9._]{1,32}$")
  *  - `connect_account`: [AppLinkResult.Card.connectUrl];
  *  - nothing known (`[]`): no result, the author's plain link.
  */
-private fun readLinkCardV3Preview(url: String, app: AppLinkApp, ticket: String?, preview: JsonObject): LinkCardReadItem? {
+private fun readLinkCardV3Preview(url: String, app: AppLinkApp, ticket: String?, preview: JsonObject, handles: Map<String, String> = emptyMap()): LinkCardReadItem? {
     if (!preview["version"].isJsonNumberLiteral(3.0)) return null
     if (!preview.hasOnlyKeys(setOf("version", "title", "items"))) return null
     if ("title" in preview && preview["title"].cardString()?.let { isCardText(it, 1, 160) } != true) return null
@@ -450,7 +455,8 @@ private fun readLinkCardV3Preview(url: String, app: AppLinkApp, ticket: String?,
     if (connectUrl != null && (chipLabel != null || blockOrHover != null)) return null
     val result =
         if (connectUrl != null) {
-            AppLinkResult.Card(url = url, app = app, title = app.name, connectUrl = connectUrl)
+            // The chip is the shortened address, as the web draws it (slock #13176).
+            AppLinkResult.Card(url = url, app = app, title = appLinkShortAddress(url) ?: app.name, connectUrl = connectUrl)
         } else if (blockOrHover == null) {
             // An `inline` alone is the chip and nothing to open; no known item at all is the plain link.
             if (chipLabel == null) return null
@@ -461,8 +467,9 @@ private fun readLinkCardV3Preview(url: String, app: AppLinkApp, ticket: String?,
                 app = app,
                 title = blockOrHover.title,
                 inline = chipLabel,
-                block = AppLinkBlockCard(blockOrHover.title, blockOrHover.card),
+                block = AppLinkBlockCard(blockOrHover.title, blockOrHover.card, blockOrHover.businessRevision),
                 chip = chipLabel != null,
+                handles = handles,
             )
         } else {
             AppLinkResult.Card(url = url, app = app, title = blockOrHover.title, cardV2 = blockOrHover.card, inline = chipLabel)
@@ -471,7 +478,7 @@ private fun readLinkCardV3Preview(url: String, app: AppLinkApp, ticket: String?,
 }
 
 /** A version 3 `card` item: [block] false is `hover`. */
-private class AppLinkV3Card(val block: Boolean, val title: String, val card: RaftAppLinkCardV2)
+private class AppLinkV3Card(val block: Boolean, val title: String, val card: RaftAppLinkCardV2, val businessRevision: String)
 
 private fun readAppLinkV3Card(item: JsonObject, origin: String): AppLinkV3Card? {
     if (!item.hasOnlyKeys(setOf("type", "placement", "title", "card_revision", "business_revision", "card"))) return null
@@ -483,9 +490,9 @@ private fun readAppLinkV3Card(item: JsonObject, origin: String): AppLinkV3Card? 
         }
     val title = item["title"].cardString()?.takeIf { isCardText(it, 1, 160) } ?: return null
     if (item["card_revision"].cardString()?.length !in 1..512) return null
-    if (item["business_revision"].cardString()?.length !in 1..512) return null
+    val businessRevision = item["business_revision"].cardString()?.takeIf { it.length in 1..512 } ?: return null
     val card = parseRaftAppLinkCardV2(item["card"] ?: return null, origin) ?: return null
-    return AppLinkV3Card(block, title, card)
+    return AppLinkV3Card(block, title, card, businessRevision)
 }
 
 /** A JSON number equal to [value] (zod `z.literal(2)`). */

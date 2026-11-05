@@ -85,6 +85,30 @@ class RaftMarkdownAppLinkChipsTest {
     }
 
     @Test
+    fun aBlockCardWithoutInlineLeavesTheAuthorsLinkAndWithInlineIsAChipThatOpensTheLink() {
+        val block = build.raft.app.data.AppLinkBlockCard("Fix the composer tray", build.raft.app.data.RaftAppLinkCardV2("r", mapOf("r" to build.raft.app.data.CardStack())))
+        val only = AppLinkResult.Card(pr, AppLinkApp("Stamp", null), "Fix the composer tray", block = block, chip = false)
+        val opened = mutableListOf<String>()
+        val plain = source().withRaftAppLinkChipContent(host(only)) { opened += it }
+        // Nothing replaces the link: the text is the author's, and no chip is drawn.
+        assertTrue(plain.text.raftInlineBoxRanges().isEmpty())
+        assertEquals("See $pr now", plain.text.text)
+        assertTrue(plain.inlineContent.isEmpty())
+
+        val both = only.copy(inline = build.raft.app.data.AppLinkInline("slock#10449"), chip = true)
+        val cards = mutableListOf<AppLinkResult.Card>()
+        val chipHost = RaftAppLinkChipHost(mapOf(pr to both), onAsk = {}, onOpenCard = { cards += it })
+        // The block card is not the chip's: no hover card, a tap opens the link.
+        assertEquals(false, chipHost.opensCard(both))
+        val chip = source().withRaftAppLinkChipContent(chipHost) { opened += it }
+        assertEquals("See slock#10449 stamp.build now", chip.text.visibleText())
+        val link = chip.text.getLinkAnnotations(0, chip.text.length).single().item as LinkAnnotation.Url
+        link.linkInteractionListener!!.onClick(link)
+        assertEquals(listOf(pr), opened)
+        assertTrue(cards.isEmpty())
+    }
+
+    @Test
     fun anUnansweredAppIsAGreyChipThatAsksInsteadOfOpening() {
         val asked = mutableListOf<AppLinkResult.Consent>()
         val result = AppLinkResult.Consent(pr, AppLinkPromptApp("client-stamp", "Stamp", null))

@@ -15,7 +15,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import build.raft.app.RaftAppLinkCardView
-import build.raft.app.raftAppLinkOpenLinkButton
+import build.raft.app.raftAppLinkCardOpenButton
 import build.raft.app.data.AppLinkResult
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardPopup
@@ -94,9 +94,9 @@ internal class RaftMarkdownAppLinkHoverCards(
                         onAction = {},
                         buttons =
                             listOf(
-                                raftAppLinkOpenLinkButton {
+                                raftAppLinkCardOpenButton(card) { address ->
                                     state.dismiss()
-                                    uriHandler.openUri(card.url)
+                                    uriHandler.openUri(address)
                                 },
                             ),
                     )

@@ -3838,4 +3838,7 @@
     <string name="settings_notifications_servers_customized_other">채널 %1$d개 맞춤 설정됨</string>
     <string name="settings_notifications_servers_reset">기본값으로 되돌리기</string>
     <string name="settings_notifications_servers_unknown_channel">더 이상 볼 수 없는 채널</string>
+    <string name="thread_link_preview_connect_title">%1$s 계정 연결</string>
+    <string name="thread_link_preview_connect_body">%1$s에서 계정을 연결하면 이 링크의 내용이 여기에 표시돼요.</string>
+    <string name="thread_link_preview_connect_action">계정 연결</string>
 </resources>

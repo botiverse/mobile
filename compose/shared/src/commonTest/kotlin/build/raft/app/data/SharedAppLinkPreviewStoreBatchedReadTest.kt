@@ -58,7 +58,7 @@ class SharedAppLinkPreviewStoreBatchedReadTest {
         assertTrue(api.reads.isEmpty(), "no GET with the flag on")
         val body = api.cardReads.single()
         assertEquals("6f1c1f86-5a83-4b1e-9b1a-0d2f0e0c0a01", body.viewInstanceId)
-        assertEquals(listOf("card.v2", "inline.v1", "inline.tone.v2"), body.capabilities)
+        assertEquals(listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3"), body.capabilities)
         assertNull(body.urls)
         assertNull(body.tickets)
         val view = store.view(batch)

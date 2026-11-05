@@ -3919,4 +3919,7 @@
     <string name="upgrade_dialog_limit_general">Сервер %1$s на тарифе Free.</string>
     <string name="upgrade_dialog_limit_seats">Все места сервера %1$s заняты.</string>
     <string name="invite_human_view_billing">Открыть настройки оплаты</string>
+    <string name="thread_link_preview_connect_title">Подключите аккаунт %1$s</string>
+    <string name="thread_link_preview_connect_body">%1$s покажет, что скрывается за этой ссылкой, когда вы подключите там свой аккаунт.</string>
+    <string name="thread_link_preview_connect_action">Подключить аккаунт</string>
 </resources>
