@@ -326,6 +326,10 @@ jobs:
         shell: bash
         run: scripts/check_action_card_v1_vector.sh
 
+      - name: Guard Web/mobile message-card.v1 vector
+        shell: bash
+        run: scripts/check_message_card_v1_vector.sh
+
       - name: Guard server/mobile Activity-unread fixture
         shell: bash
         run: scripts/check_server_activity_unread_fixture.sh

@@ -14,7 +14,9 @@ import kotlin.test.assertTrue
 
 /** RFC 082 card messages: the card read, its fallback rules (payloads: [MessageCardFixtures], slock 1e9266662). */
 class MessageCardTest {
-    private fun parse(json: String): RaftAppLinkCardV2? = parseRaftMessageCard(Json.parseToJsonElement(json))
+    private fun parse(json: String): RaftAppLinkCardV2? = parseRaftMessageCard(Json.parseToJsonElement(json))?.card
+
+    private fun parseV2(json: String): RaftParsedMessageCard? = parseRaftMessageCard(Json.parseToJsonElement(json))
 
     private fun metadataOf(actionMetadata: String): Map<String, String> =
         Json { ignoreUnknownKeys = true }.decodeFromString(WireActionCardMetadata.serializer(), actionMetadata).toMessageItemMetadata()
@@ -114,6 +116,58 @@ class MessageCardTest {
         }
         // Each revision is its own realtime frame (the update bumps the row's updatedAt).
         assertEquals("2026-11-03T12:10:00.000Z", fromSocket.updatedAtLabel)
+    }
+
+    @Test
+    fun `a v2 card reads its header and its Markdown, Fields and Divider`() {
+        val card =
+            assertNotNull(
+                parseV2(
+                    """{"version":1,"header":{"title":"Play rejected this submission: 1.20.0","subtitle":"Raft Android · Google Play","tags":[{"text":"Failed","tone":"danger"},{"text":"Android","tone":"neutral"}]},""" +
+                        """"root":"root","elements":{"root":{"type":"Stack","props":{},"children":["facts","rule","notes"]},""" +
+                        """"facts":{"type":"Fields","props":{"items":[{"label":"Version","value":"1.20.0 (12000003)","mono":true},{"label":"Track","value":"production"}]}},""" +
+                        """"rule":{"type":"Divider","props":{}},""" +
+                        """"notes":{"type":"Markdown","props":{"content":"Google says the **target API level** is too low."}}}}""",
+                ),
+            )
+        assertEquals(
+            RaftMessageCardHeader(
+                title = "Play rejected this submission: 1.20.0",
+                subtitle = "Raft Android · Google Play",
+                tags = listOf(RaftMessageCardTag("Failed", RaftMessageCardTagTone.Danger), RaftMessageCardTag("Android", RaftMessageCardTagTone.Neutral)),
+            ),
+            card.header,
+        )
+        assertEquals(
+            RaftMessageCardElement.Fields(listOf(RaftMessageCardField("Version", "1.20.0 (12000003)", mono = true), RaftMessageCardField("Track", "production"))),
+            card.card.elements["facts"],
+        )
+        assertEquals(RaftMessageCardElement.Divider, card.card.elements["rule"])
+        assertEquals(RaftMessageCardElement.Markdown("Google says the **target API level** is too low."), card.card.elements["notes"])
+    }
+
+    @Test
+    fun `a v2 part this client cannot read shows the whole fallback`() {
+        val base = """{"version":1,"header":{"title":"T"},"root":"m","elements":{"m":{"type":"Markdown","props":{"content":"x"}}}}"""
+        assertNotNull(parseV2(base))
+        val cases =
+            mapOf(
+                "a header tone (the header has no colour)" to base.replace(""""title":"T"""", """"title":"T","tone":"danger""""),
+                "a tag tone outside the status tones" to base.replace(""""title":"T"""", """"title":"T","tags":[{"text":"a","tone":"review"}]"""),
+                "four tags" to base.replace(""""title":"T"""", """"title":"T","tags":[${List(4) { """{"text":"a","tone":"info"}""" }.joinToString(",")}]"""),
+                "a two-line subtitle" to base.replace(""""title":"T"""", """"title":"T","subtitle":"a
+b""""),
+                "a header that is not an object" to base.replace("""{"title":"T"}""", "\"T\""),
+                "an empty Markdown" to base.replace(""""content":"x"""", """"content":""""),
+                "a Divider with a prop" to base.replace("""{"type":"Markdown","props":{"content":"x"}}""", """{"type":"Divider","props":{"x":1}}"""),
+                "nine Fields" to
+                    base.replace(
+                        """{"type":"Markdown","props":{"content":"x"}}""",
+                        """{"type":"Fields","props":{"items":[${List(9) { """{"label":"l","value":"v"}""" }.joinToString(",")}]}}""",
+                    ),
+                "an element type still unknown" to base.replace(""""type":"Markdown"""", """"type":"Image""""),
+            )
+        for ((case, json) in cases) assertNull(parseV2(json), case)
     }
 
     private fun fiveButtonCard(): String {
