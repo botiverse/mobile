@@ -125,7 +125,7 @@ internal data class RuntimeQuotaLoads(
 internal fun rememberRuntimeQuotaLineParts(quota: RuntimeQuotaLoads): Map<String, List<RuntimeQuotaLinePart>> {
     val copy = rememberRuntimeQuotaLineCopy()
     val summaries = quota.keys.mapNotNull { (optionId, key) -> quota.loads[optionId].quotaSummary(key)?.let { optionId to it } }
-    val timeContext = LocalRaftTimeContextProvider.current?.current
+    val timeContext = currentRaftTimeContextProvider?.current
     // Relative reset words ("3 小时后") for every used-up window, resolved in composition.
     val resetLabels =
         summaries

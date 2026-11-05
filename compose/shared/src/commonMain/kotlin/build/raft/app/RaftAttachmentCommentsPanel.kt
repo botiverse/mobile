@@ -279,7 +279,7 @@ private fun AttachmentCommentCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            val time = formatRaftTimestampLabel(comment.createdAt, LocalRaftTimeContextProvider.current?.current)
+            val time = formatRaftTimestampLabel(comment.createdAt, currentRaftTimeContextProvider?.current)
             if (time.isNotBlank()) {
                 RaftText(
                     text = time,

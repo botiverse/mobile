@@ -243,7 +243,7 @@ internal fun nextRaftTimestampDisplayMode(
 @Composable
 private fun currentRaftTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? =
     timeContext?.takeIf { it.nowEpochMillis != null }
-        ?: LocalRaftTimeContextProvider.current?.current
+        ?: currentRaftTimeContextProvider?.current
 
 /**
  * For timestamps of things that already happened (an Activity row's last message): a client

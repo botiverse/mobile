@@ -473,7 +473,7 @@ private fun RaftCardDuration(node: CardDuration) {
 internal fun raftCardDurationText(node: CardDuration): String? {
     val start = remember(node.start) { parseRaftTimestampEpochMillisOrNull(node.start, localOffsetMinutes = 0) } ?: return null
     val end = remember(node.end) { node.end?.let { parseRaftTimestampEpochMillisOrNull(it, localOffsetMinutes = 0) } }
-    val clock = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis
+    val clock = currentRaftTimeContextProvider?.current?.nowEpochMillis
     var now by remember { mutableLongStateOf(clock ?: Clock.System.now().toEpochMilliseconds()) }
     if (end == null && clock == null) {
         LaunchedEffect(node.start) {

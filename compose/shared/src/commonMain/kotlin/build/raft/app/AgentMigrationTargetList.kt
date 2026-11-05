@@ -210,7 +210,7 @@ internal fun AgentMigrationTargetList(
             }
         }
     )
-    val timeContext = LocalRaftTimeContextProvider.current?.current
+    val timeContext = currentRaftTimeContextProvider?.current
     targets.firstOrNull { it.id == details }?.let { computer ->
         val state = agentMigrationTargetUsageState(computer.id, quota)
         RaftSheet(
