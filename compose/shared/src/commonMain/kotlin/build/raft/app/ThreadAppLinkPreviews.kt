@@ -49,6 +49,8 @@ import build.raft.app.data.appLinkDomain
 import build.raft.app.data.appLinkPreviewsApply
 import build.raft.app.data.messageView
 import build.raft.app.markdown.LocalRaftAppLinkChips
+import build.raft.app.markdown.LocalRaftMarkdownBlockCardHost
+import build.raft.app.markdown.RaftMarkdownBlockCardHost
 import build.raft.app.markdown.RaftAppLinkChipHost
 import build.raft.app.markdown.raftAppLinkAsciiHost
 import build.raft.app.markdown.raftAppLinkKeepEnd
@@ -222,7 +224,22 @@ internal fun ThreadAppLinkPreviewScope(
                 artifactAnchor = { key -> cards.anchor(threadArtifactCardKey(key)) },
             )
         }
-    CompositionLocalProvider(LocalRaftAppLinkChips provides chipHost, content = content)
+    // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the
+    // message itself: quotes, forwards, search and Activity have no scope, so they show chips.
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val blockHost =
+        remember(view.results, uriHandler) {
+            if (view.results.values.none { it is AppLinkResult.Card && it.block != null }) {
+                null
+            } else {
+                RaftMarkdownBlockCardHost(view.results) { card -> ThreadAppLinkBlockCard(card, openUri = { uriHandler.openUri(it) }) }
+            }
+        }
+    CompositionLocalProvider(
+        LocalRaftAppLinkChips provides chipHost,
+        LocalRaftMarkdownBlockCardHost provides blockHost,
+        content = content,
+    )
     ThreadAppLinkCardPopoverHost(results = view.results, cards = cards, artifacts = artifacts.summaries, artifactWebBaseUrl = artifactWebBaseUrl)
     // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap.
     RaftArtifactViewerPrewarm(enabled = artifacts.summaries.isNotEmpty())
