@@ -28248,6 +28248,13 @@ internal typealias ThreadQuotedPermalinkLoader = suspend (ParsedRaftPermalink) -
  */
 internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedPermalinkLoader?> { null }
 
+/**
+ * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument
+ * limit, so it reaches [ThreadMessageCard] through this local instead of a parameter chain (the
+ * chain had silently ended in `null` defaults, so no card ever loaded).
+ */
+internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedPermalinkLoader?> { null }
+
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
     data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkUiState
