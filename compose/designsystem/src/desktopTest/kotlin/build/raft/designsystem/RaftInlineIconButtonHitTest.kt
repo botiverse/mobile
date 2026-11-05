@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -31,23 +33,29 @@ class RaftInlineIconButtonHitTest {
     private fun hits(size: RaftIconButtonSize, pointer: RaftPointerInput, outsideDp: Float, mouse: Boolean): Int {
         var clicks = 0
         runComposeUiTest {
+            // The button's own semantics bounds include its hit overhang, so read its layout box
+            // from a wrapper that takes exactly its place.
+            var box = Rect.Zero
             setContent {
                 RaftTheme(appearance = RaftAppearance.Light, systemDark = false, pointerInput = pointer) {
                     Box(Modifier.padding(40.dp)) {
-                        RaftIconButton(onClick = { clicks++ }, tooltip = null, contentDescription = "Close", variant = RaftButtonVariant.Ghost, size = size) {
-                            Text("x")
+                        Box(Modifier.onGloballyPositioned { box = it.boundsInRoot() }) {
+                            RaftIconButton(onClick = { clicks++ }, tooltip = null, contentDescription = "Close", variant = RaftButtonVariant.Ghost, size = size) {
+                                Text("x")
+                            }
                         }
                     }
                 }
             }
-            val node = onNodeWithContentDescription("Close")
-            val bounds = node.getUnclippedBoundsInRoot()
-            assertEquals(size.layoutBox(), bounds.right - bounds.left, "the layout keeps the box")
+            waitForIdle()
+            assertEquals(with(density) { size.layoutBox().toPx() }, box.width, "the layout keeps the box")
+            val at = Offset(box.left - with(density) { outsideDp.dp.toPx() }, box.center.y)
             if (mouse) {
-                node.performMouseInput { click(Offset(-outsideDp.dp.toPx(), centerY)) }
+                onRoot().performMouseInput { click(at) }
             } else {
-                node.performTouchInput { click(Offset(-outsideDp.dp.toPx(), centerY)) }
+                onRoot().performTouchInput { click(at) }
             }
+            waitForIdle()
         }
         return clicks
     }
