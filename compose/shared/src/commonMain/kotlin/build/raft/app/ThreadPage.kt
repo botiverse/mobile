@@ -13290,6 +13290,11 @@ private fun SharedThreadRouteContentContent(
                     )
                     onOpenThreadPayload(loadingPayload)
                 }
+                if (action == ThreadOpenPlanBillingEvent) {
+                    bridge.log("thread_history_paywall_open_billing offersUpgrade=${settingsBillingOffersUpgrade()}")
+                    pager.openSettingsBillingPage(storeScope)
+                    return@ThreadPageContent
+                }
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
                 }
@@ -20724,11 +20729,22 @@ private fun ThreadChatTabContent(
                         backgroundRefreshing = renderConfig.backgroundRefreshing,
                         mainLoadFailed = timelineSlice.mainLoadFailed
                     )
+                val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
                 Box(modifier = Modifier.fillMaxSize()) {
-                    ThreadStateMessage(
-                        localizedThreadStateTitle(timelineSlice.emptyTitle),
-                        localizedThreadStateDetail(timelineSlice.emptyDetail)
-                    )
+                    if (emptyHiddenHistory != null) {
+                        // Every message is behind the Free plan's window: not empty, hidden.
+                        ThreadHistoryPaywallEmptyState(
+                            scope = timelineSlice.historyPaywallScope(),
+                            hidden = emptyHiddenHistory,
+                            timeContext = renderConfig.timeContext,
+                            onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+                        )
+                    } else {
+                        ThreadStateMessage(
+                            localizedThreadStateTitle(timelineSlice.emptyTitle),
+                            localizedThreadStateDetail(timelineSlice.emptyDetail)
+                        )
+                    }
                     // Task #1137: the empty last-known channel carries the same offline tip as a non-empty one.
                     if (emptyOfflineChrome.tipVisible) {
                         ThreadOfflineLastKnownTip(
@@ -21425,6 +21441,7 @@ private fun ThreadMessagesListContent(
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
+        val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
         if (
             timelineSlice.status == "loading" ||
             threadEmptyStandInAwaitsFirstLoad(
@@ -21434,6 +21451,13 @@ private fun ThreadMessagesListContent(
             )
         ) {
             ThreadLoadingState()
+        } else if (emptyHiddenHistory != null) {
+            ThreadHistoryPaywallEmptyState(
+                scope = timelineSlice.historyPaywallScope(),
+                hidden = emptyHiddenHistory,
+                timeContext = renderConfig.timeContext,
+                onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+            )
         } else {
             ThreadStateMessage(
                 localizedThreadStateTitle(timelineSlice.emptyTitle),
@@ -21482,6 +21506,9 @@ private fun ThreadMessagesListContent(
             timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
+    // Free plan: where the shown history starts, the history paywall replaces "Beginning of conversation".
+    val listHiddenHistory = rememberThreadHiddenHistory(renderPayload.historyChannelId)
+    val historyPaywall = listHiddenHistory?.takeIf { renderPayload.threadHistoryReachesStart() }
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
@@ -24516,6 +24543,14 @@ private fun ThreadMessagesListContent(
                             )
                         renderPayload.canLoadMoreBefore ->
                             ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
+                        historyPaywall != null ->
+                            ThreadHistoryPaywall(
+                                scope = renderPayload.historyPaywallScope(),
+                                hidden = historyPaywall,
+                                allHidden = false,
+                                timeContext = renderConfig.timeContext,
+                                onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+                            )
                         else ->
                             ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
                     }
@@ -24525,10 +24560,21 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (showReplyEmptyState) {
                 item(key = ThreadReplyEmptyListItemKey) {
-                    ThreadStateMessage(
-                        localizedThreadStateTitle(renderPayload.emptyTitle),
-                        localizedThreadStateDetail(renderPayload.emptyDetail)
-                    )
+                    if (listHiddenHistory != null) {
+                        // Every reply is behind the Free plan's window: not empty, hidden.
+                        ThreadHistoryPaywall(
+                            scope = renderPayload.historyPaywallScope(),
+                            hidden = listHiddenHistory,
+                            allHidden = true,
+                            timeContext = renderConfig.timeContext,
+                            onUpgrade = { onThreadEvent(ThreadOpenPlanBillingEvent, null, null, null) }
+                        )
+                    } else {
+                        ThreadStateMessage(
+                            localizedThreadStateTitle(renderPayload.emptyTitle),
+                            localizedThreadStateDetail(renderPayload.emptyDetail)
+                        )
+                    }
                 }
             }
             }
@@ -24687,7 +24733,15 @@ private fun ThreadMessagesListContent(
                             }
                 ) {
                     dateDividerDay?.let { day ->
-                        ThreadDateDivider(day.localizedLabel())
+                        val dayLabel = day.localizedLabel()
+                        // Under the history paywall the first date line says the window: "Last 30 days · …".
+                        ThreadDateDivider(
+                            if (index == 0 && historyPaywall != null) {
+                                stringResource(Res.string.thread_history_paywall_recent_divider_with_date, ThreadHistoryPaywallDays, dayLabel)
+                            } else {
+                                dayLabel
+                            }
+                        )
                     }
                     Box(
                         modifier =
@@ -26010,6 +26064,13 @@ private fun List<RaftThreadMessageItem>.threadShareMarkdown(): String =
     joinToString("\n\n") { message ->
         "**${message.shownAuthorName().ifBlank { "Unknown" }}**: ${message.body.trim()}"
     }
+
+/**
+ * The top of the list is where the shown history starts (the "Beginning of conversation" case of
+ * [threadOlderMessagesStatusSpec]): no older page to load, and not an offline stand-in cut short.
+ */
+internal fun ThreadTimelineSlice.threadHistoryReachesStart(): Boolean =
+    !canLoadMoreBefore && !(durableLastKnown && !durableReachedOldest)
 
 internal fun threadOlderMessagesStatusSpec(payload: RaftThreadScreenPayload): ThreadHistoryStatusSpec =
     threadOlderMessagesStatusSpec(payload.toThreadTimelineSlice())

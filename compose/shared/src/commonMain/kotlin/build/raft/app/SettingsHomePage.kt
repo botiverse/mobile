@@ -4036,6 +4036,8 @@ private fun RaftAppShellReadyContent(
             build.raft.app.data.RaftNotificationLevelStore.clear()
             build.raft.app.data.RaftNotificationAccountSettingsStore.clear()
             build.raft.app.data.RaftNotificationChannelNames.clear()
+            // What another account's Free servers hid is not this account's to show.
+            build.raft.app.data.RaftHiddenHistoryStore.clear()
             build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId = notificationAccountUserId
         }
         build.raft.app.data.RaftNotificationAccountSettingsStore.load(build.raft.app.data.DataRequestPriority.Background)

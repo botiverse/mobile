@@ -191,6 +191,7 @@ LUCIDE_ICONS = [
     "grip-vertical",
     "hash",
     "heart",
+    "history",
     "house",
     "image",
     "image-off",

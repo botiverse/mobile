@@ -16,6 +16,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -119,18 +120,25 @@ internal class RaftThreadApiClient(
         afterSeq: Long?
     ): ThreadApiResult<ThreadMessagesPage> =
         transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq, afterSeq = afterSeq)
-            .toChannelMessagesPage()
+            // An `after` page never computes `historyLimited` (the server answers false): it says
+            // nothing about the window's start.
+            .toChannelMessagesPage(hiddenHistoryChannelId = threadId.takeIf { afterSeq == null })
 
     override suspend fun gapCatchUpChannelMessages(threadId: String, limit: Int): ThreadApiResult<ThreadMessagesPage> =
-        transport.gapCatchUpChannelMessages(threadId = threadId, limit = limit).toChannelMessagesPage()
+        transport.gapCatchUpChannelMessages(threadId = threadId, limit = limit)
+            .toChannelMessagesPage(hiddenHistoryChannelId = threadId)
 
-    private suspend fun HomeNetworkResponse.toChannelMessagesPage(): ThreadApiResult<ThreadMessagesPage> =
+    /** [hiddenHistoryChannelId]: record the page's history window there ([RaftHiddenHistoryStore]). */
+    private suspend fun HomeNetworkResponse.toChannelMessagesPage(hiddenHistoryChannelId: String?): ThreadApiResult<ThreadMessagesPage> =
         mapThreadBody(
                 contractCode = "thread_messages_contract_mismatch",
                 serializer = ChannelMessagesResponseDto.serializer(),
                 diagnosticsLogger = diagnosticsLogger,
                 parseDispatcher = parseDispatcher
             ) { wire ->
+                hiddenHistoryChannelId?.let { channelId ->
+                    RaftHiddenHistoryStore.record(channelId, wire.historyLimited == true, parseHiddenHistory(wire.hiddenHistory))
+                }
                 ThreadMessagesPage(
                     messages = wire.messages,
                     canLoadMoreBefore = wire.historyLimited,
@@ -786,6 +794,8 @@ private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =
 private data class ChannelMessagesResponseDto(
     val messages: List<WireMessage>,
     val historyLimited: Boolean? = null,
+    /** Free plan: what the 30-day window hides, on a page that reached its start ([parseHiddenHistory]). */
+    val hiddenHistory: JsonElement? = null,
 )
 
 @Serializable

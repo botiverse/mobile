@@ -145,6 +145,7 @@ enum class RaftLucideIconName(val wireName: String) {
     GripVertical("grip-vertical"),
     Hash("hash"),
     Heart("heart"),
+    History("history"),
     House("house"),
     Image("image"),
     ImageOff("image-off"),
