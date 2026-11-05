@@ -259,6 +259,30 @@ class CanonicalMessageV2ActionCardResultTest {
         return CanonicalMessageFoldInput(kind, carry.row, MessageAggregateField.entries.toList())
     }
 
+    /**
+     * AppFather 11-05: every forward the server writes carries keys the V2 fact does not (root
+     * `forwardedBy` / `forwardedAt` / `destinationTargetId`; per item `sourceIsThreadParent`,
+     * `sourceMessageSeq`, `attachmentPolicy` and the source ids; attachment `id` / size / dimensions).
+     * The exact-key check refused every forwarded message; now they are dropped and the bundle is kept.
+     */
+    @Test
+    fun aForwardWithTheServersExtraKeysIsWrittenWithItsItems() = runTest {
+        val page = Json.parseToJsonElement("[" + node("m1", 1, serverForward) + "]") as kotlinx.serialization.json.JsonArray
+        val conversion = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(canonicalV2TestPage())).convertPage(
+            partition = partition,
+            scopeId = "channel-1",
+            channelType = "channel",
+            rawMessages = page,
+        )
+        val envelope = assertIs<CanonicalMessageV2PageConversion.Converted>(conversion, conversion.toString()).envelopes.single()
+        val bundle = assertIs<CanonicalActionMetadataV2.ForwardedBundle>(envelope.fact.actionMetadata)
+        val item = bundle.items.single()
+        assertEquals("Ship it", item.content)
+        assertEquals("Ada", item.author?.name)
+        assertEquals("general", item.target?.label)
+        assertEquals(listOf("notes.md"), item.attachments.map { it.filename })
+    }
+
     private fun List<CanonicalMessageEnvelopeV2>.card(id: String) = single { it.fact.id == id }.card()
 
     private fun CanonicalMessageEnvelopeV2.card() = assertIs<CanonicalActionMetadataV2.ActionCard>(fact.actionMetadata)
@@ -285,6 +309,19 @@ class CanonicalMessageV2ActionCardResultTest {
         const val AGENT_ID = "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"
         const val CHANNEL_ID = "3c2b1a09-8f7e-4d6c-9b5a-4e3d2c1b0a99"
         const val REQUEST_ID = "7e6d5c4b-3a29-4f18-8e07-d6c5b4a39281"
+
+        /** A forward as the server writes it today (slock staging, AppFather 11-05), every extra key included. */
+        val serverForward =
+            """{"kind":"forwarded-bundle","version":1,"forwardedBy":"user-1","forwardedAt":"2026-10-26T08:00:00.000Z",""" +
+                """"destinationTargetId":"channel-1","forwardedItems":[{"index":0,"sourceMessageId":"src-1",""" +
+                """"sourceIsThreadParent":false,"sourceMessageSeq":42,"attachmentPolicy":"snapshot",""" +
+                """"sourceServerId":"server-a","sourceTargetId":"channel-9","sourceThreadId":null,"parentChannelId":null,""" +
+                """"sourceTaskId":null,"sourceTaskNumber":null,"sourceTaskTitle":null,""" +
+                """"sourceAuthorSnapshot":{"type":"user","id":"user-2","name":"Ada","uniqueName":"ada"},""" +
+                """"sourceCreatedAt":"2026-10-25T08:00:00.000Z",""" +
+                """"sourceTargetSnapshot":{"id":"channel-9","type":"channel","label":"general","labelVisibility":"visible"},""" +
+                """"contentSnapshot":"Ship it","provenanceState":"verified",""" +
+                """"attachmentSnapshots":[{"id":"att-1","filename":"notes.md","mimeType":"text/markdown","sizeBytes":12,"width":null,"height":null}]}]}"""
 
         /** The executed-card root every server path writes (`commitActionCardResult`). */
         fun done(action: String, result: String) =
