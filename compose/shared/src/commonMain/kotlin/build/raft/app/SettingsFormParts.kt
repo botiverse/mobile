@@ -161,7 +161,14 @@ internal fun SettingsFormSectionCard(
 ) {
     SettingsFormSection(iconName = iconName, title = title, loading = loading) {
         RaftCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+            // The card's own `p-4`, grown to 20 under a mouse or trackpad (sizing v12, raft-ui 0.65
+            // desktop density): nothing more with a finger.
+            val extra = (RaftTheme.controls.settingsCardPadding - 16.dp).coerceAtLeast(0.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(extra),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                content = content,
+            )
         }
     }
 }

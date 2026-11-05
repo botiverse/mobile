@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
@@ -56,8 +57,10 @@ internal fun SettingsThemeContent(
     val hasServer = serverTheme?.state?.visible == true
     val sections = settingsThemePageSections(hasServer)
     LazyColumn(
+        // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
+        // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(RaftTheme.controls.settingsCardGap)
     ) {
         if (serverTheme != null && hasServer) {
             item {

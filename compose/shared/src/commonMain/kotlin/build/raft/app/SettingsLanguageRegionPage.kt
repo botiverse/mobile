@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftComboboxOption
@@ -53,8 +54,10 @@ internal fun SettingsLanguageRegionContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
+        // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
+        // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(RaftTheme.controls.settingsCardGap)
     ) {
         when (state) {
             ScreenLoadState.Loading ->
