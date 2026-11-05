@@ -166,9 +166,15 @@ internal fun AgentMigrationSection(
     var showUpgrade by remember { mutableStateOf(false) }
     var showCancel by remember { mutableStateOf(false) }
 
+    // Where the app offers upgrades the upgrade dialog says it all (web AgentMigrationSection opens
+    // UpgradeDialog `agent_migration`); iOS keeps the plain prompt with "View your plan".
+    fun askToUpgrade() {
+        if (settingsBillingOffersUpgrade()) inputs.onOpenBilling() else showUpgrade = true
+    }
+
     fun openStart(target: String?) {
         if (inputs.proGate == RaftProGateDecision.UpgradeRequired) {
-            showUpgrade = true
+            askToUpgrade()
             return
         }
         inputs.onIntent(AgentMigrationIntent.ClearStartError)
@@ -274,7 +280,7 @@ internal fun AgentMigrationSection(
             AgentMigrationEffect.Started -> showStartDialog = false
             AgentMigrationEffect.ProRequired -> {
                 showStartDialog = false
-                showUpgrade = true
+                askToUpgrade()
             }
             AgentMigrationEffect.AgentPlacementChanged -> inputs.onAgentPlacementChanged()
             null -> return@LaunchedEffect

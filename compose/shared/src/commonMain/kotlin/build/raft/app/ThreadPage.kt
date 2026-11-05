@@ -5630,7 +5630,8 @@ private fun ThreadMembersPageScreen() {
                 },
                 onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
                 serverPlan = serverPlan,
-                onUpgrade = { pager.openSettingsBillingPage(storeScope) },
+                // Web CreateAgentDialog `seat_limit_agent_create`: Free → upgrade, Pro → add seats.
+                onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope) },
             )
         }
         removalGate.pending?.let { confirmation ->
@@ -10589,6 +10590,11 @@ private fun SharedThreadRouteContentContent(
         ownerDraftKey: String? = null,
         expectedAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
     ) {
+        // The month's uploads are used up (`FILE_UPLOAD_QUOTA_EXCEEDED`): the upgrade dialog, as web
+        // MessageInput opens it (`upload_monthly_quota`). Nothing opens on a paid plan.
+        if (raftUpgradeGateForErrorCode(errorCode) == RaftUpgradeGate.UploadMonthlyQuota) {
+            pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadMonthlyQuota, storeScope)
+        }
         val draftKey =
             normalizeThreadAttachmentUploadDraftKey(ownerDraftKey)
                 ?: normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
@@ -10654,6 +10660,10 @@ private fun SharedThreadRouteContentContent(
         if (sizeDecision.rejected.isNotEmpty()) {
             val largest = sizeDecision.largestRejectedBytes ?: 0L
             bridge.toast(localizedAttachmentTooLarge(largest, maxBytes))
+            // Free's per-file ceiling: the upgrade dialog too (web `upload_file_size`).
+            if (raftUploadSizeLimitIsFree(maxBytes)) {
+                pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadFileSize, storeScope)
+            }
             bridge.log(
                 "thread_composer_attachment_size_rejected rejected=${sizeDecision.rejected.size} " +
                     "largestBytes=$largest maxBytes=$maxBytes"
@@ -13292,7 +13302,20 @@ private fun SharedThreadRouteContentContent(
                 }
                 if (action == ThreadOpenPlanBillingEvent) {
                     bridge.log("thread_history_paywall_open_billing offersUpgrade=${settingsBillingOffersUpgrade()}")
-                    pager.openSettingsBillingPage(storeScope)
+                    // Upgrade to Pro: the upgrade dialog for the 30-day window (web HistoryPaywall
+                    // `history_30d`). iOS view-only Billing: "View your plan", the view-only page.
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(RaftUpgradeGate.History30d, storeScope)
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
+                    return@ThreadPageContent
+                }
+                if (action == ThreadOpenUpgradeEvent) {
+                    // A banner's Upgrade (web ChannelLimitBanners): [itemId] is the gate's wire name.
+                    RaftUpgradeGate.entries.firstOrNull { it.wire == itemId }?.let { gate ->
+                        pager.openRaftUpgradeDialog(gate, storeScope)
+                    }
                     return@ThreadPageContent
                 }
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
@@ -17958,10 +17981,22 @@ private fun ThreadPageContentContent(
                     size = RaftUiBannerSize.Medium,
                     iconName = RaftLucideIconName.TriangleAlert,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    // Web ChannelLimitBanners: Upgrade opens the upgrade dialog (read-only:
+                    // `joint_channel_read_only`, in its grace period: `joint_channel_over_limit`).
                     // iOS view-only Billing: "View your plan" (the view-only Plan & Billing page).
                     action =
                         if (settingsBillingOffersUpgrade()) {
-                            null
+                            val gate =
+                                if (jointBillingNotice == JointBillingNotice.Locked) RaftUpgradeGate.JointChannelReadOnly
+                                else RaftUpgradeGate.JointChannelOverLimit
+                            ({
+                                RaftButton(
+                                    text = stringResource(Res.string.raft_pro_upgrade),
+                                    onClick = { onThreadEvent(ThreadOpenUpgradeEvent, gate.wire, null, null) },
+                                    variant = RaftButtonVariant.Default,
+                                    size = RaftButtonSize.Md,
+                                )
+                            })
                         } else {
                             val openPlan = LocalThreadActionCardSpecHost.current.openPlan
                             ({ build.raft.app.components.RaftViewPlanButton(onClick = openPlan) })

@@ -80,6 +80,7 @@ internal fun rememberSettingsServerThemeBinding(
     val saveFailed = stringResource(Res.string.settings_server_theme_save_failed)
     val currentToast by rememberUpdatedState(onToast)
     val currentSaveFailed by rememberUpdatedState(saveFailed)
+    val currentOpenBilling by rememberUpdatedState(onOpenBilling)
     var upgradeOpen by remember { mutableStateOf(false) }
     val store =
         remember(repository, authStore, scope) {
@@ -88,10 +89,10 @@ internal fun rememberSettingsServerThemeBinding(
                 sessionStore = authStore,
                 scope = scope,
                 onSaveFailed = { currentToast(currentSaveFailed) },
-                // TODO(upgrade dialog): the app has no unified upgrade dialog yet. When it lands,
-                //  open it here with the web's `pro_theme` gate (UpgradeDialog.tsx) in place of
-                //  the RaftProUpgradeDialog this flag shows.
-                onUpgradeRequired = { upgradeOpen = true },
+                // Where the app offers upgrades: the upgrade dialog with the web's `pro_theme` gate
+                // (UpgradeDialog.tsx; [onOpenBilling] opens it). iOS: the plain prompt this flag
+                // shows, with "View your plan".
+                onUpgradeRequired = { if (settingsBillingOffersUpgrade()) currentOpenBilling() else upgradeOpen = true },
             )
         }
     LaunchedEffect(store, authStore) {
