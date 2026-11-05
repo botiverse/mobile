@@ -126,8 +126,9 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
             links.mapNotNull { range ->
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
                 val target = parseArtifactLinkTarget(link.url, host.artifactHosts) ?: return@mapNotNull null
-                // Only a bare link becomes a chip: its text is its own address.
-                if (parseArtifactLinkTarget(text.substring(range.start, range.end).trim(), host.artifactHosts) != target) return@mapNotNull null
+                // Only a bare link becomes a chip: its text (without the layout-only break marks) is
+                // its own address.
+                if (parseArtifactLinkTarget(text.substring(range.start, range.end).raftCopyText().trim(), host.artifactHosts) != target) return@mapNotNull null
                 val summary = host.artifacts[target.key] ?: return@mapNotNull null
                 range to RaftArtifactLinkChip(target, summary)
             }
@@ -140,7 +141,7 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
                 val key = appLinkPreviewHref(link.url) ?: return@mapNotNull null
                 // Only a bare link becomes a chip: its text is its own address.
-                if (appLinkPreviewHref(text.substring(range.start, range.end).trim()) != key) return@mapNotNull null
+                if (appLinkPreviewHref(text.substring(range.start, range.end).raftCopyText().trim()) != key) return@mapNotNull null
                 val result = host.results[key] ?: return@mapNotNull null
                 range to result
             }

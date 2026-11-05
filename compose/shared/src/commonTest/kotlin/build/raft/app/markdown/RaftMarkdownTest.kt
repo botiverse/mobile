@@ -1018,7 +1018,8 @@ class RaftMarkdownTest {
                     (range.item as? LinkAnnotation.Clickable)
                         ?.let { annotated.raftInlineBoxWithin(range.start, range.end) } != null
                 }
-                .map { range -> annotated.text.substring(range.start, range.end) }
+                // Chip labels carry word joiners where they must not wrap (withRaftInlineChipGlue).
+                .map { range -> annotated.text.substring(range.start, range.end).raftCopyText() }
 
         assertEquals(
             listOf("#31", "@Android-Developer-4", "#521", "#521", "#31", "#521"),
@@ -1099,7 +1100,8 @@ class RaftMarkdownTest {
                     )
             )
 
-        assertEquals(body, annotated.text)
+        // Plain text, with only the web's invisible line-break marks (a break after "KMP-").
+        assertEquals(body, annotated.text.replace("\u200B", "").replace("\u2060", ""))
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
         assertEquals(emptySet(), annotated.raftMarkdownClickableTags())
         assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
@@ -1871,7 +1873,8 @@ class RaftMarkdownTest {
             )
 
         assertTrue(initialAnnotated.text.endsWith(" @member0"))
-        assertTrue(hydratedAnnotated.text.endsWith(" @Display Name"))
+        // A chip label never wraps inside: word joiners glue "@Display Name" into one run.
+        assertTrue(hydratedAnnotated.text.replace("\u2060", "").endsWith(" @Display Name"))
         currentHandler = { openedBy = "new:${it.label}" }
         val mentionLink =
             hydratedAnnotated.getLinkAnnotations(0, hydratedAnnotated.length)

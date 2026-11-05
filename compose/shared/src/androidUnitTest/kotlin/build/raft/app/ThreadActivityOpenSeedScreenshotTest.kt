@@ -37,6 +37,8 @@ import org.robolectric.annotation.GraphicsMode
  *    directory although the row carries no name.
  *  - `thread.system-message-seed`: "@Jasper joined this channel." (sender id `system`) is the muted
  *    centered system line, not a chat message from "system" with an "S" face.
+ *  - `thread.timeline-rhythm`: a message, the date line, a message, an event line and a message,
+ *    at the timeline rhythm's distances (spacing.md#timeline-rhythm).
  *  - `thread.activity-seed-truncated` (artin 10-26): a row whose preview the server cut at 140
  *    characters shows that text with its "…", and the small muted loading spinner (frozen on its
  *    first step) below it, below a short message that needs none.
@@ -56,6 +58,11 @@ class ThreadActivityOpenSeedScreenshotTest {
     @Test fun systemMessageLight() = capture("thread.system-message-seed", RaftAppAppearance.Light) { SystemMessageRows() }
 
     @Test fun systemMessageDark() = capture("thread.system-message-seed.dark", RaftAppAppearance.Dark) { SystemMessageRows() }
+
+    // spacing.md#timeline-rhythm: a date line 24 from the text above and below it; an event line
+    // 16 from the messages round it (#4325 review).
+    @Config(sdk = [34], qualifiers = "w390dp-h420dp-xxhdpi")
+    @Test fun timelineRhythmLight() = capture("thread.timeline-rhythm", RaftAppAppearance.Light) { TimelineRhythmRows() }
 
     @Test fun truncatedPreviewLight() = capture("thread.activity-seed-truncated", RaftAppAppearance.Light) { TruncatedPreviewRows() }
 
@@ -152,6 +159,15 @@ private fun StandInLoadingRows() {
     val payload =
         RaftThreadScreenPayload(sourceThreadId = "channel-1", status = "loading").withActivityOpenSeed(listOf(humanSeed))
     ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload), loadingRevealDelayMs = 0L, spinnerStillStep = 0)
+    SeedMessageRow(humanSeed)
+}
+
+@Composable
+private fun TimelineRhythmRows() {
+    SeedMessageRow(humanSeed)
+    ThreadDateDivider("Today")
+    SeedMessageRow(humanSeed)
+    SeedMessageRow(systemSeed)
     SeedMessageRow(humanSeed)
 }
 

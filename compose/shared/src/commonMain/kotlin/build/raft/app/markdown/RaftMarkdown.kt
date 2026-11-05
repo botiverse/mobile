@@ -77,6 +77,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.text
 import build.raft.app.compat.pager.Pager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -897,6 +898,7 @@ internal fun raftMarkdownAnnotator(
                 onOpenAction = onOpenAction,
                 resolveActionLabel = resolveActionLabel,
                 allowLocalFallback = child.type != RaftMarkdownTokenTypes.REFERENCE,
+                plainText = { plain -> plain.withRaftWebTextBreaks(child) },
             )
         },
         inlineContent = {
@@ -1038,6 +1040,8 @@ private fun AnnotatedString.Builder.consumeRaftRichTextSplitTagSequence(
     }
     if (remaining.isNotEmpty()) return 0
 
+    // Web line breaks in the text around the ref, outside tables (withRaftWebTextBreaks(node)).
+    val plainText: (String) -> String = { plain -> plain.withRaftWebTextBreaks(child) }
     val prefixEnd = splitStart.relativeStart
     if (prefixEnd > 0) {
         appendRaftRichTextSegmentOrText(
@@ -1045,7 +1049,8 @@ private fun AnnotatedString.Builder.consumeRaftRichTextSplitTagSequence(
             documentOffset = nodeStart,
             rendererInput = rendererInput,
             onOpenAction = onOpenAction,
-            resolveActionLabel = resolveActionLabel
+            resolveActionLabel = resolveActionLabel,
+            plainText = plainText
         )
     }
     appendRaftRichTextToken(
@@ -1060,7 +1065,8 @@ private fun AnnotatedString.Builder.consumeRaftRichTextSplitTagSequence(
             documentOffset = tailDocumentOffset,
             rendererInput = rendererInput,
             onOpenAction = onOpenAction,
-            resolveActionLabel = resolveActionLabel
+            resolveActionLabel = resolveActionLabel,
+            plainText = plainText
         )
     }
     return consumedCount
@@ -1071,17 +1077,19 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegmentOrText(
     documentOffset: Int,
     rendererInput: RaftRichTextRendererInput,
     onOpenAction: (RaftRichTextAction) -> Unit,
-    resolveActionLabel: ((RaftRichTextAction) -> String?)?
+    resolveActionLabel: ((RaftRichTextAction) -> String?)?,
+    plainText: (String) -> String,
 ) {
     if (!appendRaftRichTextSegment(
             text = text,
             documentOffset = documentOffset,
             rendererInput = rendererInput,
             onOpenAction = onOpenAction,
-            resolveActionLabel = resolveActionLabel
+            resolveActionLabel = resolveActionLabel,
+            plainText = plainText
         )
     ) {
-        append(text)
+        append(plainText(text))
     }
 }
 
@@ -1126,6 +1134,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
     onOpenAction: (RaftRichTextAction) -> Unit,
     resolveActionLabel: ((RaftRichTextAction) -> String?)?,
     allowLocalFallback: Boolean = true,
+    /** The text between the refs, as appended (web line breaks outside tables: [withRaftWebTextBreaks]). */
+    plainText: (String) -> String,
 ): Boolean {
     val documentTokens = rendererInput.raftRefTokensStartingInRange(documentOffset, documentOffset + text.length)
     val localTokens =
@@ -1157,7 +1167,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
                 .coerceAtMost(text.length)
         if (relativeStart < cursor || relativeStart !in text.indices) return@forEach
         if (relativeStart > cursor) {
-            append(text.substring(cursor, relativeStart))
+            append(plainText(text.substring(cursor, relativeStart)))
         }
         appendRaftRichTextToken(
             token = token,
@@ -1167,7 +1177,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextSegment(
         )
         cursor = relativeEndExclusive
     }
-    if (cursor < text.length) append(text.substring(cursor))
+    if (cursor < text.length) append(plainText(text.substring(cursor)))
     return true
 }
 
@@ -1209,7 +1219,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             withRaftInlineBox(boxStyle) {
                 val fontSizeStyle = raftMarkdownRichTextTagFontSizeStyle(token.chrome)
                 val appendChipText: AnnotatedString.Builder.() -> Unit = {
-                    append(label)
+                    // One box on the web (`inline-flex … truncate`): the label never wraps inside.
+                    append(label.withRaftInlineChipGlue())
                     if (busy) {
                         // A word joiner keeps the label and the spinner on one line.
                         append(RaftMarkdownTaskChipWordJoiner)
@@ -1288,6 +1299,17 @@ private fun RaftRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
         directMessagePeerName = directMessagePeerName
     )
 
+/**
+ * The text's accessibility text without the layout-only characters (break marks, word joiners,
+ * chip gap placeholders: [raftTextWithoutInlineGaps]), so TalkBack / VoiceOver and semantics
+ * finders read what the source says. Outermost on the text, it overrides the text node's own.
+ */
+internal fun Modifier.raftMarkdownReadableSemantics(text: AnnotatedString): Modifier {
+    val readable = text.raftTextWithoutInlineGaps()
+    if (readable == text.text) return this
+    return semantics { this.text = AnnotatedString(readable) }
+}
+
 private object RaftMarkdownTextProvider : TextProvider {
     @Composable
     override fun Text(
@@ -1316,8 +1338,12 @@ private object RaftMarkdownTextProvider : TextProvider {
         val bodyClick = LocalRaftMarkdownBodyClick.current
         // A drag from a link in another paragraph can extend into this one (RaftMarkdownLinkDragSelect.kt).
         val linkDrag = rememberRaftMarkdownLinkDragText()
+        // Screen readers and node finders read the source's characters, not the layout-only ones.
+        val semanticsModifier = remember(text) { Modifier.raftMarkdownReadableSemantics(AnnotatedString(text)) }
         val textModifier =
-            linkDrag?.let { (selection, entry) -> modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = false) } ?: modifier
+            semanticsModifier.then(
+                linkDrag?.let { (selection, entry) -> modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = false) } ?: modifier
+            )
         val textLayout: ((TextLayoutResult) -> Unit)? =
             if (linkDrag == null) {
                 onTextLayout
@@ -1546,11 +1572,14 @@ private object RaftMarkdownTextProvider : TextProvider {
             linkDrag?.let { (selection, entry) ->
                 Modifier.raftMarkdownLinkDragSelect(selection, entry, hasLinks = resolvedText.hasLinkAnnotations(0, resolvedText.length))
             } ?: Modifier
+        // Screen readers and node finders read the source's characters, not the layout-only ones.
+        val semanticsModifier = remember(resolvedText) { Modifier.raftMarkdownReadableSemantics(resolvedText) }
         val text: @Composable (Modifier) -> Unit = { textModifier ->
             KuiklyText(
                 text = displayText,
                 modifier =
-                    textModifier
+                    semanticsModifier
+                        .then(textModifier)
                         .then(hoverModifier)
                         .then(linkHoverStatusModifier)
                         .then(linkDragModifier)

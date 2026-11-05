@@ -537,6 +537,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -898,16 +899,57 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         createTaskFromMessage = createTaskFromMessage
     )
 
+/** raft-ui MessageItemHeader `mb-px`: the gap between the header and the body. */
+internal val ThreadMessageHeaderBodyGap = 1.dp
+
+/**
+ * A message's content column with the header first: [Arrangement.spacedBy] 4dp, except the body
+ * starts [ThreadMessageHeaderBodyGap] under the header. The column still measures every gap at
+ * 4dp, so the space the first gap gives back is left empty at its end, and
+ * [threadMessageHeaderBodyGapTrim] takes it off: every child keeps its own height (and hit area).
+ */
+internal object ThreadMessageHeaderFirstArrangement : Arrangement.Vertical {
+    override val spacing: Dp = RaftAppSpacing.Xs
+
+    override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
+        val firstGapPx = ThreadMessageHeaderBodyGap.roundToPx()
+        val gapPx = spacing.roundToPx()
+        var y = 0
+        sizes.forEachIndexed { index, size ->
+            outPositions[index] = y
+            y += size + if (index == 0) firstGapPx else gapPx
+        }
+    }
+
+    override fun toString(): String = "ThreadMessageHeaderFirstArrangement"
+}
+
+/** Takes off the empty end [ThreadMessageHeaderFirstArrangement] leaves under the last child. */
+private fun Modifier.threadMessageHeaderBodyGapTrim(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0))
+        val trim = (RaftAppSpacing.Xs - ThreadMessageHeaderBodyGap).roundToPx()
+        val height = (placeable.height - trim).coerceAtLeast(0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(placeable.width, height) { placeable.place(0, 0) }
+    }
+
+/** raft-ui `--spacing-timeline-row`: every message row's inset above and below its text. */
+internal val ThreadMessageTimelineRowInset = 4.dp
+
+/** raft-ui `--spacing-timeline-turn`: the transparent band above a turn's first row. */
+internal val ThreadMessageTimelineTurn = 8.dp
+
 internal fun threadMessageMetadataSlotLayout(
     showAvatar: Boolean,
     compactTimestampGutter: Boolean,
     showTimestamp: Boolean
 ): ThreadMessageMetadataSlotLayout =
     ThreadMessageMetadataSlotLayout(
-        widthDp = 36f,
+        // raft-ui MessageItem `gutter` / `avatarSlot`: w-[35px], the md avatar (35) under its mt-0.5.
+        widthDp = 35f,
         heightDp =
             when {
-                showAvatar -> 40f
+                showAvatar -> 37f
                 compactTimestampGutter -> 18f
                 else -> 0f
             },
@@ -27794,7 +27836,14 @@ internal fun ThreadSystemMessageRow(
             Modifier.fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
-                .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Xs),
+                // raft-ui SystemMessage `pt-timeline-lead pb-timeline-row`: an event line starts a
+                // turn, 16 from the text on either side (spacing.md#timeline-rhythm).
+                .padding(
+                    start = RaftAppSpacing.Md,
+                    end = RaftAppSpacing.Md,
+                    top = ThreadMessageTimelineTurn + ThreadMessageTimelineRowInset,
+                    bottom = ThreadMessageTimelineRowInset
+                ),
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.Top
     ) {
@@ -27937,9 +27986,20 @@ internal fun ThreadHistoryStatusRow(
 }
 
 @Composable
-private fun ThreadDateDivider(label: String) {
+internal fun ThreadDateDivider(label: String) {
+    // raft-ui MessageListDateDivider: the rule sits a section (24) from the text on both sides
+    // (spacing.md#timeline-rhythm), taking back the row above's inset (4) and the row below's
+    // lead (12): pt = 24 - 4 - line/2, pb = 24 - 12 - line/2 on its 16dp line.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = RaftAppSpacing.Md,
+                    end = RaftAppSpacing.Md,
+                    top = ThreadDateDividerPaddingTop,
+                    bottom = ThreadDateDividerPaddingBottom
+                ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -27949,11 +28009,20 @@ private fun ThreadDateDivider(label: String) {
             style = threadDateDividerTextStyle(),
             color = RaftColor.TextMutedGray,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.height(ThreadDateDividerLineHeight)
         )
         Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.TextMutedGray.copy(alpha = 0.35f)))
     }
 }
+
+/** raft `timeline-gap-section`: a boundary's distance from the text on each side. */
+private val ThreadTimelineSection = 24.dp
+private val ThreadDateDividerLineHeight = 16.dp
+internal val ThreadDateDividerPaddingTop =
+    ThreadTimelineSection - ThreadMessageTimelineRowInset - ThreadDateDividerLineHeight / 2
+internal val ThreadDateDividerPaddingBottom =
+    ThreadTimelineSection - (ThreadMessageTimelineTurn + ThreadMessageTimelineRowInset) - ThreadDateDividerLineHeight / 2
 
 /** raft-ui `MessageListDateDivider`: `font-mono text-mono-meta` (12/16 regular), Caption's size in Space Mono Regular. */
 internal fun threadDateDividerTextStyle(): TextStyle =
@@ -28937,13 +29006,17 @@ private fun ThreadMessageCardContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    // raft-ui `MessageItem` root: the row wash spans the whole
-                    // row and the content sits at px-2 py-2 inside it.
+                    // raft-ui 0.61 `MessageItem` root (timeline rhythm): a turn's first row
+                    // carries `timeline-turn` (8) as a transparent top border the wash doesn't
+                    // paint (`bg-clip-padding`); a continuation row (`compact`) has none.
+                    .padding(top = if (showAuthorChrome) ThreadMessageTimelineTurn else 0.dp)
+                    // The row wash spans the whole row; the content sits at px-2
+                    // `py-timeline-row` (4) inside it.
                     .background(rowFill)
                     .raftStateOverlay(rowHover, RectangleShape)
                     // The wash runs edge to edge; the message stays out of the safe area.
                     .raftSafeAreaHorizontalPadding()
-                    .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm),
+                    .padding(horizontal = outerPadding, vertical = ThreadMessageTimelineRowInset),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             Row(
@@ -28981,7 +29054,9 @@ private fun ThreadMessageCardContent(
                             ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
-                        muted = authorBadgeLabel != null,
+                        // web MessageItem: only an archived agent's face is dimmed (`grayscale opacity-dimmed`);
+                        // a person who left or was removed keeps theirs.
+                        muted = message.isDeletedThreadAuthor(),
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
                         // Selecting messages: the avatar toggles the row like its body does, so the
@@ -29008,8 +29083,12 @@ private fun ThreadMessageCardContent(
                     Column(
                         modifier =
                             Modifier
+                                .then(if (showAuthorChrome) Modifier.threadMessageHeaderBodyGapTrim() else Modifier)
                                 .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                        // raft-ui MessageItemHeader `mb-px`: the body starts 1px under the header;
+                        // the parts after the body keep the 4dp step.
+                        verticalArrangement =
+                            if (showAuthorChrome) ThreadMessageHeaderFirstArrangement else Arrangement.spacedBy(RaftAppSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
                         if (showAuthorChrome) {
@@ -29510,7 +29589,13 @@ private fun ThreadMessageCardContent(
                                     }
                                 }
                                 ThreadMessageTrailingSection.MetaChips -> {
-                                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                    // web MessageItemFooter `mt-1.5`: 6dp under the body (the column adds 4).
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .threadMessageContentWidth(messageMaxWidthFraction)
+                                                .padding(top = RaftAppSpacing.Xxs)
+                                    ) {
                                         ThreadMessageFooterMeta(
                                             message = message,
                                             taskOpenEnabled = taskOpenEnabled,
@@ -29580,7 +29665,9 @@ private fun ThreadMessageCardContent(
                             ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
-                        muted = authorBadgeLabel != null,
+                        // web MessageItem: only an archived agent's face is dimmed (`grayscale opacity-dimmed`);
+                        // a person who left or was removed keeps theirs.
+                        muted = message.isDeletedThreadAuthor(),
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
                         onClick = { openAuthorProfile("avatar") },
@@ -29614,7 +29701,11 @@ private fun ThreadMessageCardContent(
                         .align(Alignment.TopEnd)
                         .offset(
                             x = -RaftMessageItemToolbarDefaults.EndInset,
-                            y = RaftMessageItemToolbarDefaults.TopOffset
+                            // web `top-[-18px]` is measured inside the row's border, below a turn's
+                            // transparent `timeline-turn` band.
+                            y =
+                                RaftMessageItemToolbarDefaults.TopOffset +
+                                    if (showAuthorChrome) ThreadMessageTimelineTurn else 0.dp
                         )
             )
         }
@@ -32062,32 +32153,19 @@ private fun String.isLikelyThreadAgentId(): Boolean =
 
 @Composable
 private fun ThreadMessageAuthorBadge(label: String) {
-    Box(
-        modifier =
-            Modifier
-                .heightIn(min = 18.dp)
-                // raft muted badge: fill-muted on the chip radius, no ink edge.
-                .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip))
-                .padding(horizontal = RaftAppSpacing.Xs, vertical = 2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style =
-                RaftType.Caption
-                    .withRaftFontWeight(FontWeight.Bold)
-                    .copy(fontSize = 10.sp, color = RaftColor.TextMuted),
-            color = RaftColor.TextMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    // web MessageItem: `<Badge appearance="soft" variant="muted">` after the sender's name.
+    RaftBadge(
+        text = label,
+        appearance = RaftBadgeAppearance.Soft,
+        variant = RaftBadgeVariant.Muted,
+    )
 }
 
 internal fun RaftThreadMessageItem.threadAuthorBadgeLabel(): String? =
     when {
         isDeletedThreadAuthor() -> "DELETED"
-        isRemovedThreadHuman() -> "REMOVED"
+        // web MessageItem `getHumanDepartureLabel`: "Removed", as written (not translated).
+        isRemovedThreadHuman() -> "Removed"
         else -> null
     }
 
@@ -32638,14 +32716,19 @@ internal fun ThreadMessageFooterMeta(
     val showReactionAddChip = showReactionAddAction && hasReactions
     if (!hasTask && !showSavedBadge && repliesBadge == null && !hasReactions && !showReactionAddChip) return
 
-    Row(
+    // raft-ui MessageItemFooter `flex flex-wrap items-center gap-1.5`: what doesn't fit wraps to
+    // the next line (6dp under it) instead of squeezing the task chip.
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        itemVerticalAlignment = Alignment.CenterVertically,
         horizontalArrangement =
-            if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp)
+            if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (hasTask) {
-            val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
+            // raft-ui TaskChip: the number and the assignee are two labels `gap-1.5` apart.
+            val labelParts = threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName)
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
             val taskChipClick: ((RaftPopoverAnchor) -> Unit)? =
                 when {
@@ -32670,7 +32753,8 @@ internal fun ThreadMessageFooterMeta(
                     )
                 }
             RaftAnchoredMetaChip(
-                label = label,
+                label = labelParts?.first ?: "Task",
+                secondaryLabel = labelParts?.second,
                 iconName = if (statusPixel == null) selectedStatus.icon else null,
                 leadingContent = statusPixel?.let { pixel -> { RaftTaskStatusPixel(pixel) } },
                 // `gap-1.5` between the pixel and the number.
@@ -32683,8 +32767,8 @@ internal fun ThreadMessageFooterMeta(
                 horizontalPadding = 7.dp,
                 labelFontSize = 12.sp,
                 labelLineHeight = 16.sp,
-                // raft-ui TaskChip `max-w-full`: no fixed cap; it truncates only when the footer runs out.
-                modifier = Modifier.weight(1f, fill = false),
+                // raft-ui TaskChip `max-w-full`: no fixed cap; it truncates only when it alone is
+                // wider than the footer (the FlowRow gives it at most the footer's width).
                 clickIdentity = taskClickIdentity,
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
                 onClick = taskChipClick
@@ -32904,7 +32988,16 @@ private fun RaftThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
 internal fun threadMessageTaskMetaLabel(
     message: RaftThreadMessageItem,
     resolvedTaskAssigneeName: String? = null
-): String? {
+): String? =
+    threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName)?.let { (number, assignee) ->
+        if (assignee == null) number else "$number $assignee"
+    }
+
+/** The task chip's two labels: the number ("#10", or "Task") and the "@assignee", when shown. */
+internal fun threadMessageTaskMetaLabelParts(
+    message: RaftThreadMessageItem,
+    resolvedTaskAssigneeName: String? = null
+): Pair<String, String?>? {
     val number = message.taskNumber?.let { "#$it" }
     val assignee =
         resolvedTaskAssigneeName
@@ -32914,13 +33007,7 @@ internal fun threadMessageTaskMetaLabel(
     if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
         return null
     }
-    return buildString {
-        append(number ?: "Task")
-        assignee?.let {
-            append(" @")
-            append(it)
-        }
-    }
+    return (number ?: "Task") to assignee?.let { "@$it" }
 }
 
 internal fun String.isDisplaySafeTaskAssigneeName(assigneeId: String? = null): Boolean {
@@ -34879,7 +34966,7 @@ private fun ThreadMessageAvatar(
     Box(
         modifier =
             Modifier
-                .size(36.dp)
+                .size(RaftAvatarSize.Md.edge)
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
                     detectTapGestures(
@@ -34902,7 +34989,7 @@ private fun ThreadMessageAvatar(
                 // The assistant's face takes the corner a presence light would (raft-ui
                 // MessageItemDelegatedAvatar; only on a person's avatar).
                 statusColor = if (muted || delegatedBy != null) null else status?.color,
-                avatarSize = 36.dp,
+                avatarSize = RaftAvatarSize.Md.edge,
                 statusPulsing = status?.pulsing == true && statusPulsing()
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -34914,7 +35001,7 @@ private fun ThreadMessageAvatar(
                         label = avatarLabel,
                         diagnostics = avatarDiagnostics,
                         modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
-                        avatarSize = 36.dp,
+                        avatarSize = RaftAvatarSize.Md.edge,
                         cacheSubject = cacheSubject,
                         fallbackFill = avatarFill
                     )
@@ -34971,7 +35058,7 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
     // The same sticker frame as the member avatars (ink edge, dark-mode sticker-edge ring) on cyan.
     RaftAppAvatarFrame(
         modifier = Modifier,
-        avatarSize = 36.dp,
+        avatarSize = RaftAvatarSize.Md.edge,
         borderWidth = RaftAppStroke.Default,
         fill = RaftColor.AccentCyan
     ) {
