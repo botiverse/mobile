@@ -8,12 +8,16 @@ import build.raft.app.isAmbient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.shadow
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.lerp
+import com.tencent.kuikly.compose.ui.layout.layout
+import com.tencent.kuikly.compose.ui.unit.Constraints
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 
@@ -196,4 +200,102 @@ internal fun Modifier.slockRaftControlSurface(
     return this
         .background(fill, shape)
         .border(borderWidth, border, shape)
+}
+
+/**
+ * raft-ui's "where you are / what you picked" sticker: the `--brand` yellow fill with a
+ * 1.5dp `--sticker-ink` edge (`data-active` / `data-checked` / `data-pressed` /
+ * `data-[selected=true]`: `border-sticker-ink bg-brand ring-[1.5px] ring-sticker-edge` on
+ * SidebarItem, Tabs, SegmentedControl, ToggleGroup, MobileNav, Switch). On web a selected
+ * or active item is never a bare colour block: the ink edge always comes with it.
+ *
+ * The 1.5dp `ring-sticker-edge` outside the edge is transparent in light and a 35% paper
+ * ring in dark; it sits outside the item's box, so it is a separate node: wrap the item in
+ * a Box and add [SlockRaftStickerEdge] (the bottom tab bar reserves room and draws its own). [restFill] is the fill when not [active] (the
+ * pressed wash, or transparent).
+ */
+internal fun Modifier.slockRaftActiveSticker(
+    active: Boolean,
+    restFill: Color = Color.Transparent,
+    radius: Dp = SlockRadius.Control,
+    fill: Color = SlockColor.Brand
+): Modifier =
+    // The border stays on in every state and only its colour changes: Kuikly keeps a
+    // native border after its modifier is dropped, so a conditional edge would stick.
+    slockRaftControlSurface(
+        fill = if (active) fill else restFill,
+        border = if (active) SlockColor.StickerInk else Color.Transparent,
+        radius = radius
+    )
+
+/** Gap plus ring width of raft `--focus-ring`. */
+internal val SlockRaftFocusRingGap = 2.dp
+internal val SlockRaftFocusRingWidth = 2.dp
+
+/**
+ * A ring drawn [outset] outside the parent Box's own edge without taking layout room, the
+ * way a CSS box-shadow ring sits outside the box. Call it first inside the Box that wraps
+ * the control: it matches the parent's size, then lays itself out [outset] larger on every
+ * side. [radius] is the control's own radius. The parent must not clip its children.
+ */
+@Composable
+internal fun BoxScope.SlockRaftOutsideRing(
+    visible: Boolean,
+    outset: Dp,
+    width: Dp,
+    color: Color,
+    radius: Dp
+) {
+    if (!visible) return
+    Box(
+        modifier =
+            Modifier
+                .matchParentSize()
+                .layout { measurable, constraints ->
+                    val outsetPx = outset.roundToPx()
+                    val boxWidth = constraints.maxWidth
+                    val boxHeight = constraints.maxHeight
+                    val placeable = measurable.measure(Constraints.fixed(boxWidth + outsetPx * 2, boxHeight + outsetPx * 2))
+                    layout(boxWidth, boxHeight) { placeable.place(-outsetPx, -outsetPx) }
+                }
+                .border(width, color, RoundedCornerShape(radius + outset))
+    )
+}
+
+/**
+ * raft `shadow-focus` (`--focus-ring`, Elevation > Focus ring): 2dp of `--line-strong` ink
+ * 2dp outside the control's own edge, while the control holds focus (`focus:` on Input,
+ * `focus-within:` on InputGroup / Textarea / Composer: States > Focus rings the whole group).
+ */
+@Composable
+internal fun BoxScope.SlockRaftFocusRing(
+    visible: Boolean,
+    radius: Dp = SlockRadius.Control
+) {
+    SlockRaftOutsideRing(
+        visible = visible,
+        outset = SlockRaftFocusRingGap + SlockRaftFocusRingWidth,
+        width = SlockRaftFocusRingWidth,
+        color = SlockColor.BorderBlack,
+        radius = radius
+    )
+}
+
+/**
+ * The dark-mode die-cut edge (`ring-[1.5px] ring-sticker-edge`, Dark mode > The die-cut
+ * edge): 1.5dp of `--sticker-edge` outside a sticker's ink edge. Transparent in light, so
+ * it is only composed in dark.
+ */
+@Composable
+internal fun BoxScope.SlockRaftStickerEdge(
+    visible: Boolean,
+    radius: Dp = SlockRadius.Control
+) {
+    SlockRaftOutsideRing(
+        visible = visible && SlockColor.StickerEdge.alpha > 0f,
+        outset = SlockStroke.Control,
+        width = SlockStroke.Control,
+        color = SlockColor.StickerEdge,
+        radius = radius
+    )
 }

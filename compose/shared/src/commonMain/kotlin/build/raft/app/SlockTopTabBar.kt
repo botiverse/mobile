@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.components.SlockRaftStickerEdge
+import build.raft.app.components.slockRaftActiveSticker
 import build.raft.app.markdown.traceMarkdownSection
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -12,6 +14,7 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
@@ -153,51 +156,47 @@ internal fun SlockTopTabBar(
             .height(SlockTopTabBarDefaults.Height + SlockSpacing.Md + SlockStroke.Thin)
             .background(SlockColor.Canvas)
     ) {
+        // Content padding, not a padded (clipping) list box: the selected sticker's dark-mode
+        // die-cut edge sits outside its box and must not be cut off.
         LazyRow(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xxs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items(items.size, key = { "$itemKeyPrefix-${items[it].key}" }) { index ->
                 val item = items[index]
                 val selected = item.key == selectedKey
-                val shape = RoundedCornerShape(SlockRadius.Control)
-                Row(
-                    modifier = Modifier
-                        .height(SlockTopTabBarDefaults.Height)
-                        .then(
-                            if (selected) {
-                                Modifier
-                                    .background(SlockColor.Brand, shape)
-                                    .border(SlockStroke.Control, SlockColor.StickerInk, shape)
-                            } else {
-                                Modifier
-                            }
+                Box {
+                    SlockRaftStickerEdge(visible = selected)
+                    Row(
+                        modifier = Modifier
+                            .height(SlockTopTabBarDefaults.Height)
+                            .slockRaftActiveSticker(active = selected)
+                            .clickable { onSelectedKeyChange(item.key) }
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+                    ) {
+                        val contentColor = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
+                        SlockLucideIcon(
+                            item.iconName,
+                            modifier = Modifier.size(16.dp),
+                            color = slockArgbHex(contentColor),
+                            strokeWidth = 2f
                         )
-                        .clickable { onSelectedKeyChange(item.key) }
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-                ) {
-                    val contentColor = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
-                    SlockLucideIcon(
-                        item.iconName,
-                        modifier = Modifier.size(16.dp),
-                        color = slockArgbHex(contentColor),
-                        strokeWidth = 2f
-                    )
-                    Text(
-                        text = item.label,
-                        style =
-                            SlockType.Button
-                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
-                                .copy(fontSize = 14.sp, lineHeight = 20.sp, color = contentColor),
-                        color = contentColor,
-                        maxLines = 1
-                    )
+                        Text(
+                            text = item.label,
+                            style =
+                                SlockType.Button
+                                    .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
+                                    .copy(fontSize = 14.sp, lineHeight = 20.sp, color = contentColor),
+                            color = contentColor,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }

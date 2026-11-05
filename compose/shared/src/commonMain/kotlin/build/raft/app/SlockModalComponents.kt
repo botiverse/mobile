@@ -10,6 +10,7 @@ import build.raft.app.components.SlockBrutalModalLayer
 import build.raft.app.components.SlockActionSheetRowModel
 import build.raft.app.components.SlockModalShellModel
 import build.raft.app.components.slockRaftActive
+import build.raft.app.components.slockRaftActiveSticker
 import build.raft.app.components.slockRaftOverlaySurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -877,16 +878,28 @@ internal fun SlockModalCompactMemberRow(
     cacheServerId: String? = null,
     onClick: () -> Unit = {}
 ) {
+    // raft: a picked row is never a bare yellow block. With a checkbox the checkbox carries
+    // the pick (web add-member rows: `CheckboxIndicator checked`, no row fill); without one
+    // the row is the active sticker with its ink edge.
+    val raft = slockRaftActive()
+    val raftSticker = raft && enabled && selected && selectionChecked == null
     val rowBackground =
         when {
             !enabled -> SlockColor.SurfaceCream
-            selected -> SlockColor.BrandYellow
+            raftSticker -> SlockColor.Brand
+            selected && !(raft && selectionChecked != null) -> SlockColor.BrandYellow
             else -> SlockColor.SurfaceWhite
         }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(rowBackground)
+            .then(
+                if (raft) {
+                    Modifier.slockRaftActiveSticker(active = raftSticker, restFill = rowBackground)
+                } else {
+                    Modifier.background(rowBackground)
+                }
+            )
             .clickable(enabled = enabled && clickEnabled, onClick = onClick)
             .padding(horizontal = if (channelPageStyle) 0.dp else 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

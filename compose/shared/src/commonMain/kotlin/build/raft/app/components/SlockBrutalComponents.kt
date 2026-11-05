@@ -820,18 +820,22 @@ private fun SlockBrutalInputFieldFrame(
                 enabledBackgroundColor == SlockColor.SurfaceWhite || enabledBackgroundColor == SlockFieldErrorTint -> SlockColor.Card
                 else -> enabledBackgroundColor
             }
-        Box(
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .height(fieldMinHeight)
-                    .background(raftSurfaceColor, shape)
-                    .border(SlockStroke.Control, raftBorderColor, shape)
-                    .then(tapModifier)
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = contentAlignment,
-            content = { content() }
-        )
+        // Focused, the field also wears raft `focus:shadow-focus`: the 2dp line-strong
+        // ring 2dp outside its edge (web shows it on every tap-focus, not only keyboard).
+        Box(modifier = modifier.fillMaxWidth().height(fieldMinHeight)) {
+            SlockRaftFocusRing(visible = (focused || forceFocused) && focusPolicy.acceptsFocus)
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(raftSurfaceColor, shape)
+                        .border(SlockStroke.Control, raftBorderColor, shape)
+                        .then(tapModifier)
+                        .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+                contentAlignment = contentAlignment,
+                content = { content() }
+            )
+        }
         return
     }
     val shadowOffset =
@@ -1938,43 +1942,47 @@ internal fun SlockRaftSegmentedItem(
             selected -> SlockColor.StickerInk
             else -> SlockColor.TextMuted
         }
-    SlockAnchorButton(
-        onClick = onClick,
-        enabled = enabled,
-        pressFeedback = enabled,
-        pressOffset = 0.dp,
-        onPressedChange = { pressed = it },
-        modifier =
-            Modifier
-                .height(SlockRaftMetrics.ControlHeightMd)
-                .background(fill, shape)
-                .border(SlockStroke.Control, if (selected) SlockColor.StickerInk else Color.Transparent, shape)
-                .padding(horizontal = 12.dp)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+    // The die-cut edge sits outside the sticker; the tray's 3dp inset leaves room for it.
+    Box {
+        SlockRaftStickerEdge(visible = selected && enabled)
+        SlockAnchorButton(
+            onClick = onClick,
+            enabled = enabled,
+            pressFeedback = enabled,
+            pressOffset = 0.dp,
+            onPressedChange = { pressed = it },
+            modifier =
+                Modifier
+                    .height(SlockRaftMetrics.ControlHeightMd)
+                    .background(fill, shape)
+                    .border(SlockStroke.Control, if (selected) SlockColor.StickerInk else Color.Transparent, shape)
+                    .padding(horizontal = 12.dp)
         ) {
-            iconName?.let {
-                SlockLucideIcon(name = it, modifier = Modifier.size(16.dp), color = slockArgbHex(ink))
-            }
-            Text(
-                text = label,
-                style =
-                    SlockType.Body
-                        .copy(fontSize = 14.sp, lineHeight = 20.sp)
-                        .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold),
-                color = ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            count?.takeIf { it > 0 }?.let {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                iconName?.let {
+                    SlockLucideIcon(name = it, modifier = Modifier.size(16.dp), color = slockArgbHex(ink))
+                }
                 Text(
-                    text = it.toString(),
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                    text = label,
+                    style =
+                        SlockType.Body
+                            .copy(fontSize = 14.sp, lineHeight = 20.sp)
+                            .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold),
                     color = ink,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                count?.takeIf { it > 0 }?.let {
+                    Text(
+                        text = it.toString(),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = ink,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
@@ -2119,20 +2127,36 @@ private fun SlockRaftPickerChip(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(SlockRadius.Control)
-    val restingFill = if (active) activeBackgroundColor else Color.Transparent
+    // A caller that marks the active chip yellow gets the raft sticker (ToggleGroup
+    // `data-pressed`): yellow is never a bare fill, it always wears the 1.5dp ink edge.
+    val sticker =
+        enabled && active && (activeBackgroundColor == SlockColor.BrandYellow || activeBackgroundColor == SlockColor.Brand)
+    val restingFill =
+        when {
+            sticker -> SlockColor.Brand
+            active -> activeBackgroundColor
+            else -> Color.Transparent
+        }
     val fill =
         when {
             !enabled -> SlockColor.FillMuted
+            pressed && sticker -> slockRaftOverlay(SlockColor.StickerPressed, restingFill)
             pressed -> slockRaftOverlay(SlockColor.FillPressed, restingFill)
             else -> restingFill
         }
     val ink =
         when {
             !enabled -> SlockColor.ForegroundDisabled
+            sticker -> SlockColor.StickerInk
             active -> SlockColor.TextBlack
             else -> SlockColor.TextMuted
         }
-    val ring = if (!enabled || active) Color.Transparent else SlockColor.BorderSeam
+    val ring =
+        when {
+            sticker -> SlockColor.StickerInk
+            !enabled || active -> Color.Transparent
+            else -> SlockColor.BorderSeam
+        }
     SlockAnchorButton(
         onClick = onClick,
         enabled = enabled,
@@ -2143,7 +2167,7 @@ private fun SlockRaftPickerChip(
             modifier
                 .height(SlockRaftMetrics.ControlHeightMd)
                 .background(fill, shape)
-                .border(SlockStroke.Thin, ring, shape)
+                .border(if (sticker) SlockStroke.Control else SlockStroke.Thin, ring, shape)
                 .padding(horizontal = 10.dp)
     ) {
         Row(
@@ -2155,7 +2179,7 @@ private fun SlockRaftPickerChip(
             }
             Text(
                 text = label,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.SemiBold),
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withSlockFontWeight(if (sticker) FontWeight.Bold else FontWeight.SemiBold),
                 color = ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

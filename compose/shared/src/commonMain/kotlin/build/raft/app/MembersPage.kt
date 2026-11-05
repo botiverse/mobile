@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.slockRaftActive
+import build.raft.app.components.slockRaftActiveSticker
+import build.raft.app.components.SlockRaftStickerEdge
 import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalTextField
@@ -177,6 +180,7 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -7683,75 +7687,112 @@ private fun MembersAgentTabBar(
             }
         }
     }
+    // raft-ui `Tabs` (default variant), as on web's agent panel: a canvas strip of 32dp
+    // tabs hugging their label; the active tab is the yellow sticker with its ink edge.
+    val raft = slockRaftActive()
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(SlockTopTabBarDefaults.Height)
-            .background(SlockColor.SurfaceWhite)
+            .height(if (raft) SlockTopTabBarDefaults.Height + SlockSpacing.Md + SlockStroke.Thin else SlockTopTabBarDefaults.Height)
+            .background(if (raft) SlockColor.Canvas else SlockColor.SurfaceWhite)
     ) {
         LazyRow(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            // Content padding, not a padded (clipping) list box, so the selected sticker's
+            // dark-mode die-cut edge is not cut off.
+            contentPadding =
+                if (raft) PaddingValues(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm) else PaddingValues(0.dp),
+            horizontalArrangement = if (raft) Arrangement.spacedBy(SlockSpacing.Xxs) else Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             items(tabs.size, key = { "members-agent-tab-${tabs[it].name}" }) { index ->
                 val tab = tabs[index]
                 val spec = tab.toSlockTabSpec()
                 val selected = tab == selectedTab
                 val dragging = tab == draggedTab
-                Row(
-                    modifier = Modifier
-                        .widthIn(min = spec.width)
-                        .fillMaxHeight()
-                        .background(
-                            when {
-                                dragging -> SlockColor.AccentCyan
-                                selected -> SlockColor.BrandYellow
-                                else -> SlockColor.SurfaceWhite
+                val raftInk = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
+                Box {
+                    if (raft) SlockRaftStickerEdge(visible = selected)
+                    Row(
+                        modifier = (
+                            if (raft) {
+                                Modifier
+                                    .height(SlockTopTabBarDefaults.Height)
+                                    .slockRaftActiveSticker(
+                                        active = selected,
+                                        restFill = if (dragging) SlockColor.FillPressed else Color.Transparent
+                                    )
+                            } else {
+                                Modifier
+                                    .widthIn(min = spec.width)
+                                    .fillMaxHeight()
+                                    .background(
+                                        when {
+                                            dragging -> SlockColor.AccentCyan
+                                            selected -> SlockColor.BrandYellow
+                                            else -> SlockColor.SurfaceWhite
+                                        }
+                                    )
                             }
                         )
-                        .clickable { onSelectedTabChange(tab) }
-                        .pointerInput(tabs, tab, onReorderTabs) {
-                            if (onReorderTabs == null) return@pointerInput
-                            val stepWidthPx = spec.width.toPx().coerceAtLeast(1f)
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    draggedTab = tab
-                                    dragStartIndex = index
-                                    dragOffsetX = 0f
-                                },
-                                onDragEnd = {
-                                    val fromIndex = dragStartIndex
-                                    val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
-                                        .coerceIn(0, tabs.lastIndex)
-                                    if (fromIndex in tabs.indices && toIndex != fromIndex) {
-                                        onReorderTabs(tabs.membersMoveTab(fromIndex, toIndex))
+                            .clickable { onSelectedTabChange(tab) }
+                            .pointerInput(tabs, tab, onReorderTabs) {
+                                if (onReorderTabs == null) return@pointerInput
+                                val stepWidthPx = spec.width.toPx().coerceAtLeast(1f)
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggedTab = tab
+                                        dragStartIndex = index
+                                        dragOffsetX = 0f
+                                    },
+                                    onDragEnd = {
+                                        val fromIndex = dragStartIndex
+                                        val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
+                                            .coerceIn(0, tabs.lastIndex)
+                                        if (fromIndex in tabs.indices && toIndex != fromIndex) {
+                                            onReorderTabs(tabs.membersMoveTab(fromIndex, toIndex))
+                                        }
+                                        draggedTab = null
+                                        dragStartIndex = -1
+                                        dragOffsetX = 0f
+                                    },
+                                    onDragCancel = {
+                                        draggedTab = null
+                                        dragStartIndex = -1
+                                        dragOffsetX = 0f
                                     }
-                                    draggedTab = null
-                                    dragStartIndex = -1
-                                    dragOffsetX = 0f
-                                },
-                                onDragCancel = {
-                                    draggedTab = null
-                                    dragStartIndex = -1
-                                    dragOffsetX = 0f
+                                ) { _, dragAmount ->
+                                    dragOffsetX += dragAmount.x
                                 }
-                            ) { _, dragAmount ->
-                                dragOffsetX += dragAmount.x
                             }
+                            .padding(horizontal = if (raft) 12.dp else 10.dp, vertical = if (raft) 0.dp else SlockSpacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(if (raft) 6.dp else 5.dp, Alignment.CenterHorizontally)
+                    ) {
+                        if (raft) {
+                            SlockLucideIcon(spec.iconName, modifier = Modifier.size(16.dp), color = slockArgbHex(raftInk), strokeWidth = 2f)
+                            Text(
+                                text = spec.label,
+                                style =
+                                    SlockType.Button
+                                        .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
+                                        .copy(fontSize = 14.sp, lineHeight = 20.sp, color = raftInk),
+                                color = raftInk,
+                                maxLines = 1
+                            )
+                        } else {
+                            SlockLucideIcon(spec.iconName, modifier = Modifier.size(14.dp), color = SlockColor.TextBlackArgb)
+                            Text(
+                                text = spec.label,
+                                style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
+                                color = SlockColor.TextBlack,
+                                maxLines = 1
+                            )
                         }
-                        .padding(horizontal = 10.dp, vertical = SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally)
-                ) {
-                    SlockLucideIcon(spec.iconName, modifier = Modifier.size(14.dp), color = SlockColor.TextBlackArgb)
-                    Text(
-                        text = spec.label,
-                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
+                    }
                 }
-                Box(
+                if (!raft) Box(
                     modifier = Modifier
                         .height(SlockTopTabBarDefaults.Height - SlockStroke.Default)
                         .width(SlockStroke.Default)
@@ -7759,7 +7800,13 @@ private fun MembersAgentTabBar(
                 )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(if (raft) SlockStroke.Thin else SlockStroke.Default)
+                    .background(if (raft) SlockColor.BorderSeam else SlockColor.BorderBlack)
+        )
     }
 }
 

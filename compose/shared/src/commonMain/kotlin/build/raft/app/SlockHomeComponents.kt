@@ -4,6 +4,8 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalPanel
+import build.raft.app.components.SlockRaftStickerEdge
+import build.raft.app.components.slockRaftActiveSticker
 import build.raft.app.components.SlockExternalBridgeBadge
 import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.SlockHashGlobeIcon
@@ -5822,23 +5824,23 @@ private fun ServerSwitcherRow(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = HomeServerSwitcherRowMinHeight)
-                .background(
-                    when {
-                        selected -> SlockColor.Brand
-                        pressed -> SlockColor.FillPressed
-                        else -> Color.Transparent
-                    },
-                    RoundedCornerShape(SlockRadius.Control)
+                // The current server is the yellow sticker, so it wears the ink edge like
+                // every raft active item (SidebarItem `data-active`).
+                .slockRaftActiveSticker(
+                    active = selected,
+                    restFill = if (pressed) SlockColor.FillPressed else Color.Transparent
                 )
                 .then(clickModifier)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // On the yellow sticker the type is sticker ink in both themes.
+        val rowInk = if (selected) SlockColor.StickerInk else SlockColor.TextBlack
         Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
             when {
                 pending -> Text("...", style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 14.sp), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
-                selected -> SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(14.dp))
+                selected -> SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(14.dp), color = slockArgbHex(rowInk))
                 else -> Spacer(Modifier.size(14.dp))
             }
         }
@@ -5848,7 +5850,7 @@ private fun ServerSwitcherRow(
                 Text(
                     server.name,
                     style = SlockType.Button,
-                    color = SlockColor.TextBlack,
+                    color = rowInk,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -5861,7 +5863,7 @@ private fun ServerSwitcherRow(
             Text(
                 "/${server.slug}",
                 style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
-                color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                color = rowInk.copy(alpha = 0.4f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -6149,6 +6151,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
             .then(clickModifier)
             .hoverable(hoverInteractionSource)
     ) {
+        SlockRaftStickerEdge(visible = selected)
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
                 Modifier
@@ -6419,6 +6422,8 @@ private fun ChannelRow(
                     .then(rowDragModifier)
                     .then(hoverableModifier)
         ) {
+        // Dark-mode die-cut edge outside the selected row's ink edge.
+        SlockRaftStickerEdge(visible = selected)
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
                 Modifier
@@ -6961,6 +6966,8 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .then(clickModifier)
                     .then(hoverableModifier)
         ) {
+        // Dark-mode die-cut edge outside the selected row's ink edge.
+        SlockRaftStickerEdge(visible = selected)
         com.tencent.kuikly.compose.foundation.layout.Row(
             modifier =
                 Modifier

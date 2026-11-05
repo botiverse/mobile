@@ -8,6 +8,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockChipLoadingIndicator
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.SlockRaftFocusRing
 import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.components.slockRaftOverlaySurface
@@ -2052,6 +2053,9 @@ internal fun ThreadComposerContentLeaf(
     val submittedEchoFence = remember(state.instanceId) { ThreadComposerSubmittedEchoFence() }
     val currentOnEvent by rememberUpdatedState(onEvent)
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
+    // The editor's own focus, for raft `focus-within:shadow-focus`; [focused] also tracks
+    // suggestion visibility, so it can drop while the editor still holds focus.
+    var editorFocused by remember(state.instanceId) { mutableStateOf(false) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var handledEditorSessionId by remember(state.instanceId) { mutableStateOf(editorSessionId) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
@@ -2712,7 +2716,8 @@ internal fun ThreadComposerContentLeaf(
                         }
             ) {
                 // raft-ui `Composer`: card layer, container radius, 1.5dp line-strong edge,
-                // no shadow.
+                // no shadow; `focus-within:shadow-focus` rings it while the editor is focused.
+                SlockRaftFocusRing(visible = editorFocused && composerEnabled, radius = SlockRadius.Container)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2762,6 +2767,7 @@ internal fun ThreadComposerContentLeaf(
                                     sourceSessionId = sourceSessionId,
                                     isActiveSession = isEditorSessionActive,
                                 ) {
+                                    editorFocused = true
                                     suggestionPortalGeneration =
                                         resumeThreadComposerSuggestionsForEditing(
                                             portalState = suggestionPortal,
@@ -2779,6 +2785,7 @@ internal fun ThreadComposerContentLeaf(
                                     sourceSessionId = sourceSessionId,
                                     isActiveSession = isEditorSessionActive,
                                 ) {
+                                    editorFocused = false
                                     dismissThreadComposerSuggestionsForFocusLoss(
                                         portalState = suggestionPortal,
                                         owner = suggestionPortalOwner,

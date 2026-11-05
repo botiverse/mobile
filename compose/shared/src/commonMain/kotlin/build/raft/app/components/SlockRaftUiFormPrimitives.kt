@@ -12,6 +12,10 @@ import build.raft.app.TextField
 import build.raft.app.withSlockFontWeight
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -21,6 +25,7 @@ import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.offset
@@ -446,7 +451,7 @@ internal fun SlockSlugInput(
     fieldHeight: Dp = 44.dp
 ) {
     if (slockRaftActive()) {
-        SlockRaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) {
+        SlockRaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) { onFocusChange ->
             TextField(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
@@ -460,7 +465,9 @@ internal fun SlockSlugInput(
                     color = if (enabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
                 ),
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
+                contentAlignment = Alignment.CenterStart,
+                onFocus = { onFocusChange(true) },
+                onBlur = { onFocusChange(false) }
             )
         }
         return
@@ -568,7 +575,7 @@ internal fun SlockSlugInput(
     fieldHeight: Dp = 44.dp
 ) {
     if (slockRaftActive()) {
-        SlockRaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) {
+        SlockRaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) { onFocusChange ->
             TextField(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
@@ -582,7 +589,9 @@ internal fun SlockSlugInput(
                     color = if (enabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
                 ),
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
+                contentAlignment = Alignment.CenterStart,
+                onFocus = { onFocusChange(true) },
+                onBlur = { onFocusChange(false) }
             )
         }
         return
@@ -680,36 +689,40 @@ internal fun SlockRaftPrefixedInputFrame(
     enabled: Boolean,
     fieldHeight: Dp,
     modifier: Modifier = Modifier,
-    field: @Composable RowScope.() -> Unit
+    field: @Composable RowScope.(onFocusChange: (Boolean) -> Unit) -> Unit
 ) {
     val shape = RoundedCornerShape(SlockRadius.Control)
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(fieldHeight)
-                .clip(shape)
-                .background(if (enabled) SlockColor.Card else SlockColor.FillMuted, shape)
-                .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.BorderHairline, shape),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
+    var focused by remember { mutableStateOf(false) }
+    // InputGroup `focus-within:shadow-focus`: the focus ring sits outside the group.
+    Box(modifier = modifier.fillMaxWidth().height(fieldHeight)) {
+        SlockRaftFocusRing(visible = focused && enabled)
+        Row(
             modifier =
                 Modifier
-                    .fillMaxHeight()
-                    .background(SlockColor.FillMuted)
-                    .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
+                    .fillMaxSize()
+                    .clip(shape)
+                    .background(if (enabled) SlockColor.Card else SlockColor.FillMuted, shape)
+                    .border(SlockStroke.Control, if (enabled) SlockColor.LineField else SlockColor.BorderHairline, shape),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = prefix,
-                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 20.sp),
-                color = if (enabled) SlockColor.ForegroundHint else SlockColor.ForegroundDisabled,
-                maxLines = 1
-            )
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxHeight()
+                        .background(SlockColor.FillMuted)
+                        .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = prefix,
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 20.sp),
+                    color = if (enabled) SlockColor.ForegroundHint else SlockColor.ForegroundDisabled,
+                    maxLines = 1
+                )
+            }
+            Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.BorderHairline))
+            field { focused = it }
         }
-        Box(modifier = Modifier.width(SlockStroke.Thin).fillMaxHeight().background(SlockColor.BorderHairline))
-        field()
     }
 }
 

@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.app.components.SlockBrutalInputField
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import build.raft.app.components.SlockRaftFocusRingWidth
 import build.raft.app.components.SlockRaftMetrics
 import build.raft.app.components.SlockRaftSeparator
 import build.raft.app.components.slockRaftActive
@@ -116,7 +121,7 @@ internal fun SlockFilterPopover(
             headerSlot = headerSlot,
             searchField =
                 if (searchable) {
-                    {
+                    { onFocusChange ->
                         TextField(
                             value = searchText,
                             onValueChange = onSearchChange,
@@ -125,7 +130,9 @@ internal fun SlockFilterPopover(
                             autoFocus = false,
                             maxLines = 1,
                             textStyle = SlockRaftFilterPopoverInputStyle(),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            onFocus = { onFocusChange(true) },
+                            onBlur = { onFocusChange(false) }
                         )
                     }
                 } else {
@@ -348,7 +355,7 @@ internal fun SlockFilterPopover(
             headerSlot = headerSlot,
             searchField =
                 if (searchable) {
-                    {
+                    { onFocusChange ->
                         TextField(
                             value = searchText,
                             onValueChange = onSearchChange,
@@ -357,7 +364,9 @@ internal fun SlockFilterPopover(
                             autoFocus = false,
                             maxLines = 1,
                             textStyle = SlockRaftFilterPopoverInputStyle(),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            onFocus = { onFocusChange(true) },
+                            onBlur = { onFocusChange(false) }
                         )
                     }
                 } else {
@@ -565,7 +574,7 @@ private fun SlockRaftFilterPopover(
     multiSelect: Boolean,
     showClearWhenSelected: Boolean,
     headerSlot: (@Composable () -> Unit)?,
-    searchField: (@Composable () -> Unit)?
+    searchField: (@Composable (onFocusChange: (Boolean) -> Unit) -> Unit)?
 ) {
     val density = LocalDensity.current
     val popoverWidth = maxOf(widthDp.dp, SlockRaftFilterMinWidth)
@@ -635,14 +644,18 @@ private fun SlockRaftFilterPopover(
             }
             SlockRaftSeparator()
             if (searchField != null) {
+                // The search row touches the popup's edges, so focus is an inset 2dp ink
+                // outline rather than the outside ring (Elevation > Focus ring).
+                var searchFocused by remember { mutableStateOf(false) }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(SlockRaftFilterSearchHeight)
+                        .border(SlockRaftFocusRingWidth, if (searchFocused) SlockColor.BorderBlack else Color.Transparent)
                         .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    searchField()
+                    searchField { searchFocused = it }
                 }
                 SlockRaftSeparator()
             }
