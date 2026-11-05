@@ -4,7 +4,7 @@ area: thread
 platforms:
   - android
   - ios
-pull_request: https://github.com/botiverse/mobile/pull/4354
+pull_request: https://github.com/botiverse/mobile/pull/4359
 rollout: full
 ---
 
