@@ -32,9 +32,11 @@ private suspend fun RaftNetworkClient.inbox(
     offset: Int,
     serverId: ServerId
 ): HomeNetworkResponse =
-    request(
+    // Like web, only a first-page read (a reset) says why; a continuation page does not.
+    requestWithHeaders(
         priority,
         "channels/inbox",
+        headers = if (offset == 0) currentInboxFetchReasonHeaders() else emptyMap(),
         query = inboxRequestQuery(filter, limit, offset),
         serverIdOverride = serverId
     )

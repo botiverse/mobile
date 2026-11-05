@@ -411,7 +411,9 @@ internal class ProcessActivityUnreadStore(
                 }
             val result =
                 try {
-                    fetchSummary(owner, DataRequestPriority.Foreground)
+                    withInboxFetchReason(activityUnreadSummaryFetchReason(attempt.reason)) {
+                        fetchSummary(owner, DataRequestPriority.Foreground)
+                    }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Throwable) {
