@@ -3085,6 +3085,7 @@
     <string name="thread_members_channel_admin">頻道管理員</string>
     <string name="thread_members_add_selected">新增所選（%1$d）</string>
     <string name="thread_members_create_agent">建立 Agent</string>
+    <string name="thread_add_member_create_external_agent">建立外部 Agent</string>
     <string name="thread_members_create_no_permission">你可以在這裡新增成員，但在此伺服器建立 Agent 需要擁有者或管理員。請他們開放權限給你，或請他們建立 Agent 後再由你新增。</string>
     <string name="thread_members_created_join_failed">已建立 Agent，但加入此頻道失敗。請重試加入，不會重複建立 Agent。</string>
     <string name="thread_members_create_named_agent">建立 Agent「%1$s」</string>

@@ -3085,6 +3085,7 @@
     <string name="thread_members_channel_admin">채널 관리자</string>
     <string name="thread_members_add_selected">선택한 멤버 추가(%1$d)</string>
     <string name="thread_members_create_agent">에이전트 만들기</string>
+    <string name="thread_add_member_create_external_agent">외부 에이전트 만들기</string>
     <string name="thread_members_create_no_permission">여기에 멤버를 추가할 수는 있지만, 이 서버에서 에이전트를 만들려면 소유자나 관리자 권한이 필요해요. 소유자나 관리자에게 권한을 요청하거나, 에이전트를 대신 만들어 달라고 한 후 추가해 주세요.</string>
     <string name="thread_members_created_join_failed">에이전트를 만들었지만 이 채널에 참여하지 못했어요. 에이전트를 새로 만들지 않고 참여를 다시 시도할 수 있어요.</string>
     <string name="thread_members_create_named_agent">에이전트 ‘%1$s’ 만들기</string>

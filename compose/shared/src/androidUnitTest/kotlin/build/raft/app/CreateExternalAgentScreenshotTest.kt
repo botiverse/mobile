@@ -32,7 +32,7 @@ import org.robolectric.shadows.ShadowDialog
 
 /**
  * JVM screenshots of Add Member's "Create External Agent" (web ChannelMembers, slock staging
- * 947bd94), in English: the entry rows without create permission (both disabled, one reason),
+ * 947bd94), in English: the one Create agent row (closed, menu open, and disabled without create permission with its reason),
  * the add panel in the wide layout's supporting pane, and the Create External Agent dialog
  * opened from it (no Computer or runtime, the channel it joins said on the info wash), as the
  * phone sheet and the wide centred card, plus its submit error and the plan's agent limit. Verify / record as
@@ -56,6 +56,22 @@ class CreateExternalAgentScreenshotTest {
     @Test
     @Config(qualifiers = "w1024dp-h768dp-mdpi")
     fun entryWide() = capture("channel.members.add.wide", RaftAppAppearance.Light) { WideSupportingPane { AddMemberEntryContent(canCreateAgents = true) } }
+
+    // The one "Create agent" row (web #13140 option A): closed, and its menu open above it.
+    @Test
+    fun entryClosedLight() = capture("channel.members.add.create-closed", RaftAppAppearance.Light) { AddMemberEntryContent(canCreateAgents = true) }
+
+    @Test
+    fun entryMenuLight() =
+        capture("channel.members.add.create-menu", RaftAppAppearance.Light) {
+            CompositionLocalProvider(LocalThreadAddMemberCreateMenuPreview provides true) { AddMemberEntryContent(canCreateAgents = true) }
+        }
+
+    @Test
+    fun entryMenuDark() =
+        capture("channel.members.add.create-menu.dark", RaftAppAppearance.Dark) {
+            CompositionLocalProvider(LocalThreadAddMemberCreateMenuPreview provides true) { AddMemberEntryContent(canCreateAgents = true) }
+        }
 
     @Test
     fun dialogLight() = captureDialog("agent.create.external", RaftAppAppearance.Light)

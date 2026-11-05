@@ -19,10 +19,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -52,6 +55,9 @@ import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftMultiChoiceList
 import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.raftStateOverlay
@@ -270,53 +276,51 @@ private fun ThreadAddMemberAvatar(
 private val ThreadAddMemberAvatarSize = 20.dp
 
 /**
- * One create row's state (web `createAgentFooter`, slock staging 947bd94): which kind it
- * creates, whether it can be tapped, the name it carries into the dialog and how it reads.
+ * The one "Create agent" row's state (web `createAgentFooter`, slock #13140): whether it can be
+ * tapped, the name the managed dialog opens with and how it reads.
  */
 internal data class ThreadAddMemberCreateRowSpec(
-    val mode: MembersCreateAgentMode,
     /** Tappable: create permission, and no batch is being added. */
     val enabled: Boolean,
     /**
-     * The name the dialog opens with; blank lets it suggest one. Only the managed row carries a
-     * search that found no one (web `createEntryPromoted`): the external dialog never gets it.
+     * The name the managed dialog opens with; blank lets it suggest one. A search that found no
+     * one (web `createEntryPromoted`) is carried into it; the external dialog never gets it.
      */
     val initialName: String,
-    /** The managed row on the brand wash, named after the search, as the suggested way out. */
+    /** On the brand wash, named after the search, as the suggested way out. */
     val promoted: Boolean,
     /** "Joins #channel automatically after creation" under the label; not without permission. */
     val showsAutoJoin: Boolean,
 )
 
 /**
- * The list footer's create rows, in the web sidebar Agents "+" menu's order: "Create Agent"
- * (managed) then "Create External Agent". Both stay listed without create permission (owner or
- * admin, web `capabilities.createAgents`), disabled, so the way out is never hidden.
+ * The footer's one create row. Both menu items share one gate (owner or admin, web
+ * `capabilities.createAgents`), so without it the whole row stays listed, disabled, with the
+ * reason under it: hiding it would recreate the dead end it removes.
  */
-internal fun threadAddMemberCreateRowSpecs(
+internal fun threadAddMemberCreateRowSpec(
     canCreateAgents: Boolean,
     createName: String,
     adding: Boolean,
-): List<ThreadAddMemberCreateRowSpec> {
-    val enabled = canCreateAgents && !adding
+): ThreadAddMemberCreateRowSpec {
     val named = createName.isNotBlank() && canCreateAgents
-    return listOf(
-        ThreadAddMemberCreateRowSpec(
-            mode = MembersCreateAgentMode.Managed,
-            enabled = enabled,
-            initialName = if (named) createName else "",
-            promoted = named,
-            showsAutoJoin = canCreateAgents,
-        ),
-        ThreadAddMemberCreateRowSpec(
-            mode = MembersCreateAgentMode.External,
-            enabled = enabled,
-            initialName = "",
-            promoted = false,
-            showsAutoJoin = canCreateAgents,
-        ),
+    return ThreadAddMemberCreateRowSpec(
+        enabled = canCreateAgents && !adding,
+        initialName = if (named) createName else "",
+        promoted = named,
+        showsAutoJoin = canCreateAgents,
     )
 }
+
+/** The menu's items, in the Members page agent "+" menu's order. */
+internal val ThreadAddMemberCreateMenuModes = listOf(MembersCreateAgentMode.Managed, MembersCreateAgentMode.External)
+
+/** The name a menu item hands to the create dialog: only the managed one carries the search. */
+internal fun ThreadAddMemberCreateRowSpec.nameFor(mode: MembersCreateAgentMode): String =
+    if (mode == MembersCreateAgentMode.Managed) initialName else ""
+
+/** Screenshot tests draw the menu in place (a popup is its own window), above the row as the web flips it. */
+internal val LocalThreadAddMemberCreateMenuPreview = staticCompositionLocalOf { false }
 
 /**
  * Who may create agents from Add Member (web `capabilities.createAgents`, which
@@ -326,11 +330,11 @@ internal fun threadAddMemberCanCreateAgents(permissions: build.raft.app.model.Se
     permissions?.canManageSettings == true
 
 /**
- * The list's footer (web `createAgentFooter`): a "Create Agent" row and a "Create External
- * Agent" row, each opening its create dialog with this channel preselected; the new agent joins
- * this channel once created (an external one then opens on its profile, to be set up). A search
- * that found no one names the managed row. Without create permission both rows stay, disabled,
- * with the one reason under them.
+ * The list's footer (web `createAgentFooter`): ONE "Create agent" row that opens a menu with the
+ * Members page agent "+" menu's items, "Create agent" and "Create external agent", each opening
+ * its create dialog with this channel preselected; the new agent joins this channel once created
+ * (an external one then opens on its profile, to be set up). A search that found no one names
+ * the row. Without create permission the row stays, disabled, with the reason under it.
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRows(
@@ -340,15 +344,39 @@ internal fun ThreadAddMemberCreateAgentRows(
     enabled: Boolean,
     onCreateAgent: (name: String, mode: MembersCreateAgentMode) -> Unit,
 ) {
-    val specs = threadAddMemberCreateRowSpecs(canCreateAgents = canCreateAgents, createName = createName, adding = !enabled)
+    val spec = threadAddMemberCreateRowSpec(canCreateAgents = canCreateAgents, createName = createName, adding = !enabled)
+    var menuOpen by remember { mutableStateOf(false) }
+    val preview = LocalThreadAddMemberCreateMenuPreview.current
+    val select: (MembersCreateAgentMode) -> Unit = { mode ->
+        menuOpen = false
+        onCreateAgent(spec.nameFor(mode), mode)
+    }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        specs.forEach { spec ->
+        Box {
             ThreadAddMemberCreateAgentRow(
                 spec = spec,
                 canCreateAgents = canCreateAgents,
                 channelName = channelName,
-                onClick = { onCreateAgent(spec.initialName, spec.mode) },
+                onClick = { menuOpen = true },
             )
+            if (preview && spec.enabled) {
+                Box(
+                    Modifier.layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0, maxHeight = Constraints.Infinity))
+                        layout(0, 0) { placeable.place(0, -placeable.height - 4.dp.roundToPx()) }
+                    },
+                ) {
+                    RaftMenuSurface(minWidth = MembersCreateAgentMenuMinWidth) { ThreadAddMemberCreateMenuItems(select) }
+                }
+            } else {
+                RaftDropdownMenu(
+                    expanded = menuOpen && spec.enabled,
+                    onDismissRequest = { menuOpen = false },
+                    minWidth = MembersCreateAgentMenuMinWidth,
+                ) {
+                    ThreadAddMemberCreateMenuItems(select)
+                }
+            }
         }
         if (!canCreateAgents) {
             RaftText(
@@ -361,11 +389,25 @@ internal fun ThreadAddMemberCreateAgentRows(
     }
 }
 
+/** The Members page agent "+" menu's two items, in its order; the external one wears the web's Plug. */
+@Composable
+private fun ThreadAddMemberCreateMenuItems(onSelect: (MembersCreateAgentMode) -> Unit) {
+    RaftMenuItem(
+        text = stringResource(Res.string.thread_members_create_agent),
+        leadingIcon = { MembersMenuIcon(RaftLucideIconName.Bot) },
+        onClick = { onSelect(MembersCreateAgentMode.Managed) },
+    )
+    RaftMenuItem(
+        text = stringResource(Res.string.thread_add_member_create_external_agent),
+        leadingIcon = { MembersMenuIcon(RaftLucideIconName.Plug) },
+        onClick = { onSelect(MembersCreateAgentMode.External) },
+    )
+}
+
 /**
- * One create row (web `createAgentFooter`): a dashed tile (plus for a managed agent, the plug for
- * an external one), "Create Agent" / "Create External Agent" (the managed one "Create Agent
- * “name”" on the brand wash when the search found no one) and "Joins #channel automatically
- * after creation".
+ * The create row (web `createAgentFooter`): a dashed plus tile, "Create agent" (`Create agent
+ * “name”` on the brand wash when the search found no one) and "Joins #channel automatically
+ * after creation". Grey and inert without permission.
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRow(
@@ -376,7 +418,6 @@ internal fun ThreadAddMemberCreateAgentRow(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val external = spec.mode == MembersCreateAgentMode.External
     val active = spec.enabled
     val chipShape = RoundedCornerShape(RaftRadius.Chip)
     val tileInk = if (canCreateAgents) colors.foregroundHint else colors.foregroundDisabled
@@ -408,16 +449,11 @@ internal fun ThreadAddMemberCreateAgentRow(
             },
             contentAlignment = Alignment.Center,
         ) {
-            if (external) {
-                RaftSlotIcon(RaftLucideIconName.Plug, size = 14.dp, color = tileInk)
-            } else {
-                RaftGlyphIcon(RaftGlyph.Plus, size = 14.dp, color = tileInk)
-            }
+            RaftGlyphIcon(RaftGlyph.Plus, size = 14.dp, color = tileInk)
         }
         Column(Modifier.weight(1f)) {
             RaftText(
                 when {
-                    external -> stringResource(Res.string.agent_create_action_create_external)
                     spec.promoted -> stringResource(Res.string.thread_members_create_named_agent, spec.initialName)
                     else -> stringResource(Res.string.thread_members_create_agent)
                 },
