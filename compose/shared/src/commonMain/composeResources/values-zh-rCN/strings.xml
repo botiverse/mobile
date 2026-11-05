@@ -3691,10 +3691,10 @@
     <string name="thread_link_preview_prompt_decline_failed">没能保存你对 %1$s 的选择。请检查网络后重试。</string>
     <string name="thread_link_preview_prompt_unavailable">%1$s 无法在这个服务器上显示链接预览。</string>
     <string name="thread_link_preview_open_link">打开链接</string>
-    <string name="thread_link_preview_connect_title">连接 %1$s</string>
-    <string name="thread_link_preview_connect_body">%1$s 需要先连接你的账号，才能在这里显示此链接的预览。</string>
+    <string name="thread_link_preview_connect_title">连接你的 %1$s 账户</string>
+    <string name="thread_link_preview_connect_body">在 %1$s 连接账户后，这里会显示这个链接的内容。</string>
     <string name="thread_link_preview_action_failed">无法执行此操作，请重试。</string>
-    <string name="thread_link_preview_connect_action">连接账号</string>
+    <string name="thread_link_preview_connect_action">连接账户</string>
     <string name="thread_action_card_scope_group_server">服务器 · 只读</string>
     <string name="thread_action_card_scope_group_agent">Agent · 只读</string>
     <string name="thread_action_card_scope_group_channel">频道 · 只读</string>

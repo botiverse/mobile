@@ -3691,8 +3691,8 @@
     <string name="thread_link_preview_prompt_decline_failed">Couldn’t save your choice for %1$s. Check your connection and try again.</string>
     <string name="thread_link_preview_prompt_unavailable">%1$s can’t show link previews on this server.</string>
     <string name="thread_link_preview_open_link">Open Link</string>
-    <string name="thread_link_preview_connect_title">Connect %1$s</string>
-    <string name="thread_link_preview_connect_body">%1$s needs your account before it can show this link here.</string>
+    <string name="thread_link_preview_connect_title">Connect your %1$s account</string>
+    <string name="thread_link_preview_connect_body">%1$s shows what this link is once you connect your account there.</string>
     <string name="thread_link_preview_action_failed">Couldn’t run this action. Try again.</string>
     <string name="thread_link_preview_connect_action">Connect account</string>
     <string name="thread_action_card_scope_group_server">Server · read</string>

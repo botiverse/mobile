@@ -3838,4 +3838,7 @@
     <string name="settings_notifications_servers_customized_other">%1$d 個頻道有自訂設定</string>
     <string name="settings_notifications_servers_reset">恢復預設</string>
     <string name="settings_notifications_servers_unknown_channel">你已看不到的頻道</string>
+    <string name="thread_link_preview_connect_title">連結你的 %1$s 帳號</string>
+    <string name="thread_link_preview_connect_body">在 %1$s 連結帳號後，這裡會顯示這個連結的內容。</string>
+    <string name="thread_link_preview_connect_action">連結帳號</string>
 </resources>

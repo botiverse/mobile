@@ -3838,4 +3838,7 @@
     <string name="settings_notifications_servers_customized_other">%1$d canais personalizados</string>
     <string name="settings_notifications_servers_reset">Restaurar padrão</string>
     <string name="settings_notifications_servers_unknown_channel">Um canal que você não vê mais</string>
+    <string name="thread_link_preview_connect_title">Conecte sua conta do %1$s</string>
+    <string name="thread_link_preview_connect_body">Quando você conectar sua conta no %1$s, verá aqui do que se trata este link.</string>
+    <string name="thread_link_preview_connect_action">Conectar conta</string>
 </resources>
