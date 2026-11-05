@@ -269,6 +269,6 @@ internal object RaftRobolectricScreenshot {
     }
 }
 
-/** 2026-10-22 10:10 at UTC+8 (02:10Z), 24 h: the fixed base time context of every capture. */
+/** 2026-10-30 10:00 at UTC+8 (02:00Z), 24 h, after the fixtures' times: the fixed base time context of every capture. */
 private val ScreenshotTimeContext =
-    build.raft.app.model.RaftTimeContext(localOffsetMinutes = 8 * 60).refreshedAt(1_792_635_000_000L)
+    build.raft.app.model.RaftTimeContext(localOffsetMinutes = 8 * 60).refreshedAt(1_793_325_600_000L)
