@@ -340,6 +340,11 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MESSAGE_ROW = "message_row"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO = "new_message_menu_demo"
 /** Leading messages of the new-message-menu fixture that form its compact group. */
 internal const val THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE = 3
+/**
+ * Messages in the new-message-menu fixture. A compact row is ~32dp, so 40 rows are ~1300dp:
+ * well over any phone viewport, which the compact-scroll case's drag needs.
+ */
+internal const val THREAD_NEW_MESSAGE_MENU_DEMO_MESSAGE_COUNT = 40
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
@@ -493,8 +498,12 @@ internal fun threadVisualFixture(
             base.copy(
                 alignOwnMessagesRight = false,
                 compactConsecutiveMessages = true,
+                // The compact-scroll case drags this list and requires it to move,
+                // so it must overflow the viewport by a wide margin. 20 rows only
+                // just overflowed at the old 8/8 row padding; at the web's 4/4
+                // continuation rhythm (#4325) they all fit on screen.
                 messages =
-                    List(20) { index ->
+                    List(THREAD_NEW_MESSAGE_MENU_DEMO_MESSAGE_COUNT) { index ->
                         val inTargetGroup = index < THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE
                         seed.copy(
                             id = "visual-new-message-menu-$index",
