@@ -3692,6 +3692,12 @@
     <string name="action_card_form_channels_search">Buscar canales</string>
     <string name="action_card_form_channels_no_matches">Ningún canal coincide con “%1$s”</string>
     <string name="action_card_form_channels_empty">No hay canales para elegir</string>
+    <string name="action_card_question_page">Pregunta %1$d de %2$d</string>
+    <string name="action_card_question_back">Atrás</string>
+    <string name="action_card_question_next">Siguiente</string>
+    <string name="action_card_question_choose_first">Primero elige una opción.</string>
+    <string name="action_card_question_write_first">Primero escribe tu respuesta.</string>
+    <string name="action_card_question_other_placeholder">Escribe tu respuesta</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">La última es v%1$d</string>

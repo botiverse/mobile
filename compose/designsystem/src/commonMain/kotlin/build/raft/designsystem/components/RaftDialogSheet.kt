@@ -63,6 +63,9 @@ import build.raft.designsystem.tokens.RaftStroke
  *   `loading` Save): it keeps its colour and ignores taps (RaftButton's busy state).
  * - Body: [content] fills the rest of the sheet as given (a lazy list scrolls itself) and
  *   clears the home indicator; keep the phone's 16dp margin inside it.
+ * - A dialog with steps passes [onBack] from its second step on: the head's start button is then
+ *   a back arrow ([RaftGlyph.ArrowLeft], named [backLabel], which the caller localizes) that goes to the previous step instead of
+ *   closing (raft-ui `DialogSheetBack`).
  */
 @Composable
 fun RaftDialogSheetSurface(
@@ -77,8 +80,10 @@ fun RaftDialogSheetSurface(
     commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     closeEnabled: Boolean = true,
+    onBack: (() -> Unit)? = null,
+    backLabel: String = "",
     content: @Composable ColumnScope.() -> Unit,
-) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitLoading, commitVariant, commitIcon, closeLabel, closeEnabled, clearNavigationBar = false, content)
+) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitLoading, commitVariant, commitIcon, closeLabel, closeEnabled, clearNavigationBar = false, onBack = onBack, backLabel = backLabel, content = content)
 
 @Composable
 private fun RaftDialogSheetSurfaceImpl(
@@ -94,6 +99,8 @@ private fun RaftDialogSheetSurfaceImpl(
     closeLabel: String,
     closeEnabled: Boolean,
     clearNavigationBar: Boolean,
+    onBack: (() -> Unit)?,
+    backLabel: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -112,7 +119,11 @@ private fun RaftDialogSheetSurfaceImpl(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RaftBackButton(onClick = onClose, label = closeLabel, glyph = RaftGlyph.X, enabled = closeEnabled)
+                if (onBack != null) {
+                    RaftBackButton(onClick = onBack, label = backLabel, glyph = RaftGlyph.ArrowLeft, enabled = closeEnabled)
+                } else {
+                    RaftBackButton(onClick = onClose, label = closeLabel, glyph = RaftGlyph.X, enabled = closeEnabled)
+                }
                 RaftText(
                     title,
                     Modifier.weight(1f).semantics { heading() },
@@ -204,6 +215,8 @@ fun RaftDialogSheet(
     closeLabel: String = LocalRaftStrings.current.close,
     cancelLabel: String = LocalRaftStrings.current.cancel,
     closeEnabled: Boolean = true,
+    onBack: (() -> Unit)? = null,
+    backLabel: String = "",
     content: @Composable ColumnScope.() -> Unit,
 ) {
     RaftWindowDialog(onDismissRequest = onDismissRequest) {
@@ -230,6 +243,8 @@ fun RaftDialogSheet(
                         closeLabel = closeLabel,
                         cancelLabel = cancelLabel,
                         closeEnabled = closeEnabled,
+                        onBack = onBack,
+                        backLabel = backLabel,
                         content = content,
                     )
                 }
@@ -246,6 +261,8 @@ fun RaftDialogSheet(
                     commitIcon = commitIcon,
                     closeLabel = closeLabel,
                     closeEnabled = closeEnabled,
+                    onBack = onBack,
+                    backLabel = backLabel,
                     content = content,
                 )
             }
@@ -266,6 +283,8 @@ private fun RaftDialogSheetBottom(
     commitIcon: (@Composable () -> Unit)?,
     closeLabel: String,
     closeEnabled: Boolean,
+    onBack: (() -> Unit)?,
+    backLabel: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val slide = remember { Animatable(1f) }
@@ -301,6 +320,8 @@ private fun RaftDialogSheetBottom(
             closeLabel = closeLabel,
             closeEnabled = closeEnabled,
             clearNavigationBar = true,
+            onBack = onBack,
+            backLabel = backLabel,
             content = content,
         )
     }
@@ -315,7 +336,7 @@ private fun RaftDialogSheetBottom(
  * - Header: [RaftDialogHeader], the [title] with the ghost × ([closeLabel]) at its end.
  * - Body: [content] under the header, 6dp below it, filling the height it is given (a lazy
  *   list scrolls itself); keep a 16dp margin inside it, as on the phone sheet.
- * - Footer: a ghost Cancel ([cancelLabel], calls [onClose]) and the commit button
+ * - Footer: a ghost Cancel ([cancelLabel], calls [onClose]; [backLabel] and [onBack] instead from a step's second page on) and the commit button
  *   ([commitLabel], [commitVariant], [commitIcon]) at the end, `Lg`, 8dp apart, 20dp from the edges.
  */
 @Composable
@@ -332,6 +353,8 @@ fun RaftDialogSheetCenteredSurface(
     closeLabel: String = LocalRaftStrings.current.close,
     cancelLabel: String = LocalRaftStrings.current.cancel,
     closeEnabled: Boolean = true,
+    onBack: (() -> Unit)? = null,
+    backLabel: String = "",
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -353,7 +376,14 @@ fun RaftDialogSheetCenteredSurface(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RaftButton(text = cancelLabel, onClick = onClose, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg, enabled = closeEnabled)
+                // From a step's second page on, Cancel is Back (the header's × still closes).
+                RaftButton(
+                    text = if (onBack != null) backLabel else cancelLabel,
+                    onClick = onBack ?: onClose,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                    enabled = closeEnabled,
+                )
                 if (commitLabel != null) {
                     RaftButton(
                         text = commitLabel,
