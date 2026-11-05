@@ -15,10 +15,11 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); full = deliberate full readback (all platforms + device suite + canonical-final)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = pre-merge iOS check (plan + Blacksmith 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-* only)."
         type: choice
         options:
           - pr
+          - ios
           - full
         default: pr
       attachment_authority_repeat:
@@ -34,7 +35,7 @@ on:
         type: boolean
         default: false
       xcode_app_path:
-        description: "Opt-in Xcode for the Blacksmith iOS compile lane only; requires scope=full (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK) on Blacksmith macOS; symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, full tier and compose/iosApp changes) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
+        description: "Opt-in Xcode for the Blacksmith iOS compile lane only; requires scope=ios or scope=full (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK) on Blacksmith macOS; symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, nightly and release-* pushes only, never on dispatch) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
         required: false
         type: string
         default: ""
@@ -101,6 +102,9 @@ jobs:
         run: |
           .github/actions/git-safe-workspace/test_configure.sh
           scripts/ci/test_git_diff_path_state.sh
+
+      - name: Self-test the execution tier planner
+        run: scripts/ci/test_plan_test_tier.sh
 
       - name: Resolve exact execution tier
         id: plan
@@ -962,9 +966,13 @@ jobs:
     # - blacksmith-xcode27.0, every iOS run: Blacksmith with Xcode 27.0 (iOS 27 SDK). GitHub's
     #   Macs share one concurrency cap with ios-release.yml and ios-simulator-app.yml (27.1,
     #   xcode-27*), so routine checks stay off it and releases do not queue behind them.
-    # - github-xcode27.1, only on the full tier (full-ci PR, release-* push, nightly, scope=full
-    #   dispatch) or when compose/iosApp changed: GitHub xcode-27 with Xcode 27.1, so code using
-    #   27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge) compiles before release.
+    # - github-xcode27.1, only on the nightly schedule and release-* pushes: GitHub xcode-27 with
+    #   Xcode 27.1, so code using 27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge)
+    #   compiles before release. It is ~48 min on the most expensive runner, so full-ci PRs,
+    #   compose/iosApp changes, main pushes and every dispatch scope skip it (2026-11-05); 27.1
+    #   breakage still surfaces in the nightly within 24h and in ios-release.yml's 27.1 build.
+    # workflow_dispatch scope=ios runs plan + this job's Blacksmith lane only (no Android jobs):
+    # the pre-merge iOS check. The CI gate expects android and the emulator jobs skipped.
     # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK, skipping
     # iPhone Duo (on xcode-27 the iOS 27.1 runtime only offers Duo; the tab-bar tests expect a phone).
     needs: [plan]

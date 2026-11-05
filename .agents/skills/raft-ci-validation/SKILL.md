@@ -24,20 +24,28 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 | Push to `main` | by path | only if iOS paths changed | no |
 | Push to `release-*` | yes | yes | no |
 | Nightly schedule | yes | yes | yes |
-| `workflow_dispatch` `scope=pr` / `scope=full` | yes / yes | no / yes | no / yes |
+| `workflow_dispatch` `scope=pr` / `scope=ios` / `scope=full` | yes / **no** / yes | no / yes / yes | no / no / yes |
 
 iOS compile runs on Blacksmith with Xcode 27.0. A second lane, `iOS compile
-(Xcode 27.1)` on GitHub `xcode-27`, is added only on the full tier (full-ci PR,
-`release-*` push, nightly, `scope=full`) or when `compose/iosApp/**` changed on
-a run that compiles iOS (planner output `run_ios_xcode271`).
+(Xcode 27.1)` on GitHub `xcode-27` (~48 min, the most expensive runner), runs
+only on the nightly schedule and `release-*` pushes (planner output
+`run_ios_xcode271`) — not on full-ci PRs, `compose/iosApp/**` changes, main
+pushes or any dispatch scope. 27.1-only SDK breakage surfaces in the nightly
+and in `ios-release.yml`'s 27.1 build.
 
 So an ordinary PR never proves the iOS build. When your change can break
 Kotlin/Native or Swift (commonMain APIs, expect/actual, `compose/iosApp/**`,
-the realtime Swift list), run the full tier on your branch:
+the realtime Swift list), dispatch the iOS-only tier on your branch **once,
+right before merge** (not after every push; re-run only if a later push touches
+iOS or shared Kotlin code that could break the iOS build). It runs the plan job
+and the Blacksmith `iOS compile` only — Android is already covered by the PR run:
 ```bash
-gh workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=full
+bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios
 gh run list --repo botiverse/mobile --workflow test.yml --branch <branch> --limit 3
 ```
+`scope=full` (Android device/emulator suite, canonical-final, attachment legs)
+is only for release candidates or a deliberate full readback — never just to
+check that iOS compiles.
 `docs/ci-test-path-scoping.md` describes the path groups; its iOS rows predate
 task #37 and the planner script is authoritative.
 

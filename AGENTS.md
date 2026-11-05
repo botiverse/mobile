@@ -607,6 +607,16 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    ones that were skipped or not run (for example, iOS compile for ordinary
    `commonMain` changes runs only in the nightly `Test` schedule).
 
+   To check iOS before merge, dispatch
+   `bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios`
+   (plan + Blacksmith `iOS compile` only). Run it once per PR, right before
+   merge — not after every push; re-run only if a later push touches iOS or
+   shared Kotlin code that could break the iOS build. `scope=full` is only for
+   release candidates or a deliberate full readback (it adds the Android
+   emulator/device suite and canonical-final). The `iOS compile (Xcode 27.1)`
+   lane runs only in the nightly schedule and on `release-*` pushes. Details:
+   skill `raft-ci-validation`.
+
    A new push voids the approval and any auto-merge registration. The reviewer
    reviews and approves the new head, and the author registers auto-merge
    again. For a pure rebase onto a newer base, the reviewer may approve without

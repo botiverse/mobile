@@ -62,8 +62,8 @@ never received.
 
 ## 4. Validate
 
-- Ordinary PRs do not compile iOS. Run the full tier on your branch
-  (`gh workflow run test.yml --ref <branch> -f scope=full`, see
+- Ordinary PRs do not compile iOS. Run the iOS tier on your branch once before
+  merge (`bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios`, see
   `raft-ci-validation`) so the Swift list and the androidApp `when` both
   compile.
 - Runtime evidence: Android logcat/diagnostics show `realtime_domain_accept*`
