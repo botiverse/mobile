@@ -64,6 +64,6 @@ class MarkdownReadableSemanticsUiTest {
                     .fetchSemanticsNode()
             val texts = node.config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString { it.text }
             assertTrue(texts.contains("Reuse the read-state fact for traversal/layout/draw now"), texts)
-            assertFalse(texts.any { it == '​' || it == '⁠' || it == '￼' }, "layout-only marks in: $texts")
+            assertFalse(texts.any { it == '\u200B' || it == '\u2060' || it == '\uFFFC' }, "layout-only marks in: $texts")
         }
 }
