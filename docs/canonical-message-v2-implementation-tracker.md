@@ -334,6 +334,11 @@ V2 does not leave the canary (become the path the app draws from) until every it
 - [ ] **The server pins what it sends.** slock `packages/shared/src/actionCards.ts`
   `ACTION_CARD_METADATA_KEYS` (`v2-keeps` / `v2-drops`, #13265) fails the build on a new action-card key;
   the forwarded-bundle and `action.*` / `result.*` lists follow in AppFather's next PR.
+- [ ] **Every result kind the server writes is carried.** `CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND` has
+  no entry for `agent-call-approval`, `assistant-owner-action` and `question-answers` (AppFather, slock
+  #13274), so their executed results reach the V2 fact as `kind` only. Harmless while V2 is a canary (the
+  app draws cards from the row); on the main path those results would not draw. Add their keys (manifest
+  bump if needed) before the switch.
 
 ## Planned commit topology
 
