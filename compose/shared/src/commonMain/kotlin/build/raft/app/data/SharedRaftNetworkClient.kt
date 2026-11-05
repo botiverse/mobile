@@ -22,6 +22,10 @@ import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.network.toSafeDiagnosticsToken
 import build.raft.app.network.redactPresignedUrlText
 import build.raft.app.network.RaftByteStream
+import build.raft.app.network.RAFT_KTOR_CONNECT_TIMEOUT_MILLIS
+import build.raft.app.network.combineDownloadedChunks
+import build.raft.app.network.raftStreamingGet
+import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
 internal const val RAFT_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS = 15_000L
@@ -314,6 +318,91 @@ internal class SharedRaftNetworkClient(
                 warningLogger = warningLogger
             )
         }
+    }
+
+    override suspend fun requestBytes(
+        priority: DataRequestPriority,
+        path: String,
+        serverIdOverride: ServerId?,
+        maxBytes: Int,
+    ): HomeNetworkBytesResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val normalizedPath = path.networkDiagnosticsPath()
+        val requestBaseUrl = currentBaseUrl()
+        var body: ByteArray? = null
+        var contentType: String? = null
+        var failure: String? = null
+        val response =
+            try {
+                requestScheduler.run(
+                    priority = priority.toNetworkPriority(),
+                    key = path,
+                    reason = "GET_BYTES"
+                ) {
+                    authMiddleware(requestBaseUrl).request(
+                        serverIdOverride = serverIdOverride,
+                        caller = "shared_network_bytes:$normalizedPath"
+                    ) { auth ->
+                        // A retry after a refresh starts over.
+                        body = null
+                        contentType = null
+                        val chunks = mutableListOf<ByteArray>()
+                        var received = 0
+                        val answer =
+                            raftStreamingGet(
+                                url = absoluteUrl(requestBaseUrl, path),
+                                requestHeaders =
+                                    mapOf(
+                                        "Accept" to "*/*",
+                                        HEADER_AUTHORIZATION to auth.authorization,
+                                        HEADER_SERVER_ID to auth.serverId,
+                                    ),
+                                priority = priority.toNetworkPriority(),
+                                connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
+                                socketTimeoutMillis = null,
+                                totalTimeoutMillis = RAFT_NETWORK_BYTES_TIMEOUT_MILLIS,
+                                onResponseStart = { status, length, _ ->
+                                    if (length != null && length > maxBytes) throw RaftNetworkBytesTooLarge()
+                                    status in 200..299
+                                },
+                                onChunk = { chunk ->
+                                    received += chunk.size
+                                    if (received > maxBytes) throw RaftNetworkBytesTooLarge()
+                                    chunks += chunk
+                                },
+                            )
+                        if (answer.statusCode in 200..299) {
+                            body = combineDownloadedChunks(chunks, received)
+                            contentType =
+                                answer.headers.entries
+                                    .firstOrNull { (name, _) -> name.equals("Content-Type", ignoreCase = true) }
+                                    ?.value?.firstOrNull()
+                                    ?.substringBefore(';')?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+                        }
+                        HomeNetworkResponse(code = answer.statusCode, bodyText = null, responseHeaders = answer.headers)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (tooLarge: RaftNetworkBytesTooLarge) {
+                failure = "too_large"
+                HomeNetworkResponse(code = 0, bodyText = null)
+            } catch (error: Throwable) {
+                failure = error::class.simpleName?.toSafeDiagnosticsToken() ?: "transport"
+                HomeNetworkResponse(code = 0, bodyText = null)
+            }
+        warningLogger(
+            "endpoint category=${path.networkDiagnosticsCategory()} path=$normalizedPath method=GET_BYTES " +
+                "responseBytes=${body?.size ?: 0} code=${response.code} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                "result=${failure ?: response.networkDiagnosticsResult()}" +
+                response.requestIdLogSuffix()
+        )
+        return HomeNetworkBytesResponse(
+            code = response.code,
+            bytes = body.takeIf { response.isSuccessful },
+            contentType = contentType.takeIf { response.isSuccessful },
+        )
     }
 
     override suspend fun createAttachmentUploadSession(
@@ -1574,3 +1663,9 @@ private fun String.percentEncode(): String {
     }
     return builder.toString()
 }
+
+/** [SharedRaftNetworkClient.requestBytes]: a body is read within a minute, as other downloads are. */
+private const val RAFT_NETWORK_BYTES_TIMEOUT_MILLIS = 60_000L
+
+/** A binary body past its cap: the read stops there. */
+private class RaftNetworkBytesTooLarge : IllegalStateException("binary body over its cap")

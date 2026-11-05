@@ -76,9 +76,9 @@ data class ArtifactFactsWireDto(
 )
 
 /**
- * `ArtifactCard`: what a card shows wherever it is drawn. Of `preview`, only the excerpt's text is
- * read (a publisher cover is a file of the Artifact, fetched with the viewer's credentials: not
- * read by this client yet).
+ * `ArtifactCard`: what a card shows wherever it is drawn. Of `preview`, the excerpt's text and the
+ * publish check's screenshot are read (a publisher cover is a file of the Artifact, fetched with the
+ * viewer's credentials: not read by this client yet).
  */
 @Serializable
 data class ArtifactCardWireDto(
@@ -99,12 +99,38 @@ data class ArtifactCardWireDto(
     val facts: ArtifactFactsWireDto? = null,
 )
 
-/** `ArtifactPreview`: only the excerpt's text is read (the description's fallback). */
+/**
+ * `ArtifactPreview`: the excerpt's text (the description's fallback) and the screenshot's files
+ * (slock #13046 `artifactScreenshot.ts` `ArtifactScreenshotPreview`: `{ kind: "screenshot", desktop,
+ * phone: ObjectFileId | null }`). Fields of other kinds are not read; a field of an unexpected type
+ * reads as absent, so the card still shows.
+ */
 @Serializable
 data class ArtifactPreviewWireDto(
     val kind: String,
     val text: String? = null,
+    val desktop: JsonElement? = null,
+    val phone: JsonElement? = null,
 )
+
+/**
+ * The publish check's screenshot of the version a card shows (web `ArtifactScreenshotPreview`):
+ * object files of the Artifact, [phone] null when there is no phone shot.
+ */
+data class ArtifactScreenshot(
+    val desktop: String,
+    val phone: String? = null,
+)
+
+private fun JsonElement?.nonBlankStringOrNull(): String? =
+    (this as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+
+/** web `artifactScreenshotFile`'s guard: a screenshot only with a desktop file; any other kind has none. */
+internal fun ArtifactPreviewWireDto.screenshotOrNull(): ArtifactScreenshot? {
+    if (kind != "screenshot") return null
+    val desktop = desktop.nonBlankStringOrNull() ?: return null
+    return ArtifactScreenshot(desktop = desktop, phone = phone.nonBlankStringOrNull())
+}
 
 /** `ArtifactKind`; an unknown one reads as [Other]. */
 enum class ArtifactKind(val wire: String) {
@@ -175,6 +201,8 @@ data class ArtifactSummary(
     val updatedAt: String? = null,
     val commentCount: Int = 0,
     val facts: ArtifactFacts = ArtifactFacts(),
+    /** The publish check's screenshot (card `preview` of kind `screenshot`), drawn above the header. */
+    val screenshot: ArtifactScreenshot? = null,
 )
 
 /**
@@ -317,6 +345,7 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
                 width = facts?.width,
                 height = facts?.height,
             ),
+        screenshot = card.preview?.screenshotOrNull(),
     )
 }
 

@@ -27,6 +27,7 @@ import build.raft.app.data.AppLinkResult
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.SharedArtifactScreenshotStore
 import build.raft.app.data.SharedArtifactSummaryStore
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.APP_LINK_READ_MODE_V1
@@ -92,6 +93,8 @@ internal data class ThreadArtifactLinkHost(
     val appHosts: StateFlow<List<String>>,
     val featureFlags: SharedServerFeatureFlags?,
     val webBaseUrl: String,
+    /** The cards' screenshots (in memory for this viewer); null where none are read (fixtures). */
+    val screenshots: SharedArtifactScreenshotStore? = null,
 )
 
 /** One message's Artifact links answered `ok`, and the hosts they were split on. */

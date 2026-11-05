@@ -12675,6 +12675,7 @@ private fun SharedThreadRouteContentContent(
                                 appHosts = sharedStores.clientConfigStore.appHosts,
                                 featureFlags = sharedStores.serverFeatureFlags,
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                                screenshots = sharedStores.artifactScreenshotStore,
                             ),
                         // interactive_link_cards: the batched link-card read (App link cards v2).
                         featureFlags = sharedStores.serverFeatureFlags,

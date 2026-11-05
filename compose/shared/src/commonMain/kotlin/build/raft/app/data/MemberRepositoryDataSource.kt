@@ -46,6 +46,20 @@ private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
+/** [RaftNetworkClient.requestBytes]'s default cap on a body kept in memory. */
+const val RAFT_NETWORK_BYTES_DEFAULT_MAX: Int = 16 * 1024 * 1024
+
+/** [RaftNetworkClient.requestBytes]'s answer: [bytes] only for a 2xx read in full. */
+class HomeNetworkBytesResponse(
+    val code: Int,
+    val bytes: ByteArray? = null,
+    /** The media type, without parameters, lower case (`image/png`); null when not sent. */
+    val contentType: String? = null,
+) {
+    val isSuccessful: Boolean
+        get() = code in 200..299 && bytes != null
+}
+
 interface RaftNetworkClient {
     suspend fun request(
         priority: DataRequestPriority,
@@ -87,6 +101,20 @@ interface RaftNetworkClient {
         bodyText: String? = null
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+
+    /**
+     * An authenticated GET of a binary body (an image an API route serves, e.g. an Artifact's
+     * screenshot), authenticated and bound to the Server as [request] is. The body is kept in
+     * memory, so it is read only up to [maxBytes]: a larger one fails (code 0). Clients that cannot
+     * read binary bodies answer 501.
+     */
+    suspend fun requestBytes(
+        priority: DataRequestPriority,
+        path: String,
+        serverIdOverride: ServerId? = null,
+        maxBytes: Int = RAFT_NETWORK_BYTES_DEFAULT_MAX,
+    ): HomeNetworkBytesResponse =
+        HomeNetworkBytesResponse(code = 501)
 
     /** Server-authoritative direct attachment-session operations. */
     suspend fun createAttachmentUploadSession(
