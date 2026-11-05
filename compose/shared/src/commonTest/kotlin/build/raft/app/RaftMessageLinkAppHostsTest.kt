@@ -12,7 +12,8 @@ import kotlin.test.assertNull
  * a union with the hosts the App already takes (production, the environment's web URL), matched exactly.
  */
 class RaftMessageLinkAppHostsTest {
-    private val path = "/s/botiverse/channel/c1?msg=m1"
+    private val channel = "89dce17f-1cd3-4db8-b08f-7b4141004b5a"
+    private val path = "/s/botiverse/channel/$channel?msg=7556f881-a5f8-4b0d-88dc-8b5af28e8f05"
     private val appHosts = setOf("raft.build", "app.raft.build")
 
     @AfterTest
@@ -20,7 +21,7 @@ class RaftMessageLinkAppHostsTest {
 
     @Test
     fun anAppHostIsAcceptedAndSiblingsAreNot() {
-        assertEquals("c1", parseRaftMessageLink("https://raft.build$path", appHosts = appHosts)?.channelId)
+        assertEquals(channel, parseRaftMessageLink("https://raft.build$path", appHosts = appHosts)?.channelId)
         assertNotNull("https://raft.build$path".toRaftMessagePermalinkTarget(appHosts = appHosts))
         for (url in listOf("https://w.raft.build$path", "https://evil.raft.build$path", "https://raft.build.evil.example$path")) {
             assertNull(parseRaftMessageLink(url, appHosts = appHosts), url)
