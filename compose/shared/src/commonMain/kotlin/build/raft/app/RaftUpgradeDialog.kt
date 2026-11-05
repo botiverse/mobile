@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +14,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -35,6 +38,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -468,7 +472,7 @@ internal fun RaftUpgradeDialog(
             color = RaftTheme.colors.foregroundMuted,
         )
         if (!seats) {
-            RaftUpgradeBenefitList(raftUpgradeBenefits(copy.first))
+            RaftUpgradeBenefitList(raftUpgradeBenefits(copy.first), firstIsHit = copy.first != null)
         }
         if (request.waitingForWeb) {
             RaftBanner(
@@ -511,12 +515,27 @@ internal fun RaftUpgradeDialog(
     }
 }
 
-/** Web ProOfferPanel's list: each Pro line with Free's beside it, the limit just hit first and marked. */
+/**
+ * Web ProOfferPanel's list: each Pro line with Free's struck through under it; the limit just hit
+ * first, on an attention-soft row in bold (`bg-attention-soft font-bold`).
+ */
 @Composable
-private fun RaftUpgradeBenefitList(benefits: List<RaftUpgradeBenefit>) {
+private fun RaftUpgradeBenefitList(benefits: List<RaftUpgradeBenefit>, firstIsHit: Boolean) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         benefits.forEachIndexed { index, benefit ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+            val hit = firstIsHit && index == 0
+            Row(
+                modifier =
+                    if (hit) {
+                        Modifier.fillMaxWidth()
+                            .background(RaftTheme.colors.attentionSoft, RoundedCornerShape(RaftRadius.Control))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    } else {
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    },
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
                 RaftContentLucideIcon(
                     RaftLucideIconName.Check,
                     size = 16.dp,
@@ -526,17 +545,15 @@ private fun RaftUpgradeBenefitList(benefits: List<RaftUpgradeBenefit>) {
                     RaftText(
                         text = stringResource(benefit.pro),
                         style =
-                            if (index == 0) {
-                                RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold)
-                            } else {
-                                RaftTheme.typography.callout
-                            },
+                            RaftTheme.typography.callout.copy(
+                                fontWeight = if (hit) FontWeight.Bold else FontWeight.Medium
+                            ),
                         color = RaftTheme.colors.foreground,
                     )
                     RaftText(
                         text = stringResource(benefit.free),
-                        style = RaftTheme.typography.footnote,
-                        color = RaftTheme.colors.foregroundMuted,
+                        style = RaftTheme.typography.footnote.copy(textDecoration = TextDecoration.LineThrough),
+                        color = RaftTheme.colors.foregroundHint,
                     )
                 }
             }
