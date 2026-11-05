@@ -870,6 +870,10 @@
     <string name="thread_action_card_label_type">Tipo</string>
     <string name="thread_action_card_frozen">Congelado</string>
     <string name="thread_action_card_status_reconfirm">Requer nova confirmação</string>
+    <string name="thread_action_card_status_expired">Expirado</string>
+    <string name="thread_action_card_status_withdrawn">Retirada</string>
+    <string name="thread_action_card_expired_line">Expirou em %1$s — peça ao agent que envie um novo</string>
+    <string name="thread_action_card_seats_expired_line">Nenhum proprietário respondeu em 7 dias; nada foi alterado.</string>
     <string name="thread_action_card_reconfirm">Reconfirmar</string>
     <string name="thread_action_card_reconfirm_failed">Não foi possível reconfirmar</string>
     <string name="thread_action_card_blocked_target_server">Esta ação é executada em %1$s. Mude para %1$s para executá-la.</string>

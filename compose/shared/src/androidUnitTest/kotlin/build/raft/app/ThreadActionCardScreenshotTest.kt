@@ -14,7 +14,14 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.expiredAsOf
+import build.raft.app.data.parseActionCardSpec
+import build.raft.app.data.stripActionCardSpec
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.raftEpochDayForDate
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -42,13 +49,20 @@ class ThreadActionCardScreenshotTest {
     @Test
     fun threadActionCardsDark() = capture("thread.action-cards.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    /** Expired cards: a typed one the server expired, one past its `expiresAt` on the clock, a spec card, a seat request. */
+    @Test
+    fun threadActionCardsExpiredLight() = capture("thread.action-cards.expired", RaftAppAppearance.Light) { ThreadActionCardsExpiredVisualContent() }
+
+    @Test
+    fun threadActionCardsExpiredDark() = capture("thread.action-cards.expired.dark", RaftAppAppearance.Dark) { ThreadActionCardsExpiredVisualContent() }
+
+    private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ThreadActionCardsVisualContent() }) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ThreadActionCardsVisualContent() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { content() }
         }
 }
 
@@ -128,6 +142,77 @@ private fun ThreadActionCardsVisualContent() {
                         sourceServerId = "server-a",
                         targetServerName = "Raft HQ",
                     ),
+                pending = false,
+                onCommit = {},
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadActionCardsExpiredVisualContent() {
+    // 2026-11-05 14:00 in UTC+8; the cards expired on 2026-10-30 09:30 and today at 13:10.
+    val timeContext =
+        RaftTimeContext(
+            localOffsetMinutes = 8 * 60,
+            todayEpochDay = raftEpochDayForDate(2026, 11, 5),
+            nowEpochMillis = 1_793_858_400_000L,
+        )
+    val spec =
+        stripActionCardSpec(
+            requireNotNull(
+                parseActionCardSpec(
+                    Json.parseToJsonElement(
+                        """
+                        {"catalog":"action-card.v1","icon":"hash",
+                         "title":{"key":"actionCard.title.createChannel","text":{"en":"Create #{channel}"},"params":{"channel":"launch-review"}},
+                         "spec":{"root":"root","elements":{
+                           "root":{"type":"Stack","props":{},"children":["name","create"]},
+                           "name":{"type":"Field","props":{"label":{"key":"actionCard.field.name","text":{"en":"Name"}},"value":"#launch-review"}},
+                           "create":{"type":"Button","props":{"label":{"key":"actionCard.createChannel.create","text":{"en":"Create Channel"}},"emphasis":"primary","action":{"kind":"open","intent":"create_channel"}}}
+                         }}}
+                        """.trimIndent(),
+                    ),
+                ),
+            ),
+            RAFT_APP_ACTION_CARD_CAPABILITIES,
+        )!!
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ThreadActionCardView(
+                card =
+                    ThreadActionCard(
+                        type = "channel:create",
+                        state = "expired",
+                        name = "release-review",
+                        visibility = "private",
+                        description = "Coordinate the final release review.",
+                        expiredAt = "2026-10-30T01:30:00.000Z",
+                    ),
+                pending = false,
+                onCommit = {},
+            )
+            // Still `prepared` on the wire, past its `expiresAt` on this clock.
+            ThreadActionCardView(
+                card =
+                    ThreadActionCard(type = "agent:create", name = "Scout", expiresAt = "2026-11-05T05:10:00.000Z")
+                        .expiredAsOf(timeContext.nowEpochMillis!!),
+                pending = false,
+                onCommit = {},
+            )
+            RaftActionCardView(
+                card = spec,
+                state =
+                    RaftActionCardFrameState(
+                        status = RaftActionCardStatus.Expired,
+                        endedLine = "10-30 09:30 expired — ask the agent to send a new one",
+                    ),
+                entityName = { _, _ -> null },
+                onAction = {},
+                displayLocale = "en",
+            )
+            ThreadActionCardView(
+                card = ThreadActionCard(type = "seats:add", state = "expired", presentationTitle = "Add 1 seat"),
                 pending = false,
                 onCommit = {},
             )

@@ -870,6 +870,10 @@
     <string name="thread_action_card_label_type">類型</string>
     <string name="thread_action_card_frozen">已凍結</string>
     <string name="thread_action_card_status_reconfirm">需重新確認</string>
+    <string name="thread_action_card_status_expired">已過期</string>
+    <string name="thread_action_card_status_withdrawn">已撤回</string>
+    <string name="thread_action_card_expired_line">%1$s 已過期——請讓 Agent 重新傳送一張</string>
+    <string name="thread_action_card_seats_expired_line">沒有任何擁有者在 7 天內回應，因此未做任何變更。</string>
     <string name="thread_action_card_reconfirm">重新確認</string>
     <string name="thread_action_card_reconfirm_failed">重新確認失敗</string>
     <string name="thread_action_card_blocked_target_server">這個操作會在 %1$s 上執行，請切換到 %1$s 後再執行。</string>

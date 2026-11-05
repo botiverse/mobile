@@ -870,6 +870,10 @@
     <string name="thread_action_card_label_type">Type</string>
     <string name="thread_action_card_frozen">Frozen</string>
     <string name="thread_action_card_status_reconfirm">Confirm again</string>
+    <string name="thread_action_card_status_expired">Expired</string>
+    <string name="thread_action_card_status_withdrawn">Withdrawn</string>
+    <string name="thread_action_card_expired_line">%1$s expired — ask the agent to send a new one</string>
+    <string name="thread_action_card_seats_expired_line">No owner answered within 7 days; nothing changed.</string>
     <string name="thread_action_card_reconfirm">Reconfirm</string>
     <string name="thread_action_card_reconfirm_failed">Reconfirmation failed</string>
     <string name="thread_action_card_blocked_target_server">This action runs on %1$s. Switch to %1$s to run it.</string>

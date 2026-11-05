@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.model.raftEpochMillisUtcIso
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.serialization.Serializable
@@ -107,6 +109,15 @@ internal data class ThreadActionCard(
      * card may hold `unsupported` markers, which the contract refuses as input.
      */
     val presentationCardJson: String? = null,
+    /**
+     * When a `prepared` card stops being runnable (wire top-level `expiresAt`, an ISO instant, sent
+     * only in responses; Tenny 11-05): prepared + 30 days, or the type's own deadline (a question
+     * card's, a seat request's). Absent: no deadline. Past it, the App draws the card as expired
+     * ([expiredAsOf]); the server's 409 is final.
+     */
+    val expiresAt: String? = null,
+    /** Wire `expiredAt`: when a card in state `expired` expired. */
+    val expiredAt: String? = null,
 ) {
     /**
      * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
@@ -126,7 +137,66 @@ internal data class ThreadActionCard(
     /** Wire `reconfirm_required`: something changed since it was prepared; it waits on Reconfirm. */
     val needsReconfirmation: Boolean
         get() = state.equals("reconfirm_required", ignoreCase = true)
+
+    /** Wire `expired`: past its deadline without running (a 30-day card, a question, a seat request). */
+    val isExpired: Boolean
+        get() = state.equals("expired", ignoreCase = true)
+
+    /** Wire `withdrawn`, a state only question cards reach (web `ActionCardSpecCard`): its agent took it back. */
+    val isWithdrawn: Boolean
+        get() = state.equals("withdrawn", ignoreCase = true) && type.equals(QuestionAskActionCardType, ignoreCase = true)
+
+    /** Ended without running ([isExpired], [isWithdrawn]): folded, no button changes it any more. */
+    val hasEnded: Boolean
+        get() = isExpired || isWithdrawn
 }
+
+internal const val QuestionAskActionCardType = "question:ask"
+
+/** A seat request (web person card `seats:add`): no owner answered within its 7 days once expired. */
+internal const val SeatsAddActionCardType = "seats:add"
+
+/** [ThreadActionCard.expiresAt] as epoch millis; null when absent or unreadable. */
+internal fun ThreadActionCard.expiresAtEpochMillis(): Long? = parseRaftTimestampEpochMillisOrNull(expiresAt)
+
+/**
+ * Whether the client clock ([nowMillis]) is past a waiting card's [ThreadActionCard.expiresAt]. Only
+ * a card still waiting on the reader (`prepared`, `reconfirm_required`) can run out; the client clock
+ * decides only whether buttons show and dialogs open, the server's 409 is final.
+ */
+internal fun ThreadActionCard.isPastExpiry(nowMillis: Long): Boolean {
+    val waiting = state.equals("prepared", ignoreCase = true) || needsReconfirmation
+    if (!waiting) return false
+    val deadline = expiresAtEpochMillis() ?: return false
+    return nowMillis > deadline
+}
+
+/** [this] as it is drawn at [nowMillis]: `expired` once past [ThreadActionCard.expiresAt], else unchanged. */
+internal fun ThreadActionCard.expiredAsOf(nowMillis: Long): ThreadActionCard =
+    if (isPastExpiry(nowMillis)) copy(state = "expired", expiredAt = expiredAt ?: expiresAt) else this
+
+/**
+ * [this] after the server refused it as expired (409): `expired`, dated by its deadline, else
+ * [nowMillis]. A done or ended card stays as it is.
+ */
+internal fun ThreadActionCard.markedExpired(nowMillis: Long): ThreadActionCard =
+    if (isExecuted || hasEnded) {
+        this
+    } else {
+        copy(state = "expired", expiredAt = expiredAt ?: expiresAt ?: raftEpochMillisUtcIso(nowMillis))
+    }
+
+/**
+ * The server's 409 codes for a card refused because it expired: the 30-day rule's and a question
+ * card's (`QUESTION_EXPIRED`). The 30-day code is not final yet (slock server PR for #proj-apps
+ * task 40), so the likely spellings are all read as expiry.
+ */
+internal val ActionCardExpiredErrorCodes: Set<String> =
+    setOf("EXPIRED", "ACTION_EXPIRED", "ACTION_CARD_EXPIRED", "CARD_EXPIRED", "QUESTION_EXPIRED")
+
+/** Whether a refusal says the card expired ([ActionCardExpiredErrorCodes]). */
+internal fun ScreenError.isActionCardExpiredRefusal(): Boolean =
+    serverCode?.trim()?.uppercase()?.let { it in ActionCardExpiredErrorCodes } == true
 
 /** Wire `installText`: the three fields an app adds to agent prompts. Raw publisher text. */
 @Serializable
@@ -182,6 +252,10 @@ internal data class WireActionCardMetadata(
     val revision: Int? = null,
     /** RFC 082: when the card was posted or last replaced (ISO UTC). */
     val updatedAt: String? = null,
+    /** A prepared card's deadline (responses only, absent without one): [ThreadActionCard.expiresAt]. */
+    val expiresAt: String? = null,
+    /** An `expired` card's time: [ThreadActionCard.expiredAt]. */
+    val expiredAt: String? = null,
 )
 
 @Serializable
@@ -288,8 +362,14 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         targetServerName = meta.targetServerName?.takeIf { it.isNotBlank() },
         confirmationVersion = meta.confirmationVersion,
         presentationCardJson = meta.presentation?.card?.takeIf { parseActionCardSpec(it) != null }?.toString(),
+        // Top level beside `state`; a server before that sends only a question card's own `action.expiresAt`.
+        expiresAt = meta.expiresAt?.takeIf { it.isNotBlank() } ?: actionObject.actionCardStringOrNull("expiresAt"),
+        expiredAt = meta.expiredAt?.takeIf { it.isNotBlank() },
     )
 }
+
+private fun JsonObject.actionCardStringOrNull(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
 private const val ACTION_CARD_SPEC_CACHE_SIZE = 64
 
@@ -366,6 +446,8 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("targetServerName", targetServerName)
         putString("confirmationVersion", confirmationVersion?.toString())
         putString("presentationCard", presentationCardJson)
+        putString("expiresAt", expiresAt)
+        putString("expiredAt", expiredAt)
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -425,6 +507,8 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         targetServerName = metadata["${ActionCardMetadataPrefix}targetServerName"]?.takeIf { it.isNotBlank() },
         confirmationVersion = metadata["${ActionCardMetadataPrefix}confirmationVersion"]?.toIntOrNull(),
         presentationCardJson = metadata["${ActionCardMetadataPrefix}presentationCard"]?.takeIf { it.isNotBlank() },
+        expiresAt = metadata["${ActionCardMetadataPrefix}expiresAt"]?.takeIf { it.isNotBlank() },
+        expiredAt = metadata["${ActionCardMetadataPrefix}expiredAt"]?.takeIf { it.isNotBlank() },
     )
 }
 

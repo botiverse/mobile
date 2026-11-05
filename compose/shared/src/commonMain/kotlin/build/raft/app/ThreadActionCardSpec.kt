@@ -21,6 +21,10 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.FeedbackSubmitActionCardType
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiredAsOf
+import build.raft.app.data.isActionCardExpiredRefusal
+import build.raft.app.data.markedExpired
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.stripActionCardSpec
 import build.raft.app.model.ConversationKind
@@ -165,6 +169,19 @@ internal fun ActionCardSpecIntent.typedActionType(): String? =
         ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats -> null
     }
 
+/** The store's refusal for a card that ended ([threadActionCardCommitBlockedByEnd]); nothing ran. */
+internal const val ActionCardEndedErrorCode = "action_card_ended"
+
+/**
+ * Whether a tap on [card]'s button (ThreadPage `commitActionCard`) must do nothing because the card
+ * ended: expired by its state or past its `expiresAt` at [nowMillis], or withdrawn. Then no run
+ * starts and no create-agent dialog opens; create-channel and add-members, which create first
+ * and then mark the card executed, don't start either. Mark-executed itself never expires, so a
+ * dialog opened in time still finishes.
+ */
+internal fun threadActionCardCommitBlockedByEnd(card: ThreadActionCard, nowMillis: Long): Boolean =
+    !card.isExecuted && card.expiredAsOf(nowMillis).hasEnded
+
 /** A Button that changes the card (as opposed to a link). A result intent only views what the result names. */
 internal val ActionCardSpecAction.changesCard: Boolean
     get() = this is ActionCardSpecAction.Execute || this is ActionCardSpecAction.OpenForm ||
@@ -215,7 +232,7 @@ internal fun feedbackTicketIdOrNull(raw: String?): String? = raw?.trim()?.takeIf
 /**
  * Routes a tap on Button [elementId] of the rendered [spec] of [card] (spec §3.3, web
  * `ActionCardSpecButton`). Links always work; a Button that changes the card does nothing on a
- * done or frozen card, and an `open` intent whose native path is for another type (or none) opens
+ * done, frozen or ended card, and an `open` intent whose native path is for another type (or none) opens
  * in web, as strip would have.
  */
 internal fun threadActionCardSpecPress(
@@ -250,7 +267,8 @@ internal fun threadActionCardSpecPress(
         ActionCardSpecAction.OpenInWeb, is ActionCardSpecAction.Unsupported -> ThreadActionCardSpecPress.OpenInWeb
         is ActionCardSpecAction.Execute, is ActionCardSpecAction.OpenForm, is ActionCardSpecAction.Open ->
             when {
-                card.isExecuted || card.isFrozen -> ThreadActionCardSpecPress.Ignore
+                // An ended card (expired, by state or past `expiresAt`; withdrawn) runs nothing and opens no dialog.
+                card.isExecuted || card.isFrozen || card.hasEnded -> ThreadActionCardSpecPress.Ignore
                 card.needsReconfirmation -> ThreadActionCardSpecPress.Typed
                 action is ActionCardSpecAction.Open ->
                     if (action.intent.typedActionType()?.equals(card.type, ignoreCase = true) == true) {
@@ -511,6 +529,8 @@ internal class ThreadActionCardSpecStore(
      * closed, nothing more runs and nothing is shown.
      */
     private val stepUp: SecondFactorStepUpCoordinator? = null,
+    /** The client clock: a card past its `expiresAt` runs nothing from here. */
+    private val nowMillis: () -> Long = ::defaultNowMillis,
 ) {
     private val _state = MutableStateFlow(ThreadActionCardSpecState())
     val state: StateFlow<ThreadActionCardSpecState> = _state.asStateFlow()
@@ -552,7 +572,8 @@ internal class ThreadActionCardSpecStore(
 
     private fun press(intent: ThreadActionCardSpecIntent.Press) {
         val current = _state.value
-        if (threadActionCardSpecPress(intent.card, intent.spec, intent.elementId) != ThreadActionCardSpecPress.Store) return
+        val card = intent.card.expiredAsOf(nowMillis())
+        if (threadActionCardSpecPress(card, intent.spec, intent.elementId) != ThreadActionCardSpecPress.Store) return
         if (intent.messageId in current.busy || current.confirm != null || current.form != null) return
         val button = intent.spec.button(intent.elementId) ?: return
         when (val action = button.action) {
@@ -634,7 +655,7 @@ internal class ThreadActionCardSpecStore(
                             is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
                         }
                     is DataResult.Empty -> ThreadActionCardSpecError.Failed()
-                    is DataResult.Error -> result.error.toThreadActionCardSpecError()
+                    is DataResult.Error -> expiredOrError(messageId, card, result.error)
                     is DataResult.NoPermission ->
                         if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
                 }
@@ -642,9 +663,24 @@ internal class ThreadActionCardSpecStore(
         }
     }
 
+    /**
+     * A refusal's error under the card, or null when the server refused it as expired (409): the
+     * card is then drawn expired ([markedExpired]), which says it all.
+     */
+    private fun expiredOrError(messageId: String, card: ThreadActionCard, error: ScreenError): ThreadActionCardSpecError? {
+        if (!error.isActionCardExpiredRefusal()) return error.toThreadActionCardSpecError()
+        applyCard(messageId, card.markedExpired(nowMillis()))
+        return null
+    }
+
     private fun confirmExecute() {
         val confirm = _state.value.confirm ?: return
         if (confirm.submitting || confirm.card.isExecuted || confirm.card.isFrozen) return
+        if (confirm.card.expiredAsOf(nowMillis()).hasEnded) {
+            applyCard(confirm.messageId, confirm.card.expiredAsOf(nowMillis()))
+            update { it.copy(confirm = null) }
+            return
+        }
         val token = ++dialogToken
         update { it.copy(confirm = confirm.copy(submitting = true, error = null)) }
         scope.launch {
@@ -656,7 +692,7 @@ internal class ThreadActionCardSpecStore(
                 if (open != null) update { it.copy(confirm = open.copy(submitting = false)) }
                 return@launch
             }
-            when (val settled = settle(confirm.messageId, result)) {
+            when (val settled = settle(confirm.messageId, confirm.card, result)) {
                 null -> if (open != null) update { it.copy(confirm = null) }
                 else -> if (open != null) update { it.copy(confirm = open.copy(submitting = false, error = settled)) }
             }
@@ -666,6 +702,11 @@ internal class ThreadActionCardSpecStore(
     private fun submitForm(values: Map<String, ActionCardFormValue>) {
         val form = _state.value.form ?: return
         if (form.submitting || form.card.isExecuted || form.card.isFrozen) return
+        if (form.card.expiredAsOf(nowMillis()).hasEnded) {
+            applyCard(form.messageId, form.card.expiredAsOf(nowMillis()))
+            update { it.copy(form = null) }
+            return
+        }
         val token = ++dialogToken
         update { it.copy(form = form.copy(values = values, submitting = true, error = null)) }
         scope.launch {
@@ -680,7 +721,7 @@ internal class ThreadActionCardSpecStore(
                 if (open != null) update { it.copy(form = open.copy(submitting = false, issues = invalid.issues, error = null)) }
                 return@launch
             }
-            when (val settled = settle(form.messageId, result)) {
+            when (val settled = settle(form.messageId, form.card, result)) {
                 null -> if (open != null) update { it.copy(form = null) }
                 else -> if (open != null) update { it.copy(form = open.copy(submitting = false, issues = emptyList(), error = settled)) }
             }
@@ -688,7 +729,7 @@ internal class ThreadActionCardSpecStore(
     }
 
     /** A dialog's answer: null when it closes (done, or the route took the NoPermission), else what it says. */
-    private suspend fun settle(messageId: String, result: DataResult<ActionCardExecuteOutcome>): ThreadActionCardSpecError? =
+    private suspend fun settle(messageId: String, card: ThreadActionCard, result: DataResult<ActionCardExecuteOutcome>): ThreadActionCardSpecError? =
         when (result) {
             is DataResult.Content ->
                 when (val outcome = result.data) {
@@ -705,7 +746,7 @@ internal class ThreadActionCardSpecStore(
                     is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
                 }
             is DataResult.Empty -> ThreadActionCardSpecError.Failed()
-            is DataResult.Error -> result.error.toThreadActionCardSpecError()
+            is DataResult.Error -> expiredOrError(messageId, card, result.error)
             is DataResult.NoPermission ->
                 if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
         }

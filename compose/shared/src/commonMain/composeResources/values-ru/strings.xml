@@ -870,6 +870,10 @@
     <string name="thread_action_card_label_type">Тип</string>
     <string name="thread_action_card_frozen">Заморожена</string>
     <string name="thread_action_card_status_reconfirm">Нужно подтвердить снова</string>
+    <string name="thread_action_card_status_expired">Срок истёк</string>
+    <string name="thread_action_card_status_withdrawn">Отозван</string>
+    <string name="thread_action_card_expired_line">Срок истёк %1$s — попросите агента прислать новую</string>
+    <string name="thread_action_card_seats_expired_line">Ни один владелец не ответил в течение 7 дней; ничего не изменилось.</string>
     <string name="thread_action_card_reconfirm">Подтвердить снова</string>
     <string name="thread_action_card_reconfirm_failed">Не удалось подтвердить повторно</string>
     <string name="thread_action_card_blocked_target_server">Это действие выполняется на сервере %1$s. Чтобы выполнить его, переключитесь на сервер %1$s.</string>

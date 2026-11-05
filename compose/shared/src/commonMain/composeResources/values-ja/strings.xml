@@ -872,6 +872,10 @@
     <string name="thread_action_card_label_type">種類</string>
     <string name="thread_action_card_frozen">凍結済み</string>
     <string name="thread_action_card_status_reconfirm">再確認が必要</string>
+    <string name="thread_action_card_status_expired">期限切れ</string>
+    <string name="thread_action_card_status_withdrawn">取り下げ済み</string>
+    <string name="thread_action_card_expired_line">%1$s に期限切れになりました — エージェントに新しいカードを送ってもらってください</string>
+    <string name="thread_action_card_seats_expired_line">7 日以内にオーナーからの対応がなかったため、何も変更されていません。</string>
     <string name="thread_action_card_reconfirm">再確認</string>
     <string name="thread_action_card_reconfirm_failed">再確認に失敗しました</string>
     <string name="thread_action_card_blocked_target_server">この操作は %1$s で実行されます。実行するには %1$s に切り替えてください。</string>

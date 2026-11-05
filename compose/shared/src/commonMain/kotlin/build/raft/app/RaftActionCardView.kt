@@ -25,7 +25,22 @@ import build.raft.designsystem.components.RaftMessageActionCardStatusTone
 import build.raft.designsystem.theme.RaftTheme
 
 /** `actionMetadata.state` as the frame shows it. */
-internal enum class RaftActionCardStatus { Prepared, Executed, Frozen, ReconfirmRequired }
+internal enum class RaftActionCardStatus {
+    Prepared,
+    Executed,
+    Frozen,
+    ReconfirmRequired,
+
+    /** Past its deadline without running (wire `expired`, or `expiresAt` behind the client clock). */
+    Expired,
+
+    /** A question card its agent took back (wire `withdrawn`). */
+    Withdrawn;
+
+    /** Ended without running: folded, no Button that changes it. */
+    val ended: Boolean
+        get() = this == Expired || this == Withdrawn
+}
 
 /**
  * What the frame reads from `actionMetadata` and the viewer, never from the spec (S0: the
@@ -39,6 +54,8 @@ internal enum class RaftActionCardStatus { Prepared, Executed, Frozen, Reconfirm
  *   only, no buttons but navigation.
  * - [busyElementKey]: the Button whose action is running; the others wait.
  * - [error]: the last action's failure, under the body.
+ * - [endedLine]: an [RaftActionCardStatus.ended] card's line under the title: when it expired and
+ *   to ask for a new one, or a seat request's "no owner answered".
  * - [runsOnServerName]: `actionMetadata.targetServerName` when the card's message is in a joint
  *   channel (web `useActionCardAccess.runsOnTargetServer`): the action always runs on that
  *   server, never the viewer's, and the body opens with "Runs on {server}". Null otherwise.
@@ -51,6 +68,7 @@ internal data class RaftActionCardFrameState(
     val busyElementKey: String? = null,
     val error: String? = null,
     val runsOnServerName: String? = null,
+    val endedLine: String? = null,
 )
 
 /**
@@ -80,7 +98,7 @@ internal fun actionCardFrameButtonState(
     return when {
         inSpecOfExecutedCard -> RaftCardButtonState.Hidden
         link -> if (linkNavigable) RaftCardButtonState.Enabled else RaftCardButtonState.Disabled
-        state.readOnly || state.status == RaftActionCardStatus.Executed -> RaftCardButtonState.Hidden
+        state.readOnly || state.status == RaftActionCardStatus.Executed || state.status.ended -> RaftCardButtonState.Hidden
         elementId == state.busyElementKey -> RaftCardButtonState.Busy
         state.busyElementKey != null || state.status == RaftActionCardStatus.Frozen || state.blockedReason != null -> RaftCardButtonState.Disabled
         else -> RaftCardButtonState.Enabled
@@ -99,7 +117,8 @@ internal fun actionCardFrameButtonState(
  *   executed, the spec stays as the record without its buttons, then the `result` tree (web
  *   `ActionCardSpecCard`).
  * - Status, as [ThreadActionCardView]: Done with the success pixel and the [record] under the
- *   title (with a check), folded; Frozen with every action button disabled; Confirm again
+ *   title (with a check), folded; Expired / Withdrawn folded with the [endedLine] under the title
+ *   and no action button; Frozen with every action button disabled; Confirm again
  *   with the pink pixel; View only for [RaftActionCardFrameState.blockedReason] (folded, the
  *   reason under the title, buttons disabled) or [RaftActionCardFrameState.readOnly] (no action
  *   buttons). A done, frozen, to-reconfirm or view-only card folds by the reader's hand.
@@ -127,8 +146,9 @@ internal fun RaftActionCardView(
     linkNavigable: (ActionCardSpecButton) -> Boolean = { true },
 ) {
     val executed = state.status == RaftActionCardStatus.Executed
-    val viewOnly = !executed && (state.readOnly || state.blockedReason != null)
-    val foldsByDefault = executed || (state.blockedReason != null && state.status == RaftActionCardStatus.Prepared)
+    val ended = state.status.ended
+    val viewOnly = !executed && !ended && (state.readOnly || state.blockedReason != null)
+    val foldsByDefault = executed || ended || (state.blockedReason != null && state.status == RaftActionCardStatus.Prepared)
     var expanded by remember(foldsByDefault, initiallyExpanded) { mutableStateOf(initiallyExpanded ?: !foldsByDefault) }
     fun context(inSpecOfExecutedCard: Boolean) =
         RaftCardTreeContext(
@@ -152,11 +172,14 @@ internal fun RaftActionCardView(
             description =
                 when {
                     executed -> state.record?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
+                    ended -> state.endedLine?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     else -> state.blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } }
                 },
             status =
                 when {
                     executed -> stringResource(Res.string.common_done)
+                    state.status == RaftActionCardStatus.Expired -> stringResource(Res.string.thread_action_card_status_expired)
+                    state.status == RaftActionCardStatus.Withdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     state.status == RaftActionCardStatus.Frozen -> stringResource(Res.string.thread_action_card_frozen)
                     state.status == RaftActionCardStatus.ReconfirmRequired -> stringResource(Res.string.thread_action_card_status_reconfirm)
                     viewOnly -> stringResource(Res.string.thread_action_card_view_only)

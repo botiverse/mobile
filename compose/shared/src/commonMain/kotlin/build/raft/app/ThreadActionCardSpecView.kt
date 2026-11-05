@@ -28,6 +28,8 @@ import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.jointInviteRateLimitMinutes
+import build.raft.app.data.QuestionAskActionCardType
+import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
@@ -72,10 +74,16 @@ internal data class ThreadActionCardSpecHost(
 
 internal val LocalThreadActionCardSpecHost = compositionLocalOf { ThreadActionCardSpecHost() }
 
-/** The frame's status for a card's `state`. */
+/**
+ * The frame's status for a card's `state` (web `ActionCardSpecCard`). A state this build doesn't
+ * know is drawn as Prepared, as before. Draw the card as of the client clock first
+ * ([build.raft.app.data.expiredAsOf]) so a prepared card past its `expiresAt` reads Expired.
+ */
 internal fun ThreadActionCard.actionCardSpecStatus(): RaftActionCardStatus =
     when {
         isExecuted -> RaftActionCardStatus.Executed
+        isExpired -> RaftActionCardStatus.Expired
+        isWithdrawn -> RaftActionCardStatus.Withdrawn
         isFrozen -> RaftActionCardStatus.Frozen
         needsReconfirmation -> RaftActionCardStatus.ReconfirmRequired
         else -> RaftActionCardStatus.Prepared
@@ -93,6 +101,23 @@ internal fun ActionCardSpecCard.withChangingButtonsLabelled(label: ActionCardSpe
             },
         )
     return copy(spec = relabel(spec))
+}
+
+/**
+ * An ended card's line under its title (web `ActionCardSpecCard` headerLine): a seat request's
+ * "No owner answered within 7 days", else for an expired card when it expired and to ask the
+ * agent for a new one; the date in the app's time format. None for a question card (it has its
+ * own ended lines on the web) or a withdrawn one, nor without a live time context to date it.
+ */
+@Composable
+internal fun ThreadActionCard.actionCardEndedLine(): String? {
+    if (!isExpired || type.equals(QuestionAskActionCardType, ignoreCase = true)) return null
+    if (type.equals(SeatsAddActionCardType, ignoreCase = true)) return stringResource(Res.string.thread_action_card_seats_expired_line)
+    val at = (expiredAt ?: expiresAt)?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val context = currentRaftTimeContextProvider?.current ?: return null
+    // Never the raw wire timestamp: a context without a day formats nothing.
+    val date = context.formatTimestampLabel(at).takeIf { it.isNotBlank() && it != at } ?: return null
+    return stringResource(Res.string.thread_action_card_expired_line, date)
 }
 
 /** An app string as a card Msg: the same words in [displayLocale] and as the English fallback. */
@@ -155,12 +180,13 @@ internal fun ThreadActionCardSpecView(
     val displayLocale = rememberActionCardDisplayLocale()
     val blockedReason =
         when {
-            card.isExecuted -> null
+            card.isExecuted || card.hasEnded -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
                 card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
+    val endedLine = card.actionCardEndedLine()
     val committedBy = card.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
     val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
     val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
@@ -185,6 +211,7 @@ internal fun ThreadActionCardSpecView(
             readOnly = !commitEnabled,
             busyElementKey = slice.busyElement(typedPending),
             error = threadActionCardSpecErrorText(slice.error),
+            endedLine = endedLine,
         )
     RaftActionCardView(
         card = rendered,
@@ -225,7 +252,7 @@ internal fun ThreadActionCardSpecConfirmSheet(
             title = actionCardMsgPlain(state.confirm.title, context),
             commitLabel = actionCardMsgPlain(state.confirm.confirmLabel, context),
             onCommit = { onIntent(ThreadActionCardSpecIntent.ConfirmExecute) },
-            commitEnabled = !state.card.isExecuted && !state.card.isFrozen,
+            commitEnabled = !state.card.isExecuted && !state.card.isFrozen && !state.card.hasEnded,
             commitLoading = state.submitting,
             commitVariant = if (state.destructive) RaftButtonVariant.Danger else RaftButtonVariant.Primary,
             closeLabel = stringResource(Res.string.common_close),
