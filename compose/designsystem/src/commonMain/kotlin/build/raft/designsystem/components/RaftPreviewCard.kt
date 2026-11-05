@@ -840,13 +840,17 @@ fun <T> raftPreviewCardButtonLayout(
     buttons: List<T>,
     kind: (T) -> RaftPreviewCardButtonKind,
     frameless: (T) -> Boolean,
+    linkTakesEmptyRow: Boolean = true,
 ): RaftPreviewCardButtonLayout<T> {
     val executes = buttons.indices.filter { kind(buttons[it]) == RaftPreviewCardButtonKind.Execute }
     val picked =
         if (executes.isNotEmpty()) {
             executes.take(RaftPreviewCardDefaults.ItemRowButtons)
-        } else {
+        } else if (linkTakesEmptyRow) {
             buttons.indices.filter { kind(buttons[it]) == RaftPreviewCardButtonKind.Link }.take(1)
+        } else {
+            // A card whose title is the link (RaftAppLinkCard): every link is in the menu.
+            emptyList()
         }
     val row = picked.filter { frameless(buttons[it]) } + picked.filterNot { frameless(buttons[it]) }
     val inRow = picked.toSet()
@@ -857,8 +861,11 @@ fun <T> raftPreviewCardButtonLayout(
 }
 
 /** [raftPreviewCardButtonLayout] of [RaftPreviewCardButton]s. */
-fun raftPreviewCardButtonLayout(buttons: List<RaftPreviewCardButton>): RaftPreviewCardButtonLayout<RaftPreviewCardButton> =
-    raftPreviewCardButtonLayout(buttons, kind = { it.kind }, frameless = { it.frameless })
+fun raftPreviewCardButtonLayout(
+    buttons: List<RaftPreviewCardButton>,
+    linkTakesEmptyRow: Boolean = true,
+): RaftPreviewCardButtonLayout<RaftPreviewCardButton> =
+    raftPreviewCardButtonLayout(buttons, kind = { it.kind }, frameless = { it.frameless }, linkTakesEmptyRow = linkTakesEmptyRow)
 
 /**
  * raft-ui `PreviewCardActions` on an item card (web `LinkCardActions`): [buttons] laid out by
@@ -877,9 +884,11 @@ fun RaftPreviewCardItemActions(
     buttons: List<RaftPreviewCardButton>,
     modifier: Modifier = Modifier,
     moreLabel: String = RaftTheme.strings.moreActions,
+    /** False: with no action of the app's the row stays empty and every link is in the menu ([RaftAppLinkCard]). */
+    linkTakesEmptyRow: Boolean = true,
 ) {
     if (buttons.isEmpty()) return
-    val layout = remember(buttons) { raftPreviewCardButtonLayout(buttons) }
+    val layout = remember(buttons, linkTakesEmptyRow) { raftPreviewCardButtonLayout(buttons, linkTakesEmptyRow) }
     val reason = layout.row.firstNotNullOfOrNull { it.disabledReason }
     Column(
         modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),

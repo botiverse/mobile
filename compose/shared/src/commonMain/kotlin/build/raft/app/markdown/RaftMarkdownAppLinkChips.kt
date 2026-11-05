@@ -143,6 +143,8 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                 // Only a bare link becomes a chip: its text is its own address.
                 if (appLinkPreviewHref(text.substring(range.start, range.end).raftCopyText().trim()) != key) return@mapNotNull null
                 val result = host.results[key] ?: return@mapNotNull null
+                // A block card with no `inline` (version 3): the link stays the author's own.
+                if (result is AppLinkResult.Card && !result.chip) return@mapNotNull null
                 range to result
             }
     if (chips.isEmpty() && artifactChips.isEmpty()) return RaftAppLinkChipContent(this, emptyMap())

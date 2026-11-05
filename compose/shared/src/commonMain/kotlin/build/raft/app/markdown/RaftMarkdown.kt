@@ -1,6 +1,7 @@
 package build.raft.app.markdown
 
 import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.links.planRaftBlockCards
 import build.raft.app.links.toParsedRaftPermalink
 import org.jetbrains.compose.resources.stringResource
 import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
@@ -142,6 +143,7 @@ import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevisi
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableCellPadding
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableClosedGrid
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownParagraphFillWidth
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAfterListParagraph
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownBlockMargins
 import com.tencent.kuiklybase.markdown.compose.RaftMarkdownBlockMargin
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownRowRenderCostSink
@@ -2746,6 +2748,12 @@ fun RaftMarkdownBody(
             horizontalRule = {
                 RaftMarkdownHorizontalRule()
             },
+            // An App link's block card follows the paragraph its link is in, in a list item inside
+            // the item (raft-design #1010); the plan says which paragraphs, so most draw nothing more.
+            paragraph = { model ->
+                MarkdownParagraph(model.content, model.node, style = model.typography.paragraph)
+                RaftMarkdownBlockCardsAfter(model.node.startOffset)
+            },
             // web blockquote: `border-l-2 border-line-seam`, text `text-foreground-muted`.
             blockQuote = { model ->
                 MarkdownBlockQuote(
@@ -2815,7 +2823,18 @@ fun RaftMarkdownBody(
                 }
             }
         }
-    if (lightParagraphNode != null) {
+    // The App link block cards this message draws, by the paragraph each follows. A message that has
+    // one takes the full path (the light path draws the paragraph alone).
+    val blockCardHost = LocalRaftMarkdownBlockCardHost.current
+    val blockCards =
+        remember(parserContent, blockCardHost) {
+            blockCardHost?.let { host ->
+                planRaftBlockCards(parserContent, host.results).takeIf { it.isNotEmpty() }?.let { RaftMarkdownBlockCards(it, host.draw) }
+            }
+        }
+    val listParagraphCards: (@Composable (ASTNode) -> Unit)? =
+        remember(blockCards) { blockCards?.afterListParagraph() }
+    if (lightParagraphNode != null && blockCards == null) {
         // #367 light path: render the single eligible paragraph directly. The
         // same LAYOUT / LAYOUT_BLOCK trace sections wrap the render so phase
         // attribution stays comparable with the full path during A/B.
@@ -2849,7 +2868,9 @@ fun RaftMarkdownBody(
                 // task #800: top-level paragraphs wrap when the body opts out of
                 // fill (right-aligned bubbles); list/quote paragraphs pin fill.
                 LocalRaftMarkdownParagraphFillWidth provides fillWidth,
-                LocalRaftMarkdownBlockMargins provides blockMargins
+                LocalRaftMarkdownBlockMargins provides blockMargins,
+                LocalRaftMarkdownBlockCards provides blockCards,
+                LocalRaftMarkdownAfterListParagraph provides listParagraphCards
             ),
             LocalRaftMarkdownRowRenderCostSink,
             rowCensusToken

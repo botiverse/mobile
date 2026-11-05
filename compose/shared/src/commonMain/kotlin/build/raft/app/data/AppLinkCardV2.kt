@@ -27,12 +27,15 @@ import kotlinx.serialization.json.JsonObject
  */
 
 /**
- * Capabilities this client declares on the batched read (step 1, read-only): v2 cards, their inline
- * titles and the inline badge's card tones (`inline.tone.v2`: every tone word is read, and every
- * badge is drawn neutral, as the web's CardBadge). No `button.v1`, `confirm.v1` or `undo.v1`, so Raft
- * strips the buttons and signs no handle.
+ * Capabilities this client declares on the batched read: v2 cards, their inline titles and the
+ * inline badge's card tones (`inline.tone.v2`: every tone word is read, and every badge is drawn
+ * neutral, as the web's CardBadge); `preview.v3`, so Raft answers version 3 items whichever version
+ * the App sent (RFC 076 section 14; the block card is drawn after its paragraph, raft-design #1010);
+ * and `button.v1`, so a card's `navigate` buttons reach the block card's More menu. No `confirm.v1`
+ * or `undo.v1`, so Raft strips every `execute` button and signs no handle; nor `block.v1`, which
+ * only matters for a version 2 answer and a `preview.v3` client never gets one.
  */
-internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> = listOf("card.v2", "inline.v1", "inline.tone.v2")
+internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> = listOf("card.v2", "button.v1", "inline.v1", "inline.tone.v2", "preview.v3")
 
 /** The batched read's links per message with the flag on (`LINK_CARD_READ_MAX_URLS`). */
 internal const val APP_LINK_CARD_READ_MAX_URLS = 10

@@ -39,7 +39,7 @@ private val appLinkPreviewsJson = Json {
  * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
  * result per link, one prompt per App. Where the Server's `interactive_link_cards` flag is on,
  * this client reads with the batched link-card read instead ([AppLinkCardV2.kt]), declaring
- * `card.v2`, `inline.v1` and `inline.tone.v2` (no buttons yet, so no `connect_account` chip either).
+ * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `button.v1`, `inline.v1`, `inline.tone.v2`, `preview.v3`).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
  */

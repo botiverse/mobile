@@ -105,7 +105,18 @@ internal fun raftMessageLinkKey(href: String): String? = parseRaftHttpUrl(href)?
  * definitions do not count.
  */
 internal fun raftMessageBareLinks(content: String): List<String> {
-    if ("://" !in content) return emptyList()
+    val urls = LinkedHashSet<String>()
+    scanRaftBareLinks(content) { href, _ -> urls += href }
+    return urls.toList()
+}
+
+/**
+ * Every bare link of [content] as [raftMessageBareLinks] reads them, but each occurrence (a link
+ * twice is reported twice), in message order, with the markdown node it was found in (the link or
+ * autolink itself; its `parent`s say which paragraph, list item, quote or table it is in).
+ */
+internal fun scanRaftBareLinks(content: String, onLink: (href: String, node: ASTNode) -> Unit) {
+    if ("://" !in content) return
     val text = content.take(MESSAGE_LINK_SCAN_LIMIT)
     val tree = markdownParser.buildMarkdownTreeFromString(text)
     val definitions = HashMap<String, String>()
@@ -124,11 +135,10 @@ internal fun raftMessageBareLinks(content: String): List<String> {
     }
     collect(tree)
 
-    val urls = LinkedHashSet<String>()
-    fun accept(raw: String, linkText: String) {
+    fun accept(raw: String, linkText: String, node: ASTNode) {
         val target = parseRaftHttpUrl(raw) ?: return
         val shown = parseRaftHttpUrl(linkText.trim()) ?: return
-        if (shown.href == target.href) urls += target.href
+        if (shown.href == target.href) onLink(target.href, node)
     }
     fun visit(node: ASTNode) {
         when (node.type) {
@@ -144,7 +154,7 @@ internal fun raftMessageBareLinks(content: String): List<String> {
                 val label = node.children.firstOrNull { it.type == MarkdownElementTypes.LINK_TEXT }
                 val destination = node.children.firstOrNull { it.type == MarkdownElementTypes.LINK_DESTINATION }
                 if (label != null && destination != null) {
-                    accept(destination.getTextInNode(text).toString().unwrapDestination(), label.bracketedText(text))
+                    accept(destination.getTextInNode(text).toString().unwrapDestination(), label.bracketedText(text), node)
                 }
                 return
             }
@@ -156,24 +166,23 @@ internal fun raftMessageBareLinks(content: String): List<String> {
                         ?: label?.bracketedText(text)
                 val destination = reference?.referenceLabelKey()?.let(definitions::get)
                 val shown = label?.bracketedText(text) ?: reference
-                if (destination != null && shown != null) accept(destination, shown)
+                if (destination != null && shown != null) accept(destination, shown, node)
                 return
             }
             MarkdownElementTypes.AUTOLINK -> {
                 val url = node.getTextInNode(text).toString().unwrapDestination()
-                accept(url, url)
+                accept(url, url, node)
                 return
             }
             GFMTokenTypes.GFM_AUTOLINK -> {
                 val url = node.getTextInNode(text).toString()
-                accept(url, url)
+                accept(url, url, node)
                 return
             }
         }
         node.children.forEach(::visit)
     }
     visit(tree)
-    return urls.toList()
 }
 
 private fun ASTNode.bracketedText(text: CharSequence): String =
