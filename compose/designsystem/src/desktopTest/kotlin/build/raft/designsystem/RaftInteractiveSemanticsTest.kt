@@ -179,15 +179,16 @@ class RaftInteractiveSemanticsTest {
             assertTrue(dismissed, "the close button calls onDismiss")
         }
 
-    /** raft-ui 0.21: a plain row with a description centres its switch on the title's first line. */
+    /** raft-ui 0.21.1 (#703): a plain row with a description centres its switch on the whole row. */
     @Test
-    fun aPlainRowWithADescriptionCentresItsEndsOnTheTitle() =
+    fun aPlainRowWithADescriptionCentresItsEndsOnTheRow() =
         runComposeUiTest {
             setContent(
                 themed {
                     Box(Modifier.width(360.dp)) {
                         RaftListRow(
                             "Desktop notifications",
+                            modifier = Modifier.testTag("row"),
                             variant = RaftListRowVariant.Plain,
                             description = "Get a notification for mentions and replies, even when the app is in the background.",
                             wrapDescription = true,
@@ -196,9 +197,9 @@ class RaftInteractiveSemanticsTest {
                     }
                 },
             )
-            val title = onNodeWithText("Desktop notifications", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val row = onNodeWithTag("row", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             val switch = onNodeWithTag("switch", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            assertEquals(title.center.y, switch.center.y, 1f, "the switch sits on the title's line, not the middle of the row")
+            assertEquals(row.center.y, switch.center.y, 1f, "the switch sits in the middle of the row, not on the title's line")
         }
 
     @Test

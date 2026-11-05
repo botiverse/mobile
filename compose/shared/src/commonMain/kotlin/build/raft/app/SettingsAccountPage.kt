@@ -32,10 +32,20 @@ import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSwitch
-import build.raft.designsystem.components.RaftTextLink
-import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftGlyph
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.text.InlineTextContent
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftIsDark
 import build.raft.designsystem.theme.RaftTheme
@@ -119,14 +129,14 @@ internal data class RaftSettingsAccountPayload(
     val profile: RaftSettingsAccountProfile = RaftSettingsAccountProfile(),
     val connectedAccounts: List<RaftSettingsConnectedAccount> = emptyList(),
     val profileSectionTitle: String = "Profile",
-    val displayNameLabel: String = "Display Name",
+    val displayNameLabel: String = "Display name",
     val displayNamePlaceholder: String = "Your public name",
     val handleLabel: String = "Handle",
     val handlePlaceholder: String = "@handle",
     val emailLabel: String = "Email",
     val emailPlaceholder: String = "you@example.com",
     val verifiedLabel: String = "Verified",
-    val saveChangesLabel: String = "Save Profile",
+    val saveChangesLabel: String = "Save profile",
     val cancelLabel: String = "Cancel",
     val connectedAccountsTitle: String = "Connected accounts",
     val connectedLabel: String = "Connected",
@@ -141,9 +151,9 @@ internal data class RaftSettingsAccountPayload(
     // "on this device" copy (SettingsStoragePage / AuthDataSource). Do NOT
     // align this to react's "browser" (intentional platform copy divergence).
     val logoutDetail: String = "Sign out on this device. Your account and data stay; you can sign back in any time.",
-    val logoutLabel: String = "Sign Out",
+    val logoutLabel: String = "Sign out",
     val logoutConfirmMessage: String = "Sign out on this device? Your account and data are kept; you can sign back in any time.",
-    val logoutConfirmLabel: String = "Sign Out",
+    val logoutConfirmLabel: String = "Sign out",
     val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
     val changePasswordSubtitle: String = "Requires current password before saving a new one",
@@ -680,11 +690,34 @@ private fun SettingsAccountUsageDataRow(
     onEvent: (String, String?) -> Unit
 ) {
     val title = stringResource(Res.string.settings_usage_data_title)
+    val description = stringResource(Res.string.settings_usage_data_description)
+    val learnMore = stringResource(Res.string.settings_usage_data_learn_more)
+    val colors = RaftTheme.colors
+    // Web: the description ends in the strong "Learn more" TextLink with its ↗ (TextLinkExternalIcon:
+    // 0.857em, 2px after the words), inside the same wrapping line.
+    val richDescription =
+        remember(description, learnMore, colors.foreground, onEvent) {
+            buildAnnotatedString {
+                append(description)
+                append(' ')
+                withLink(
+                    LinkAnnotation.Clickable(
+                        tag = SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY,
+                        styles = TextLinkStyles(SpanStyle(color = colors.foreground, fontWeight = FontWeight.SemiBold)),
+                        linkInteractionListener = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) }
+                    )
+                ) {
+                    append(learnMore)
+                    appendInlineContent(SettingsUsageDataExternalIconId, "↗")
+                }
+            }
+        }
     RaftListRowGroup(Modifier.fillMaxWidth()) {
         RaftListRow(
             title = title,
             variant = RaftListRowVariant.Plain,
-            description = stringResource(Res.string.settings_usage_data_description),
+            richDescription = richDescription,
+            richDescriptionInlineContent = settingsUsageDataExternalIcon,
             wrapDescription = true,
             trailing = {
                 RaftSwitch(
@@ -697,16 +730,20 @@ private fun SettingsAccountUsageDataRow(
                 )
             }
         )
-        Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-            RaftTextLink(
-                text = stringResource(Res.string.settings_usage_data_learn_more),
-                onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) },
-                variant = RaftTextLinkVariant.Strong,
-                style = RaftTheme.typography.callout
-            )
-        }
     }
 }
+
+private const val SettingsUsageDataExternalIconId = "settings-usage-data-external"
+
+private val settingsUsageDataExternalIcon: Map<String, InlineTextContent> =
+    mapOf(
+        SettingsUsageDataExternalIconId to
+            InlineTextContent(Placeholder(width = 1.em, height = 1.em, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter)) {
+                Box(Modifier.fillMaxSize().padding(start = 2.dp), contentAlignment = Alignment.Center) {
+                    RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 12.dp, color = RaftTheme.colors.foreground)
+                }
+            }
+    )
 
 @Composable
 private fun SettingsAccountProfileCard(
