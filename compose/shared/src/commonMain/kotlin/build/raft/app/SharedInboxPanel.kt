@@ -2998,6 +2998,8 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
             val statusMeta = status.sharedTaskStatusChipMeta()
             val variant =
                 when (status) {
+                    // Backlog has no hue; an Unknown status reads neutral too.
+                    TaskStatus.Backlog, TaskStatus.Unknown -> RaftBadgeVariant.Default
                     TaskStatus.Todo -> RaftBadgeVariant.Warning
                     TaskStatus.InProgress -> RaftBadgeVariant.Information
                     TaskStatus.InReview -> RaftBadgeVariant.Information

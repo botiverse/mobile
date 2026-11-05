@@ -184,7 +184,7 @@ private fun TaskHistoryEvent.historyMarkerStatus(): TaskStatus? =
 
 /** A wire status exactly as the server writes it (`todo`, `in_progress`, ...); anything else is not one. */
 private fun exactTaskStatusOrNull(value: String): TaskStatus? =
-    TaskStatus.entries.firstOrNull { it.toWireValue() == value }
+    TaskStatus.known.firstOrNull { it.toWireValue() == value }
 
 private fun TaskHistoryEvent.historyDetail(): TaskHistoryDetail {
     if (eventType == "created") {

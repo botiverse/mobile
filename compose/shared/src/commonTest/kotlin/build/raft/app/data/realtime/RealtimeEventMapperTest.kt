@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.TaskWireDto
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.AgentActivitySubscribed
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.ConversationKind
@@ -375,7 +376,7 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun taskCreatedDropsUnknownStatusAndKeepsValidSibling() {
+    fun taskCreatedKeepsUnknownStatusTaskAsUnknownBesideValidSibling() {
         val logs = mutableListOf<String>()
         val event =
             RealtimeEventMapper(diagnosticsLogger = logs::add).map(
@@ -402,10 +403,11 @@ class RealtimeEventMapperTest {
             )
 
         val created = assertIs<TaskCreated>(event)
-        assertEquals(listOf("task-valid"), created.tasks.map { it.id.value })
+        assertEquals(listOf("task-invalid", "task-valid"), created.tasks.map { it.id.value })
+        assertEquals(listOf(TaskStatus.Unknown, TaskStatus.InReview), created.tasks.map { it.status })
         assertEquals(
-            "projection_value_rejected source=realtime_task field=task_status value=future-status",
-            logs.first { it.startsWith("projection_value_rejected") },
+            "projection_value_unknown source=realtime_task field=task_status value=future-status",
+            logs.first { it.startsWith("projection_value_") },
         )
     }
 

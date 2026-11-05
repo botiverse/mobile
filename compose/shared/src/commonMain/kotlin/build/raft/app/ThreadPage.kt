@@ -320,6 +320,8 @@ import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
 import build.raft.app.markdown.raftTaskStatusColor
+import build.raft.app.markdown.raftTaskStatusOutline
+import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
@@ -16064,6 +16066,7 @@ private fun RaftThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
 
 private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
+        "backlog" -> TaskStatus.Backlog
         "todo" -> TaskStatus.Todo
         "inprogress" -> TaskStatus.InProgress
         "inreview" -> TaskStatus.InReview
@@ -32806,12 +32809,9 @@ internal fun ThreadMessageFooterMeta(
             // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status
             // soft fill with the status pixel (`TaskStatusIcon`) and a 12/16 label.
             val statusPixel =
-                TaskStatus.fromWireValue(message.taskStatus)?.let { status ->
-                    RaftTaskStatusPixelStyle(
-                        fill = status.raftTaskStatusColor(RaftAppThemeState.colors),
-                        stroke = RaftUiPalette.stickerInk,
-                    )
-                }
+                message.taskStatus.strictTaskStatusOrNull("thread_task_chip", diagnostics = {})?.raftTaskStatusPixelStyle(RaftAppThemeState.colors)
+            // Backlog's chip is outlined (`line-hairline`, no tint).
+            val statusOutline = selectedStatus.status.raftTaskStatusOutline(RaftAppThemeState.colors)
             RaftAnchoredMetaChip(
                 label = labelParts?.first ?: "Task",
                 secondaryLabel = labelParts?.second,
@@ -32822,7 +32822,8 @@ internal fun ThreadMessageFooterMeta(
                 iconSize = selectedStatus.iconSize,
                 color = selectedStatus.status.threadTaskChipSoftFill(),
                 iconColorArgb = raftArgbHex(selectedStatus.status.threadTaskChipStrong()),
-                borderWidth = 0.dp,
+                borderWidth = if (statusOutline != null) 1.dp else 0.dp,
+                borderColor = statusOutline,
                 minHeight = 22.dp,
                 horizontalPadding = 7.dp,
                 labelFontSize = 12.sp,
@@ -32896,6 +32897,7 @@ private fun ThreadRepliesBadge(badge: ThreadRepliesBadgeSpec, onClick: (() -> Un
 
 private fun TaskStatus.threadTaskChipSoftFill(): Color =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> Color.Transparent
         TaskStatus.Todo -> RaftAppThemeState.colors.taskStatusTodoSoft
         TaskStatus.InProgress -> RaftAppThemeState.colors.taskStatusInProgressSoft
         TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewSoft
@@ -32905,6 +32907,7 @@ private fun TaskStatus.threadTaskChipSoftFill(): Color =
 
 private fun TaskStatus.threadTaskChipStrong(): Color =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> RaftAppThemeState.colors.foreground
         TaskStatus.Todo -> RaftAppThemeState.colors.taskStatusTodoStrong
         TaskStatus.InProgress -> RaftAppThemeState.colors.taskStatusInProgressStrong
         TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewStrong

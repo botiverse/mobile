@@ -29,10 +29,13 @@ import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
 import build.raft.app.markdown.raftTaskStatusColor
 import build.raft.app.markdown.raftTaskStatusSoft
+import build.raft.app.markdown.raftTaskStatusOutline
+import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.components.RaftAnchoredPickerTrigger
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.taskStatusChoices
 import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationIntent
 import build.raft.app.data.TasksPresentationState
@@ -42,6 +45,7 @@ import build.raft.app.data.TasksVisibleContent
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
+import build.raft.app.data.inConversationSectionOrder
 import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.reduce
 import build.raft.app.data.raftSharedPreferenceStore
@@ -532,7 +536,11 @@ private fun SharedTasksLoadedBodyContent(
     }
     // For list mode we hide totally-empty status groups; otherwise the screen looks
     // like a wall of "No X tasks" headers.
-    val listColumns = remember(boardColumns) { boardColumns.filter { it.totalCount > 0 } }
+    // Beside a conversation (no page header) Backlog waits after the active groups.
+    val listColumns =
+        remember(boardColumns, showHeader) {
+            boardColumns.filter { it.totalCount > 0 }.let { columns -> if (showHeader) columns else columns.inConversationSectionOrder() }
+        }
     val collapsedStatuses = presentationState.collapsedStatuses
 
     // The status chip provides a root-space BottomEnd anchor. Keep that exact trigger
@@ -1382,11 +1390,13 @@ private fun SharedTasksBoardColumn(
 private fun localizedTasksEmptyStatus(status: TaskStatus): String =
     stringResource(
         when (status) {
+            TaskStatus.Backlog -> Res.string.tasks_empty_backlog
             TaskStatus.Todo -> Res.string.tasks_empty_todo
             TaskStatus.InProgress -> Res.string.tasks_empty_in_progress
             TaskStatus.InReview -> Res.string.tasks_empty_in_review
             TaskStatus.Done -> Res.string.tasks_empty_done
             TaskStatus.Closed -> Res.string.tasks_empty_closed
+            TaskStatus.Unknown -> Res.string.tasks_empty_unknown
         }
     )
 
@@ -1420,7 +1430,7 @@ internal fun BoardSectionHeader(
     ) {
         if (chevronLeading) TaskSectionChevron(collapsed)
         RaftTaskStatusPixel(
-            style = RaftTaskStatusPixelStyle(fill = status.raftTaskStatusColor(colors), stroke = RaftUiPalette.stickerInk)
+            style = status.raftTaskStatusPixelStyle(colors)
         )
         Text(
             text = status.localizedLabel(),
@@ -1684,7 +1694,9 @@ internal fun RaftTaskStatusChip(
         trailingIconName = RaftLucideIconName.ChevronDown,
         trailingIconSize = 12.dp,
         trailingIconColorArgb = RaftColor.TextBlackArgb,
-        borderWidth = 0.dp,
+        // Backlog's chip is outlined (`line-hairline`, no tint); the tinted statuses have no edge.
+        borderWidth = if (status.raftTaskStatusOutline(colors) != null) 1.dp else 0.dp,
+        borderColor = status.raftTaskStatusOutline(colors),
         minHeight = 22.dp,
         horizontalPadding = 6.dp,
         verticalPadding = 0.dp,
@@ -1694,7 +1706,7 @@ internal fun RaftTaskStatusChip(
         contentSpacing = 4.dp,
         leadingContent = {
             RaftTaskStatusPixel(
-                style = RaftTaskStatusPixelStyle(fill = status.raftTaskStatusColor(colors), stroke = RaftUiPalette.stickerInk),
+                style = status.raftTaskStatusPixelStyle(colors),
                 modifier = Modifier.padding(end = 1.dp)
             )
         },
@@ -1787,11 +1799,13 @@ private fun SharedTasksStateBody(
 internal fun TaskStatus.localizedLabel(): String =
     stringResource(
         when (this) {
+            TaskStatus.Backlog -> Res.string.tasks_status_backlog
             TaskStatus.Todo -> Res.string.tasks_status_todo
             TaskStatus.InProgress -> Res.string.tasks_status_in_progress
             TaskStatus.InReview -> Res.string.tasks_status_in_review
             TaskStatus.Done -> Res.string.tasks_status_done
             TaskStatus.Closed -> Res.string.tasks_status_closed
+            TaskStatus.Unknown -> Res.string.tasks_status_unknown
         }
     )
 
@@ -1800,6 +1814,8 @@ private val SharedTaskCardAssigneeChipMaxWidth = 160.dp
 private val TaskStatus.iconName: RaftLucideIconName
     get() =
         when (this) {
+            TaskStatus.Backlog -> RaftLucideIconName.CircleDashed
+            TaskStatus.Unknown -> RaftLucideIconName.CircleQuestionMark
             TaskStatus.Todo -> RaftLucideIconName.Circle
             TaskStatus.InProgress -> RaftLucideIconName.Play
             TaskStatus.InReview -> RaftLucideIconName.Eye
@@ -1810,6 +1826,7 @@ private val TaskStatus.iconName: RaftLucideIconName
 
 private fun TaskStatus.nextStatus(): TaskStatus =
     when (this) {
+        TaskStatus.Backlog, TaskStatus.Unknown -> TaskStatus.Todo
         TaskStatus.Todo -> TaskStatus.InProgress
         TaskStatus.InProgress -> TaskStatus.InReview
         TaskStatus.InReview -> TaskStatus.Done
@@ -1897,8 +1914,9 @@ private fun TasksStatusDialog(
                     color = RaftColor.TextBlack.copy(alpha = 0.65f)
                 )
             }
-            items(TaskStatus.values().size) { idx ->
-                val status = TaskStatus.values()[idx]
+            val choices = taskStatusChoices(task.status, inReviewRetired = false)
+            items(choices.size) { idx ->
+                val status = choices[idx]
                 val selected = status == task.status
                 // The design-system radio row: the current status is the selected one.
                 RaftRadioRow(

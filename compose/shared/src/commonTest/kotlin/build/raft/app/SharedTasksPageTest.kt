@@ -232,10 +232,10 @@ class SharedTasksPageTest {
 
     @Test
     fun collapsedSectionChevronTurnsRightAndOpenSectionPointsDown() {
-        // Done and Closed start collapsed (web parity); their header chevron is what says
+        // Backlog, Done and Closed start collapsed (raft-design tasks.md); their header chevron is what says
         // the "Done 1" header expands (raft-ui `-rotate-90` collapsed, `rotate-0` open).
         assertEquals(
-            setOf(TaskStatus.Done, TaskStatus.Closed),
+            setOf(TaskStatus.Backlog, TaskStatus.Done, TaskStatus.Closed),
             build.raft.app.data.TasksPresentationState.Default.collapsedStatuses
         )
         assertEquals(-90f, taskSectionChevronRotation(collapsed = true))

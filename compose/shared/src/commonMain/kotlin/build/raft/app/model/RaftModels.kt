@@ -720,26 +720,52 @@ data class MessageCommentHostSource(
 )
 
 // Task Models
+/**
+ * Task status. Wire values are slock `packages/shared` `TASK_STATUSES`
+ * (`"backlog" | "todo" | "in_progress" | "in_review" | "done" | "closed"`, slock #12962);
+ * entries run in board order (raft-ui `TASK_STATUS_IDS`: Backlog to Closed).
+ *
+ * [Backlog] ("not now", raft-design decision 0042) is task v2 only and not active work.
+ * [Unknown] is never sent by the server today: it holds a status a newer server added that
+ * this build does not know, so the task keeps showing (neutral, last) instead of dropping
+ * out of every list. It is never written back and never offered as a choice.
+ */
 @Serializable
 enum class TaskStatus {
+    Backlog,
     Todo,
     InProgress,
     InReview,
     Done,
-    Closed;
+    Closed,
+    Unknown;
 
     fun toWireValue(): String =
         when (this) {
+            Backlog -> "backlog"
             Todo -> "todo"
             InProgress -> "in_progress"
             InReview -> "in_review"
             Done -> "done"
             Closed -> "closed"
+            Unknown -> UNKNOWN_WIRE_VALUE
         }
 
+    /** A status the server knows and the app may write or filter by ([Unknown] is not one). */
+    val isKnown: Boolean
+        get() = this != Unknown
+
     companion object {
+        /** App-side token for [Unknown]; not a server status. */
+        const val UNKNOWN_WIRE_VALUE = "unknown"
+
+        /** Statuses the server knows, in board order (excludes [Unknown]). */
+        val known: List<TaskStatus> = entries.filter { it.isKnown }
+
+        /** Exact wire values only; null for anything else (see [fromWireValueOrUnknown]). */
         fun fromWireValue(value: String?): TaskStatus? =
             when (value?.trim()?.lowercase()) {
+                "backlog" -> Backlog
                 "todo" -> Todo
                 "in_progress" -> InProgress
                 "in_review" -> InReview
@@ -747,6 +773,14 @@ enum class TaskStatus {
                 "closed" -> Closed
                 else -> null
             }
+
+        /**
+         * A present status string the app does not know (a status added on the server after
+         * this build) reads as [Unknown], so the task stays visible; a missing or blank one is
+         * still null.
+         */
+        fun fromWireValueOrUnknown(value: String?): TaskStatus? =
+            fromWireValue(value) ?: value?.takeIf { it.isNotBlank() }?.let { Unknown }
     }
 }
 

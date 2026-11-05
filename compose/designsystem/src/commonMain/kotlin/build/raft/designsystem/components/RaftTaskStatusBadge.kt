@@ -2,6 +2,7 @@ package build.raft.designsystem.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -34,8 +35,13 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
 
-/** raft-ui `TASK_STATUS_IDS`: the five task statuses, each with its `--task-status-*` colours. */
+/**
+ * raft-ui `TASK_STATUS_IDS`, in board order: each status with its `--task-status-*` colours,
+ * except [Backlog] ("not now"), which has no colour and is drawn with lines instead
+ * (raft-design color.md#statuses: hollow `line-strong` pixel, `line-hairline` outlined chip).
+ */
 enum class RaftTaskStatus {
+    Backlog,
     Todo,
     InProgress,
     InReview,
@@ -49,9 +55,13 @@ enum class RaftTaskStatusBadgeSize(internal val height: Dp, internal val horizon
     Sm(height = 20.dp, horizontalPadding = 5.dp, gap = 4.dp),
 }
 
-/** `--task-status-*`: the status pixel's fill. In progress is one value in both themes (palette). */
+/**
+ * `--task-status-*`: the status pixel's fill. In progress is one value in both themes (palette).
+ * Backlog has none: its pixel is hollow ([pixelEdgeColor]).
+ */
 fun RaftTaskStatus.pixelColor(colors: RaftUiThemeColors): Color =
     when (this) {
+        RaftTaskStatus.Backlog -> Color.Transparent
         RaftTaskStatus.Todo -> colors.taskStatusTodo
         RaftTaskStatus.InProgress -> RaftUiPalette.taskStatusInProgress
         RaftTaskStatus.InReview -> colors.taskStatusInReview
@@ -59,15 +69,27 @@ fun RaftTaskStatus.pixelColor(colors: RaftUiThemeColors): Color =
         RaftTaskStatus.Closed -> colors.taskStatusClosed
     }
 
-/** `--task-status-*-soft`: the badge's wash. */
+/** `--task-status-*-soft`: the badge's wash. Backlog has no tint ([outlineColor] in its place). */
 fun RaftTaskStatus.softColor(colors: RaftUiThemeColors): Color =
     when (this) {
+        RaftTaskStatus.Backlog -> Color.Transparent
         RaftTaskStatus.Todo -> colors.taskStatusTodoSoft
         RaftTaskStatus.InProgress -> colors.taskStatusInProgressSoft
         RaftTaskStatus.InReview -> colors.taskStatusInReviewSoft
         RaftTaskStatus.Done -> colors.taskStatusDoneSoft
         RaftTaskStatus.Closed -> colors.taskStatusClosedSoft
     }
+
+/**
+ * The pixel's edge: sticker-ink, except Backlog's hollow pixel, whose edge is `line-strong`
+ * (sticker-ink is dark in dark mode and would vanish on the dark canvas with no fill inside).
+ */
+fun RaftTaskStatus.pixelEdgeColor(colors: RaftUiThemeColors): Color =
+    if (this == RaftTaskStatus.Backlog) colors.lineStrong else RaftUiPalette.stickerInk
+
+/** raft-ui `taskStatusSoft` backlog: the `line-hairline` outline standing in for the tint; null for the tinted statuses. */
+fun RaftTaskStatus.outlineColor(colors: RaftUiThemeColors): Color? =
+    if (this == RaftTaskStatus.Backlog) colors.lineHairline else null
 
 private val RaftTaskStatusPixelSize = 10.dp
 private val RaftTaskStatusPixelStroke = 1.5.dp
@@ -81,6 +103,7 @@ private val RaftTaskStatusPixelRadius = 1.25.dp
 @Composable
 fun RaftTaskStatusPixel(status: RaftTaskStatus, modifier: Modifier = Modifier) {
     val fill = status.pixelColor(RaftTheme.colors)
+    val edge = status.pixelEdgeColor(RaftTheme.colors)
     Canvas(modifier.size(RaftTaskStatusPixelSize)) {
         val strokePx = RaftTaskStatusPixelStroke.toPx()
         val inset = strokePx / 2f
@@ -88,7 +111,7 @@ fun RaftTaskStatusPixel(status: RaftTaskStatus, modifier: Modifier = Modifier) {
         val radius = CornerRadius(RaftTaskStatusPixelRadius.toPx())
         drawRoundRect(color = fill, topLeft = Offset(inset, inset), size = rectSize, cornerRadius = radius)
         drawRoundRect(
-            color = RaftUiPalette.stickerInk,
+            color = edge,
             topLeft = Offset(inset, inset),
             size = rectSize,
             cornerRadius = radius,
@@ -136,6 +159,7 @@ fun RaftTaskStatusBadge(
                 // At least the chip's height: large text grows it instead of clipping the label.
                 .heightIn(min = size.height)
                 .background(status.softColor(colors), shape)
+                .then(status.outlineColor(colors)?.let { Modifier.border(1.dp, it, shape) } ?: Modifier)
                 .raftStateOverlay(overlay, shape)
                 .then(
                     if (clickable) {

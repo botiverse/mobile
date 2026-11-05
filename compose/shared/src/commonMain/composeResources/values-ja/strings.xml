@@ -1790,6 +1790,8 @@
     <string name="tasks_create_hint">「新規タスク」ボタンで作成できます。</string>
     <string name="tasks_empty_filtered_detail">別の組み合わせを試すか、現在の選択をクリアしてください。</string>
     <string name="tasks_empty_server_detail">DM とエージェントのタスクボードは、このサーバー全体ビューには意図的に含まれていません。</string>
+    <string name="tasks_empty_backlog">Backlog のタスクはありません</string>
+    <string name="tasks_empty_unknown">このステータスのタスクはありません</string>
     <string name="tasks_empty_todo">未着手のタスクはありません</string>
     <string name="tasks_empty_in_progress">進行中のタスクはありません</string>
     <string name="tasks_empty_in_review">レビュー中のタスクはありません</string>
@@ -1817,6 +1819,8 @@
     <string name="tasks_assignee_unassigned">未割り当て</string>
     <string name="tasks_detail_task_identifier">タスク #%1$d</string>
     <string name="tasks_state_updating">更新中</string>
+    <string name="tasks_status_backlog">Backlog</string>
+    <string name="tasks_status_unknown">不明</string>
     <string name="tasks_status_todo">未着手</string>
     <string name="tasks_status_in_progress">進行中</string>
     <string name="tasks_status_in_review">レビュー中</string>

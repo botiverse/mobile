@@ -6101,7 +6101,7 @@ class ThreadPayloadTest {
                                     senderId = "u1",
                                     senderName = "Artin",
                                     messageType = "chat",
-                                    content = "keep message without invalid task",
+                                    content = "keep task with a status this build does not know",
                                     taskNumber = 1,
                                     taskStatus = "future-status",
                                 ),
@@ -6139,9 +6139,10 @@ class ThreadPayloadTest {
             listOf("task-invalid-status", "task-invalid-assignee", "valid-message"),
             payload.messages.map { it.id },
         )
+        // A status a newer server added keeps the task, as Unknown (not dropped, not Todo).
         val invalidStatus = payload.messages[0]
-        assertNull(invalidStatus.taskId)
-        assertNull(invalidStatus.taskStatus)
+        assertEquals("task-invalid-status", invalidStatus.taskId)
+        assertEquals(TaskStatus.UNKNOWN_WIRE_VALUE, invalidStatus.taskStatus)
         val invalidAssignee = payload.messages[1]
         assertEquals("task-invalid-assignee", invalidAssignee.taskId)
         assertEquals("todo", invalidAssignee.taskStatus)
@@ -6150,7 +6151,7 @@ class ThreadPayloadTest {
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_sender field=member_kind value=future-member" })
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_sender field=member_kind value=system" })
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_message field=message_type value=future-message" })
-        assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_task field=task_status value=future-status" })
+        assertTrue(logs.any { it == "projection_value_unknown source=thread_wire_task field=task_status value=future-status" })
         assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_task_assignee field=member_kind value=future-member" })
         assertTrue(
             logs.none {

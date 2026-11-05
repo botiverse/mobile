@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.resolveInboxAnchorMessageId
 import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.model.ChannelId
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
@@ -632,7 +633,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun inboxAcceptsSystemFactsButRejectsCrossDialectHumanAndUnknownTaskStatus() {
+    fun inboxAcceptsSystemFactsRejectsCrossDialectHumanAndKeepsUnknownTaskStatus() {
         val diagnostics = mutableListOf<String>()
         val snapshot =
             parseSharedInboxSnapshot(
@@ -658,12 +659,12 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val item = assertNotNull(snapshot).items.single()
         assertEquals(MemberKind.System, item.parentMessageSenderKind)
         assertNull(item.latestActivitySenderKind)
-        assertNull(item.taskStatus)
+        assertEquals(TaskStatus.Unknown, item.taskStatus)
         assertEquals(
             listOf(
                 "projection_value_rejected source=inbox_latest_activity_sender " +
                     "field=member_kind value=human",
-                "projection_value_rejected source=inbox_task field=task_status value=future-status",
+                "projection_value_unknown source=inbox_task field=task_status value=future-status",
             ),
             diagnostics,
         )
