@@ -96,7 +96,9 @@ class ThreadShareCaptureModeTest {
                 Row("normal-raft", RaftLinkMessage, capture = false, heights = heights)
                 Row("capture-raft", RaftLinkMessage, capture = true, heights = heights)
                 Row("capture-plain", PlainLinkMessage, capture = true, heights = heights)
-                Row("never-quoted-raft", RaftLinkMessage, capture = false, heights = heights, loader = null)
+                // Captured too: a captured row also drops its timeline-turn band (the share image
+                // draws its own row frame), so only the preview may differ.
+                Row("never-quoted-raft", RaftLinkMessage, capture = true, heights = heights, loader = null)
             }
 
         // Normal mode: the quote preview is drawn under the link.
