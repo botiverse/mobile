@@ -957,7 +957,7 @@ jobs:
     # The default lane keeps the plain "iOS compile" name; only "CI gate" is a required
     # check (.github/rulesets/mobile-main-merge-queue.json), and it reads needs.ios.result,
     # which is success only when every planned lane succeeded.
-    name: ${{ matrix.check_name }}
+    name: ${{ matrix.lane == 'github-xcode27.1' && 'iOS compile (Xcode 27.1)' || 'iOS compile' }}
     # Path scoping downshifts the expensive (macOS) iOS compile on ordinary PR
     # pushes: changes touching commonMain run Linux fast gates only; the full iOS
     # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
@@ -979,23 +979,20 @@ jobs:
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
     strategy:
       fail-fast: false
+      # Only `lane` is a matrix key; per-lane values are derived from it below. Do not move
+      # them back into `matrix.include`: an include entry whose lane is not in ios_lanes is
+      # ADDED as an extra combination, so the 27.1 lane ran on every iOS run regardless of
+      # the plan (found 2026-11-05 on the first scope=ios dispatch).
       matrix:
         lane: ${{ fromJSON(needs.plan.outputs.ios_lanes) }}
-        include:
-          - lane: blacksmith-xcode27.0
-            check_name: iOS compile
-            runner: blacksmith-12vcpu-macos-latest
-            xcode_request: /Applications/Xcode_27.0.app
-          - lane: github-xcode27.1
-            check_name: iOS compile (Xcode 27.1)
-            runner: xcode-27
-            xcode_request: /Applications/Xcode_27.1.app
-    runs-on: ${{ matrix.runner }}
+    env:
+      IOS_LANE_XCODE_REQUEST: ${{ matrix.lane == 'github-xcode27.1' && '/Applications/Xcode_27.1.app' || '/Applications/Xcode_27.0.app' }}
+    runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || 'blacksmith-12vcpu-macos-latest' }}
     timeout-minutes: 75
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job (see ios-release.yml).
       - name: Warm macOS artifact proxy
-        if: ${{ startsWith(matrix.runner, 'blacksmith') }}
+        if: ${{ matrix.lane == 'blacksmith-xcode27.0' }}
         shell: bash
         run: sleep 5
 
@@ -1010,7 +1007,7 @@ jobs:
       - name: Resolve Xcode bundle
         shell: bash
         env:
-          XCODE_REQUEST: ${{ matrix.lane == 'blacksmith-xcode27.0' && inputs.xcode_app_path || matrix.xcode_request }}
+          XCODE_REQUEST: ${{ matrix.lane == 'blacksmith-xcode27.0' && inputs.xcode_app_path || env.IOS_LANE_XCODE_REQUEST }}
         run: |
           set -euo pipefail
           real="$(realpath "$XCODE_REQUEST")"
