@@ -1430,6 +1430,14 @@ private data class ThreadShareCaptureRect(
     val frame: Boolean = true
 )
 
+/**
+ * `exportThreadShareImage`'s `fragments`: each message's capture slices one path per line, a
+ * blank line between messages (Android frames each message as its own row of the share image;
+ * iOS reads the lines and skips the blanks).
+ */
+internal fun threadShareFragmentsParam(messageFragments: List<List<String>>): String =
+    messageFragments.filter { it.isNotEmpty() }.joinToString(separator = "\n\n") { it.joinToString(separator = "\n") }
+
 internal data class ThreadShareCaptureSlice(
     val y: Float,
     val height: Float
@@ -17264,7 +17272,8 @@ private fun ThreadPageContentContent(
         }
     }
     suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
-        val fragments = mutableListOf<String>()
+        // Capture slices, per message: the share image frames each message on its own.
+        val messageFragments = mutableListOf<MutableList<String>>()
         var completedMessages = 0
         // The click set shareCaptureMode, which drops the rows' viewer-only previews
         // (LocalThreadShareCaptureActive). This screenshot is of the live list, so let that
@@ -17328,6 +17337,7 @@ private fun ThreadPageContentContent(
             var capturedHeight = 0
             var segmentHeight = 0
             var segmentCount = 0
+            val fragments = mutableListOf<String>().also { messageFragments += it }
             while (capturedHeight < initialRect.height.roundToInt() && segmentCount < ThreadShareCaptureMaxSegmentsPerMessage) {
                 val rect = selectedShareBounds[message.id] ?: break
                 val slice =
@@ -17385,22 +17395,23 @@ private fun ThreadPageContentContent(
                 completedMessages += 1
             }
         }
-        if (fragments.isEmpty() || completedMessages != selectedShareMessages.size) {
+        val fragmentCount = messageFragments.sumOf { it.size }
+        if (fragmentCount == 0 || completedMessages != selectedShareMessages.size) {
             diagnosticsLogger(
-                "thread_share_capture_incomplete fragments=${fragments.size} " +
+                "thread_share_capture_incomplete fragments=$fragmentCount " +
                     "completed=$completedMessages selected=${selectedShareMessages.size}"
             )
             return null
         }
         diagnosticsLogger(
-            "thread_share_capture_complete fragments=${fragments.size} completed=$completedMessages"
+            "thread_share_capture_complete fragments=$fragmentCount completed=$completedMessages"
         )
         return ThreadShareCaptureRect(
             x = 0f,
             y = 0f,
             width = 0f,
             height = 0f,
-            path = fragments.joinToString(separator = "\n")
+            path = threadShareFragmentsParam(messageFragments)
         )
     }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }

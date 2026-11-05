@@ -95,6 +95,23 @@ internal object RaftRobolectricScreenshot {
         interact: ((View) -> Unit)? = null,
         content: @Composable (ComponentActivity) -> Unit,
     ) {
+        render(appearance, activities, root, interact, content) { _, bitmap ->
+            verifyOrRecord(name, bitmap, File(reportDir))
+        }
+    }
+
+    /**
+     * Renders [content] as [capture] does and hands the activity and the drawn root to [use]
+     * (still under [appearance]), for a test that makes its golden from the rendered pixels.
+     */
+    fun <T> render(
+        appearance: RaftAppAppearance,
+        activities: RobolectricComposeActivityRule,
+        root: (ComponentActivity) -> View? = { it.window.decorView },
+        interact: ((View) -> Unit)? = null,
+        content: @Composable (ComponentActivity) -> Unit,
+        use: (ComponentActivity, Bitmap) -> T,
+    ): T {
         val previousAppearance = RaftAppThemeState.appearance
         try {
             RaftAppThemeState.apply(appearance)
@@ -115,7 +132,7 @@ internal object RaftRobolectricScreenshot {
             }
             val bitmap = Bitmap.createBitmap(composeView.width, composeView.height, Bitmap.Config.ARGB_8888)
             composeView.draw(android.graphics.Canvas(bitmap))
-            verifyOrRecord(name, bitmap, File(reportDir))
+            return use(activity, bitmap)
         } finally {
             RaftAppThemeState.apply(previousAppearance)
         }

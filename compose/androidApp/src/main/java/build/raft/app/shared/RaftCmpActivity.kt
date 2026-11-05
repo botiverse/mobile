@@ -24,7 +24,6 @@ import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import build.raft.app.data.RaftAppAppearanceRuntime
 import android.graphics.Matrix
-import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
@@ -74,7 +73,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -103,6 +101,7 @@ import build.raft.app.nav.LocalRaftStackRootTab
 import build.raft.app.nav.RaftStackRootTab
 import androidx.compose.runtime.remember
 import build.raft.app.parseRaftJsonObjectOrNull
+import build.raft.app.renderThreadShareImageBitmap
 import build.raft.app.toRaftJsonString
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
@@ -184,7 +183,6 @@ import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMode
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
-import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsUpdateEventListener
@@ -634,14 +632,24 @@ private fun StringBuilder.appendDiagnosticsExportLine(label: String, value: Stri
     appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
 }
 
-internal fun threadShareChromeHeaderHeight(width: Int): Int =
-        (width * 0.12f).roundToInt().coerceIn(72, 96)
-
-internal fun threadShareChromeCaptionTextSize(width: Int): Float =
-        (width * 0.034f).coerceIn(18f, 26f)
-
-internal fun threadShareChromeOutputHeight(width: Int, contentHeight: Int): Int =
-        contentHeight.coerceAtLeast(1) + threadShareChromeHeaderHeight(width)
+/**
+ * The capture slices of `exportThreadShareImage`'s `fragments`: one PNG path per line, a blank
+ * line between messages (ThreadPage `threadShareFragmentsParam`). Each group is one message.
+ */
+internal fun threadShareFragmentGroups(fragments: String): List<List<String>> {
+    val groups = mutableListOf<List<String>>()
+    var current = mutableListOf<String>()
+    fragments.lineSequence().map { it.trim() }.forEach { line ->
+        if (line.isEmpty()) {
+            if (current.isNotEmpty()) groups += current
+            current = mutableListOf()
+        } else {
+            current += line
+        }
+    }
+    if (current.isNotEmpty()) groups += current
+    return groups
+}
 
 internal data class RaftLoadReadiness(
     val succeeded: Boolean,
@@ -4572,14 +4580,9 @@ internal class RaftBridgeModule(
             onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
             return
         }
-        val fragmentPaths =
-                request.optString("fragments")
-                        .lineSequence()
-                        .map { it.trim() }
-                        .filter { it.isNotBlank() }
-                        .toList()
-        if (fragmentPaths.isNotEmpty()) {
-            onResult(stitchThreadShareFragments(fragmentPaths))
+        val fragmentGroups = threadShareFragmentGroups(request.optString("fragments"))
+        if (fragmentGroups.isNotEmpty()) {
+            onResult(stitchThreadShareFragments(fragmentGroups))
             return
         }
         val requestedX = request.optDouble("x", 0.0).roundToInt()
@@ -4672,62 +4675,79 @@ internal class RaftBridgeModule(
         }
     }
 
-    private fun stitchThreadShareFragments(fragmentPaths: List<String>): Map<String, Any> {
-        val fragments = mutableListOf<Bitmap>()
-        fragmentPaths.forEach { path ->
-            val fragment = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
-            if (fragment == null) {
-                fragments.forEach { it.recycle() }
-                return mapOf("status" to "failed", "message" to "Unable to capture image")
-            }
-            fragments += fragment
-        }
-        if (fragments.isEmpty()) {
-            return mapOf("status" to "failed", "message" to "Unable to capture image")
-        }
-        val width = fragments.maxOf { it.width }.coerceAtLeast(1)
-        val height = fragments.sumOf { it.height }.coerceAtLeast(1)
-        val stitched =
-                runCatching {
-                    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
-                        val canvas = Canvas(output)
-                        canvas.drawColor(Color.WHITE)
-                        var top = 0f
-                        fragments.forEach { fragment ->
-                            val left = ((width - fragment.width) / 2f).coerceAtLeast(0f)
-                            canvas.drawBitmap(fragment, left, top, null)
-                            top += fragment.height
-                        }
-                    }
-                }
-                        .getOrElse {
+    /**
+     * One bitmap per selected message, its capture slices stacked in order; the share image frames
+     * each message on its own (see renderThreadShareImageBitmap).
+     */
+    private fun stitchThreadShareFragments(fragmentGroups: List<List<String>>): Map<String, Any> {
+        val rows = mutableListOf<Bitmap>()
+        fun recycleRows() = rows.forEach { it.recycle() }
+        for (group in fragmentGroups) {
+            val fragments = mutableListOf<Bitmap>()
+            for (path in group) {
+                val fragment = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+                if (fragment == null) {
                     fragments.forEach { it.recycle() }
+                    recycleRows()
                     return mapOf("status" to "failed", "message" to "Unable to capture image")
                 }
-        fragments.forEach { it.recycle() }
-        return saveThreadShareBitmap(stitched, frame = true)
+                fragments += fragment
+            }
+            val row =
+                    if (fragments.size == 1) {
+                        fragments.single()
+                    } else {
+                        val width = fragments.maxOf { it.width }.coerceAtLeast(1)
+                        val height = fragments.sumOf { it.height }.coerceAtLeast(1)
+                        runCatching {
+                            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
+                                val canvas = Canvas(output)
+                                var top = 0f
+                                fragments.forEach { fragment ->
+                                    canvas.drawBitmap(fragment, 0f, top, null)
+                                    top += fragment.height
+                                }
+                            }
+                        }.also { fragments.forEach { it.recycle() } }
+                                .getOrElse {
+                                    recycleRows()
+                                    return mapOf("status" to "failed", "message" to "Unable to capture image")
+                                }
+                    }
+            rows += row
+        }
+        if (rows.isEmpty()) {
+            return mapOf("status" to "failed", "message" to "Unable to capture image")
+        }
+        return saveThreadShareRows(rows)
     }
 
-    private fun saveThreadShareBitmap(bitmap: Bitmap, frame: Boolean): Map<String, Any> {
-        val exportBitmap =
-                if (frame) {
-                    runCatching { bitmap.withThreadShareChrome() }
-                        .getOrElse {
-                            bitmap.recycle()
-                            return mapOf("status" to "failed", "message" to "Unable to frame image")
-                        }
-                } else {
-                    bitmap
-                }
-        if (frame) {
-            bitmap.recycle()
+    /** Frames [rows] (one per message) as the share image and saves it; recycles [rows]. */
+    private fun saveThreadShareRows(rows: List<Bitmap>): Map<String, Any> {
+        val framed = runCatching { renderThreadShareImageBitmap(appContext, rows) }.getOrNull()
+        rows.forEach { it.recycle() }
+        if (framed == null) {
+            return mapOf("status" to "failed", "message" to "Unable to frame image")
         }
+        return writeThreadShareBitmap(framed, shareImage = true)
+    }
+
+    private fun saveThreadShareBitmap(bitmap: Bitmap, frame: Boolean): Map<String, Any> =
+            if (frame) {
+                // One capture of the whole selection: it is the share image's only row.
+                saveThreadShareRows(listOf(bitmap))
+            } else {
+                writeThreadShareBitmap(bitmap, shareImage = false)
+            }
+
+    /** Writes [exportBitmap] (recycled) to the share cache: a capture slice, or the [shareImage] itself. */
+    private fun writeThreadShareBitmap(exportBitmap: Bitmap, shareImage: Boolean): Map<String, Any> {
         val exportDir = threadShareImageCacheDir()
         if (!exportDir.exists() && !exportDir.mkdirs()) {
             exportBitmap.recycle()
             return mapOf("status" to "failed", "message" to "Storage unavailable")
         }
-        if (frame) {
+        if (shareImage) {
             cleanupThreadShareImageCache(exportDir)
         }
         val file = File(exportDir, "raft-message-share-${System.currentTimeMillis()}-${System.nanoTime()}.png")
@@ -4758,101 +4778,6 @@ internal class RaftBridgeModule(
                 "width" to exportWidth,
                 "height" to exportHeight
         )
-    }
-
-    private fun Bitmap.withThreadShareChrome(): Bitmap {
-        val headerHeight = threadShareChromeHeaderHeight(width)
-        val horizontalInset = (width * 0.048f).roundToInt().coerceIn(26, 38).toFloat()
-        val framed =
-                Bitmap.createBitmap(width, threadShareChromeOutputHeight(width, height), Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(framed)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = Color.WHITE
-        }
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 3f
-            color = Color.BLACK
-        }
-        val captionTypeface =
-                raftShareChromeTypeface(appContext, build.raft.app.shared.R.font.space_grotesk_semibold)
-                        ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        val titleTypeface =
-                raftShareChromeTypeface(appContext, build.raft.app.shared.R.font.space_grotesk_bold)
-                        ?: captionTypeface
-        val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(24, 24, 24)
-            textSize = threadShareChromeCaptionTextSize(width)
-            typeface = captionTypeface
-            letterSpacing = 0.045f
-        }
-        canvas.drawRect(0f, 0f, width.toFloat(), framed.height.toFloat(), fill)
-        fill.color = Color.rgb(255, 216, 77)
-        canvas.drawRect(0f, 0f, width.toFloat(), headerHeight.toFloat(), fill)
-        val logo =
-                loadThreadShareLogoBitmap(
-                        maxWidth = (width * 0.36f).roundToInt().coerceIn(190, 300),
-                        maxHeight = (headerHeight - 34).coerceAtLeast(48)
-                )
-        if (logo != null) {
-            val logoTop = ((headerHeight - logo.height) / 2f).coerceAtLeast(0f)
-            canvas.drawBitmap(logo, horizontalInset, logoTop, null)
-            logo.recycle()
-        } else {
-            val fallbackTitle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.BLACK
-                textSize = (width * 0.07f).coerceIn(36f, 48f)
-                typeface = titleTypeface
-            }
-            canvas.drawText("RAFT", horizontalInset, headerHeight.centeredTextBaseline(fallbackTitle), fallbackTitle)
-        }
-        val site = "raft.build"
-        canvas.drawText(
-                site,
-                width - caption.measureText(site) - horizontalInset,
-                headerHeight.centeredTextBaseline(caption),
-                caption
-        )
-        canvas.drawBitmap(this, 0f, headerHeight.toFloat(), null)
-        canvas.drawLine(0f, headerHeight.toFloat(), width.toFloat(), headerHeight.toFloat(), stroke)
-        canvas.drawRect(1.5f, 1.5f, width - 1.5f, framed.height - 1.5f, stroke)
-        return framed
-    }
-
-    private fun loadThreadShareLogoBitmap(maxWidth: Int, maxHeight: Int): Bitmap? =
-            runCatching {
-                appContext.assets.open("lucide/raft-logo.svg").use { input ->
-                    val svg = SVG.getFromInputStream(input)
-                    val aspectRatio =
-                            svg.documentAspectRatio
-                                    .takeIf { it > 0f }
-                                    ?: (svg.documentWidth / svg.documentHeight).takeIf { it > 0f }
-                                    ?: 4.05f
-                    var logoWidth = maxWidth.coerceAtLeast(1)
-                    val logoHeight =
-                            (logoWidth / aspectRatio)
-                                    .roundToInt()
-                                    .coerceAtLeast(1)
-                    if (logoHeight > maxHeight) {
-                        logoWidth = (maxHeight * aspectRatio).roundToInt().coerceAtLeast(1)
-                    }
-                    val finalLogoHeight =
-                            (logoWidth / aspectRatio)
-                                    .roundToInt()
-                                    .coerceAtLeast(1)
-                    svg.setDocumentWidth(logoWidth.toFloat())
-                    svg.setDocumentHeight(finalLogoHeight.toFloat())
-                    val picture = svg.renderToPicture(logoWidth, finalLogoHeight)
-                    Bitmap.createBitmap(logoWidth, finalLogoHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
-                        picture.draw(Canvas(bitmap))
-                    }
-                }
-            }.getOrNull()
-
-    private fun Int.centeredTextBaseline(paint: Paint): Float {
-        val metrics = paint.fontMetrics
-        return this / 2f - (metrics.ascent + metrics.descent) / 2f
     }
 
     private fun saveThreadShareImage(params: String?, callback: RaftBridgeCallback?) {
@@ -9140,11 +9065,6 @@ private fun JSONObject?.toStableStringMap(): Map<String, String> {
     }
     return result
 }
-
-
-/** Bundled font (the TTFs live in :shared `res/font`) for natively drawn share-image chrome. */
-private fun raftShareChromeTypeface(context: Context, fontRes: Int): Typeface? =
-        runCatching { ResourcesCompat.getFont(context, fontRes) }.getOrNull()
 
 /**
  * Drives [RaftBridgeModule.call] the way the Kuikly renderer did: asynchronous calls on the
