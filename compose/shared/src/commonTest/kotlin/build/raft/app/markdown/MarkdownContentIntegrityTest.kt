@@ -443,7 +443,7 @@ class MarkdownContentIntegrityTest {
     @Test
     fun raftSchemeMessageLinksAreAutolinkedWithTheirSourceText() {
         val channel = "raft:///s/raft/channel/6f1c2b9e-1d2a?msg=0b1c2d3e"
-        val dm = "raft://s/my_team/dm/a3b4?msg=m1&thread=a3b4:p_1"
+        val dm = "raft://s/my_team/dm/a3b4?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca&thread=a3b4:p_1"
         val cases =
             listOf(
                 "打开 $channel 看看" to listOf(channel),
@@ -473,7 +473,7 @@ class MarkdownContentIntegrityTest {
     fun raftSchemeLinksOutsideServerPathsOrInsideCodeStayText() {
         val sources =
             listOf(
-                "`raft:///s/raft/channel/c1?msg=m1`",
+                "`raft:///s/raft/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca`",
                 "run `open raft://s/raft/dm/c1` now",
                 "raft://login/callback?code=x",
                 "raft://oauth/callback?code=x",

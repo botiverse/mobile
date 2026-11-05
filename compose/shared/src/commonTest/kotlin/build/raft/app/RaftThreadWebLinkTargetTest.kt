@@ -10,28 +10,28 @@ import kotlin.test.assertNull
 class RaftThreadWebLinkTargetTest {
     @Test
     fun parsesLegacyHostChannelLink() {
-        val target = "https://app.slock.ai/channel/channel-123?msg=message-456".toRaftThreadWebLinkTarget()
+        val target = "https://app.slock.ai/channel/bd6e1218-1e13-4e40-838a-8c168fad487a?msg=1c1c2197-490a-435b-8e07-e6c79c871ed1".toRaftThreadWebLinkTarget()
 
-        assertEquals("channel-123", target?.channelId)
-        assertEquals("message-456", target?.messageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", target?.channelId)
+        assertEquals("1c1c2197-490a-435b-8e07-e6c79c871ed1", target?.messageId)
     }
 
     @Test
     fun parsesRaftChannelLink() {
-        val target = "https://app.raft.build/channel/channel-123?msg=message-456".toRaftThreadWebLinkTarget()
+        val target = "https://app.raft.build/channel/bd6e1218-1e13-4e40-838a-8c168fad487a?msg=1c1c2197-490a-435b-8e07-e6c79c871ed1".toRaftThreadWebLinkTarget()
 
-        assertEquals("channel-123", target?.channelId)
-        assertEquals("message-456", target?.messageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", target?.channelId)
+        assertEquals("1c1c2197-490a-435b-8e07-e6c79c871ed1", target?.messageId)
     }
 
     @Test
     fun parsesWorkspaceChannelLink() {
         val target =
-            "https://app.slock.ai/s/botiverse/channel/channel-123?msg=message-456"
+            "https://app.slock.ai/s/botiverse/channel/bd6e1218-1e13-4e40-838a-8c168fad487a?msg=1c1c2197-490a-435b-8e07-e6c79c871ed1"
                 .toRaftThreadWebLinkTarget()
 
-        assertEquals("channel-123", target?.channelId)
-        assertEquals("message-456", target?.messageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", target?.channelId)
+        assertEquals("1c1c2197-490a-435b-8e07-e6c79c871ed1", target?.messageId)
         assertEquals(RaftThreadSurfaceKind.Channel, target?.routeKind)
         assertNull(target?.threadParentMessageId)
     }
@@ -39,11 +39,11 @@ class RaftThreadWebLinkTargetTest {
     @Test
     fun parsesWorkspaceDmLink() {
         val target =
-            "https://app.slock.ai/s/botiverse/dm/dm-123?msg=message-456"
+            "https://app.slock.ai/s/botiverse/dm/4d4c5d12-2b19-4965-8149-633029a46e71?msg=1c1c2197-490a-435b-8e07-e6c79c871ed1"
                 .toRaftThreadWebLinkTarget()
 
-        assertEquals("dm-123", target?.channelId)
-        assertEquals("message-456", target?.messageId)
+        assertEquals("4d4c5d12-2b19-4965-8149-633029a46e71", target?.channelId)
+        assertEquals("1c1c2197-490a-435b-8e07-e6c79c871ed1", target?.messageId)
         assertEquals(RaftThreadSurfaceKind.DirectMessage, target?.routeKind)
         assertNull(target?.threadParentMessageId)
     }
@@ -51,43 +51,43 @@ class RaftThreadWebLinkTargetTest {
     @Test
     fun parsesWorkspaceThreadLink() {
         val target =
-            "https://staging.slock.ai/s/botiverse/channel/channel-123?thread=channel-123%3Aparent-789&msg=reply-456"
+            "https://staging.slock.ai/s/botiverse/channel/bd6e1218-1e13-4e40-838a-8c168fad487a?thread=bd6e1218-1e13-4e40-838a-8c168fad487a%3A9d6d1a00-86de-4c81-81ef-1f727384ecbb&msg=a10aa1e2-88f9-4633-804e-20497eebbdf4"
                 .toRaftThreadWebLinkTarget()
 
-        assertEquals("channel-123", target?.channelId)
-        assertEquals("reply-456", target?.messageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", target?.channelId)
+        assertEquals("a10aa1e2-88f9-4633-804e-20497eebbdf4", target?.messageId)
         assertEquals(RaftThreadSurfaceKind.Channel, target?.routeKind)
-        assertEquals("parent-789", target?.threadParentMessageId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", target?.threadParentMessageId)
     }
 
     @Test
     fun parsesThreadOnlyLinkAsParentMessageTarget() {
         val target =
-            "https://app.slock.ai/s/botiverse/channel/channel-123?thread=channel-123%3Aparent-789"
+            "https://app.slock.ai/s/botiverse/channel/bd6e1218-1e13-4e40-838a-8c168fad487a?thread=bd6e1218-1e13-4e40-838a-8c168fad487a%3A9d6d1a00-86de-4c81-81ef-1f727384ecbb"
                 .toRaftThreadWebLinkTarget()
 
-        assertEquals("channel-123", target?.channelId)
-        assertEquals("parent-789", target?.messageId)
-        assertEquals("parent-789", target?.threadParentMessageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", target?.channelId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", target?.messageId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", target?.threadParentMessageId)
     }
 
     @Test
     fun parsesRaftChannelLinkWithoutMessage() {
-        val target = "http://app.slock.ai/channel/channel-123".toRaftThreadWebLinkTarget()
+        val target = "http://app.slock.ai/channel/bd6e1218-1e13-4e40-838a-8c168fad487a".toRaftThreadWebLinkTarget()
 
-        assertEquals("channel-123", target?.channelId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", target?.channelId)
         assertNull(target?.messageId)
     }
 
     @Test
     fun rejectsExternalLinks() {
-        assertNull("https://example.com/channel/channel-123?msg=message-456".toRaftThreadWebLinkTarget())
+        assertNull("https://example.com/channel/bd6e1218-1e13-4e40-838a-8c168fad487a?msg=1c1c2197-490a-435b-8e07-e6c79c871ed1".toRaftThreadWebLinkTarget())
         assertNull("mailto:team@example.com".toRaftThreadWebLinkTarget())
     }
 
     @Test
     fun webLinkLoadingPayloadUsesChannelLaunchHeader() {
-        val target = RaftThreadWebLinkTarget(channelId = "channel-123", messageId = "message-456")
+        val target = RaftThreadWebLinkTarget(channelId = "bd6e1218-1e13-4e40-838a-8c168fad487a", messageId = "1c1c2197-490a-435b-8e07-e6c79c871ed1")
         val request = requireNotNull(target.resolveMarkdownOpenRequest("server-1", channelDirectory()))
         val payload = requireNotNull(buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId))
 
@@ -95,9 +95,9 @@ class RaftThreadWebLinkTargetTest {
         assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
         assertEquals(null, payload.subtitle)
         assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals("channel-123", payload.sourceThreadId)
-        assertEquals("channel-123", payload.streamChannelId)
-        assertEquals("message-456", payload.focusedMessageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", payload.sourceThreadId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", payload.streamChannelId)
+        assertEquals("1c1c2197-490a-435b-8e07-e6c79c871ed1", payload.focusedMessageId)
         assertEquals(null, payload.originParentMessageId)
         assertEquals("none", payload.originStatus)
         assertEquals(
@@ -110,10 +110,10 @@ class RaftThreadWebLinkTargetTest {
     fun webLinkLoadingPayloadUsesReplyRouteForThreadPermalink() {
         val target =
             RaftThreadWebLinkTarget(
-                channelId = "channel-123",
-                messageId = "reply-456",
+                channelId = "bd6e1218-1e13-4e40-838a-8c168fad487a",
+                messageId = "a10aa1e2-88f9-4633-804e-20497eebbdf4",
                 routeKind = RaftThreadSurfaceKind.Channel,
-                threadParentMessageId = "parent-789"
+                threadParentMessageId = "9d6d1a00-86de-4c81-81ef-1f727384ecbb"
             )
         val request = requireNotNull(target.resolveMarkdownOpenRequest("server-1", channelDirectory()))
         val payload = requireNotNull(buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId))
@@ -121,13 +121,13 @@ class RaftThreadWebLinkTargetTest {
         assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.sourceThreadId)
         assertEquals(null, payload.streamChannelId)
-        assertEquals("channel-123", payload.parentChannelId)
-        assertEquals("parent-789", payload.parentMessageId)
-        assertEquals("parent-789", payload.originParentMessageId)
-        assertEquals("reply-456", payload.focusedMessageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", payload.parentChannelId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", payload.parentMessageId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", payload.originParentMessageId)
+        assertEquals("a10aa1e2-88f9-4633-804e-20497eebbdf4", payload.focusedMessageId)
         assertEquals("missing", payload.originStatus)
-        assertEquals("parent-789", payload.resolveThreadComposer().parentMessageId)
-        assertEquals("channel-123", payload.resolveThreadComposer().mentionChannelId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", payload.resolveThreadComposer().parentMessageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", payload.resolveThreadComposer().mentionChannelId)
     }
 
     @Test
@@ -135,8 +135,8 @@ class RaftThreadWebLinkTargetTest {
         val target =
             requireNotNull(
                 (
-                    "https://app.raft.build/s/botiverse/channel/channel-123" +
-                        "?msg=reply-456&thread=channel-123%3Aparent-789"
+                    "https://app.raft.build/s/botiverse/channel/bd6e1218-1e13-4e40-838a-8c168fad487a" +
+                        "?msg=a10aa1e2-88f9-4633-804e-20497eebbdf4&thread=bd6e1218-1e13-4e40-838a-8c168fad487a%3A9d6d1a00-86de-4c81-81ef-1f727384ecbb"
                     ).toRaftThreadWebLinkTarget()
             )
 
@@ -157,9 +157,9 @@ class RaftThreadWebLinkTargetTest {
             )
 
         assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("channel-123", payload.parentChannelId)
-        assertEquals("parent-789", payload.parentMessageId)
-        assertEquals("reply-456", payload.focusedMessageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", payload.parentChannelId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", payload.parentMessageId)
+        assertEquals("a10aa1e2-88f9-4633-804e-20497eebbdf4", payload.focusedMessageId)
         assertEquals(ConversationKind.Channel, payload.resolveThreadRouteIdentity().parentConversationKind)
     }
 
@@ -167,7 +167,7 @@ class RaftThreadWebLinkTargetTest {
     fun canonicalChannelLinkResolvesWithoutDirectoryProjection() {
         val target =
             requireNotNull(
-                "https://app.raft.build/s/botiverse/channel/channel-123?msg=message-456"
+                "https://app.raft.build/s/botiverse/channel/bd6e1218-1e13-4e40-838a-8c168fad487a?msg=1c1c2197-490a-435b-8e07-e6c79c871ed1"
                     .toRaftThreadWebLinkTarget()
             )
 
@@ -181,8 +181,8 @@ class RaftThreadWebLinkTargetTest {
             )
 
         assertEquals(ConversationKind.Channel, request.conversationIdentity.kind)
-        assertEquals("channel-123", request.conversationIdentity.channelId?.value)
-        assertEquals("message-456", request.anchorMessageId)
+        assertEquals("bd6e1218-1e13-4e40-838a-8c168fad487a", request.conversationIdentity.channelId?.value)
+        assertEquals("1c1c2197-490a-435b-8e07-e6c79c871ed1", request.anchorMessageId)
     }
 
     @Test
@@ -190,8 +190,8 @@ class RaftThreadWebLinkTargetTest {
         val target =
             requireNotNull(
                 (
-                    "https://app.raft.build/s/botiverse/dm/dm-123" +
-                        "?msg=reply-456&thread=dm-123%3Aparent-789"
+                    "https://app.raft.build/s/botiverse/dm/4d4c5d12-2b19-4965-8149-633029a46e71" +
+                        "?msg=a10aa1e2-88f9-4633-804e-20497eebbdf4&thread=4d4c5d12-2b19-4965-8149-633029a46e71%3A9d6d1a00-86de-4c81-81ef-1f727384ecbb"
                     ).toRaftThreadWebLinkTarget()
             )
 
@@ -212,9 +212,9 @@ class RaftThreadWebLinkTargetTest {
             )
 
         assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("dm-123", payload.parentChannelId)
-        assertEquals("parent-789", payload.parentMessageId)
-        assertEquals("reply-456", payload.focusedMessageId)
+        assertEquals("4d4c5d12-2b19-4965-8149-633029a46e71", payload.parentChannelId)
+        assertEquals("9d6d1a00-86de-4c81-81ef-1f727384ecbb", payload.parentMessageId)
+        assertEquals("a10aa1e2-88f9-4633-804e-20497eebbdf4", payload.focusedMessageId)
         assertEquals(ConversationKind.DirectMessage, payload.resolveThreadRouteIdentity().parentConversationKind)
     }
 
@@ -222,8 +222,8 @@ class RaftThreadWebLinkTargetTest {
         listOf(
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "channel-123",
-                aliases = setOf("channel-123"),
+                canonicalChannelId = "bd6e1218-1e13-4e40-838a-8c168fad487a",
+                aliases = setOf("bd6e1218-1e13-4e40-838a-8c168fad487a"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = RaftThreadSurfaceKind.Channel,

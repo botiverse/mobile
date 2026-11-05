@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.app.links.extractFirstQuotedRaftPermalink
+import build.raft.app.links.raftPermalinkHostnames
+import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.links.toParsedRaftPermalink
 import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
 import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
@@ -9546,7 +9551,7 @@ private fun SharedThreadRouteContentContent(
             renderedThread,
             stableHeaderProjection
         ) {
-            { target: RaftMessagePermalinkTarget ->
+            { target: ParsedRaftPermalink ->
                 val currentServerId = currentSession?.currentServerId?.takeIf(String::isNotBlank)
                 val sameServer =
                     currentServerSlug?.takeIf(String::isNotBlank)?.let { slug ->
@@ -15723,7 +15728,7 @@ internal fun raftMarkdownUrlOpen(rawUrl: String, webUrl: String?): RaftMarkdownU
 }
 
 internal fun String.toRaftThreadWebLinkTarget(configuredWebUrl: String? = null): RaftThreadWebLinkTarget? {
-    toRaftMessagePermalinkTarget(configuredWebUrl = configuredWebUrl)?.let { target ->
+    toParsedRaftPermalink(configuredWebUrl = configuredWebUrl)?.let { target ->
         return RaftThreadWebLinkTarget(
             channelId = target.channelId.value,
             messageId = target.messageId.value,
@@ -28234,7 +28239,7 @@ internal data class ThreadQuotedPermalinkMessage(
     val channelArchived: Boolean = false
 )
 
-internal typealias ThreadQuotedPermalinkLoader = suspend (RaftMessagePermalinkTarget) -> ThreadQuotedPermalinkMessage?
+internal typealias ThreadQuotedPermalinkLoader = suspend (ParsedRaftPermalink) -> ThreadQuotedPermalinkMessage?
 
 /**
  * The loader behind the quoted-permalink card. SharedThreadRouteContent is at the JVM argument
@@ -28261,7 +28266,7 @@ internal sealed interface ThreadQuotedPermalinkUiState {
 @Composable
 internal fun ThreadQuotedPermalinkCard(
     state: ThreadQuotedPermalinkUiState,
-    target: RaftMessagePermalinkTarget?,
+    target: ParsedRaftPermalink?,
     memberAvatarResolver: RaftMemberAvatarResolver,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier
@@ -28769,12 +28774,17 @@ private fun ThreadMessageCardContent(
         }
     val shareCaptureActive = LocalThreadShareCaptureActive.current
     val quotedPermalinkState = remember(message.id, message.body) { mutableStateOf<ThreadQuotedPermalinkUiState?>(null) }
-    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<RaftMessagePermalinkTarget?>(null) }
+    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<ParsedRaftPermalink?>(null) }
     LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader) {
         quotedPermalinkState.value = null
         quotedPermalinkTarget = null
         val loader = quotedPermalinkLoader ?: return@LaunchedEffect
-        val target = message.body.extractFirstQuotedMessagePermalink(currentServerSlug)
+        val target =
+            extractFirstQuotedRaftPermalink(
+                content = message.body,
+                hostnames = raftPermalinkHostnames(RaftClientConfigAppHosts.current),
+                currentServerSlug = currentServerSlug
+            )?.parsed
         if (target == null) {
             // task #1153: quoted permalink cards used to fail silently. This
             // event only proves extraction returned null — it does not

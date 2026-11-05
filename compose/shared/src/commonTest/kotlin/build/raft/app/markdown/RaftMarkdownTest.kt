@@ -93,7 +93,7 @@ class RaftMarkdownTest {
 
     @Test
     fun messagePermalinkRenderConfigDefaultsToOrdinaryLink() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildAnnotatedString {
             withLink(LinkAnnotation.Url(url)) { append(url) }
         }
@@ -110,7 +110,7 @@ class RaftMarkdownTest {
 
     @Test
     fun messagePermalinkRenderConfigCanEnableTagProjection() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildAnnotatedString {
             withLink(LinkAnnotation.Url(url)) { append(url) }
         }
@@ -127,7 +127,7 @@ class RaftMarkdownTest {
 
     @Test
     fun raftMessagePermalinkUsesGenericInlineBoxChip() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source =
             buildAnnotatedString {
                 append("See ")
@@ -137,7 +137,7 @@ class RaftMarkdownTest {
 
         val resolved =
             source.withRaftMessagePermalinkChips { target ->
-                "proj-server-management".takeIf { target.channelId.value == "channel-1" }
+                "proj-server-management".takeIf { target.channelId.value == "6cb4981e-00c7-4076-81b0-0d46c208c132" }
             }
         val link = resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
 
@@ -166,7 +166,7 @@ class RaftMarkdownTest {
     @Test
     fun externalAndContentlessRaftLinksRemainOrdinaryLinks() {
         val external = "https://example.com/page"
-        val contentless = "https://app.raft.build/s/mobile/channel/channel-1"
+        val contentless = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132"
         val source =
             buildAnnotatedString {
                 withLink(LinkAnnotation.Url(external)) { append("external") }
@@ -179,7 +179,7 @@ class RaftMarkdownTest {
 
     @Test
     fun unresolvedRaftMessagePermalinkUsesNeutralFallback() {
-        val url = "https://app.raft.build/s/another/channel/private-id?msg=message-1"
+        val url = "https://app.raft.build/s/another/channel/72f3745a-4faa-49fc-8712-c71973eb3b01?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source =
             buildAnnotatedString {
                 withLink(LinkAnnotation.Url(url)) { append(url) }
@@ -193,7 +193,7 @@ class RaftMarkdownTest {
 
     @Test
     fun permalinkChipUsesNativeTextRunsInsteadOfEstimatedWholeChipWidth() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildAnnotatedString {
             withLink(LinkAnnotation.Url(url)) { append(url) }
         }
@@ -214,8 +214,8 @@ class RaftMarkdownTest {
     @Test
     fun threadPermalinkUsesTypedThreadSuffix() {
         val url =
-            "https://app.raft.build/s/mobile/channel/channel-1" +
-                "?thread=channel-1%3Aparent-1&msg=message-1"
+            "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132" +
+                "?thread=6cb4981e-00c7-4076-81b0-0d46c208c132%3A857c43c7-2439-4a80-869a-3fc22745ba27&msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source =
             buildAnnotatedString {
                 withLink(LinkAnnotation.Url(url)) { append(url) }
@@ -229,8 +229,8 @@ class RaftMarkdownTest {
     @Test
     fun markdownAutolinkPreservesEncodedThreadPermalinkTarget() {
         val url =
-            "https://app.raft.build/s/mobile/channel/channel-1" +
-                "?thread=channel-1%3Aparent-1&msg=message-1"
+            "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132" +
+                "?thread=6cb4981e-00c7-4076-81b0-0d46c208c132%3A857c43c7-2439-4a80-869a-3fc22745ba27&msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val source = buildRaftMarkdownParagraphAnnotatedString("Thread reply: $url")
 
         val resolved = source.withRaftMessagePermalinkChips { "proj-server-management" }
@@ -243,7 +243,7 @@ class RaftMarkdownTest {
 
     @Test
     fun raftPermalinkInsideInlineCodeRemainsLiteral() {
-        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val url = "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
         val externalUrl = "https://example.com/visual"
         val source =
             buildAnnotatedString {

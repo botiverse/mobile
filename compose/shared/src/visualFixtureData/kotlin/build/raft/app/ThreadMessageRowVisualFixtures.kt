@@ -2431,10 +2431,10 @@ internal fun threadMessagePermalinkVisualPayload(instanceId: String): RaftThread
                     timestampLabel = "07/11 23:55",
                     messageType = "Chat",
                     body =
-                        "Single line: https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-single\n\n" +
-                            "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-edge after.\n\n" +
-                            "Thread reply: https://app.raft.build/s/mobile/channel/channel-proj-server-management?thread=channel-proj-server-management%3Amsg-parent&msg=msg-reply and DM: https://app.raft.build/s/mobile/dm/dm-mahua?msg=msg-dm.\n\n" +
-                            "External negative stays a link: https://example.com/visual. Code negative stays literal: `https://app.raft.build/s/mobile/channel/channel-design?msg=msg-code`.",
+                        "Single line: https://app.raft.build/s/mobile/channel/a7475818-d6b2-426d-8529-5ccdd26c295e?msg=71e10f8e-a8ec-47fb-8226-4dd6bb9c4a3b\n\n" +
+                            "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/a7475818-d6b2-426d-8529-5ccdd26c295e?msg=5ce5a4ea-11d2-4290-8127-aa09604e4fa9 after.\n\n" +
+                            "Thread reply: https://app.raft.build/s/mobile/channel/a7475818-d6b2-426d-8529-5ccdd26c295e?thread=a7475818-d6b2-426d-8529-5ccdd26c295e%3A5a059894-e2a9-4443-8893-538cd34de603&msg=a95ecf0b-0378-4933-8b60-c4c81fa2b714 and DM: https://app.raft.build/s/mobile/dm/fa6b89fc-4186-42b5-885e-5a19d9f5e86e?msg=be443272-d7d6-4421-81b4-144791c13638.\n\n" +
+                            "External negative stays a link: https://example.com/visual. Code negative stays literal: `https://app.raft.build/s/mobile/channel/ebe61630-08ec-4c4f-8359-3caac639fa5b?msg=fc6d63c2-95bf-4df5-8b34-50f5defc95a6`.",
                     threadChannelId = "thread-msg-permalink-visual"
                 )
             ),

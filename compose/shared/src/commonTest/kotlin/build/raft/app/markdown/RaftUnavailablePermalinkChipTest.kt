@@ -3,7 +3,7 @@ package build.raft.app.markdown
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
-import build.raft.app.toRaftMessagePermalinkTarget
+import build.raft.app.links.toParsedRaftPermalink
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -18,7 +18,7 @@ class RaftUnavailablePermalinkChipTest {
 
     @Test
     fun anUnreadableQuoteIsALabelledChipThatOpensNothing() {
-        val target = assertNotNull(url.toRaftMessagePermalinkTarget())
+        val target = assertNotNull(url.toParsedRaftPermalink())
         val chip =
             text.withRaftMessagePermalinkRenderConfig(
                 config = config,

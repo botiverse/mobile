@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 
 import build.raft.app.components.RaftAnchoredMetaChip
@@ -747,15 +748,15 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     val visualMessagePermalinkLabelResolver =
         remember(visualFixture) {
-            { target: RaftMessagePermalinkTarget ->
+            { target: ParsedRaftPermalink ->
                 when (target.channelId.value) {
-                    "channel-proj-server-management" ->
+                    "a7475818-d6b2-426d-8529-5ccdd26c295e" ->
                         if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW) {
                             "proj"
                         } else {
                             "proj-server-management"
                         }
-                    "dm-mahua" -> "Mahua"
+                    "fa6b89fc-4186-42b5-885e-5a19d9f5e86e" -> "Mahua"
                     else -> null
                 }
             }
