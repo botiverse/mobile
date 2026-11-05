@@ -57,8 +57,8 @@ class RaftArtifactViewerEmbedTest {
                 "$web/artifacts/pt_other?$embed&shown=4" to RaftArtifactViewerNavigation.Close,
                 "$web/s/acme?shown=4" to RaftArtifactViewerNavigation.Close,
                 // Its original message (the toolbar's link): open it natively.
-                "$web/s/acme/channel/ch_1?msg=m_9&$embed" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/channel/ch_1?msg=m_9&$embed"),
-                "$web/s/acme/dm/dm_2?msg=m_3&thread=dm_2%3Am_1" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/dm/dm_2?msg=m_3&thread=dm_2%3Am_1"),
+                "$web/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009&$embed" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009&$embed"),
+                "$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Am_1" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Am_1"),
                 // Anywhere else in the web app (the server after a Delete, another Artifact, a bad version): close.
                 "$web/s/acme?$embed" to RaftArtifactViewerNavigation.Close,
                 "$web/" to RaftArtifactViewerNavigation.Close,
@@ -66,7 +66,7 @@ class RaftArtifactViewerEmbedTest {
                 "$web/artifacts/$id/v/0" to RaftArtifactViewerNavigation.Close,
                 "$web/artifacts/$RAFT_ARTIFACT_VIEWER_WARM_SEGMENT?$embed" to RaftArtifactViewerNavigation.Close,
                 // A message link on another host is not this web app's page: the system browser.
-                "https://evil.test/s/acme/channel/ch_1?msg=m_9" to RaftArtifactViewerNavigation.SystemBrowser("https://evil.test/s/acme/channel/ch_1?msg=m_9"),
+                "https://evil.test/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009" to RaftArtifactViewerNavigation.SystemBrowser("https://evil.test/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009"),
                 "https://w-x.w-staging.raftusercontent.com/page" to RaftArtifactViewerNavigation.SystemBrowser("https://w-x.w-staging.raftusercontent.com/page"),
                 // Not a page.
                 "" to RaftArtifactViewerNavigation.Ignore,
