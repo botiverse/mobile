@@ -17,7 +17,7 @@ import build.raft.app.components.RaftAppSkeleton
 import build.raft.app.components.RaftSkeletonRow
 import build.raft.app.components.RaftAppSkeletonVariant
 import build.raft.app.components.RaftSlugInput
-import build.raft.app.components.RaftSurfaceListItem
+import build.raft.app.components.raftCardSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.alpha
@@ -328,6 +328,20 @@ internal fun UiSelectVisualContent() {
     }
 }
 
+/**
+ * The web case's legacy SurfaceListItem (raft-ui has since dropped it; the app's reminder card is a
+ * DS `RaftCard`): a card-surface row, `info-soft` when selected, padded 16 x 12.
+ */
+@Composable
+private fun UiSurfaceListItemFixtureRow(selected: Boolean, content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .raftCardSurface(fill = if (selected) RaftColor.InfoSoft else RaftColor.Card)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) { content() }
+}
+
 @Composable
 internal fun UiSurfaceListItemVisualContent() {
     // 182dp matches the react capture's pinned element height; content is
@@ -342,13 +356,13 @@ internal fun UiSurfaceListItemVisualContent() {
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftSurfaceListItem(interactive = false) {
+            UiSurfaceListItemFixtureRow(selected = false) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Private app", style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp), color = RaftColor.TextBlack, maxLines = 1)
                     Text("Available to this server", style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp), color = RaftColor.TextMuted, maxLines = 1)
                 }
             }
-            RaftSurfaceListItem(selected = true, interactive = false) {
+            UiSurfaceListItemFixtureRow(selected = true) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Active integration", style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp), color = RaftColor.TextBlack, maxLines = 1)
                     Text("Selected list item state", style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp), color = RaftColor.TextMuted, maxLines = 1)

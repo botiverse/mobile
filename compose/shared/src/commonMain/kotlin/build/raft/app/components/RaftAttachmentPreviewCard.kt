@@ -11,6 +11,9 @@ import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftType
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import androidx.compose.foundation.background
@@ -36,8 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -196,18 +197,13 @@ private fun RaftAttachmentCardMetaText(text: String) {
 // `-my-1 size-6 rounded-chip text-foreground active:bg-fill-medium`, a 16dp glyph.
 @Composable
 private fun RaftAttachmentPreviewCardActionButton(action: RaftAttachmentPreviewCardAction) {
-    val shape = RoundedCornerShape(RaftAppRadius.Chip)
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    Box(
-        modifier =
-            Modifier
-                .size(24.dp)
-                .clip(shape)
-                .then(if (pressed) Modifier.background(RaftAppThemeState.colors.fillMedium, shape) else Modifier)
-                .clickable(interactionSource = interactionSource, indication = null, onClick = action.onClick)
-                .semantics { contentDescription = action.contentDescription },
-        contentAlignment = Alignment.Center
+    RaftIconButton(
+        onClick = action.onClick,
+        // No tooltip: a long press belongs to the message row around the card.
+        tooltip = null,
+        contentDescription = action.contentDescription,
+        variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Xs,
     ) {
         RaftLucideIcon(
             action.icon,

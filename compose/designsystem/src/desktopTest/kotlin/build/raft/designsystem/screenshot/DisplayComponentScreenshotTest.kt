@@ -268,7 +268,7 @@ class DisplayComponentScreenshotTest {
     fun iconButton() =
         capture("icon_button") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Caption("Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
+                Caption("Xs (24) and Sm (28) at the chip radius, Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
                 RaftButtonVariant.entries.forEach { variant ->
                     val onFrame = variant == RaftButtonVariant.OnFrame
                     Row(

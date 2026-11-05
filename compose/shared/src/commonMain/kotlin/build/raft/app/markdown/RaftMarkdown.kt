@@ -3,8 +3,6 @@ package build.raft.app.markdown
 import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import build.raft.app.RaftTextSize
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
@@ -55,7 +53,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -83,6 +80,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.lerp
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.designsystem.text.forCjkLineBox
 import androidx.compose.ui.graphics.Color
@@ -3098,24 +3098,22 @@ private fun RaftMarkdownCodeBlockContent(
     }
     Box(modifier = Modifier.fillMaxWidth()) {
         RaftMarkdownCodeSurface(code = code, language = language, style = style)
-        val pressSource = remember { MutableInteractionSource() }
-        val pressed by pressSource.collectIsPressedAsState()
-        Box(
-            // raft-ui 0.20 CodeBlock: the copy action is a 28dp ghost button 6dp from the block's
-            // corner at radius-chip, in a column of its own (the code keeps its end padding), and
-            // presses with the medium tier.
+        // raft-ui 0.20 CodeBlock: the copy action is a 28dp ghost button 6dp from the block's
+        // corner at radius-chip, in a column of its own (the code keeps its end padding), and
+        // presses with the medium tier. No tooltip: a long press belongs to the message row.
+        RaftIconButton(
+            onClick = {
+                bridge.copyToPasteboard(code)
+                copied = true
+            },
+            tooltip = null,
+            contentDescription = stringResource(if (copied) Res.string.common_copied else Res.string.common_copy),
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset)
-                    .size(RaftMarkdownCodeActionSize)
-                    .clip(RoundedCornerShape(RaftMarkdownCodeActionRadius))
-                    .background(if (pressed) RaftAppThemeState.colors.fillMedium else Color.Transparent)
-                    .clickable(interactionSource = pressSource, indication = null) {
-                        bridge.copyToPasteboard(code)
-                        copied = true
-                    },
-            contentAlignment = Alignment.Center,
+                    .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset),
+            variant = RaftButtonVariant.Ghost,
+            size = RaftIconButtonSize.Sm,
         ) {
             RaftLucideIcon(
                 name = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
@@ -3129,8 +3127,6 @@ private fun RaftMarkdownCodeBlockContent(
 
 private val RaftMarkdownCodeSurfaceVerticalInset = 8.dp
 private val RaftMarkdownCodeActionInset = 6.dp
-private val RaftMarkdownCodeActionSize = 28.dp
-private val RaftMarkdownCodeActionRadius = 6.dp
 
 /**
  * Told when a tap lands on a code block, so a message row's own tap can leave it alone: the web's

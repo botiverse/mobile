@@ -21,6 +21,7 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
@@ -45,7 +46,6 @@ import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.Utils
 import build.raft.app.base.raftAttachmentHostDownloadId
 import build.raft.app.base.reduceAttachmentDownloadProgress
-import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.data.DataRequestPriority
@@ -108,6 +108,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -4383,19 +4384,17 @@ internal fun RaftFilePreviewComposerImageActionBar(
                     Row(
                         modifier =
                             Modifier
-                                .clickable(enabled = enabled) {
-                                    onOriginalImageChange(!originalImageSelected)
-                                }
+                                .toggleable(
+                                    value = originalImageSelected,
+                                    enabled = enabled,
+                                    role = Role.Checkbox,
+                                    onValueChange = onOriginalImageChange,
+                                )
                                 .heightIn(min = 18.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        RaftAppCheckbox(
-                            checked = originalImageSelected,
-                            onCheckedChange = onOriginalImageChange,
-                            enabled = enabled,
-                            size = 14.dp,
-                        )
+                        RaftCheckboxIndicator(checked = originalImageSelected, enabled = enabled)
                         Text(
                             text = stringResource(Res.string.thread_composer_original_image),
                             style =

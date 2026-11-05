@@ -32,7 +32,8 @@ import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -247,7 +248,7 @@ private fun SettingsMultiShellHostCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onMultiShellHostChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -302,7 +303,7 @@ private fun SettingsDesktopModeCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         diagnosticsLogger(
                             "desktop_mode_toggle_click target=${!preference.enabled} " +
                                 "available=${preference.available} busy=$busy"
@@ -358,7 +359,7 @@ private fun SettingsServerDrawerCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         diagnosticsLogger(
                             "server_drawer_toggle_click target=${!preference.enabled} " +
                                 "available=${preference.available} busy=$busy"
@@ -410,7 +411,7 @@ private fun SettingsHomeServerAvatarCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onHomeServerAvatarChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -456,7 +457,7 @@ private fun SettingsThreadReverseLayoutCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onThreadReverseLayoutChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -612,7 +613,7 @@ private fun SettingsCompactMessagesCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onCompactConsecutiveMessagesChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -666,7 +667,7 @@ private fun SettingsLongMessageCollapseCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onLongMessageCollapseChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -718,7 +719,7 @@ private fun SettingsNewMessageMenuCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onNewMessageMenuChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -784,7 +785,7 @@ private fun SettingsConversationForwardGestureCard(
                         contentDescription = accessibilityDescription
                         stateDescription = localizedStateDescription
                     }
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onConversationForwardGestureChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -836,7 +837,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onActivityTaskStatusBadgesChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
@@ -891,7 +892,7 @@ private fun SettingsComposerSendKeyCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
+                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
                         onComposerSendKeyChange(!preference.enabled)
                     }
                     .padding(vertical = 4.dp),
