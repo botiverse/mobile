@@ -50,11 +50,26 @@ internal class ComposeRaftMessageLinkNotFoundPage : build.raft.app.base.BasePage
 private fun RaftMessageLinkNotFoundPageContent() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager()
-    RaftMessageLinkNotFoundScreen(
-        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
-        topSafeArea = raftTopSafeAreaPadding(),
-    )
+    val onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    if (pager.pageData.params.optBoolean(CONVERSATION_UNAVAILABLE_PARAM, false)) {
+        RaftConversationUnavailableScreen(onBack = { onBack() })
+    } else {
+        RaftMessageLinkNotFoundScreen(onBack = { onBack() }, topSafeArea = raftTopSafeAreaPadding())
+    }
 }
+
+private const val CONVERSATION_UNAVAILABLE_PARAM = "conversationUnavailable"
+
+/** The conversation a link named is not there for this account (404/403/400): [RaftConversationUnavailableScreen]. */
+internal fun Pager.openRaftConversationUnavailablePage(storeScope: RaftShellStoreScope): Boolean =
+    openRaftPage(
+        pageName = RAFT_MESSAGE_LINK_NOT_FOUND_PAGE,
+        pageData =
+            JSONObject()
+                .put("pageName", RAFT_MESSAGE_LINK_NOT_FOUND_PAGE)
+                .put(CONVERSATION_UNAVAILABLE_PARAM, true),
+        storeScopeOverride = storeScope,
+    )
 
 internal fun Pager.openRaftMessageLinkNotFoundPage(storeScope: RaftShellStoreScope): Boolean =
     openRaftPage(

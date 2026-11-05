@@ -103,6 +103,9 @@
     <string name="message_link_title">メッセージリンク</string>
     <string name="message_link_not_found_title">メッセージが見つかりません</string>
     <string name="message_link_not_found_body">リンクが間違っているか、閲覧する権限がありません。</string>
+    <string name="conversation_unavailable_title">この会話は開けません</string>
+    <string name="conversation_unavailable_back_conversations">会話一覧に戻る</string>
+    <string name="conversation_unavailable_back_channels">チャンネル一覧に戻る</string>
     <string name="message_link_switched_server">%1$s に切り替えました</string>
     <string name="message_link_public_preview_title">公開プレビュー</string>
     <string name="message_link_public_preview_notice">このサーバーにはまだ参加していません。公開プレビューを表示しています。</string>

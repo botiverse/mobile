@@ -103,6 +103,9 @@
     <string name="message_link_title">Enlace del mensaje</string>
     <string name="message_link_not_found_title">No se encontró el mensaje</string>
     <string name="message_link_not_found_body">Puede que el enlace sea incorrecto o que no tengas acceso.</string>
+    <string name="conversation_unavailable_title">No puedes abrir esta conversación</string>
+    <string name="conversation_unavailable_back_conversations">Volver a las conversaciones</string>
+    <string name="conversation_unavailable_back_channels">Volver a los canales</string>
     <string name="message_link_switched_server">Se cambió a %1$s</string>
     <string name="message_link_public_preview_title">Vista previa pública</string>
     <string name="message_link_public_preview_notice">No te has unido a este servidor. Esta es su vista previa pública.</string>

@@ -103,6 +103,9 @@
     <string name="message_link_title">Message link</string>
     <string name="message_link_not_found_title">Message not found</string>
     <string name="message_link_not_found_body">The link may be wrong, or you don't have access to it.</string>
+    <string name="conversation_unavailable_title">This conversation isn't available to you</string>
+    <string name="conversation_unavailable_back_conversations">Back to conversations</string>
+    <string name="conversation_unavailable_back_channels">Back to channels</string>
     <string name="message_link_switched_server">Switched to %1$s</string>
     <string name="message_link_public_preview_title">Public preview</string>
     <string name="message_link_public_preview_notice">You haven't joined this server. This is its public preview.</string>
