@@ -3684,6 +3684,7 @@
     <string name="thread_link_preview_open_link">打开链接</string>
     <string name="thread_link_preview_connect_title">连接 %1$s</string>
     <string name="thread_link_preview_connect_body">%1$s 需要先连接你的账号，才能在这里显示此链接的预览。</string>
+    <string name="thread_link_preview_action_failed">无法执行此操作，请重试。</string>
     <string name="thread_link_preview_connect_action">连接账号</string>
     <string name="thread_action_card_scope_group_server">服务器 · 只读</string>
     <string name="thread_action_card_scope_group_agent">Agent · 只读</string>

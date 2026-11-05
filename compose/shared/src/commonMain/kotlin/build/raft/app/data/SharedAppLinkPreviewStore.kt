@@ -387,6 +387,43 @@ class SharedAppLinkPreviewStore internal constructor(
         return AppLinkFetch.Answer(parsed, emptyMap())
     }
 
+    /** Prepares a `confirm: "prepare"` button: the description Raft's confirmation shows. */
+    suspend fun prepareAction(serverId: String, handle: String, businessRevision: String): AppLinkActionResult<AppLinkPrepared> {
+        val response = callOrNull("app_link_card_prepare_error") { api.prepareLinkCardAction(serverId, AppLinkPrepareRequestBody(handle, AppLinkPrepareClaim(businessRevision))) }
+            ?: return AppLinkActionResult.Failed(null, null, outOfDate = false)
+        return parseAppLinkPrepareAnswer(response.code, response.bodyText ?: response.errorBodyText)
+    }
+
+    /** Runs a button's action (after its confirmation, when it has one). The same [clientRequestId] repeats the same intent. */
+    suspend fun executeAction(
+        serverId: String,
+        handle: String,
+        clientRequestId: String,
+        prepared: AppLinkPrepared?,
+    ): AppLinkActionResult<AppLinkExecuted> {
+        val body = AppLinkExecuteRequestBody(clientRequestId, handle, prepared?.preparedActionId, prepared?.preparedDigest)
+        val response = callOrNull("app_link_card_execute_error") { api.executeLinkCardAction(serverId, body) }
+            ?: return AppLinkActionResult.Failed(null, null, outOfDate = false)
+        return parseAppLinkExecuteAnswer(response.code, response.bodyText ?: response.errorBodyText)
+    }
+
+    /**
+     * Reads one link of a message again (after a button was pressed, or its card went stale): the
+     * batched read of [batch]'s view for [url] alone, which sends back the view's ticket. Its answer
+     * replaces that link's result; a link that is no longer previewed keeps what is shown.
+     */
+    suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String) {
+        val readScope = appLinkReadScope(viewerKey, messageId, content, batch.mode)
+        val askedGeneration = _state.value.generation
+        val fetched = fetch(messageId, serverId, batch, listOf(url)) as? AppLinkFetch.Answer ?: return
+        val fresh = fetched.results[url]?.takeIf { it is AppLinkResult.Card } ?: return
+        _state.update { state ->
+            if (state.generation != askedGeneration) return@update state
+            val entry = state.entries[readScope]?.takeIf { it.viewId == batch.view.id } ?: return@update state
+            state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results + (url to fresh))))
+        }
+    }
+
     /** Allows the App's previews here; the messages that asked read again. */
     fun allow(viewerKey: String, serverId: String, app: AppLinkPromptApp): Deferred<AppLinkConsentAnswer> =
         scope.async {

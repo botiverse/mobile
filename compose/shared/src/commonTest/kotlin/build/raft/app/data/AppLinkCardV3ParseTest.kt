@@ -96,7 +96,7 @@ class AppLinkCardV3ParseTest {
         assertTrue(card.chip)
         assertEquals(connectUrl, card.connectUrl)
         assertTrue(card.hasCardBody)
-        assertEquals("Stamp", card.chipTitle)
+        assertEquals("stamp.example.test/botiverse/slock/pull/123", card.chipTitle)
         assertNull(card.block)
     }
 
@@ -196,6 +196,17 @@ class AppLinkCardV3ParseTest {
         val read = parseAppLinkCardReadAnswer("""{"items":[${item(cardItem("block"), ticket = "\"tk-1\"")}],"prompts":[]}""")!!
         assertEquals(mapOf(url to "tk-1"), read.tickets)
         assertNotNull((read.results[url] as AppLinkResult.Card).block)
+    }
+
+    @Test
+    fun theHandlesAndTheBusinessRevisionOfABlockCardAreKept() {
+        val signed = """{"kind":"v3","url":"$url","app":$stamp,"ticket":"tk","actions":[{"action_id":"merge","handle":"h-1"},{"action_id":"close","handle":"h-2"}],
+          "preview":{"version":3,"items":[${cardItem("block")}]}}"""
+        val card = parseAppLinkCardReadAnswer("""{"items":[$signed]}""")!!.results[url] as AppLinkResult.Card
+        assertEquals(mapOf("merge" to "h-1", "close" to "h-2"), card.handles)
+        assertEquals("br-1", card.block?.businessRevision)
+        val badId = signed.replace("\"merge\"", "\"Merge\"")
+        assertTrue(parseAppLinkCardReadAnswer("""{"items":[$badId]}""")!!.results.isEmpty())
     }
 
     @Test
