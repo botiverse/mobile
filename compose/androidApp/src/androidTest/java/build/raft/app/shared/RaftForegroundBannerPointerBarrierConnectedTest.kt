@@ -8,12 +8,20 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import build.raft.app.image.RaftImageLoaderTestOverrides
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import kotlin.math.abs
 
 class RaftForegroundBannerPointerBarrierConnectedTest {
+    /** `root.draw(Canvas(bitmap))` is a software Canvas: it rejects Coil's default hardware bitmaps. */
+    @Before
+    fun useSoftwareImageBitmaps() {
+        RaftImageLoaderTestOverrides.forceSoftwareBitmaps()
+    }
+
     @Test
     fun tappingForegroundBannerDoesNotClickUnderlyingContent() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

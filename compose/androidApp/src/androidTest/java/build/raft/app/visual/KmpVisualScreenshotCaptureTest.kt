@@ -19,6 +19,7 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import build.raft.app.image.RaftImageLoaderTestOverrides
 import build.raft.app.shared.RaftCmpActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -6735,6 +6736,16 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 260,
                 heightDp = 844
             )
+
+        /**
+         * The capture draws the view tree into a software Canvas (`root.draw(Canvas(bitmap))`),
+         * which rejects Coil's default hardware bitmaps (reaction sprite atlas, avatars).
+         */
+        @BeforeClass
+        @JvmStatic
+        fun useSoftwareImageBitmaps() {
+            RaftImageLoaderTestOverrides.forceSoftwareBitmaps()
+        }
 
         @BeforeClass
         @JvmStatic

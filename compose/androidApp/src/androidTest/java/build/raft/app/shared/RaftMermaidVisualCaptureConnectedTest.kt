@@ -6,12 +6,19 @@ import android.graphics.Canvas
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import build.raft.app.image.RaftImageLoaderTestOverrides
 import org.json.JSONObject
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.io.FileOutputStream
 
 class RaftMermaidVisualCaptureConnectedTest {
+    /** `root.draw(Canvas(bitmap))` is a software Canvas: it rejects Coil's default hardware bitmaps. */
+    @Before
+    fun useSoftwareImageBitmaps() {
+        RaftImageLoaderTestOverrides.forceSoftwareBitmaps()
+    }
 
     private fun captureCase(name: String, mermaidCode: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

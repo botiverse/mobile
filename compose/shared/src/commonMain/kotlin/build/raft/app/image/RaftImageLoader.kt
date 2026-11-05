@@ -38,6 +38,16 @@ suspend fun raftClearImageCaches() {
 }
 
 /**
+ * Replaces the singleton with a freshly built Raft loader (dropping the old loader's memory cache),
+ * so a loader-level setting changed after the first image load takes effect. Test-only path:
+ * production installs once through [raftInstallImageLoader].
+ */
+internal fun raftReinstallImageLoader() {
+    raftImageLoaderInstalled.value = true
+    SingletonImageLoader.setUnsafe { context -> raftBuildImageLoader(context) }
+}
+
+/**
  * Installs the Raft singleton Coil [ImageLoader] (idempotent). Must run before the first image
  * request: [build.raft.app.compat.pager.RaftPagerHost] calls it when a page host is created, and
  * hosts may call it earlier at startup.
@@ -76,13 +86,10 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
 }
 
 /**
- * Platform defaults for the Raft loader. Android: never decode into `Bitmap.Config.HARDWARE`.
- * Every Raft image is drawn through Compose (`drawImage` of a raw [androidx.compose.ui.graphics.ImageBitmap]
- * or a Coil painter), and a hardware bitmap throws `IllegalArgumentException: Software rendering
- * doesn't support hardware bitmaps` as soon as the view is drawn into a software `Canvas`
- * (view-to-bitmap snapshots, share/screenshot paths, some OEM accessibility services, the visual
- * capture harness's `root.draw(Canvas(bitmap))`). Hardware bitmaps also cannot be read back
- * (`readPixels`), which raw-ImageBitmap callers may do.
+ * Platform hook applied to every loader [raftBuildImageLoader] builds. Production keeps Coil's
+ * defaults on every platform (on Android that includes hardware bitmaps). Android consults
+ * `RaftImageLoaderTestOverrides` so instrumentation that renders the view tree into a software
+ * `Canvas` can opt out of hardware bitmaps (see that object for why).
  */
 internal expect fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder
 

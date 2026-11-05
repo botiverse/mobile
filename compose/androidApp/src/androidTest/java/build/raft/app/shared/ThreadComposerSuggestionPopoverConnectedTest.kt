@@ -20,13 +20,21 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import build.raft.app.image.RaftImageLoaderTestOverrides
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import kotlin.math.abs
 
 class ThreadComposerSuggestionPopoverConnectedTest {
+    /** `root.draw(Canvas(bitmap))` is a software Canvas: it rejects Coil's default hardware bitmaps. */
+    @Before
+    fun useSoftwareImageBitmaps() {
+        RaftImageLoaderTestOverrides.forceSoftwareBitmaps()
+    }
+
     @Test
     fun openSuggestionsKeepTheEditorAndImageActionInteractive() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

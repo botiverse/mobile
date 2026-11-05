@@ -17,6 +17,42 @@ internal actual suspend fun raftReadBundledImageAsset(context: PlatformContext, 
 internal actual fun raftImageDiskCacheDirectory(context: PlatformContext): Path? =
     context.cacheDir?.resolve("raft_image_cache")?.toOkioPath()
 
-/** Software bitmaps only: see the expect declaration (hardware bitmaps crash software canvases). */
-internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder =
-    allowHardware(false)
+/** Production: Coil defaults (hardware bitmaps allowed); tests may override, see [RaftImageLoaderTestOverrides]. */
+internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder {
+    val allowHardware = RaftImageLoaderTestOverrides.allowHardware ?: return this
+    return allowHardware(allowHardware)
+}
+
+/**
+ * Instrumentation-only switches for the Raft image loader. Never set in production code.
+ *
+ * Coil decodes into `Bitmap.Config.HARDWARE` by default, which is right for the app: every on-screen
+ * draw is hardware accelerated, and the in-app capture paths (share capture, pixel probes) use
+ * PixelCopy or GraphicsLayer recording. Connected tests that instead render the view tree with
+ * `root.draw(Canvas(bitmap))` draw into a *software* Canvas, where any hardware bitmap (e.g. the
+ * reaction sprite atlas drawn by `ThreadReactionSpriteGlyph`) throws `IllegalArgumentException:
+ * Software rendering doesn't support hardware bitmaps` and kills the instrumentation process.
+ * Such tests call [forceSoftwareBitmaps] before launching their activity.
+ */
+object RaftImageLoaderTestOverrides {
+    /** null = Coil default. Read whenever a Raft loader is built. */
+    @Volatile
+    var allowHardware: Boolean? = null
+        private set
+
+    /**
+     * Makes every Raft image decode as a software bitmap from now on in this process. The loader is a
+     * process singleton that an earlier test may already have built (with hardware bitmaps and a
+     * memory cache full of them), so it is rebuilt when the setting changes.
+     */
+    fun forceSoftwareBitmaps() {
+        if (allowHardware == false) return
+        allowHardware = false
+        raftReinstallImageLoader()
+    }
+
+    /** Unit tests only: back to Coil defaults (does not rebuild the singleton). */
+    internal fun resetForTest() {
+        allowHardware = null
+    }
+}

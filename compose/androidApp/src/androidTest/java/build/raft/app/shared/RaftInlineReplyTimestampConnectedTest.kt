@@ -12,13 +12,21 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import build.raft.app.image.RaftImageLoaderTestOverrides
 import org.json.JSONObject
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class RaftInlineReplyTimestampConnectedTest {
+    /** `root.draw(Canvas(bitmap))` is a software Canvas: it rejects Coil's default hardware bitmaps. */
+    @Before
+    fun useSoftwareImageBitmaps() {
+        RaftImageLoaderTestOverrides.forceSoftwareBitmaps()
+    }
+
     @Test
     fun replyTimestampTapOpensParentWithoutInstallingToggleSemantics() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
