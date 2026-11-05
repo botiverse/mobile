@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -111,39 +112,42 @@ private fun RaftDialogSheetSurfaceImpl(
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog, 0.dp)
                 .then(if (clearNavigationBar) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier),
         ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(RaftDialogSheetDefaults.HeadHeight)
-                    .padding(start = RaftBackButtonDefaults.EdgeInset, end = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (onBack != null) {
-                    RaftBackButton(onClick = onBack, label = backLabel, glyph = RaftGlyph.ArrowLeft, enabled = closeEnabled)
-                } else {
-                    RaftBackButton(onClick = onClose, label = closeLabel, glyph = RaftGlyph.X, enabled = closeEnabled)
-                }
-                RaftText(
-                    title,
-                    Modifier.weight(1f).semantics { heading() },
-                    style = RaftTheme.typography.headline,
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (commitLabel != null) {
-                    RaftButton(
-                        text = commitLabel,
-                        onClick = onCommit,
-                        variant = commitVariant,
-                        size = RaftButtonSize.Md,
-                        enabled = commitEnabled,
-                        loading = commitLoading,
-                        leadingIcon = commitIcon,
-                        // The 32dp commit takes a finger's 44dp (Lagoon on #4161; the old footer was 44).
-                        widenTouchTarget = true,
+            // The head's buttons are bar buttons (28dp under a fine pointer).
+            CompositionLocalProvider(LocalRaftBarButtons provides true) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(RaftDialogSheetDefaults.HeadHeight)
+                        .padding(start = RaftBackButtonDefaults.EdgeInset, end = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (onBack != null) {
+                        RaftBackButton(onClick = onBack, label = backLabel, glyph = RaftGlyph.ArrowLeft, enabled = closeEnabled)
+                    } else {
+                        RaftBackButton(onClick = onClose, label = closeLabel, glyph = RaftGlyph.X, enabled = closeEnabled)
+                    }
+                    RaftText(
+                        title,
+                        Modifier.weight(1f).semantics { heading() },
+                        style = RaftTheme.typography.headline,
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    if (commitLabel != null) {
+                        RaftButton(
+                            text = commitLabel,
+                            onClick = onCommit,
+                            variant = commitVariant,
+                            size = RaftButtonSize.Md,
+                            enabled = commitEnabled,
+                            loading = commitLoading,
+                            leadingIcon = commitIcon,
+                            // The 32dp commit takes a finger's 44dp (Lagoon on #4161; the old footer was 44).
+                            widenTouchTarget = true,
+                        )
+                    }
                 }
             }
             Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
@@ -154,8 +158,13 @@ private fun RaftDialogSheetSurfaceImpl(
 
 /** Metrics of [RaftDialogSheet]. */
 object RaftDialogSheetDefaults {
-    /** The head: a pushed page's 56dp top bar. */
-    val HeadHeight = 56.dp
+    /**
+     * The head: a pushed page's top bar, 56dp with a finger, 44 under a fine pointer (sizing v12,
+     * raft-ui 0.65 desktop density, [build.raft.designsystem.theme.RaftControlMetrics.headHeight]).
+     */
+    val HeadHeight: Dp
+        @Composable @ReadOnlyComposable
+        get() = RaftTheme.controls.headHeight
 
     /** The sheet's height: 90% of the window. */
     const val HeightFraction = 0.9f

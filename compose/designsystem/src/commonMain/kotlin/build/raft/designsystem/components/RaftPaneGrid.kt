@@ -93,7 +93,12 @@ const val RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP = 360f
 /** Web `MIN_SECTION_HEIGHT`: a stacked cell, its head included, keeps 160 while it is open. */
 const val RAFT_PANE_GRID_CELL_MIN_HEIGHT_DP = 160f
 
-/** Web `HEAD_HEIGHT` (PanelHeader): a folded cell is its 56dp head, the seam under it included. */
+/**
+ * Web `HEAD_HEIGHT` (PanelHeader): a folded cell is its 56dp head, the seam under it included.
+ * This is the touch head; the grid lays out with the head of the input in use
+ * ([build.raft.designsystem.theme.RaftControlMetrics.headHeight]: 44 under a fine pointer,
+ * sizing v12, raft-ui 0.65 desktop density), passed to the rules below as `headDp`.
+ */
 const val RAFT_PANE_GRID_HEAD_HEIGHT_DP = 56f
 
 /** Web `CHANNEL_SIDE_MAX_SAVED_WIDTH`: the widest width kept; the rendered one stops where the main pane keeps its minimum. */
@@ -145,25 +150,36 @@ data class RaftPaneGridStackLayout(val heights: List<Float>, val seamAbove: List
 
 /**
  * Web `useStack` / `flexIn`: an open cell takes its share of what folded heads and seams leave of
- * [heightDp]; a folded one only its head. With every cell folded the heads stand at the top.
+ * [heightDp]; a folded one only its head ([headDp]). With every cell folded the heads stand at
+ * the top.
  */
-fun raftPaneGridStack(heightDp: Float, shares: List<Float>, collapsed: List<Boolean>): RaftPaneGridStackLayout {
+fun raftPaneGridStack(
+    heightDp: Float,
+    shares: List<Float>,
+    collapsed: List<Boolean>,
+    headDp: Float = RAFT_PANE_GRID_HEAD_HEIGHT_DP,
+): RaftPaneGridStackLayout {
     val seamAbove = shares.indices.map { i -> i > 0 && !collapsed[i - 1] }
-    val fixed = seamAbove.count { it } + collapsed.count { it } * RAFT_PANE_GRID_HEAD_HEIGHT_DP
+    val fixed = seamAbove.count { it } + collapsed.count { it } * headDp
     val openTotal = shares.indices.filter { !collapsed[it] }.sumOf { shares[it].toDouble() }.toFloat()
     val room = maxOf(0f, heightDp - fixed)
     val heights =
         shares.indices.map { i ->
-            if (collapsed[i]) RAFT_PANE_GRID_HEAD_HEIGHT_DP
-            else maxOf(RAFT_PANE_GRID_HEAD_HEIGHT_DP, shares[i] / (if (openTotal > 0f) openTotal else 1f) * room)
+            if (collapsed[i]) headDp
+            else maxOf(headDp, shares[i] / (if (openTotal > 0f) openTotal else 1f) * room)
         }
     return RaftPaneGridStackLayout(heights, seamAbove)
 }
 
 /** Web `perPixel`: the share one dp of the stack is worth. */
-fun raftPaneGridSharePerDp(heightDp: Float, shares: List<Float>, collapsed: List<Boolean>): Float {
-    val layout = raftPaneGridStack(heightDp, shares, collapsed)
-    val fixed = layout.seamAbove.count { it } + collapsed.count { it } * RAFT_PANE_GRID_HEAD_HEIGHT_DP
+fun raftPaneGridSharePerDp(
+    heightDp: Float,
+    shares: List<Float>,
+    collapsed: List<Boolean>,
+    headDp: Float = RAFT_PANE_GRID_HEAD_HEIGHT_DP,
+): Float {
+    val layout = raftPaneGridStack(heightDp, shares, collapsed, headDp)
+    val fixed = layout.seamAbove.count { it } + collapsed.count { it } * headDp
     val openTotal = shares.indices.filter { !collapsed[it] }.sumOf { shares[it].toDouble() }.toFloat()
     return (if (openTotal > 0f) openTotal else 1f) / maxOf(1f, heightDp - fixed)
 }
@@ -178,12 +194,13 @@ fun raftPaneGridMoveSeam(
     top: Float,
     heightDp: Float,
     collapsed: List<Boolean>,
+    headDp: Float = RAFT_PANE_GRID_HEAD_HEIGHT_DP,
 ): List<Float> {
     val pair = shares[seam] + shares[seam + 1]
     val min =
         minOf(
             pair * 0.45f,
-            if (heightDp > 0f) RAFT_PANE_GRID_CELL_MIN_HEIGHT_DP * raftPaneGridSharePerDp(heightDp, shares, collapsed) else 0.1f,
+            if (heightDp > 0f) RAFT_PANE_GRID_CELL_MIN_HEIGHT_DP * raftPaneGridSharePerDp(heightDp, shares, collapsed, headDp) else 0.1f,
         )
     val out = shares.toMutableList()
     out[seam] = top.coerceIn(min, pair - min)
@@ -585,6 +602,8 @@ private fun RaftPaneGridStackView(column: RaftPaneGridColumn, modifier: Modifier
     val shares = live ?: saved
     val fine = LocalRaftPaneGridPlatform.current.finePointer
     val hit = if (fine) 12.dp else 24.dp
+    // A folded cell is the head of the input in use: 56, or 44 under a fine pointer (sizing v12).
+    val headDp = RaftTheme.controls.headHeight.value
     BoxWithConstraints(modifier) {
         val heightDp = maxHeight.value
         val short = cells.size > 1 && column.shortSwitch != null && heightDp < raftPaneGridStackMinHeightDp(cells.size)
@@ -596,7 +615,7 @@ private fun RaftPaneGridStackView(column: RaftPaneGridColumn, modifier: Modifier
             }
             return@BoxWithConstraints
         }
-        val layout = raftPaneGridStack(heightDp, shares, collapsed)
+        val layout = raftPaneGridStack(heightDp, shares, collapsed, headDp)
         Column(Modifier.fillMaxSize()) {
             cells.forEachIndexed { i, cell ->
                 key(cell.id) {
@@ -616,8 +635,8 @@ private fun RaftPaneGridStackView(column: RaftPaneGridColumn, modifier: Modifier
                     val seamY = top
                     var dragShares by remember(key, seam) { mutableStateOf(shares) }
                     val currentShares by rememberUpdatedState(shares)
-                    val perDp = raftPaneGridSharePerDp(heightDp, shares, collapsed)
-                    fun moved(base: List<Float>, to: Float) = raftPaneGridMoveSeam(base, seam, to, heightDp, collapsed)
+                    val perDp = raftPaneGridSharePerDp(heightDp, shares, collapsed, headDp)
+                    fun moved(base: List<Float>, to: Float) = raftPaneGridMoveSeam(base, seam, to, heightDp, collapsed, headDp)
                     RaftPaneSplitter(
                         vertical = false,
                         label = column.splitLabel ?: column.resizeLabel,

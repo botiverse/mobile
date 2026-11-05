@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.foundation.background
@@ -358,7 +359,9 @@ internal fun RaftSearchRow(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 40.dp)
+                        // 40 with a finger; the shared 34dp row height under a fine pointer
+                        // (sizing v12, raft-ui 0.65 desktop density).
+                        .heightIn(min = RaftTheme.controls.rowHeight ?: 40.dp)
                         .raftInsetFocusOutline(raftIsFocused(source), colors.foreground)
                         .padding(horizontal = inset),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -702,4 +705,11 @@ internal fun raftOptionInset(style: TextStyle): Dp {
     return ((RaftOptionHeight - line) / 2).coerceAtLeast(0.dp)
 }
 
-internal val RaftOptionHeight = RaftMenuMetrics.OptionHeight
+/**
+ * [RaftMenuMetrics.OptionHeight] (36) with a finger; the shared 34dp row height under a fine
+ * pointer (sizing v12, raft-ui 0.65 desktop density), so a menu option matches the sidebar row
+ * and the field beside it.
+ */
+internal val RaftOptionHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.rowHeight ?: RaftMenuMetrics.OptionHeight
