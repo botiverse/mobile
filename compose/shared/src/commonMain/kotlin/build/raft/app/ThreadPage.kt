@@ -29178,8 +29178,10 @@ private fun ThreadMessageCardContent(
                     .fillMaxWidth()
                     // raft-ui 0.61 `MessageItem` root (timeline rhythm): a turn's first row
                     // carries `timeline-turn` (8) as a transparent top border the wash doesn't
-                    // paint (`bg-clip-padding`); a continuation row (`compact`) has none.
-                    .padding(top = if (showAuthorChrome) ThreadMessageTimelineTurn else 0.dp)
+                    // paint (`bg-clip-padding`); a continuation row (`compact`) has none. The share
+                    // image replaces it with its own 2dp row frame (web selectScreenshot.ts sets the
+                    // clone's `border: 2px solid transparent`), so a captured row has no band.
+                    .padding(top = if (showAuthorChrome && !shareCaptureActive) ThreadMessageTimelineTurn else 0.dp)
                     // The row wash spans the whole row; the content sits at px-2
                     // `py-timeline-row` (4) inside it.
                     .background(rowFill)
