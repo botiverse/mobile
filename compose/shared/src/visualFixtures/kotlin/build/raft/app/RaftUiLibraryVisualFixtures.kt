@@ -22,7 +22,8 @@ import build.raft.app.components.RaftUiCheckboxLabelRow
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiControlledSelect
 import build.raft.app.components.RaftUiControlledSelectionPopover
-import build.raft.app.components.RaftUiEmptyState
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftUiField
 import build.raft.app.components.RaftUiInlineCode
 import build.raft.app.components.RaftUiInputGroup
@@ -118,10 +119,11 @@ internal fun RaftUiEmptyStateVisualContent() {
                     .fillMaxSize()
                     .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.30f))
         ) {
-            RaftUiEmptyState(
+            RaftEmptyState(
                 title = "No visual changes",
                 description = "Library fixtures are ready, but no reviewer has opened this run yet.",
-                action = {
+                icon = { RaftSlotIcon(RaftLucideIconName.Inbox) },
+                actions = {
                     RaftUiButton(label = "Create fixture", variant = RaftUiButtonVariant.Primary)
                 }
             )

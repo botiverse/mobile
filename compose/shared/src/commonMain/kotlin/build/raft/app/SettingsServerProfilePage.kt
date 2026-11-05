@@ -29,7 +29,7 @@ import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftSlugInput
+import build.raft.designsystem.components.RaftTextFieldAddonVariant
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedSettingsActionState
@@ -621,18 +621,22 @@ private fun SettingsServerSlugInput(
     // Caller-local TextFieldValue owns the confirmation-slug editor for this
     // modal's mount; the durable store keeps the String projection (task #130
     // Phase D). The slug path applies no per-keystroke filtering or truncation
-    // (both RaftSlugInput overloads pass the value straight through; the only
-    // normalisation is a .trim() at submit), so there is nothing to coerce the
-    // selection against here — the editor value is forwarded verbatim.
+    // (the only normalisation is a .trim() at submit), so there is nothing to
+    // coerce the selection against here — the editor value is forwarded verbatim.
     var slugValue by remember { mutableStateOf(textFieldValueAtEnd(value)) }
-    RaftSlugInput(
+    // Web `SlugInput`: InputGroup with a container `/` addon.
+    RaftTextField(
         value = slugValue,
         onValueChange = {
             slugValue = it
             onValueChange(it.text)
         },
-        placeholder = placeholder,
-        enabled = enabled
+        modifier = Modifier.fillMaxWidth(),
+        placeholder = placeholder.ifEmpty { null },
+        enabled = enabled,
+        prefix = "/",
+        addonVariant = RaftTextFieldAddonVariant.Container,
+        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions
     )
 }
 

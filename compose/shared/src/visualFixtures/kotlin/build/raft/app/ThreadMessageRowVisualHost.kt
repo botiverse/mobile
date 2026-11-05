@@ -3,8 +3,6 @@ package build.raft.app
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 
 import build.raft.app.components.RaftAnchoredMetaChip
-import build.raft.app.components.RaftAttachmentPreviewCard
-import build.raft.app.components.RaftAttachmentPreviewCardWidth
 import build.raft.app.components.RaftChipLoadingIndicator
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
