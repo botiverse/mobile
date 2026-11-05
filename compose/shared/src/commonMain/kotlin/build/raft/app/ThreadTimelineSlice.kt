@@ -56,7 +56,12 @@ internal data class ThreadTimelineSlice(
     /** The viewer's role on this conversation's server is `guest` (web `currentUserServerRole`). */
     val viewerIsGuest: Boolean = false,
     /** The conversation's channel kind (`task` for a task v2 conversation); see [showReplyActions]. */
-    val channelKind: String? = null
+    val channelKind: String? = null,
+    /**
+     * The channel or thread id the message pages are read from: where the Free plan's history
+     * window is recorded ([build.raft.app.data.RaftHiddenHistoryStore]) for the history paywall.
+     */
+    val historyChannelId: String? = null
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -108,7 +113,8 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         showTaskStatusActions = showTaskStatusActions,
         canConvertMessagesToTasks = canConvertMessagesToTasks(),
         beginningReplyCountLabel = threadBeginningReplyCountLabel(),
-        beginningReplyCount = threadBeginningReplyCount()
+        beginningReplyCount = threadBeginningReplyCount(),
+        historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() }
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =

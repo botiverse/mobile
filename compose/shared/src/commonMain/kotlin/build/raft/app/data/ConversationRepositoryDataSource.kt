@@ -1569,7 +1569,9 @@ class RealConversationRepository private constructor(
                         bodyText,
                         ThreadId(resolvedThreadChannelId.value),
                         warningLogger,
-                    )
+                    ).also { page ->
+                        RaftHiddenHistoryStore.record(resolvedThreadChannelId.value, page.historyLimited, page.hiddenHistory)
+                    }
                 }
             )
         val rawMessages: List<Message> =
@@ -1635,6 +1637,8 @@ class RealConversationRepository private constructor(
                     source = source,
                     mapper = { bodyText ->
                         val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger)
+                        // Latest and older pages only (no `after` cursor): what the Free window hides.
+                        RaftHiddenHistoryStore.record(threadId.value, payload.historyLimited, payload.hiddenHistory)
                         buildSharedThreadSnapshot(
                             payload = payload,
                             threadId = threadId,
