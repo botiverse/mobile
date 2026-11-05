@@ -299,7 +299,8 @@ internal fun SettingsTextField(
  */
 @Composable
 internal fun SettingsComboboxField(
-    label: String,
+    /** Null inside a section card whose title already names the choice. */
+    label: String?,
     description: String,
     value: String,
     options: List<RaftComboboxOption<String>>,

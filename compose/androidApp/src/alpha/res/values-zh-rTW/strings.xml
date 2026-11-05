@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Alpha build: the strings Android shows outside the app (launcher, recents, notifications,
+    notification settings, widget picker, toasts) name the app "Raft Alpha", so an Alpha
+    notification never reads as production's. Each entry is the main string with "Raft" ->
+    "Raft Alpha"; AlphaAppNameResourcesTest keeps every locale list in step with main.
+-->
+<resources>
+    <string name="app_name">Raft Alpha</string>
+    <string name="raft_background_connection_notification_title">Raft Alpha 正在接收訊息</string>
+    <string name="raft_background_connection_channel_description">在沒有 Google Play 服務的裝置上，Raft Alpha 於背景保持連線以傳送訊息通知時顯示。</string>
+    <string name="settings_notification_test_title">Raft Alpha 通知測試</string>
+    <string name="notification_unread_general_channel_description">Raft Alpha 的一般未讀訊息通知。</string>
+    <string name="inbox_notification_channel_description">來自 Raft Alpha 的未讀動態更新。</string>
+    <string name="slock_activity_widget_name">Raft Alpha 動態</string>
+    <string name="slock_agent_status_widget_name">Raft Alpha 即時 Agent</string>
+    <string name="raft_download_notification_tap_retry">開啟 Raft Alpha 重試</string>
+    <string name="external_share_import_failed_toast">Raft Alpha 無法匯入這項分享內容</string>
+    <string name="attachment_save_as_failed_toast">Raft Alpha 無法儲存此檔案，請再試一次。</string>
+</resources>

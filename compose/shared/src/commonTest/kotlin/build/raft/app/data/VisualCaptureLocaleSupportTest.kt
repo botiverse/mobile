@@ -12,7 +12,7 @@ class VisualCaptureLocaleSupportTest {
     @Test
     fun kmmResourceLocaleTagsCoverEverySupportedAppLocale() {
         assertEquals(
-            listOf(null, "en", "zh-CN", "ja"),
+            listOf(null, "en", "es", "pt-BR", "ko", "ja", "zh-CN", "zh-TW"),
             AppLocale.entries.map { it.kmmResourceLocaleTag }
         )
         assertEquals(StringDesc.LocaleType.System, AppLocale.System.stringDescLocaleType)
@@ -32,7 +32,12 @@ class VisualCaptureLocaleSupportTest {
             "zh-CN" to AppLocale.SimplifiedChinese,
             "zh-Hans" to AppLocale.SimplifiedChinese,
             "ja" to AppLocale.Japanese,
-            "ja-JP" to AppLocale.Japanese
+            "ja-JP" to AppLocale.Japanese,
+            "es" to AppLocale.Spanish,
+            "pt-BR" to AppLocale.BrazilianPortuguese,
+            "ko" to AppLocale.Korean,
+            "zh-TW" to AppLocale.TraditionalChinese,
+            "zh-Hant" to AppLocale.TraditionalChinese
         ).forEach { (tag, expected) ->
             assertEquals(expected, parseVisualCaptureLocale(tag), tag)
         }

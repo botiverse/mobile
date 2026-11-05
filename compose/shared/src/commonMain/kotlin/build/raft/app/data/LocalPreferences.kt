@@ -14,86 +14,147 @@ internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
  */
 internal const val DEFAULT_HOME_SERVER_AVATAR_ENABLED = true
 
+/**
+ * The app UI languages. Entries after [System] are in the web's Settings picker order
+ * (botiverse/slock `DISPLAY_LOCALES` in packages/shared/src/displayLocales.ts: endonyms sorted by
+ * Unicode root collation), and [webDisplayLocale] is the web's canonical display-locale code, the
+ * value the web stores as the account's `displayLanguage` (`en`, `es`, `pt-br`, `ko`, `ja`,
+ * `zh-cn`, `zh-tw`). [nativeLabel] is the web's `nativeName`.
+ */
 enum class AppLocale(
     val storageKey: String,
     val languageTag: String,
     val englishLabel: String,
-    val nativeLabel: String
+    val nativeLabel: String,
+    /** The web's display-locale code; null for [System], which the web has no code for. */
+    val webDisplayLocale: String?
 ) {
     System(
         storageKey = "system",
         languageTag = "system",
         englishLabel = "System default",
-        nativeLabel = "System default"
+        nativeLabel = "System default",
+        webDisplayLocale = null
     ),
     English(
         storageKey = "en",
         languageTag = "en",
         englishLabel = "English",
-        nativeLabel = "English"
+        nativeLabel = "English",
+        webDisplayLocale = "en"
     ),
-    SimplifiedChinese(
-        storageKey = "zh-Hans",
-        languageTag = "zh-Hans",
-        englishLabel = "Simplified Chinese",
-        nativeLabel = "简体中文"
+    Spanish(
+        storageKey = "es",
+        languageTag = "es",
+        englishLabel = "Spanish",
+        nativeLabel = "Español",
+        webDisplayLocale = "es"
+    ),
+    BrazilianPortuguese(
+        storageKey = "pt-BR",
+        languageTag = "pt-BR",
+        englishLabel = "Portuguese (Brazil)",
+        nativeLabel = "Português (Brasil)",
+        webDisplayLocale = "pt-br"
+    ),
+    Korean(
+        storageKey = "ko",
+        languageTag = "ko",
+        englishLabel = "Korean",
+        nativeLabel = "한국어",
+        webDisplayLocale = "ko"
     ),
     Japanese(
         storageKey = "ja",
         languageTag = "ja",
         englishLabel = "Japanese",
-        nativeLabel = "日本語"
+        nativeLabel = "日本語",
+        webDisplayLocale = "ja"
+    ),
+    SimplifiedChinese(
+        storageKey = "zh-Hans",
+        languageTag = "zh-Hans",
+        englishLabel = "Simplified Chinese",
+        nativeLabel = "简体中文",
+        webDisplayLocale = "zh-cn"
+    ),
+    TraditionalChinese(
+        storageKey = "zh-Hant",
+        languageTag = "zh-Hant",
+        englishLabel = "Traditional Chinese",
+        nativeLabel = "繁體中文",
+        webDisplayLocale = "zh-tw"
     );
 
     companion object {
         val Default = English
 
+        /**
+         * The stored choice. Also reads the web's display-locale codes (`pt-br`, `zh-cn`, `zh-tw`)
+         * and the resource-folder spellings; anything unknown is [Default].
+         */
         fun fromStorageKey(value: String?): AppLocale {
-            val normalized = value?.trim()?.lowercase()
+            val normalized = value?.trim()?.lowercase()?.replace('_', '-')
             return when (normalized) {
                 null, "" -> Default
                 "auto", "default", System.storageKey -> System
-                "zh-cn", "zh-rcn", "zh_rcn" -> SimplifiedChinese
-                "ja-jp", "ja_jp" -> Japanese
+                "zh-cn", "zh-rcn", "zh-sg", "zh-hans-cn" -> SimplifiedChinese
+                "zh-tw", "zh-rtw", "zh-hk", "zh-mo", "zh-hant-tw" -> TraditionalChinese
+                "ja-jp" -> Japanese
+                "pt", "pt-rbr", "pt-pt" -> BrazilianPortuguese
+                "ko-kr" -> Korean
                 else ->
                     entries.firstOrNull {
-                        it.storageKey.lowercase() == normalized || it.languageTag.lowercase() == normalized
+                        it.storageKey.lowercase() == normalized ||
+                            it.languageTag.lowercase() == normalized ||
+                            it.webDisplayLocale == normalized
                     } ?: Default
             }
+        }
+
+        /** The entry for a web display-locale code (`pt-br`, `zh-tw`), or null when it is not one. */
+        fun fromWebDisplayLocale(code: String?): AppLocale? {
+            val normalized = code?.trim()?.lowercase() ?: return null
+            return entries.firstOrNull { it.webDisplayLocale == normalized }
         }
     }
 }
 
 /**
- * #85 follow-up: BCP-47 tag used by KuiklyBase KmmResource's
- * `StringDesc.LocaleType.Custom(tag)` to pick a resource folder at
- * runtime. The generated resource folder parser accepts
- * BCP-47 with `r` separator, e.g. `zh-rCN`. We use the same tags
- * as the resource folders so the runtime lookup lands on the
- * actual generated folders.
+ * #85 follow-up: BCP-47 tag used by `StringDesc.LocaleType.Custom(tag)` to pick a
+ * composeResources folder at runtime, the same tags as the folders (`values-zh-rCN`,
+ * `values-zh-rTW`, `values-pt-rBR`, `values-es`, `values-ko`, `values-ja`).
  *
- * English falls through to the `base/` folder. Simplified Chinese maps
- * to the `zh-rCN/` folder (region-based; the BCP-47 matching falls back
- * from `zh-Hans` script-only to `zh-rCN` region-only by language match),
- * while Japanese maps directly to the `ja/` folder.
+ * English falls through to the base `values/` folder. Chinese and Brazilian Portuguese are
+ * region folders; a key a catalog lacks resolves from `values/` (English), never from another
+ * region of the same language (see `RaftNewLocaleCatalogTest`).
  */
 val AppLocale.kmmResourceLocaleTag: String?
     get() =
         when (this) {
             AppLocale.System -> null
             AppLocale.English -> "en"
-            AppLocale.SimplifiedChinese -> "zh-CN"
+            AppLocale.Spanish -> "es"
+            AppLocale.BrazilianPortuguese -> "pt-BR"
+            AppLocale.Korean -> "ko"
             AppLocale.Japanese -> "ja"
+            AppLocale.SimplifiedChinese -> "zh-CN"
+            AppLocale.TraditionalChinese -> "zh-TW"
         }
 
 val AppLocale.stringDescLocaleType: StringDesc.LocaleType
-    get() =
-        when (this) {
-            AppLocale.System -> StringDesc.LocaleType.System
-            AppLocale.English,
-            AppLocale.SimplifiedChinese,
-            AppLocale.Japanese -> StringDesc.LocaleType.Custom(requireNotNull(kmmResourceLocaleTag))
-        }
+    get() = kmmResourceLocaleTag?.let { StringDesc.LocaleType.Custom(it) } ?: StringDesc.LocaleType.System
+
+/** The explicit locale whose catalog is [resourceLocale] (`zh-TW` -> [AppLocale.TraditionalChinese]). */
+internal fun appLocaleForResourceLocale(language: String, region: String): AppLocale =
+    when (language) {
+        "zh" -> if (region == "TW") AppLocale.TraditionalChinese else AppLocale.SimplifiedChinese
+        "ja" -> AppLocale.Japanese
+        "es" -> AppLocale.Spanish
+        "pt" -> AppLocale.BrazilianPortuguese
+        "ko" -> AppLocale.Korean
+        else -> AppLocale.English
+    }
 
 /**
  * The BCP 47 tag of the language the app UI is actually shown in. An explicit
@@ -103,15 +164,9 @@ val AppLocale.stringDescLocaleType: StringDesc.LocaleType
  */
 fun AppLocale.displayLanguageTag(systemLanguages: List<String>): String =
     when (this) {
-        AppLocale.English,
-        AppLocale.SimplifiedChinese,
-        AppLocale.Japanese -> languageTag
         AppLocale.System ->
-            when (raftSystemResourceLocale(systemLanguages).language) {
-                "zh" -> AppLocale.SimplifiedChinese.languageTag
-                "ja" -> AppLocale.Japanese.languageTag
-                else -> AppLocale.English.languageTag
-            }
+            raftSystemResourceLocale(systemLanguages).let { appLocaleForResourceLocale(it.language, it.region).languageTag }
+        else -> languageTag
     }
 
 /** [displayLanguageTag] for a single device language (null: unknown). */

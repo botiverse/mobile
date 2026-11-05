@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
@@ -504,30 +505,22 @@ internal fun SettingsAppLanguageCard(
         iconName = RaftLucideIconName.Languages,
         title = stringResource(Res.string.settings_app_language_title)
     ) {
-        SettingsSegmentedControlField(
-            detail = stringResource(Res.string.settings_app_language_detail),
-            selectedValue = selectedLocale,
+        // The web's display-language select (botiverse/slock DISPLAY_LOCALES): every language by its
+        // own name, in the web's order, after the app-only System choice.
+        val systemLabel = stringResource(Res.string.settings_app_language_system)
+        SettingsComboboxField(
+            label = null,
+            description = stringResource(Res.string.settings_app_language_detail),
+            value = selectedLocale,
             options =
-                listOf(
-                    SegmentedControlOption(
-                        AppLocale.System.languageTag,
-                        stringResource(Res.string.settings_app_language_system)
-                    ),
-                    SegmentedControlOption(
-                        AppLocale.English.languageTag,
-                        stringResource(Res.string.settings_app_language_english)
-                    ),
-                    SegmentedControlOption(
-                        AppLocale.SimplifiedChinese.languageTag,
-                        stringResource(Res.string.settings_app_language_simplified_chinese)
-                    ),
-                    SegmentedControlOption(
-                        AppLocale.Japanese.languageTag,
-                        stringResource(Res.string.settings_app_language_japanese)
+                AppLocale.entries.map { locale ->
+                    RaftComboboxOption(
+                        locale.languageTag,
+                        if (locale == AppLocale.System) systemLabel else locale.nativeLabel
                     )
-                ),
-            onValueSelected = { selected ->
-                selected?.takeIf { it != selectedLocale }?.let {
+                },
+            onValueChange = { selected ->
+                selected.takeIf { it != selectedLocale }?.let {
                     pick = SettingsLanguageRegionPick(MOBILE_ACTION_LANGUAGE, it, actionState)
                     onLocaleChange(it)
                 }

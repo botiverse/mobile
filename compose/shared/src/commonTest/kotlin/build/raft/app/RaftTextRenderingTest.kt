@@ -67,7 +67,10 @@ class RaftTextRenderingTest {
         assertEquals(zhHans, raftUiTextLocaleList(AppLocale.English) { listOf("ja-JP") })
         assertEquals(ja, raftUiTextLocaleList(AppLocale.System) { listOf("ja-JP") })
         assertEquals(ja, raftUiTextLocaleList(null) { listOf("ja") })
-        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { listOf("zh-Hant-TW") })
+        assertEquals(LocaleList("zh-Hant"), raftUiTextLocaleList(AppLocale.System) { listOf("zh-Hant-TW") })
+        assertEquals(LocaleList("zh-Hant"), raftUiTextLocaleList(AppLocale.TraditionalChinese) { listOf("en-US") })
+        assertEquals(LocaleList("ko"), raftUiTextLocaleList(AppLocale.Korean) { listOf("en-US") })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.Spanish) { listOf("ja-JP") })
         assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { emptyList() })
         // The whole preferred-language list, like the string lookup: French has no catalog, so a
         // [fr, ja] device shows a Japanese UI with Japanese kanji forms.
