@@ -31,7 +31,7 @@ class RaftArtifactViewerDesktopModeTest {
 
     @Test
     fun notOfferedWhereTheHostCannotWidenThroughTheViewportMeta() {
-        // iOS (pageZoom path): a blank ~0.3x strip on device (1.19.2 TestFlight), so no menu item.
+        // A host without the viewport-meta path (the Compose desktop app) has no Desktop Mode.
         assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = false, finePointer = false, windowWidthDp = 390f))
         assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = false, finePointer = false, windowWidthDp = 1024f))
     }
@@ -70,8 +70,8 @@ class RaftArtifactViewerDesktopModeTest {
     }
 
     @Test
-    fun onLeavesTheScriptAloneWhereTheHostZoomsInstead() {
-        // iOS: pageZoom, live; an unchanged script means the WKWebView is not rebuilt.
+    fun onLeavesTheScriptAloneWhereTheHostHasNoViewportMetaPath() {
+        // The Compose app (desktop): no Desktop Mode, so no viewport rewrite either.
         assertEquals(session, raftArtifactViewerInjectedScript(web, session, desktopMode = true, viaViewportMeta = false))
     }
 

@@ -1,13 +1,17 @@
 package build.raft.app
 
 import kotlin.test.Test
-import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
-/** iOS does not offer the Artifact viewer's Desktop Mode: its pageZoom path left a blank strip (1.19.2). */
+/** iOS offers the Artifact viewer's Desktop Mode: WKWebView widens through the injected viewport meta. */
 class RaftArtifactViewerDesktopModeIosTest {
     @Test
-    fun desktopModeIsNotOfferedOnIos() {
-        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 390f))
-        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 1024f))
+    fun desktopModeIsOfferedOnIosThroughTheViewportMeta() {
+        assertTrue(raftWebViewDesktopModeViaViewportMeta)
+        assertTrue(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 390f))
+        assertTrue(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 1024f))
+        // The viewer injects the guarded width=1280 meta on iOS too.
+        val script = raftArtifactViewerInjectedScript("https://app.raft.build", "", desktopMode = true)
+        assertTrue("width=$RaftFilePreviewDesktopViewportWidth" in script)
     }
 }
