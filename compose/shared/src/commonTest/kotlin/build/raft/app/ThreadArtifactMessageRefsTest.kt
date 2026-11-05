@@ -7,7 +7,7 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
-import build.raft.app.data.artifactMessageLinkTargets
+import build.raft.app.links.planRaftMessageLinks
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -62,7 +62,7 @@ class ThreadArtifactMessageRefsTest {
             "First https://app.raft.build/artifacts/$b then https://app.raft.build/artifacts/$a/v/2, " +
                 "hidden https://app.raft.build/artifacts/$c and https://app.raft.build/artifacts/pt_failed " +
                 "and https://app.raft.build/artifacts/$b again"
-        val targets = artifactMessageLinkTargets(content, hosts)
+        val targets = planRaftMessageLinks(content, hosts).objectTargets
         assertEquals(listOf(b, "$a;version=2", c, "pt_failed"), targets.map { it.key }, "each reference once, in order")
         val pinned = summary(version = 2, pinned = true)
         val view =

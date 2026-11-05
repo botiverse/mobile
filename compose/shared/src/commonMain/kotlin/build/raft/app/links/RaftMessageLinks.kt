@@ -202,7 +202,11 @@ internal data class RaftMessageLinkPlan(
     val objectCards: List<String>,
     /** Public https links that are not first-party, in message order. */
     val appLinks: List<String>,
-)
+) {
+    /** The Artifact of each card, in message order, each reference once. */
+    val objectTargets: List<ArtifactLinkTarget>
+        get() = objectCards.mapNotNull(objects::get)
+}
 
 internal fun planRaftMessageLinks(
     content: String,
@@ -231,6 +235,16 @@ internal fun planRaftMessageLinks(
     val appLinks = bare.filter { it !in firstParty && appLinkPreviewHref(it) != null }
     return RaftMessageLinkPlan(bare, objects, objectCards, appLinks)
 }
+
+/**
+ * The links an App link read covers (web `appLinkReadUrls`): the bare public-https links of [content]
+ * that are not an Artifact by id (those never count, whatever the Artifacts flag says), once each, in
+ * message order, at most [limit] (3 for the v1 GET, 10 for the batched read).
+ */
+internal fun raftAppLinkReadUrls(content: String, appHosts: Collection<String>, limit: Int): List<String> =
+    raftMessageBareLinks(content)
+        .filter { appLinkPreviewHref(it) != null && parseArtifactLinkTarget(it, appHosts) == null }
+        .take(limit)
 
 // --- Raft message permalinks (web parseRaftPermalink) -------------------------------------------
 

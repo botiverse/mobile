@@ -38,7 +38,7 @@ import build.raft.app.data.runtimeFormRequestLanguageTag
 import kotlinx.coroutines.awaitCancellation
 import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.answersFor
-import build.raft.app.data.artifactMessageLinkTargets
+import build.raft.app.links.planRaftMessageLinks
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
@@ -105,7 +105,7 @@ internal data class ThreadArtifactLinks(
 
 /**
  * One message's Artifact references (web core `useMessageLinkCards`: its bare links on the app
- * hosts, in message order, each reference once, at most [build.raft.app.data.MESSAGE_OBJECT_LINK_LIMIT])
+ * hosts, in message order, each reference once, at most [build.raft.app.links.MESSAGE_OBJECT_LINK_LIMIT])
  * and their answers so far, by [build.raft.app.data.ArtifactLinkTarget.key]; a target with no
  * answer is still loading.
  */
@@ -131,7 +131,7 @@ internal fun rememberThreadArtifactLinkAnswers(host: ThreadArtifactLinkHost?, se
     if (host == null) return ThreadArtifactLinkAnswers.None
     val enabled = rememberServerFeatureLatched(host.featureFlags, ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY)
     val appHosts by host.appHosts.collectAsState()
-    val targets = remember(enabled, appHosts, body) { if (enabled) artifactMessageLinkTargets(body, appHosts) else emptyList() }
+    val targets = remember(enabled, appHosts, body) { if (enabled) planRaftMessageLinks(body, appHosts).objectTargets else emptyList() }
     if (targets.isEmpty()) return ThreadArtifactLinkAnswers.None
     val answersFlow = remember(host.summaries, serverId, targets) { host.summaries.answersFlow(serverId, targets) }
     val answers by answersFlow.collectAsState(initial = host.summaries.state.value.answersFor(serverId, targets))

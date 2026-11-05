@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.links.raftAppLinkReadUrls
+import build.raft.app.links.raftMessageBareLinks
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -139,13 +141,13 @@ class SharedAppLinkPreviewStoreTest {
             """{"previews":[],"prompts":[{"url":"$linear","app":{"id":"client-linear","name":"Linear","icon":null}}],"appIcons":{}}"""
         val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, prompt) }
         val store = SharedAppLinkPreviewStore(api = api, scope = backgroundScope, artifactHosts = { listOf("app.raft.build") })
-        assertEquals(listOf(linear), appLinkMessagePreviewUrls(content) { isArtifactIdLink(it, listOf("app.raft.build")) })
+        assertEquals(listOf(linear), raftAppLinkReadUrls(content, listOf("app.raft.build"), 3))
         store.read(Viewer, Server, MessageA, content, Conversation)
         runCurrent()
         val view = store.state.value.messageView(Viewer, MessageA, content, Conversation, listOf("app.raft.build"))
         assertTrue(view.results[linear] is AppLinkResult.Consent, "the prompt is kept: results=${view.results}")
         // Before this fix the App counted the Artifact links and dropped Linear's prompt.
-        assertTrue(appLinkMessagePreviewUrls(content).none { it == linear })
+        assertTrue(raftMessageBareLinks(content).filter { appLinkPreviewHref(it) != null }.take(3).none { it == linear })
     }
 
     @Test
