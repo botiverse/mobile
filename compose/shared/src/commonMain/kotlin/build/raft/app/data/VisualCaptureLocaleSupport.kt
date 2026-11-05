@@ -22,6 +22,7 @@ fun parseVisualCaptureLocale(value: String?): AppLocale? {
         "ja", "ja-jp", "japanese" -> AppLocale.Japanese
         "es", "es-419", "es-es", "spanish" -> AppLocale.Spanish
         "pt-br", "pt", "pt-rbr" -> AppLocale.BrazilianPortuguese
+        "ru", "ru-ru", "russian" -> AppLocale.Russian
         "ko", "ko-kr", "korean" -> AppLocale.Korean
         "zh-tw", "zh-hant", "zh-rtw" -> AppLocale.TraditionalChinese
         else -> throw IllegalArgumentException("Unsupported visual capture locale: $value")

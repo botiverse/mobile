@@ -8,7 +8,7 @@ class TranslationTargetLanguagesTest {
     @Test
     fun catalogMatchesWebTargets() {
         assertEquals(
-            listOf("browser", "en", "zh-cn", "zh-tw", "ja", "ko", "es", "fr", "de", "pt-br", "it"),
+            listOf("browser", "en", "zh-cn", "zh-tw", "ja", "ko", "es", "fr", "de", "pt-br", "it", "ru"),
             TranslationTargetLanguages.options.map { it.key }
         )
     }
@@ -37,6 +37,7 @@ class TranslationTargetLanguagesTest {
         assertEquals("en", TranslationTargetLanguages.resolve("browser", "en-GB"))
         assertEquals("ja", TranslationTargetLanguages.resolve("system", "ja-JP"))
         assertEquals("ko", TranslationTargetLanguages.resolve("other", "ko-KR"))
+        assertEquals("ru", TranslationTargetLanguages.resolve("other", "ru-RU"))
         // Web (botiverse/slock#10449) stores the no-preference choice as "display".
         assertEquals("zh-cn", TranslationTargetLanguages.resolve("display", "zh-CN"))
         assertEquals("en", TranslationTargetLanguages.resolve("browser", "fr-FR"))

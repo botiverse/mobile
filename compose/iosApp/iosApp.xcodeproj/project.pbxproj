@@ -143,6 +143,8 @@
 		A39700030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A39700030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		A39700030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A39600030000000000000008 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A39700030000000000000008 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A39700030000000000000004 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A39700030000000000000005 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = pt-BR.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A39700030000000000000006 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -533,6 +535,7 @@
 				"zh-Hans",
 				es,
 				"pt-BR",
+				ru,
 				ko,
 				"zh-Hant",
 				Base,
@@ -863,6 +866,7 @@
 				A39600030000000000000005 /* pt-BR */,
 				A39600030000000000000006 /* ko */,
 				A39600030000000000000007 /* zh-Hant */,
+				A39600030000000000000008 /* ru */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
@@ -877,6 +881,7 @@
 				A39700030000000000000005 /* pt-BR */,
 				A39700030000000000000006 /* ko */,
 				A39700030000000000000007 /* zh-Hant */,
+				A39700030000000000000008 /* ru */,
 			);
 			name = Localizable.strings;
 			sourceTree = "<group>";

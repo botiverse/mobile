@@ -71,6 +71,10 @@ class RaftTextRenderingTest {
         assertEquals(LocaleList("zh-Hant"), raftUiTextLocaleList(AppLocale.TraditionalChinese) { listOf("en-US") })
         assertEquals(LocaleList("ko"), raftUiTextLocaleList(AppLocale.Korean) { listOf("en-US") })
         assertEquals(zhHans, raftUiTextLocaleList(AppLocale.Spanish) { listOf("ja-JP") })
+        // Space Grotesk has no Cyrillic: a Russian UI must not carry the zh-Hans hint that would
+        // send Cyrillic to a CJK face; it falls back to the platform's Roboto / SF.
+        assertEquals(LocaleList("ru"), raftUiTextLocaleList(AppLocale.Russian) { listOf("ja-JP") })
+        assertEquals(LocaleList("ru"), raftUiTextLocaleList(AppLocale.System) { listOf("ru-RU") })
         assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { emptyList() })
         // The whole preferred-language list, like the string lookup: French has no catalog, so a
         // [fr, ja] device shows a Japanese UI with Japanese kanji forms.

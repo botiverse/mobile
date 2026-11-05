@@ -81,6 +81,7 @@ enum class RaftFormatLocale(val languageTag: String, val decimalSeparator: Char)
     English("en", '.'),
     Spanish("es", '.'),
     BrazilianPortuguese("pt-BR", '.'),
+    Russian("ru", '.'),
     Korean("ko", '.'),
     Japanese("ja", '.'),
     SimplifiedChinese("zh-CN", '.'),
@@ -93,6 +94,7 @@ enum class RaftFormatLocale(val languageTag: String, val decimalSeparator: Char)
                 AppLocale.English -> English
                 AppLocale.Spanish -> Spanish
                 AppLocale.BrazilianPortuguese -> BrazilianPortuguese
+                AppLocale.Russian -> Russian
                 AppLocale.Korean -> Korean
                 AppLocale.Japanese -> Japanese
                 AppLocale.SimplifiedChinese -> SimplifiedChinese

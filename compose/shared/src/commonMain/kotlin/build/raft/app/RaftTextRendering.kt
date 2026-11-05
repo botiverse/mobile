@@ -54,13 +54,17 @@ internal expect fun raftPlatformTextMotion(): TextMotion?
  * - UI text (the RaftType tokens, [LocalTextStyle]): follows the app UI language, as the Web's
  *   `:root:lang(...)` font stacks do. A Japanese UI ([AppLocale.Japanese], or "System" on a
  *   Japanese device) uses `ja`, so its kanji keep Japanese forms; a Traditional Chinese UI uses
- *   `zh-Hant` (Traditional forms) and a Korean UI `ko` (a Korean face for Hangul); every other UI
- *   language uses zh-Hans, the Web's default stack.
+ *   `zh-Hant` (Traditional forms), a Korean UI `ko` (a Korean face for Hangul) and a Russian UI `ru`
+ *   (Space Grotesk has no Cyrillic: the Cyrillic falls back to the platform face, Roboto / SF,
+ *   not to a zh-Hans CJK face a Chinese locale hint would prefer; raft-design#994 puts Arial /
+ *   Helvetica before the CJK families on the web); every other UI language uses zh-Hans, the
+ *   Web's default stack.
  */
 internal val RaftUserContentLocaleList: LocaleList = LocaleList("zh-Hans")
 private val RaftJapaneseUiLocaleList: LocaleList = LocaleList("ja")
 private val RaftTraditionalChineseUiLocaleList: LocaleList = LocaleList("zh-Hant")
 private val RaftKoreanUiLocaleList: LocaleList = LocaleList("ko")
+private val RaftRussianUiLocaleList: LocaleList = LocaleList("ru")
 
 internal fun raftUiTextLocaleList(
     appLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value,
@@ -78,6 +82,7 @@ internal fun raftUiTextLocaleList(
         AppLocale.Japanese -> RaftJapaneseUiLocaleList
         AppLocale.TraditionalChinese -> RaftTraditionalChineseUiLocaleList
         AppLocale.Korean -> RaftKoreanUiLocaleList
+        AppLocale.Russian -> RaftRussianUiLocaleList
         else -> RaftUserContentLocaleList
     }
 }
