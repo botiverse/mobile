@@ -109,8 +109,8 @@ const val THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY: String = "thread_unread_badge_v0
  */
 const val SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY: String = "sidebar_mark_all_read_v0"
 
-/** Agent migration UI (slock `AGENT_MIGRATION_FEATURE_FLAG_KEY`); off hides the section. */
-const val AGENT_MIGRATION_FEATURE_FLAG_KEY: String = "agent_migration_v0"
+// agent_migration_v0 is no longer read (2026-11-05): agent migration is always shown, as on web
+// (slock #13059). The server flag row can go once app versions that still read it are gone.
 
 /** Moving an agent to the cloud (slock `AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY`). */
 const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hosted_v0"
@@ -220,7 +220,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
-    AGENT_MIGRATION_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,

@@ -49,7 +49,6 @@ import build.raft.app.components.RaftUiSelectionPopover
 import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
-import build.raft.app.data.AGENT_MIGRATION_FEATURE_FLAG_KEY
 import build.raft.app.data.isOpening
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftProductEvents
@@ -4669,10 +4668,6 @@ internal fun MemberDetailPageContent(
                                     val flags = provider.serverFeatureFlags
                                     MembersAgentMigrationBinding(
                                         store = store,
-                                        enabled =
-                                            remember(flags, current.server.id, serverFeatureFlagRevision) {
-                                                flags?.isEnabled(current.server.id, AGENT_MIGRATION_FEATURE_FLAG_KEY) == true
-                                            },
                                         hostedAvailable =
                                             remember(flags, current.server.id, serverFeatureFlagRevision) {
                                                 flags?.isEnabled(current.server.id, AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY) == true
@@ -6159,8 +6154,6 @@ internal class MembersAgentRemoteControls(
 /** The migration section's store and page-level inputs (web AgentMigrationSection). */
 internal class MembersAgentMigrationBinding(
     val store: AgentMigrationStore,
-    /** The server's `agent_migration_v0` gate. */
-    val enabled: Boolean,
     val hostedAvailable: Boolean,
     val computers: List<AgentMigrationComputer>,
     val onOpenBilling: () -> Unit,
@@ -6391,7 +6384,7 @@ private fun MembersDetailContent(
     // which mobile does not show).
     val migrationBinding = remoteControls?.migration
     val migrationVisible =
-        migrationBinding != null && migrationBinding.enabled && canManage && !isExternalAgent &&
+        migrationBinding != null && canManage && !isExternalAgent &&
             !detail?.summary?.machineId.isNullOrBlank()
     val fallbackMigrationState = remember { MutableStateFlow(AgentMigrationState()) }
     val migrationState by (migrationBinding?.store?.state ?: fallbackMigrationState).collectAsState()

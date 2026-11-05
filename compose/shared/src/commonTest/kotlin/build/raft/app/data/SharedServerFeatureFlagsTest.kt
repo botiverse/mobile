@@ -167,6 +167,8 @@ class SharedServerFeatureFlagsTest {
         // attachment_comments_v0 is no longer read or prefetched; the server keeps its record for older clients.
         assertFalse("attachment_comments_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("attachment_comments_v0" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+        // agent_migration_v0 is no longer read: agent migration is always shown, as on web.
+        assertFalse("agent_migration_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         // sync_core_messages_v1 is no longer read: the sync-core offline-cache line is always on.
         assertFalse("sync_core_messages_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse("sync_core_messages_v1" in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
