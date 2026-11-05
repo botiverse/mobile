@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.links.toParsedRaftPermalink
 import build.raft.app.data.RaftClientConfigAppHosts
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -12,7 +14,8 @@ import kotlin.test.assertNull
  * a union with the hosts the App already takes (production, the environment's web URL), matched exactly.
  */
 class RaftMessageLinkAppHostsTest {
-    private val path = "/s/botiverse/channel/c1?msg=m1"
+    private val channel = "89dce17f-1cd3-4db8-b08f-7b4141004b5a"
+    private val path = "/s/botiverse/channel/$channel?msg=7556f881-a5f8-4b0d-88dc-8b5af28e8f05"
     private val appHosts = setOf("raft.build", "app.raft.build")
 
     @AfterTest
@@ -20,15 +23,15 @@ class RaftMessageLinkAppHostsTest {
 
     @Test
     fun anAppHostIsAcceptedAndSiblingsAreNot() {
-        assertEquals("c1", parseRaftMessageLink("https://raft.build$path", appHosts = appHosts)?.channelId)
-        assertNotNull("https://raft.build$path".toRaftMessagePermalinkTarget(appHosts = appHosts))
+        assertEquals(channel, parseRaftMessageLink("https://raft.build$path", appHosts = appHosts)?.channelId)
+        assertNotNull("https://raft.build$path".toParsedRaftPermalink(appHosts = appHosts))
         for (url in listOf("https://w.raft.build$path", "https://evil.raft.build$path", "https://raft.build.evil.example$path")) {
             assertNull(parseRaftMessageLink(url, appHosts = appHosts), url)
-            assertNull(url.toRaftMessagePermalinkTarget(appHosts = appHosts), url)
+            assertNull(url.toParsedRaftPermalink(appHosts = appHosts), url)
         }
         // Without the client config those hosts are not taken.
         assertNull(parseRaftMessageLink("https://raft.build$path", appHosts = emptySet()))
-        assertNull("https://raft.build$path".toRaftMessagePermalinkTarget(appHosts = emptySet()))
+        assertNull("https://raft.build$path".toParsedRaftPermalink(appHosts = emptySet()))
     }
 
     @Test
@@ -38,8 +41,8 @@ class RaftMessageLinkAppHostsTest {
             assertNotNull(parseRaftMessageLink("https://app.raft.build$path", appHosts = hosts))
             assertNotNull(parseRaftMessageLink("https://open.raft.build$path", appHosts = hosts))
             assertNotNull(parseRaftMessageLink("$staging$path", configuredWebUrl = staging, appHosts = hosts))
-            assertNotNull("https://app.raft.build$path".toRaftMessagePermalinkTarget(appHosts = hosts))
-            assertNotNull("$staging$path".toRaftMessagePermalinkTarget(configuredWebUrl = staging, appHosts = hosts))
+            assertNotNull("https://app.raft.build$path".toParsedRaftPermalink(appHosts = hosts))
+            assertNotNull("$staging$path".toParsedRaftPermalink(configuredWebUrl = staging, appHosts = hosts))
         }
     }
 

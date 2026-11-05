@@ -1,5 +1,7 @@
 package build.raft.app.markdown
 
+import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.links.toParsedRaftPermalink
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,13 +38,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMessagePermalinkTarget
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAppScopeApiEnvironment
 import build.raft.app.model.ConversationKind
 import build.raft.app.raftArgbHex
 import build.raft.app.raftMarkdownUrlOpen
-import build.raft.app.toRaftMessagePermalinkTarget
 import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -78,7 +78,7 @@ internal fun raftLinkHoverLocalizedTerms(): RaftLinkHoverTerms =
 internal fun raftLinkHoverLabel(
     url: String,
     webUrl: String?,
-    conversationName: (RaftMessagePermalinkTarget) -> String?,
+    conversationName: (ParsedRaftPermalink) -> String?,
     terms: RaftLinkHoverTerms,
 ): RaftLinkHoverLabel? {
     val raw = url.trim().takeIf(String::isNotEmpty) ?: return null
@@ -87,7 +87,7 @@ internal fun raftLinkHoverLabel(
     val scheme = raw.substringBefore("://", missingDelimiterValue = "").lowercase()
     val raftScheme = scheme == "raft" || scheme.startsWith("raft-")
     if (open.target == null) return RaftLinkHoverLabel(text = open.url, external = !raftScheme)
-    val permalink = open.url.toRaftMessagePermalinkTarget(configuredWebUrl = webUrl)
+    val permalink = open.url.toParsedRaftPermalink(configuredWebUrl = webUrl)
     val name =
         permalink?.let(conversationName)
             ?.trim()

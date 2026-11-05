@@ -283,9 +283,9 @@ private fun SemanticsNode.collectTexts(into: MutableList<String>) {
     children.forEach { it.collectTexts(into) }
 }
 
-private const val RaftPermalink = "https://app.raft.build/s/acme/channel/c-private?msg=msg-1"
+private const val RaftPermalink = "https://app.raft.build/s/acme/channel/47d614ba-c55e-412a-874f-620e6d2fb849?msg=1949b70d-3814-4e40-8364-8ffad2fff299"
 // The same address on a host Raft doesn't own: a plain link that wraps like the permalink.
-private const val PlainLink = "https://app.raft.built/s/acme/channel/c-private?msg=msg-1"
+private const val PlainLink = "https://app.raft.built/s/acme/channel/47d614ba-c55e-412a-874f-620e6d2fb849?msg=1949b70d-3814-4e40-8364-8ffad2fff299"
 private const val QuotedBody = "Rolled back the migration"
 private const val StampPr = "https://stamp.build/botiverse/mobile/pull/3654"
 private const val StampTitle = "Fix the composer tray"
@@ -312,7 +312,7 @@ private val AppLinkMessage = message(AppLinkMessageId, "Merged: $StampPr")
 private val QuoteLoader: ThreadQuotedPermalinkLoader = { _ ->
     ThreadQuotedPermalinkMessage(
         RaftThreadMessageItem(
-            id = "msg-1",
+            id = "1949b70d-3814-4e40-8364-8ffad2fff299",
             authorId = "agent-alpha",
             authorName = "Alpha",
             authorKind = "agent",

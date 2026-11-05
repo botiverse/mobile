@@ -79,7 +79,7 @@ private val chipsBody =
 
 private val linksBody =
     "Specs at [raft-design](https://raft-design.botiverse.build) and in " +
-        "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1 for context."
+        "https://app.raft.build/s/mobile/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f for context."
 
 private val blocksBody =
     """

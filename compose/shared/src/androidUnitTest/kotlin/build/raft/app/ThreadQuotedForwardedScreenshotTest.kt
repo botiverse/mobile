@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.links.ParsedRaftPermalink
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -145,7 +146,7 @@ private val QuotedForwardedFixtureImages =
     }
 
 private fun permalink(channel: String, thread: Boolean = false) =
-    RaftMessagePermalinkTarget(
+    ParsedRaftPermalink(
         rawUrl = "https://raft.example/s/acme/c/$channel/m/msg-1",
         serverSlug = "acme",
         routeKind = ConversationKind.Channel,

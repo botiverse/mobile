@@ -1,9 +1,9 @@
 package build.raft.app.markdown
 
+import build.raft.app.links.ParsedRaftPermalink
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
-import build.raft.app.RaftMessagePermalinkTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 class RaftLinkHoverStatusTest {
     private val terms = RaftLinkHoverTerms(message = "message", thread = "thread")
     private val staging = "https://staging.raft.build"
-    private val names: (RaftMessagePermalinkTarget) -> String? = { target ->
+    private val names: (ParsedRaftPermalink) -> String? = { target ->
         when (target.channelId.value) {
             "c1" -> "proj-mobile"
             "d1" -> "artin"
@@ -35,11 +35,11 @@ class RaftLinkHoverStatusTest {
     fun raftMessageLinksReadAsTheirConversation() {
         val cases =
             listOf(
-                "https://app.raft.build/s/acme/channel/c1?msg=m1" to "#proj-mobile · message",
-                "https://app.raft.build/s/acme/channel/c1?msg=m1&thread=c1%3Am0" to "#proj-mobile · thread",
-                "https://app.raft.build/s/acme/dm/d1?msg=m1" to "@artin · message",
+                "https://app.raft.build/s/acme/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca" to "#proj-mobile · message",
+                "https://app.raft.build/s/acme/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca&thread=c1%3Aced6bfe1-f650-46b3-8859-4d37eb7850d2" to "#proj-mobile · thread",
+                "https://app.raft.build/s/acme/dm/d1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca" to "@artin · message",
                 // A Raft Desktop link reads as the web link it stands for.
-                "raft:///s/acme/channel/c1?msg=m1" to "#proj-mobile · message",
+                "raft:///s/acme/channel/c1?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca" to "#proj-mobile · message",
             )
         cases.forEach { (url, expected) -> assertEquals(RaftLinkHoverLabel(expected, external = false), label(url), url) }
     }
@@ -47,11 +47,11 @@ class RaftLinkHoverStatusTest {
     @Test
     fun raftLinksWithoutAKnownNameShowTheirWebLinkInApp() {
         // Message link to a conversation the page does not know: its web link, still in-app.
-        val unknown = "https://app.raft.build/s/acme/channel/c9?msg=m1"
+        val unknown = "https://app.raft.build/s/acme/channel/c9?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca"
         assertEquals(RaftLinkHoverLabel(unknown, external = false), label(unknown))
         // A Raft Desktop link shows its environment's web link and stays with Raft.
         assertEquals(RaftLinkHoverLabel("$staging/s/acme/tasks", external = false), label("raft:///s/acme/tasks", staging))
-        assertEquals(RaftLinkHoverLabel("$staging/s/acme/channel/c9?msg=m1", external = false), label("raft:///s/acme/channel/c9?msg=m1", staging))
+        assertEquals(RaftLinkHoverLabel("$staging/s/acme/channel/c9?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca", external = false), label("raft:///s/acme/channel/c9?msg=ae7be26c-daa7-42ca-8480-68d5ac90eaca", staging))
     }
 
     @Test

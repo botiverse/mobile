@@ -1,5 +1,7 @@
 package build.raft.app.markdown
 
+import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.links.toParsedRaftPermalink
 import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
@@ -7,7 +9,6 @@ import build.raft.app.RaftTextSize
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMessagePermalinkTarget
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppThemeState
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
@@ -26,7 +27,6 @@ import build.raft.app.ReplyCacheProvenance
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
-import build.raft.app.toRaftMessagePermalinkTarget
 import build.raft.app.components.RaftCheckMarker
 import build.raft.app.components.RaftCheckMarkerTone
 import build.raft.app.raftFontFamilyForWeight
@@ -201,7 +201,7 @@ data class ThreadMarkdownTag(
 )
 
 internal typealias RaftMessagePermalinkLabelResolver =
-    (RaftMessagePermalinkTarget) -> String?
+    (ParsedRaftPermalink) -> String?
 
 internal val LocalRaftMessagePermalinkLabelResolver =
     compositionLocalOf<RaftMessagePermalinkLabelResolver> { { null } }
@@ -1859,7 +1859,7 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
         source.getLinkAnnotations(0, source.length)
             .mapNotNull { range ->
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
-                val target = link.url.toRaftMessagePermalinkTarget() ?: return@mapNotNull null
+                val target = link.url.toParsedRaftPermalink() ?: return@mapNotNull null
                 Triple(range, link, target)
             }
             .sortedBy { (range, _, _) -> range.start }
@@ -1952,7 +1952,7 @@ private fun raftMessagePermalinkSpacerInlineContent(width: TextUnit): InlineText
         placeholder = Placeholder(width = width, height = 1.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter),
     ) {}
 
-private fun RaftMessagePermalinkTarget.raftMessagePermalinkChipTargetLabel(
+private fun ParsedRaftPermalink.raftMessagePermalinkChipTargetLabel(
     resolvedLabel: String?
 ): String {
     val prefix = if (routeKind == build.raft.app.model.ConversationKind.DirectMessage) "@" else "#"
@@ -1966,7 +1966,7 @@ private fun RaftMessagePermalinkTarget.raftMessagePermalinkChipTargetLabel(
     return "$prefix$name"
 }
 
-private fun RaftMessagePermalinkTarget.raftMessagePermalinkChipKindLabel(): String =
+private fun ParsedRaftPermalink.raftMessagePermalinkChipKindLabel(): String =
     if (threadParentMessageId == null) "msg" else "thread"
 
 /** Markdown parsers may retain autolink annotations inside code spans. */
