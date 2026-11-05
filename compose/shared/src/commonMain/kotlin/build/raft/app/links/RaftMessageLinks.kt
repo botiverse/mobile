@@ -10,7 +10,6 @@ import build.raft.app.model.MessageId
 import build.raft.app.raftSchemeLinkToWebLink
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
-import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
@@ -219,7 +218,7 @@ internal fun planRaftMessageLinks(
     val accepted = LinkedHashMap<String, ArtifactLinkTarget>()
     for (target in firstParty.values) {
         if (accepted.size >= MESSAGE_OBJECT_LINK_LIMIT) break
-        accepted.putIfAbsent(target.key, target)
+        if (target.key !in accepted) accepted[target.key] = target
     }
     val objects = LinkedHashMap<String, ArtifactLinkTarget>()
     val objectCards = ArrayList<String>()
@@ -249,7 +248,7 @@ internal data class ParsedRaftPermalink(
 private val DefaultPermalinkHostnames = setOf("app.slock.ai", "staging.slock.ai", "app.raft.build")
 
 private val PermalinkPath = Regex("^/s/([^/]+)/(channel|dm)/([0-9a-f-]+)$", RegexOption.IGNORE_CASE)
-private val ThreadParam = Regex("^([0-9a-f-]+):(.+)$", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val ThreadParam = Regex("^([0-9a-f-]+):([\\s\\S]+)$", RegexOption.IGNORE_CASE)
 private val LeadingMessageId =
     Regex(
         "^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})(?![0-9a-f-])",
