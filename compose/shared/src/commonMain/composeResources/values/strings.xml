@@ -137,14 +137,14 @@
     <string name="settings_account_subtitle">Profile, email, password, connected accounts</string>
     <string name="settings_account_destination_subtitle">Profile and sign out</string>
     <string name="settings_account_profile_section">Account</string>
-    <string name="settings_account_display_name">Display Name</string>
+    <string name="settings_account_display_name">Display name</string>
     <string name="settings_account_display_name_placeholder">Your public name</string>
     <string name="settings_account_name">Username</string>
     <string name="settings_account_handle_placeholder">@handle</string>
     <string name="settings_account_email">Email</string>
     <string name="settings_account_email_placeholder">you@example.com</string>
     <string name="settings_account_verified">Verified</string>
-    <string name="settings_account_save_profile">Save Profile</string>
+    <string name="settings_account_save_profile">Save profile</string>
     <string name="settings_account_saving">Saving</string>
     <string name="settings_account_connected_accounts">Connected accounts</string>
     <string name="settings_account_connected">Connected</string>
@@ -177,7 +177,7 @@
     <string name="settings_account_password_update_failed">Password update failed: %1$s</string>
     <string name="settings_account_session">Session</string>
     <string name="settings_account_logout">Sign out</string>
-    <string name="settings_account_logout_action">Sign Out</string>
+    <string name="settings_account_logout_action">Sign out</string>
     <string name="settings_account_logout_detail">Sign out on this device. Your account and data stay; you can sign back in any time.</string>
     <string name="settings_account_logout_confirm">Sign out on this device? Your account and data are kept; you can sign back in any time.</string>
     <string name="settings_account_delete">Delete account</string>
