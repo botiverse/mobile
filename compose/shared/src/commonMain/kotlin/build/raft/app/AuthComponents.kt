@@ -1,11 +1,8 @@
 package build.raft.app
 
 import build.raft.app.components.RaftLinkButton
-import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.raftButtonChrome
 import build.raft.app.components.raftCardSurface
-import build.raft.app.components.raftControlSurface
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -46,9 +43,25 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import build.raft.app.compat.pager.LocalActivity
@@ -85,8 +98,10 @@ internal enum class AuthButtonTone {
 }
 
 internal enum class AuthActionButtonVariant {
+    Small,
     Default,
-    Large
+    Large,
+    XLarge
 }
 
 private val AuthInputTextStyle: TextStyle
@@ -99,7 +114,8 @@ private val AuthInputTextStyle: TextStyle
         ).withRaftFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
-private val AuthTopBarHeight = 62.dp
+// raft-ui auth top bar: `h-panel-header` (56dp) including its 1dp bottom seam.
+private val AuthTopBarHeight = 56.dp
 private val AuthTopBarBrandWidth = 81.dp
 private val AuthTopBarBrandHeight = 20.dp
 private const val RaftLogoAssetSource = "assets://lucide/raft-logo.svg"
@@ -153,6 +169,13 @@ internal fun AuthScaffold(
     topBarHorizontalPadding: Dp = 16.dp,
     topBarBrandImagePadding: Dp = 0.dp,
     topLeadingContent: (@Composable () -> Unit)? = null,
+    // Web AuthBrandShell content: `px-5`, `max-w-md`, the stack spacing of the caller.
+    contentHorizontalPadding: Dp = 36.dp,
+    contentMaxWidth: Dp = 314.dp,
+    contentSpacing: Dp = 16.dp,
+    contentBottomPadding: Dp = 40.dp,
+    // Pinned under the scrolling content (bottom-centred), outside the centred stack.
+    footer: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
@@ -163,6 +186,7 @@ internal fun AuthScaffold(
     val authKeyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
     var authKeyboardHeightDp by remember { mutableStateOf(0f) }
     var authViewportBounds by remember { mutableStateOf<Rect?>(null) }
+    var authViewportHeight by remember { mutableStateOf(0.dp) }
     val authKeyboardScrollCoordinator = remember { RaftFocusedEditorScrollRequestCoordinator() }
     DisposableEffect(authKeyboardScrollCoordinator) {
         onDispose { authKeyboardScrollCoordinator.invalidate() }
@@ -239,16 +263,19 @@ internal fun AuthScaffold(
             ) {
                 AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
                 Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = contentHorizontalPadding),
                     contentAlignment = Alignment.TopCenter
                 ) {
                     if (contentScrollable) {
                         LazyColumn(
                             state = authListState,
                             modifier = Modifier
-                                .widthIn(max = 314.dp)
+                                .widthIn(max = contentMaxWidth)
                                 .fillMaxSize()
-                                .onGloballyPositioned { authViewportBounds = it.boundsInRoot() },
+                                .onGloballyPositioned {
+                                    authViewportBounds = it.boundsInRoot()
+                                    authViewportHeight = with(density) { it.size.height.toDp() }
+                                },
                             contentPadding =
                                 PaddingValues(
                                     top = contentTopPadding,
@@ -256,7 +283,7 @@ internal fun AuthScaffold(
                                     // height; reserve the IME region as extra scrollable content
                                     // so the focused field can move fully above the keyboard.
                                     bottom =
-                                        40.dp +
+                                        contentBottomPadding +
                                             raftEffectiveKeyboardInsetDp(
                                                 keyboardHeightDp = authKeyboardHeightDp,
                                                 bottomSafeArea = authBottomSafeArea,
@@ -268,27 +295,76 @@ internal fun AuthScaffold(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             item {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    content = content
-                                )
+                                if (footer == null) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(contentSpacing),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        content = content
+                                    )
+                                } else {
+                                    AuthCenteredContentWithFooter(
+                                        minHeight = authViewportHeight - contentTopPadding - contentBottomPadding,
+                                        contentSpacing = contentSpacing,
+                                        footer = footer,
+                                        content = content
+                                    )
+                                }
                             }
                         }
                     } else {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .widthIn(max = 314.dp)
+                                .widthIn(max = contentMaxWidth)
                                 .padding(top = contentTopPadding),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(contentSpacing),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             content = content
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The centred auth stack plus a footer pinned to the bottom of the viewport. Web centres the
+ * card in the space under the top bar; the footer (a mobile-only entry) must not move that
+ * centre, so it sits at the bottom of a viewport-tall item and only pushes the item taller
+ * when the stack and footer no longer fit.
+ */
+@Composable
+private fun AuthCenteredContentWithFooter(
+    minHeight: Dp,
+    contentSpacing: Dp,
+    footer: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val gap = 24.dp
+    Layout(
+        modifier = Modifier.fillMaxWidth(),
+        content = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                content = content
+            )
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { footer() }
+        }
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity)
+        val stack = measurables[0].measure(loose)
+        val foot = measurables[1].measure(loose)
+        val minPx = minHeight.roundToPx().coerceAtLeast(0)
+        val gapPx = gap.roundToPx()
+        val height = maxOf(minPx, stack.height + gapPx + foot.height)
+        val stackTop = ((minPx - stack.height) / 2).coerceIn(0, (height - foot.height - gapPx - stack.height).coerceAtLeast(0))
+        layout(constraints.maxWidth, height) {
+            stack.place(0, stackTop)
+            foot.place(0, height - foot.height)
         }
     }
 }
@@ -308,12 +384,12 @@ private fun AuthTopBar(
             // raft-ui auth top bar: the frame layer with a 1dp seam.
             .background(RaftColor.Frame)
     ) {
-        Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam).align(Alignment.BottomCenter))
+        Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam.authOpaqueOn(RaftColor.Frame)).align(Alignment.BottomCenter))
         Row(
             modifier = Modifier
                 .padding(top = statusBarHeight.dp)
                 .fillMaxWidth()
-                .height(AuthTopBarHeight)
+                .height(AuthTopBarHeight - RaftAppStroke.Thin)
                 .padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -415,6 +491,53 @@ internal fun AuthFormColumn(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
+/**
+ * Web paints alpha ink straight onto an opaque layer and rounds the blend; Skia's blend rounds
+ * differently by one step on some channels. Auth chrome sits on known opaque layers, so it
+ * composites the ink first and draws the opaque result.
+ */
+internal fun Color.authOpaqueOn(layer: Color): Color = if (alpha >= 1f) this else compositeOver(layer)
+
+/** Auth type at an exact web size (`text-*` token): Space Grotesk, no tracking unless given. */
+internal fun authTextStyle(
+    fontSize: Int,
+    lineHeight: Int,
+    weight: FontWeight,
+    color: Color,
+    letterSpacing: TextUnit = 0.sp
+): TextStyle =
+    RaftType.Body.copy(
+        fontSize = fontSize.sp,
+        lineHeight = lineHeight.sp,
+        letterSpacing = letterSpacing,
+        color = color,
+        // CSS wraps greedily; Compose's default line break balances lines.
+        lineBreak = LineBreak.Simple
+    ).withRaftFontWeight(weight)
+
+internal val AuthMutedColor: Color get() = RaftColor.TextMuted.authOpaqueOn(RaftColor.Canvas)
+internal val AuthHintColor: Color get() = RaftColor.ForegroundHint.authOpaqueOn(RaftColor.Canvas)
+private val AuthHairlineColor: Color get() = RaftColor.BorderHairline.authOpaqueOn(RaftColor.Canvas)
+
+/** Web `AuthBrandIntro`: the 36dp Raft mark, 16dp, the `text-title` heading, then 20dp. */
+@Composable
+internal fun AuthPageIntro(title: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        AuthCenterMark()
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = title,
+            style = authTextStyle(22, 28, FontWeight.Bold, RaftColor.TextBlack, letterSpacing = (-0.22).sp),
+            color = RaftColor.TextBlack,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().authStaticTextFocus()
+        )
+    }
+}
+
 @Composable
 internal fun AuthTextField(
     value: TextFieldValue,
@@ -432,65 +555,164 @@ internal fun AuthTextField(
     keyboardHeightChange: ((KeyboardParams) -> Unit)? = null,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    password: Boolean = false
+    password: Boolean = false,
+    // Web FormField `labelAction`: a trailing control on the label row (Forgot Password?).
+    labelAction: (@Composable () -> Unit)? = null,
+    // Web PrefixedInput: a fixed muted cell before the editor (`@` for a username).
+    prefix: String? = null,
+    // Web FormField `description`: helper copy under the control.
+    description: String? = null,
 ) {
-    var passwordVisible by remember { mutableStateOf(false) }
     val resolvedKeyboardHeightChange = keyboardHeightChange ?: LocalRaftAuthKeyboardHeightChange.current
     val authFocusChanged = LocalRaftAuthFocusChanged.current
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-    ) {
-        AuthFieldLabel(label = label, required = required, optional = optional)
-        val borderColor = if (isError) RaftColor.AccentRed else RaftColor.BorderBlack
-        RaftBrutalInputField(
-            value = value,
-            onValueChange = { nextValue ->
-                authTextFieldForwardValueChange(nextValue, onValueChange)
-            },
-            placeholder = placeholder,
+    var focused by remember { mutableStateOf(false) }
+    val resolvedFocusRequester = focusRequester ?: remember { FocusRequester() }
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { AuthFieldLabel(label = label, required = required, optional = optional) }
+            labelAction?.invoke()
+        }
+        Spacer(Modifier.height(6.dp))
+        AuthInputFrame(
             enabled = enabled,
-            autoFocus = false,
-            maxLines = 1,
-            textStyle = AuthInputTextStyle,
-            fieldMinHeight = 44.dp,
-            horizontalPadding = 8.dp,
-            verticalPadding = 8.dp,
-            forceFocused = forceFocused,
-            borderColor = borderColor,
-            enabledBackgroundColor = RaftColor.Card,
-            disabledBackgroundColor = RaftColor.EmptyStateGray,
-            placeholderColor = AuthInputPlaceholderColor,
-            visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            keyboardHeightChange = resolvedKeyboardHeightChange,
-            onFocusChanged = authFocusChanged,
-            focusRequester = focusRequester ?: remember { FocusRequester() },
-            trailingContent =
-                if (password) {
-                    {
-                        RaftBrutalIconButton(
-                            iconName = if (passwordVisible) RaftLucideIconName.EyeOff else RaftLucideIconName.Eye,
-                            onClick = { passwordVisible = !passwordVisible },
-                            enabled = enabled,
-                            size = 28.dp,
-                            shadowOffset = 0.dp,
-                            iconSize = 15.dp
-                        )
-                    }
-                } else {
-                    null
-                }
-        )
-        if (isError && !errorText.isNullOrBlank()) {
+            isError = isError,
+            focused = (focused || forceFocused) && enabled,
+            onTap = { resolvedFocusRequester.requestFocus() }
+        ) {
+            if (prefix != null) {
+                AuthInputPrefix(prefix)
+            }
+            TextField(
+                value = value,
+                onValueChange = { nextValue -> authTextFieldForwardValueChange(nextValue, onValueChange) },
+                placeholder = placeholder,
+                placeholderColor = RaftColor.ForegroundHint.authOpaqueOn(RaftColor.Card),
+                autoFocus = false,
+                onFocus = {
+                    focused = true
+                    authFocusChanged(true)
+                },
+                onBlur = {
+                    focused = false
+                    authFocusChanged(false)
+                },
+                maxLines = 1,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                keyboardHeightChange = resolvedKeyboardHeightChange,
+                enabled = enabled,
+                readOnly = !enabled,
+                textStyle =
+                    authTextStyle(
+                        16,
+                        24,
+                        FontWeight.Normal,
+                        if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled.authOpaqueOn(RaftColor.FillMuted)
+                    ),
+                visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+                contentAlignment = Alignment.CenterStart,
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                focusRequester = resolvedFocusRequester
+            )
+        }
+        if (!description.isNullOrBlank()) {
+            Spacer(Modifier.height(12.dp))
             Text(
-                text = errorText,
-                style = RaftType.Caption.copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed,
+                text = description,
+                style = authTextStyle(12, 16, FontWeight.Medium, AuthHintColor),
+                color = AuthHintColor,
                 modifier = Modifier.authStaticTextFocus()
             )
         }
+        if (isError && !errorText.isNullOrBlank()) {
+            Spacer(Modifier.height(if (description.isNullOrBlank()) 12.dp else 6.dp))
+            Text(
+                text = errorText,
+                style = authTextStyle(12, 16, FontWeight.SemiBold, RaftColor.DangerStrong),
+                color = RaftColor.DangerStrong,
+                modifier = Modifier.authStaticTextFocus()
+            )
+        }
+    }
+}
+
+/**
+ * raft-ui Input: 44dp, control radius, a 1dp `--line-field` edge on the card (danger-strong
+ * when invalid, hairline on fill-muted when disabled). Focus draws `shadow-focus`: a 2dp
+ * canvas gap, then a 2dp ink ring, outside the box.
+ */
+@Composable
+private fun AuthInputFrame(
+    enabled: Boolean,
+    isError: Boolean,
+    focused: Boolean,
+    onTap: () -> Unit,
+    content: @Composable RowScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    val fill = if (enabled) RaftColor.Card else RaftColor.FillMuted
+    val edge =
+        when {
+            !enabled -> RaftColor.BorderHairline.authOpaqueOn(RaftColor.FillMuted)
+            isError -> RaftColor.DangerStrong
+            else -> RaftColor.LineField
+        }
+    val ringGap = RaftColor.Canvas
+    val ring = RaftColor.LineField
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .then(
+                    if (focused) {
+                        Modifier.drawBehind {
+                            val gap = 2.dp.toPx()
+                            val radius = RaftAppRadius.Control.toPx()
+                            drawRoundRect(
+                                color = ring,
+                                topLeft = Offset(-2 * gap, -2 * gap),
+                                size = Size(size.width + 4 * gap, size.height + 4 * gap),
+                                cornerRadius = CornerRadius(radius + 2 * gap)
+                            )
+                            drawRoundRect(
+                                color = ringGap,
+                                topLeft = Offset(-gap, -gap),
+                                size = Size(size.width + 2 * gap, size.height + 2 * gap),
+                                cornerRadius = CornerRadius(radius + gap)
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .background(fill, shape)
+                .border(RaftAppStroke.Thin, edge, shape)
+                .clip(shape)
+                .clickable(enabled = enabled, onClick = onTap)
+                .padding(RaftAppStroke.Thin),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+/** Web PrefixedInput prefix: fill-muted cell, 12dp sides, Space Mono 13/20 hint, hairline edge. */
+@Composable
+private fun AuthInputPrefix(text: String) {
+    Row(modifier = Modifier.fillMaxHeight()) {
+        Box(
+            modifier = Modifier.fillMaxHeight().background(RaftColor.FillMuted).padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val color = RaftColor.ForegroundHint.authOpaqueOn(RaftColor.FillMuted)
+            Text(
+                text = text,
+                style = authTextStyle(13, 20, FontWeight.Normal, color).copy(fontFamily = RaftMonoFamily),
+                color = color,
+                modifier = Modifier.authStaticTextFocus()
+            )
+        }
+        Box(Modifier.fillMaxHeight().width(RaftAppStroke.Thin).background(RaftColor.BorderHairline.authOpaqueOn(RaftColor.FillMuted)))
     }
 }
 
@@ -508,6 +730,7 @@ internal fun authTextFieldForwardValueChange(
     onValueChange(nextValue)
 }
 
+/** Web FormField label: 13/18 semibold `foreground-muted`. */
 @Composable
 internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: Boolean = false) {
     Row(
@@ -517,23 +740,34 @@ internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: 
     ) {
         Text(
             text = label,
-            style = RaftType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack
+            style = authTextStyle(13, 18, FontWeight.SemiBold, AuthMutedColor),
+            color = AuthMutedColor
         )
         if (required) {
             Text(
                 text = "*",
-                style = RaftType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.AccentPink),
-                color = RaftColor.AccentPink
+                style = authTextStyle(13, 18, FontWeight.SemiBold, RaftColor.DangerStrong),
+                color = RaftColor.DangerStrong
             )
         } else if (optional) {
             Text(
                 text = stringResource(MR.strings.common_optional_suffix),
-                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
+                style = authTextStyle(13, 18, FontWeight.Normal, AuthHintColor),
+                color = AuthHintColor
             )
         }
     }
+}
+
+/** Web TextLink beside a field label (`text-footnote`, medium, muted). */
+@Composable
+internal fun AuthLabelLink(text: String, onClick: () -> Unit) {
+    Text(
+        text = text,
+        style = authTextStyle(13, 18, FontWeight.Medium, AuthMutedColor),
+        color = AuthMutedColor,
+        modifier = Modifier.clickable(role = Role.Button, onClick = onClick)
+    )
 }
 
 @Composable
@@ -544,8 +778,10 @@ internal fun AuthActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
-    preserveDisabledVisual: Boolean = false,
+    // Kept for callers: raft disabled buttons are always the opaque disabled look now.
+    @Suppress("UNUSED_PARAMETER") preserveDisabledVisual: Boolean = false,
     variant: AuthActionButtonVariant = AuthActionButtonVariant.Large,
+    fillWidth: Boolean = true,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
     val background = when (tone) {
@@ -556,100 +792,107 @@ internal fun AuthActionButton(
         AuthButtonTone.Black -> RaftColor.TextBlack
         AuthButtonTone.Disabled -> RaftColor.EmptyStateGray
     }
-    // raft-ui 0.6.0 Button: pink/yellow tones are the accent sticker (sticker-ink edge and
-    // type), the paper tones the outline button (1.5dp line-strong edge); Black stays an
-    // ink fill with inverse type. Control radius, no offset shadow.
+    // raft-ui Button: accent tones are the sticker (ink edge and type), paper tones the
+    // outline button (ink edge); Black stays an ink fill with inverse type. Control radius,
+    // 1dp edge, no offset shadow. Disabled is opaque: fill-muted, hairline edge, 30% ink type.
     val raftChrome = raftButtonChrome(background)
-    val activeFill = if (tone == AuthButtonTone.Black) RaftColor.TextBlack else raftChrome.fill
-    val activeBorder = if (tone == AuthButtonTone.Black) RaftColor.TextBlack else raftChrome.border
-    val activeContentColor = if (tone == AuthButtonTone.Black) RaftColor.ForegroundInverse else raftChrome.content
-    val disabledAlpha = 0.50f
-    // React parity for disabled:opacity-50 during signing: pre-composite each colour 50%
-    // onto the card layer instead of a group alpha (Kuikly's alpha modifier is unreliable
-    // on this render path, task #372/#382).
-    val dimWholeButton = !enabled && preserveDisabledVisual
-    val dimOntoCard = { c: Color -> lerp(RaftColor.Card, c, disabledAlpha) }
-    val contentColor = when {
-        dimWholeButton -> dimOntoCard(activeContentColor)
-        enabled || preserveDisabledVisual -> activeContentColor
-        else -> RaftColor.ForegroundDisabled
-    }
-    // raft disabled controls are opaque: fill-muted, line-muted edge, foreground-disabled type.
-    val buttonBackground = when {
-        dimWholeButton -> dimOntoCard(activeFill)
-        enabled || preserveDisabledVisual -> activeFill
-        else -> RaftColor.FillMuted
-    }
-    val borderColor = when {
-        dimWholeButton -> dimOntoCard(activeBorder)
-        enabled || preserveDisabledVisual -> activeBorder
-        else -> RaftColor.BorderHairline
-    }
-    val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
-    val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
-    val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
+    val active = enabled && tone != AuthButtonTone.Disabled
+    val fill =
+        when {
+            !active -> RaftColor.FillMuted
+            tone == AuthButtonTone.Black -> RaftColor.TextBlack
+            tone == AuthButtonTone.White -> RaftColor.Card
+            else -> raftChrome.fill
+        }
+    val edge =
+        when {
+            !active -> RaftColor.BorderHairline.authOpaqueOn(RaftColor.FillMuted)
+            tone == AuthButtonTone.Black || tone == AuthButtonTone.White -> RaftColor.LineField
+            else -> raftChrome.border
+        }
+    val contentColor =
+        when {
+            !active -> RaftColor.ForegroundDisabled.authOpaqueOn(RaftColor.FillMuted)
+            tone == AuthButtonTone.Black -> RaftColor.ForegroundInverse
+            tone == AuthButtonTone.White -> RaftColor.TextBlack
+            else -> raftChrome.content
+        }
+    val height =
+        when (variant) {
+            AuthActionButtonVariant.XLarge -> 52.dp
+            AuthActionButtonVariant.Large -> 44.dp
+            AuthActionButtonVariant.Default -> 36.dp
+            AuthActionButtonVariant.Small -> 32.dp
+        }
+    val horizontalPadding =
+        when (variant) {
+            AuthActionButtonVariant.XLarge -> 20.dp
+            AuthActionButtonVariant.Large -> 16.dp
+            AuthActionButtonVariant.Default, AuthActionButtonVariant.Small -> 12.dp
+        }
+    val iconGap = if (variant == AuthActionButtonVariant.Small) 6.dp else 12.dp
     val textStyle = authActionButtonTextStyle(variant, contentColor)
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
             .height(height)
+            .background(fill, shape)
+            .border(RaftAppStroke.Thin, edge, shape)
+            .clip(shape)
+            .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
+            .padding(horizontal = horizontalPadding),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .raftControlSurface(fill = buttonBackground, border = borderColor)
-                .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
-                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = Alignment.Center
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (leadingContent != null) {
-                    Box(Modifier.padding(end = 8.dp), contentAlignment = Alignment.Center) {
-                        leadingContent()
-                    }
+            if (leadingContent != null) {
+                Box(Modifier.padding(end = iconGap), contentAlignment = Alignment.Center) {
+                    leadingContent()
                 }
-                Text(
-                    // Labels like "Signing in…" already carry react's ellipsis
-                    // (U+2026); only append dots to loading labels without one
-                    // (e.g. "Opening Google" -> "Opening Google...").
-                    text = if (loading && !text.endsWith("...") && !text.endsWith("…")) "$text..." else text,
-                    style = textStyle,
-                    color = contentColor,
-                    textAlign = TextAlign.Center
-                )
             }
+            Text(
+                // Labels like "Signing in…" already carry the ellipsis (U+2026); only append
+                // dots to loading labels without one (e.g. "Opening Google" -> "Opening Google...").
+                text = if (loading && !text.endsWith("...") && !text.endsWith("…")) "$text..." else text,
+                style = textStyle,
+                color = contentColor,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
         }
     }
 }
 
+/** raft-ui Button type per size: sm/md 13/18, lg 15/20, xl 16/24, all bold. */
 internal fun authActionButtonTextStyle(
     variant: AuthActionButtonVariant,
     contentColor: Color
 ) =
-    if (variant == AuthActionButtonVariant.Large) {
-        RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp, color = contentColor)
-    } else {
-        RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = contentColor)
+    when (variant) {
+        AuthActionButtonVariant.XLarge -> authTextStyle(16, 24, FontWeight.Bold, contentColor)
+        AuthActionButtonVariant.Large -> authTextStyle(15, 20, FontWeight.Bold, contentColor)
+        AuthActionButtonVariant.Default, AuthActionButtonVariant.Small -> authTextStyle(13, 18, FontWeight.Bold, contentColor)
     }
 
+/** raft-ui Separator with a label: hairlines either side of 13/18 semibold hint type. */
 @Composable
 internal fun AuthDivider() {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().height(18.dp),
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
+        Box(Modifier.weight(1f).padding(top = 9.dp).height(RaftAppStroke.Thin).background(AuthHairlineColor))
         Text(
             text = stringResource(MR.strings.auth_social_divider_or),
-            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
+            style = authTextStyle(13, 18, FontWeight.SemiBold, AuthHintColor),
+            color = AuthHintColor,
             modifier = Modifier.authStaticTextFocus()
         )
-        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
+        Box(Modifier.weight(1f).padding(top = 9.dp).height(RaftAppStroke.Thin).background(AuthHairlineColor))
     }
 }
 
@@ -665,32 +908,31 @@ internal fun AuthTextLink(text: String, onClick: () -> Unit) {
     )
 }
 
+/** Web `TextSans size="small"` prompt with a strong TextLink: "No account? Create one". */
 @Composable
 internal fun AuthInlineAction(leading: String, action: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = leading,
-            style = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authStaticTextFocus()
-        )
-        Spacer(Modifier.width(RaftAppSpacing.Xs))
-        Text(
-            text = action,
-            style = RaftType.Body.copy(
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                color = RaftColor.AccentPink,
-                textDecoration = TextDecoration.Underline
-            ).withRaftFontWeight(FontWeight.SemiBold),
-            color = RaftColor.AccentPink,
-            modifier = Modifier.clickable(onClick = onClick)
-        )
-    }
+    val linkStyle = authTextStyle(14, 20, FontWeight.SemiBold, RaftColor.TextBlack)
+    val text =
+        buildAnnotatedString {
+            append(leading)
+            append(" ")
+            withLink(
+                LinkAnnotation.Clickable(
+                    tag = "auth-inline-action",
+                    styles = TextLinkStyles(style = linkStyle.toSpanStyle()),
+                    linkInteractionListener = LinkInteractionListener { onClick() }
+                )
+            ) {
+                append(action)
+            }
+        }
+    Text(
+        text = text,
+        style = authTextStyle(14, 20, FontWeight.Normal, AuthMutedColor),
+        color = AuthMutedColor,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().authStaticTextFocus()
+    )
 }
 
 @Composable
@@ -731,18 +973,19 @@ internal fun AuthSuccessNotice(title: String, detail: String) {
 }
 
 @Composable
-internal fun AuthProviderIcon(provider: AuthProvider) {
+internal fun AuthProviderIcon(provider: AuthProvider, onPaper: Boolean = false) {
     // task #60: every platform loads the MR-bundled SVG asset (see ProviderIconAsset.kt).
+    // On the web outline button (paper fill) the marks are ink and 20dp.
     val source =
         when (provider) {
             AuthProvider.Google -> providerIconAssetSource(ProviderIconKey.GoogleColor)
-            AuthProvider.GitHub -> providerIconAssetSource(ProviderIconKey.GitHubWhite)
-            AuthProvider.Apple -> providerIconAssetSource(ProviderIconKey.AppleWhite)
+            AuthProvider.GitHub -> providerIconAssetSource(if (onPaper) ProviderIconKey.GitHubBlack else ProviderIconKey.GitHubWhite)
+            AuthProvider.Apple -> providerIconAssetSource(if (onPaper) ProviderIconKey.AppleBlack else ProviderIconKey.AppleWhite)
         }
     RaftCachedImage(
         source = source,
         contentDescription = null,
-        modifier = Modifier.size(18.dp)
+        modifier = Modifier.size(if (onPaper) 20.dp else 18.dp)
     )
 }
 

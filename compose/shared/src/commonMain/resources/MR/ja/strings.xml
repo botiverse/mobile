@@ -1352,6 +1352,13 @@
     <string name="auth_label_display_name">表示名</string>
     <string name="auth_display_name_placeholder">Alex Chen</string>
     <string name="auth_hint_display_name">メッセージで表示される名前です。いつでも変更できます。</string>
+    <string name="auth_register_sign_in_link">ログイン</string>
+    <string name="auth_register_legal_required_hint">続行するには、利用規約に同意し、プライバシーポリシーを確認してください。</string>
+    <string name="auth_profile_avatar_label">プロフィール画像</string>
+    <string name="auth_profile_avatar_upload">アップロード</string>
+    <string name="auth_profile_avatar_uploading">アップロード中…</string>
+    <string name="auth_profile_avatar_default_helper">デフォルトの画像が選択されています。</string>
+    <string name="auth_profile_avatar_upload_failed">画像をアップロードできませんでした。別のファイルを試してください。</string>
     <string name="auth_state_finishing_profile">セットアップを完了中…</string>
     <string name="auth_error_profile_setup_failed">ID のセットアップを完了できませんでした。</string>
     <string name="auth_prompt_already_have_account">すでにアカウントをお持ちですか？</string>

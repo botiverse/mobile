@@ -42,6 +42,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,6 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -82,6 +85,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
@@ -711,6 +715,27 @@ private fun RegisterScreen() {
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
+    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
+    rememberAuthRuntimeCapabilities(
+        store = sharedStores.authRuntimeCapabilityStore,
+        pageData = pager.pageData.params
+    )
+    val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
+    // Web RegisterPage offers the same "Continue with …" providers as sign-in; a provider
+    // sign-in creates the account on first use.
+    val socialProviders = remember(authRuntimeCapabilities) {
+        authRuntimeCapabilities.socialAuthProviders(
+            applePlatformSupported = raftPlatformSupportsAppleSignIn()
+        )
+    }
+    var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
+    var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
+    val linkNavigator =
+        rememberRaftLinkNavigator(
+            pager = pager,
+            bridge = bridge,
+            routeScope = RaftInAppBrowserRouteScope.Unscoped,
+        )
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
     var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
@@ -768,6 +793,28 @@ private fun RegisterScreen() {
         }
     }
 
+    LaunchedEffect(pendingSocialAuth) {
+        val effect = pendingSocialAuth ?: return@LaunchedEffect
+        val response = runCatching { bridge.socialAuth(effect.provider.providerId()) }.getOrNull()
+        pendingSocialAuth = null
+        socialSubmittingProvider = null
+        val code = response?.optString("code").orEmpty().toIntOrNull()
+        errorPresentation =
+            if (code == 0 || response?.optString("status") == "error") {
+                response?.optString("message")
+                    .takeUnless { it.isNullOrBlank() }
+                    ?.let(AuthErrorPresentation::Dynamic)
+                    ?: AuthErrorPresentation.Static(
+                        StringDesc.ResourceFormatted(
+                            MR.strings.auth_error_provider_unavailable,
+                            listOf(effect.provider.providerDisplayName())
+                        )
+                    )
+            } else {
+                null
+            }
+    }
+
     RegisterContent(
         email = emailFieldValue,
         password = passwordFieldValue,
@@ -813,7 +860,22 @@ private fun RegisterScreen() {
             }
         },
         onBackToSignIn = { pager.closeAuthSubPage() },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) },
+        socialProviders = socialProviders,
+        socialSubmittingProvider = socialSubmittingProvider,
+        onSocialSignIn = { provider ->
+            if (!state.submitting && socialSubmittingProvider == null) {
+                errorPresentation = null
+                socialSubmittingProvider = provider
+                pendingSocialAuth =
+                    PendingSocialAuth(
+                        nonce = (pendingSocialAuth?.nonce ?: 0) + 1,
+                        provider = provider
+                    )
+            }
+        },
+        onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
+        onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) }
     )
 }
 
@@ -823,6 +885,12 @@ private fun AuthProfileSetupScreen() {
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
+    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
+    val settingsDataSource = rememberAuthSettingsDataSource(pager, bridge, sharedStores)
+    val avatarScope = rememberCoroutineScope()
+    var avatarUploading by remember { mutableStateOf(false) }
+    var avatarFailed by remember { mutableStateOf(false) }
+    var avatarUrl by remember { mutableStateOf<String?>(null) }
     val reducer = remember { IdentitySetupFormReducer() }
     var state by remember { mutableStateOf(IdentitySetupFormState()) }
     var handleFieldValue by remember { mutableStateOf(TextFieldValue(state.handle)) }
@@ -922,7 +990,39 @@ private fun AuthProfileSetupScreen() {
                 null -> Unit
             }
         },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) },
+        // Web identity setup "Profile picture": pick an image for the signed-in account
+        // (POST auth/me/avatar); without one the server keeps the default.
+        avatarUploading = avatarUploading,
+        avatarError = if (avatarFailed) stringResource(MR.strings.auth_profile_avatar_upload_failed) else null,
+        onUploadAvatar = {
+            if (!avatarUploading) {
+                avatarUploading = true
+                avatarFailed = false
+                avatarScope.launch {
+                    when (val result = settingsDataSource.uploadAccountAvatar()) {
+                        is DataResult.Content -> avatarUrl = result.data.profile.avatarUrl
+                        is DataResult.Error -> avatarFailed = true
+                        else -> Unit
+                    }
+                    avatarUploading = false
+                }
+            }
+        },
+        avatarContent = avatarUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            {
+                RaftCachedImage(
+                    source = url,
+                    contentDescription = null,
+                    modifier =
+                        Modifier
+                            .size(51.dp)
+                            .clip(RoundedCornerShape(RaftAppRadius.Sticker))
+                            .border(RaftAppStroke.Thin, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
     )
 }
 
@@ -1421,7 +1521,9 @@ internal fun AuthLoginInputsVisualScreen() {
         onPasswordChange = {},
         onSubmit = {},
         onForgotPassword = {},
-        onCreateAccount = {}
+        onCreateAccount = {},
+        // The React case fills email then password, so the password field keeps focus.
+        passwordFocused = signing
     )
 }
 
@@ -1437,7 +1539,11 @@ internal fun AuthRegisterInputsVisualScreen() {
         onEmailChange = {},
         onPasswordChange = {},
         onSubmit = {},
-        onBackToSignIn = {}
+        onBackToSignIn = {},
+        // React register stubs /auth/providers with Google + GitHub, and the password
+        // field (filled last) keeps focus.
+        socialProviders = setOf(AuthProvider.Google, AuthProvider.GitHub),
+        passwordFocused = true
     )
 }
 
@@ -1458,7 +1564,9 @@ internal fun AuthProfileSetupVisualScreen() {
         errorMessage = null,
         onHandleChange = {},
         onDisplayNameChange = {},
-        onSubmit = {}
+        onSubmit = {},
+        // The React case fills username then display name; the display name keeps focus.
+        displayNameFocused = true
     )
 }
 
@@ -1496,12 +1604,13 @@ internal fun LoginContent(
     onOpenPrivacy: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     onOpenPrivateDeployment: () -> Unit = {},
+    // Visual fixtures pin the field the user typed into last (web keeps its focus ring).
+    passwordFocused: Boolean = false,
 ) {
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
     val visibleSocialProviders = remember(socialProviders) { socialProviders.visibleMobileSocialAuthProviders() }
     val formBusy = submitting || socialSubmittingProvider != null
-    val canSubmit = canSubmitLoginForm(email.text, password.text, formBusy, emailError)
     val submitCurrentDraft = {
         when (val decision = resolveLoginDraftSubmit(email.text, password.text, formBusy)) {
             is LoginDraftSubmitDecision.Forward ->
@@ -1509,29 +1618,22 @@ internal fun LoginContent(
             LoginDraftSubmitDecision.IgnoreBusy -> Unit
         }
     }
-    AuthScaffold(
+    AuthWebScaffold(
         onDiagnosticsShortcut = onOpenDiagnostics,
-        contentScrollable = true
+        // Mobile-only entry (no web equivalent: a browser just opens the deployment's URL).
+        footer = {
+            AuthTextLink(stringResource(MR.strings.auth_web_login_private_entry)) { onOpenPrivateDeployment() }
+        }
     ) {
-        AuthCenterMark()
-        Text(
-            text = stringResource(MR.strings.auth_title_sign_in),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        AuthFormColumn {
+        AuthPageIntro(stringResource(MR.strings.auth_title_sign_in))
+        // Web LoginPage form: `stack-y-4`.
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            AuthError(errorMessage)
             // React parity (LoginPage.tsx): the inputs are never disabled while a
-            // sign-in request is in flight — they stay white/black-bordered and
-            // editable; only the submit button dims. Gating them on !formBusy
-            // grayed the whole form during signing (task #372). Double-submit
-            // stays impossible: the button disables itself and
-            // resolveLoginDraftSubmit ignores submits while formBusy.
+            // sign-in request is in flight; only the submit button disables.
             AuthTextField(
                 value = email,
                 onValueChange = onEmailChange,
-                // React parity: LoginPage.tsx labels are plain "Email"/"Password"
-                // (no pink required asterisk).
                 label = stringResource(MR.strings.auth_label_email),
                 modifier =
                     Modifier.onPreviewKeyEvent { event ->
@@ -1563,16 +1665,16 @@ internal fun LoginContent(
                     },
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
+                forceFocused = passwordFocused,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
+                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() }),
+                password = true,
+                labelAction = {
+                    AuthLabelLink(stringResource(MR.strings.auth_link_forgot_password)) { onForgotPassword() }
+                }
             )
-            AuthError(errorMessage)
-            // React parity (LoginPage.tsx): Sign In stays full pink + black text
-            // even with an empty form (validation happens on submit) and only
-            // dims to the 50%-alpha look while busy — gating enabled on
-            // canSubmit sent the button into the generic disabled palette
-            // (#FFD8E5 + white text = unreadable white-on-white, task #372).
+            // Web: the xl accent button disables (opaque disabled look) while signing in.
             AuthActionButton(
                 text =
                     if (submitting) {
@@ -1583,96 +1685,87 @@ internal fun LoginContent(
                 onClick = submitCurrentDraft,
                 tone = AuthButtonTone.Pink,
                 enabled = !formBusy,
-                loading = submitting,
-                preserveDisabledVisual = true
+                variant = AuthActionButtonVariant.XLarge
             )
-            if (visibleSocialProviders.isNotEmpty()) {
-                AuthDivider()
-                // React parity (LoginPage.tsx SocialProviderButton): social buttons
-                // are never disabled by an in-flight email/password sign-in — react
-                // keeps them full-opacity and clickable (tapping one abandons the
-                // pending login; onSocialSignIn resets submitting here too). They
-                // only dim during Android's own in-app "Opening …" social flow,
-                // a state react never renders because it redirects instead.
-                val socialEnabled = socialSubmittingProvider == null
-                if (AuthProvider.Google in visibleSocialProviders) {
-                    AuthActionButton(
-                        text =
-                            if (socialSubmittingProvider == AuthProvider.Google) {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_opening_provider,
-                                    listOf(AuthProvider.Google.providerDisplayName())
-                                ).localized()
-                            } else {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_continue_with_provider,
-                                    listOf(AuthProvider.Google.providerDisplayName())
-                                ).localized()
-                            },
-                        onClick = { onSocialSignIn(AuthProvider.Google) },
-                        tone = AuthButtonTone.White,
-                        enabled = socialEnabled,
-                        loading = socialSubmittingProvider == AuthProvider.Google,
-                        preserveDisabledVisual = true,
-                        leadingContent = { AuthProviderIcon(AuthProvider.Google) }
-                    )
-                }
-                if (AuthProvider.GitHub in visibleSocialProviders) {
-                    AuthActionButton(
-                        text =
-                            if (socialSubmittingProvider == AuthProvider.GitHub) {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_opening_provider,
-                                    listOf(AuthProvider.GitHub.providerDisplayName())
-                                ).localized()
-                            } else {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_continue_with_provider,
-                                    listOf(AuthProvider.GitHub.providerDisplayName())
-                                ).localized()
-                            },
-                        onClick = { onSocialSignIn(AuthProvider.GitHub) },
-                        tone = AuthButtonTone.Black,
-                        enabled = socialEnabled,
-                        loading = socialSubmittingProvider == AuthProvider.GitHub,
-                        preserveDisabledVisual = true,
-                        leadingContent = { AuthProviderIcon(AuthProvider.GitHub) }
-                    )
-                }
-                if (AuthProvider.Apple in visibleSocialProviders) {
-                    AuthActionButton(
-                        text =
-                            if (socialSubmittingProvider == AuthProvider.Apple) {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_opening_provider,
-                                    listOf(AuthProvider.Apple.providerDisplayName())
-                                ).localized()
-                            } else {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_continue_with_provider,
-                                    listOf(AuthProvider.Apple.providerDisplayName())
-                                ).localized()
-                            },
-                        onClick = { onSocialSignIn(AuthProvider.Apple) },
-                        tone = AuthButtonTone.Black,
-                        enabled = socialEnabled,
-                        loading = socialSubmittingProvider == AuthProvider.Apple,
-                        preserveDisabledVisual = true,
-                        leadingContent = { AuthProviderIcon(AuthProvider.Apple) }
-                    )
-                }
-            }
-            AuthLegalNotice(
-                onOpenTerms = onOpenTerms,
-                onOpenPrivacy = onOpenPrivacy
-            )
-            AuthTextLink(stringResource(MR.strings.auth_link_forgot_password)) { onForgotPassword() }
-            AuthInlineAction(
-                stringResource(MR.strings.auth_prompt_no_account),
-                stringResource(MR.strings.auth_action_create_one)
-            ) { onCreateAccount() }
-            AuthTextLink(stringResource(MR.strings.auth_web_login_private_entry)) { onOpenPrivateDeployment() }
         }
+        AuthSocialProviderSection(
+            providers = visibleSocialProviders,
+            socialSubmittingProvider = socialSubmittingProvider,
+            onSocialSignIn = onSocialSignIn
+        )
+        Spacer(Modifier.height(16.dp))
+        AuthInlineAction(
+            stringResource(MR.strings.auth_prompt_no_account),
+            stringResource(MR.strings.auth_action_create_one)
+        ) { onCreateAccount() }
+        Spacer(Modifier.height(24.dp))
+        AuthLegalNotice(
+            onOpenTerms = onOpenTerms,
+            onOpenPrivacy = onOpenPrivacy
+        )
+    }
+}
+
+/**
+ * Web AuthBrandShell: the frame bar, then the card centred in the space below it (`px-5`,
+ * `pt-10 pb-10`, `max-w-md`, plus the 16dp shell bottom inset).
+ */
+@Composable
+private fun AuthWebScaffold(
+    onDiagnosticsShortcut: () -> Unit,
+    horizontalPadding: Dp = 20.dp,
+    footer: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    AuthScaffold(
+        onDiagnosticsShortcut = onDiagnosticsShortcut,
+        contentScrollable = true,
+        scrollContentVerticalArrangement = Arrangement.Center,
+        contentHorizontalPadding = horizontalPadding,
+        contentMaxWidth = 448.dp,
+        contentSpacing = 0.dp,
+        contentBottomPadding = 56.dp,
+        footer = footer,
+        content = content
+    )
+}
+
+/** Web social block: 16dp, the "or" separator, 16dp, outline lg buttons 8dp apart. */
+@Composable
+private fun AuthSocialProviderSection(
+    providers: Set<AuthProvider>,
+    socialSubmittingProvider: AuthProvider?,
+    onSocialSignIn: (AuthProvider) -> Unit
+) {
+    if (providers.isEmpty()) return
+    Spacer(Modifier.height(16.dp))
+    AuthDivider()
+    Spacer(Modifier.height(16.dp))
+    // React parity (SocialProviderButton): never disabled by an in-flight email sign-in;
+    // they only dim during Android's own in-app "Opening …" social flow.
+    val socialEnabled = socialSubmittingProvider == null
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(AuthProvider.Google, AuthProvider.GitHub, AuthProvider.Apple)
+            .filter { it in providers }
+            .forEach { provider ->
+                AuthActionButton(
+                    text =
+                        StringDesc.ResourceFormatted(
+                            if (socialSubmittingProvider == provider) {
+                                MR.strings.auth_action_opening_provider
+                            } else {
+                                MR.strings.auth_action_continue_with_provider
+                            },
+                            listOf(provider.providerDisplayName())
+                        ).localized(),
+                    onClick = { onSocialSignIn(provider) },
+                    tone = AuthButtonTone.White,
+                    enabled = socialEnabled,
+                    loading = socialSubmittingProvider == provider,
+                    variant = AuthActionButtonVariant.Large,
+                    leadingContent = { AuthProviderIcon(provider, onPaper = true) }
+                )
+            }
     }
 }
 
@@ -1688,11 +1781,19 @@ internal fun RegisterContent(
     onPasswordChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
-    onOpenDiagnostics: () -> Unit = {}
+    onOpenDiagnostics: () -> Unit = {},
+    socialProviders: Set<AuthProvider> = emptySet(),
+    socialSubmittingProvider: AuthProvider? = null,
+    onSocialSignIn: (AuthProvider) -> Unit = {},
+    onOpenTerms: (() -> Unit)? = null,
+    onOpenPrivacy: (() -> Unit)? = null,
+    // Visual fixtures pin the field the user typed into last (web keeps its focus ring).
+    passwordFocused: Boolean = false,
 ) {
     var termsAccepted by remember { mutableStateOf(false) }
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
+    val visibleSocialProviders = remember(socialProviders) { socialProviders.visibleMobileSocialAuthProviders() }
     val canSubmit =
         canSubmitRegisterForm(
             email = email.text,
@@ -1707,21 +1808,13 @@ internal fun RegisterContent(
             onSubmit()
         }
     }
-    AuthScaffold(
-        onDiagnosticsShortcut = onOpenDiagnostics,
-        contentScrollable = true
-    ) {
-        AuthCenterMark()
-        Text(
-            text = stringResource(MR.strings.auth_title_create_account),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        AuthFormColumn {
-            // React parity (RegisterPage.tsx): the inputs are never disabled while
-            // the create-account request is in flight — only the legal checkbox
-            // and submit button get disabled={loading} (task #372).
+    AuthWebScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
+        AuthPageIntro(stringResource(MR.strings.auth_title_create_account))
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            AuthError(errorMessage)
+            // React parity (RegisterPage.tsx): the inputs are never disabled while the
+            // create-account request is in flight — only the legal checkbox and submit
+            // button get disabled={loading} (task #372).
             AuthTextField(
                 email,
                 onEmailChange,
@@ -1729,7 +1822,6 @@ internal fun RegisterContent(
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
                 focusRequester = emailFocusRequester,
-                forceFocused = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
             )
@@ -1740,33 +1832,51 @@ internal fun RegisterContent(
                 placeholder = stringResource(MR.strings.auth_password_min_length),
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
+                forceFocused = passwordFocused,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
+                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() }),
+                password = true
             )
-            AuthTermsAgreement(termsAccepted, { termsAccepted = it })
-            AuthError(errorMessage)
+            AuthTermsAgreement(
+                termsAccepted,
+                { if (!submitting) termsAccepted = it },
+                onOpenTerms = onOpenTerms,
+                onOpenPrivacy = onOpenPrivacy
+            )
             AuthActionButton(
                 text =
                     if (submitting) {
                         stringResource(MR.strings.auth_state_creating_account)
                     } else {
-                        stringResource(MR.strings.auth_action_create_account)
+                        stringResource(MR.strings.auth_action_continue)
                     },
                 onClick = submitIfAllowed,
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit,
-                loading = submitting,
-                // Disabled renders as the react disabled:opacity-50 look (50%-alpha
-                // pink + black) instead of the white-on-white generic palette.
-                preserveDisabledVisual = true,
-                variant = AuthActionButtonVariant.Large
+                variant = AuthActionButtonVariant.XLarge
             )
-            AuthInlineAction(
-                stringResource(MR.strings.auth_prompt_already_have_account),
-                stringResource(MR.strings.auth_action_sign_in)
-            ) { onBackToSignIn() }
+            // Web task #724: a disabled Continue says why while the legal box is unchecked.
+            if (!termsAccepted && !submitting) {
+                Text(
+                    text = stringResource(MR.strings.auth_register_legal_required_hint),
+                    style = authTextStyle(12, 16, FontWeight.Medium, AuthHintColor),
+                    color = AuthHintColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
+                )
+            }
         }
+        AuthSocialProviderSection(
+            providers = visibleSocialProviders,
+            socialSubmittingProvider = socialSubmittingProvider,
+            onSocialSignIn = onSocialSignIn
+        )
+        Spacer(Modifier.height(16.dp))
+        AuthInlineAction(
+            stringResource(MR.strings.auth_prompt_already_have_account),
+            stringResource(MR.strings.auth_register_sign_in_link)
+        ) { onBackToSignIn() }
     }
 }
 
@@ -1781,7 +1891,13 @@ internal fun AuthProfileSetupContent(
     onHandleChange: (TextFieldValue) -> Unit,
     onDisplayNameChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit,
-    onOpenDiagnostics: () -> Unit = {}
+    onOpenDiagnostics: () -> Unit = {},
+    avatarUploading: Boolean = false,
+    avatarError: String? = null,
+    onUploadAvatar: () -> Unit = {},
+    avatarContent: (@Composable () -> Unit)? = null,
+    // Visual fixtures pin the field the user typed into last (web keeps its focus ring).
+    displayNameFocused: Boolean = false,
 ) {
     val displayNameFocusRequester = remember { FocusRequester() }
     val canSubmit =
@@ -1789,24 +1905,17 @@ internal fun AuthProfileSetupContent(
             identityDisplayNameValidationError(displayName.text) == null &&
             handleError == null &&
             displayNameError == null &&
-            !submitting
+            !submitting &&
+            !avatarUploading
     val submitIfAllowed = { if (canSubmit) onSubmit() }
 
-    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics, contentScrollable = true) {
-        AuthCenterMark()
-        Text(
-            text = stringResource(MR.strings.auth_title_profile_setup),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        Text(
-            text = stringResource(MR.strings.auth_hint_profile_setup),
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        AuthFormColumn {
+    // Web AccountIdentitySetupPage: the same shell, 24dp sides.
+    AuthWebScaffold(onDiagnosticsShortcut = onOpenDiagnostics, horizontalPadding = 24.dp) {
+        AuthPageIntro(stringResource(MR.strings.auth_title_profile_setup))
+        Spacer(Modifier.height(16.dp))
+        // Web form: `stack-y-4`.
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            AuthError(errorMessage)
             AuthTextField(
                 handle,
                 onHandleChange,
@@ -1814,15 +1923,10 @@ internal fun AuthProfileSetupContent(
                 placeholder = stringResource(MR.strings.auth_username_placeholder),
                 isError = !handleError.isNullOrBlank(),
                 errorText = handleError,
-                forceFocused = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { displayNameFocusRequester.requestFocus() })
-            )
-            Text(
-                text = stringResource(MR.strings.auth_hint_username),
-                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray,
-                modifier = Modifier.authPageStaticTextFocus()
+                keyboardActions = KeyboardActions(onNext = { displayNameFocusRequester.requestFocus() }),
+                prefix = "@",
+                description = stringResource(MR.strings.auth_hint_username)
             )
             AuthTextField(
                 displayName,
@@ -1831,17 +1935,19 @@ internal fun AuthProfileSetupContent(
                 placeholder = stringResource(MR.strings.auth_display_name_placeholder),
                 isError = !displayNameError.isNullOrBlank(),
                 errorText = displayNameError,
+                forceFocused = displayNameFocused,
                 focusRequester = displayNameFocusRequester,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
+                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() }),
+                description = stringResource(MR.strings.auth_hint_display_name)
             )
-            Text(
-                text = stringResource(MR.strings.auth_hint_display_name),
-                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray,
-                modifier = Modifier.authPageStaticTextFocus()
+            AuthProfileAvatarField(
+                uploading = avatarUploading,
+                enabled = !submitting,
+                errorText = avatarError,
+                onUpload = onUploadAvatar,
+                avatarContent = avatarContent
             )
-            AuthError(errorMessage)
             AuthActionButton(
                 text = if (submitting) {
                     stringResource(MR.strings.auth_state_finishing_profile)
@@ -1851,9 +1957,83 @@ internal fun AuthProfileSetupContent(
                 onClick = submitIfAllowed,
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit,
-                loading = submitting
+                loading = submitting,
+                variant = AuthActionButtonVariant.XLarge
             )
         }
+    }
+}
+
+/**
+ * Web identity setup "Profile picture": a 51dp avatar tile, then an outline sm Upload button
+ * over the helper line, 12dp apart.
+ */
+@Composable
+private fun AuthProfileAvatarField(
+    uploading: Boolean,
+    enabled: Boolean,
+    errorText: String?,
+    onUpload: () -> Unit,
+    avatarContent: (@Composable () -> Unit)?
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        AuthFieldLabel(stringResource(MR.strings.auth_profile_avatar_label))
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(51.dp)) {
+                if (avatarContent != null) {
+                    avatarContent()
+                } else {
+                    AuthDefaultAvatarTile()
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                AuthActionButton(
+                    text =
+                        if (uploading) {
+                            stringResource(MR.strings.auth_profile_avatar_uploading)
+                        } else {
+                            stringResource(MR.strings.auth_profile_avatar_upload)
+                        },
+                    onClick = onUpload,
+                    tone = AuthButtonTone.White,
+                    enabled = enabled && !uploading,
+                    variant = AuthActionButtonVariant.Small,
+                    fillWidth = false,
+                    leadingContent = {
+                        RaftLucideIcon(
+                            RaftLucideIconName.Camera,
+                            modifier = Modifier.size(16.dp),
+                            color = raftArgbHex(if (enabled && !uploading) RaftColor.TextBlack else RaftColor.ForegroundDisabled.authOpaqueOn(RaftColor.FillMuted))
+                        )
+                    }
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = errorText ?: stringResource(MR.strings.auth_profile_avatar_default_helper),
+                    style = authTextStyle(12, 16, FontWeight.Medium, if (errorText != null) RaftColor.DangerStrong else AuthHintColor),
+                    color = if (errorText != null) RaftColor.DangerStrong else AuthHintColor,
+                    modifier = Modifier.authPageStaticTextFocus()
+                )
+            }
+        }
+    }
+}
+
+/** Web default human avatar (PreviewAvatar without a picture): lavender sticker, ink edge, user glyph. */
+@Composable
+private fun AuthDefaultAvatarTile() {
+    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
+    Box(
+        modifier =
+            Modifier
+                .size(51.dp)
+                .background(RaftColor.AccentLavender, shape)
+                .border(RaftAppStroke.Thin, RaftColor.StickerInk, shape),
+        contentAlignment = Alignment.Center
+    ) {
+        RaftLucideIcon(RaftLucideIconName.User, modifier = Modifier.size(24.dp), color = raftArgbHex(RaftColor.StickerInk))
     }
 }
 
@@ -2058,20 +2238,20 @@ internal fun AuthTermsAgreement(
         ),
         verticalAlignment = Alignment.Top
     ) {
+        // raft-ui Checkbox: 20dp, sticker radius, 1dp ink edge on the card; checked fills
+        // with foreground and an inverse check.
+        val shape = RoundedCornerShape(RaftAppRadius.Sticker)
         Box(
             modifier = Modifier
                 .then(if (hasPolicyLinks) Modifier.clickable(onClick = toggleConsent) else Modifier)
-                .padding(top = 2.dp)
-                .size(18.dp)
-                // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
-                // foreground and an inverse check.
-                .background(if (checked) RaftColor.TextBlack else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Sticker))
-                .border(RaftAppStroke.Control, if (checked) RaftColor.TextBlack else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
+                .size(20.dp)
+                .background(if (checked) RaftColor.TextBlack else RaftColor.Card, shape)
+                .border(RaftAppStroke.Thin, if (checked) RaftColor.TextBlack else RaftColor.LineField, shape),
             contentAlignment = Alignment.Center
         ) {
-            if (checked) RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(13.dp), color = raftArgbHex(RaftColor.ForegroundInverse))
+            if (checked) RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(14.dp), color = raftArgbHex(RaftColor.ForegroundInverse))
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
             text = agreementText,
             style = AuthTermsTextStyle,
@@ -2120,18 +2300,21 @@ internal fun authTermsAgreementText(
 // the last policy word to the following connector and sentence at layout time.
 internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
-private val AuthLegalNoticeTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.60f)
+// Web `TextSans size="caption"`: 12/16 muted, MarkdownLink in `foreground-link`.
+private val AuthLegalNoticeTextColor: Color get() = AuthMutedColor
 // Task #179: getter, not val -- a captured style would keep the face active at class-init and
 // ignore the Settings font option.
 private val AuthLegalNoticeTextStyle: TextStyle
-    get() = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
+    get() = authTextStyle(12, 16, FontWeight.Normal, AuthLegalNoticeTextColor)
 private val AuthLegalNoticeLinkStyle: TextStyle
-    get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
-private val AuthTermsTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.70f)
+    get() = authTextStyle(12, 16, FontWeight.Normal, AuthLinkColor).copy(textDecoration = TextDecoration.Underline)
+// Web LegalAcceptanceCheckbox: 14/20 semibold ink, links in `foreground-link`.
+private val AuthTermsTextColor: Color get() = RaftColor.TextBlack
 private val AuthTermsTextStyle: TextStyle
-    get() = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
+    get() = authTextStyle(14, 20, FontWeight.SemiBold, AuthTermsTextColor)
 private val AuthTermsLinkStyle: TextStyle
-    get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
+    get() = authTextStyle(14, 20, FontWeight.SemiBold, AuthLinkColor).copy(textDecoration = TextDecoration.Underline)
+private val AuthLinkColor: Color get() = RaftAppThemeState.colors.foregroundLink
 
 @Composable
 private fun LoginContentPreview() {

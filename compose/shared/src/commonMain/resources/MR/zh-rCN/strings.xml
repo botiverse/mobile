@@ -1333,7 +1333,7 @@
     <string name="auth_link_forgot_password">忘记密码？</string>
     <string name="auth_prompt_no_account">还没有账号？</string>
     <string name="auth_action_create_one">创建账号</string>
-    <string name="auth_title_create_account">创建账号</string>
+    <string name="auth_title_create_account">创建你的账号</string>
     <string name="auth_action_create_account">创建账号</string>
     <string name="auth_state_creating_account">正在创建账号…</string>
     <string name="auth_prompt_already_have_account">已有账号？</string>
@@ -1386,6 +1386,13 @@
     <string name="auth_label_display_name">显示名称</string>
     <string name="auth_display_name_placeholder">Alex Chen</string>
     <string name="auth_hint_display_name">此名称会显示在消息中，可随时更改。</string>
+    <string name="auth_register_sign_in_link">登录</string>
+    <string name="auth_register_legal_required_hint">请先同意服务条款并确认隐私政策，再继续。</string>
+    <string name="auth_profile_avatar_label">头像</string>
+    <string name="auth_profile_avatar_upload">上传</string>
+    <string name="auth_profile_avatar_uploading">上传中…</string>
+    <string name="auth_profile_avatar_default_helper">已为你选了一个默认头像。</string>
+    <string name="auth_profile_avatar_upload_failed">无法上传该图片，请换一个文件。</string>
     <string name="auth_state_finishing_profile">正在完成设置…</string>
     <string name="auth_error_profile_setup_failed">无法完成身份设置。</string>
     <string name="auth_action_create_new_server">+ 创建新服务器</string>
