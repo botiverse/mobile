@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.SlockRaftInsetList
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.SlockAvatarListRow
@@ -700,10 +701,11 @@ internal fun UiAvatarListRowVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(168.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.Canvas)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // raft-ui inset list: both rows share one card, hairline from the text column.
+        SlockRaftInsetList {
             SlockAvatarListRow(
                 avatarWireValue = null,
                 avatarLabel = "Cindy",
@@ -719,6 +721,7 @@ internal fun UiAvatarListRowVisualContent() {
                 name = "Product UX Designer",
                 subtitle = "product@slock.ai",
                 selected = true,
+                divider = true,
                 rightContent = {
                     SlockBrutalActionButton(label = "Open", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
                 }

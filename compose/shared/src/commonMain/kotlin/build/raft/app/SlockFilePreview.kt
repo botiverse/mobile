@@ -6,8 +6,11 @@ import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockCheckbox
+import build.raft.app.components.SlockRaftHairline
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentPreview
 import build.raft.app.data.AttachmentPreviewContent
@@ -3899,8 +3902,8 @@ internal fun SlockFilePreviewAttachmentCommentsPanel(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                // raft-ui Card: container radius, card layer, 1dp hairline.
+                .slockRaftCardSurface()
                 .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
@@ -4025,7 +4028,7 @@ internal fun SlockFilePreviewComposerImageActionBar(
                         leadingIcon = SlockLucideIconName.Check,
                         leadingIconSize = 14.dp,
                         contentSpacing = 8.dp,
-                        backgroundColor = SlockColor.BrandYellow,
+                        backgroundColor = SlockColor.Attention,
                         minWidth = 0.dp,
                         minHeight = 32.dp,
                         shadowOffset = 2.dp,
@@ -4118,7 +4121,7 @@ private fun SlockFilePreviewImageEditorDoneButton(
         leadingIcon = if (saving) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Check,
         leadingIconSize = 14.dp,
         contentSpacing = 8.dp,
-        backgroundColor = SlockColor.BrandYellow,
+        backgroundColor = SlockColor.Attention,
         minWidth = 0.dp,
         minHeight = 32.dp,
         shadowOffset = 2.dp,
@@ -4491,8 +4494,8 @@ internal fun SlockFilePreviewComposerImageEditor(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color(0xFF000000))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    // raft-ui Lightbox stage: bare black, no frame.
+                    .background(Color(0xFF000000)),
             contentAlignment = Alignment.Center
         ) {
             val committedContent = state.history.content
@@ -4967,8 +4970,8 @@ internal fun SlockFilePreviewComposerImageEditor(
                             Modifier
                                 .weight(1f)
                                 .heightIn(min = 36.dp)
-                                .background(SlockColor.SurfaceCream)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                                // raft-ui Input chrome: control radius, card fill, field ink.
+                                .slockRaftControlSurface(fill = SlockColor.Card, border = SlockColor.LineField)
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                     )
                     SlockBrutalIconButton(
@@ -4976,7 +4979,7 @@ internal fun SlockFilePreviewComposerImageEditor(
                         contentDescription = stringResource(MR.strings.common_add),
                         onClick = { addTextAnnotation() },
                         enabled = !saving && !editorFinishing && textDraft.text.isNotBlank(),
-                        backgroundColor = SlockColor.BrandYellow,
+                        backgroundColor = SlockColor.Attention,
                         shadowOffset = 2.dp
                     )
                     Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
@@ -5228,7 +5231,7 @@ private fun SlockFilePreviewCropOptions(
             label = stringResource(MR.strings.file_preview_crop_apply),
             onClick = onApply,
             enabled = enabled,
-            backgroundColor = SlockColor.BrandYellow,
+            backgroundColor = SlockColor.Attention,
             minWidth = 0.dp,
             minHeight = 32.dp,
             shadowOffset = 2.dp,
@@ -7995,14 +7998,14 @@ private fun SlockFilePreviewImageGallerySurface(
                     Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 12.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        // raft-ui Lightbox counter: popover layer, chip radius, hairline.
+                        .slockRaftCardSurface(fill = SlockColor.Popover, radius = SlockRadius.Chip)
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = progressLabel,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.SemiBold).copy(fontSize = 12.sp, lineHeight = 16.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1
                 )
@@ -8083,8 +8086,8 @@ private fun SlockFilePreviewVideoPanel(
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .heightIn(max = 420.dp)
-                    .background(Color(0xFF000000))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    // raft-ui Lightbox video stage: bare black, no frame.
+                    .background(Color(0xFF000000)),
             contentAlignment = Alignment.Center
         ) {
             if (canPlay) {
@@ -8176,8 +8179,9 @@ private fun SlockFilePreviewVideoControls(
         modifier =
             modifier
                 .fillMaxWidth()
+                // raft-ui Lightbox video controls: rounded scrim, no outline.
+                .borderRadius(SlockRadius.Control)
                 .background(Color(0xDD000000))
-                .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
                 .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
@@ -8255,8 +8259,8 @@ private fun SlockFilePreviewVideoProgressBar(
                 Modifier
                     .fillMaxWidth()
                     .height(5.dp)
+                    .borderRadius(SlockRadius.Xs)
                     .background(Color(0x66000000))
-                    .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
         ) {
             when (percent) {
                 null -> {
@@ -8301,8 +8305,8 @@ private fun SlockFilePreviewVideoOverlayText(
     Column(
         modifier =
             modifier
+                .borderRadius(SlockRadius.Container)
                 .background(Color(0xCC000000))
-                .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
                 .padding(SlockSpacing.Md),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -9718,14 +9722,14 @@ internal fun SlockFilePreviewGenericCard(
     modifier: Modifier = Modifier
 ) {
     Column(
+        // raft-ui FilePreview fallback: card layer, muted file glyph.
         modifier = modifier
-            .slockSquareCorners()
-            .background(SlockColor.SurfaceWhite)
+            .background(SlockColor.Card)
             .padding(SlockSpacing.Xl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(72.dp), color = "#FF000000")
+        SlockLucideIcon(iconName, modifier = Modifier.size(72.dp), color = slockArgbHex(SlockColor.TextMuted))
         Box(modifier = Modifier.height(SlockSpacing.Md))
         Text(
             text = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
@@ -9813,7 +9817,7 @@ private fun SlockFilePreviewProgressBar(progressPercent: Int?) {
         LinearProgressIndicator(
             modifier = Modifier.fillMaxWidth().height(4.dp),
             color = SlockColor.AccentCyan,
-            trackColor = SlockColor.SurfaceCream
+            trackColor = SlockColor.FillMuted
         )
         return
     }
@@ -9822,8 +9826,9 @@ private fun SlockFilePreviewProgressBar(progressPercent: Int?) {
             Modifier
                 .fillMaxWidth()
                 .height(8.dp)
-                .background(SlockColor.SurfaceCream)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                // raft-ui Progress: rounded fill-muted track, no outline.
+                .borderRadius(4.dp)
+                .background(SlockColor.FillMuted)
     ) {
         if (percent > 0) {
             Box(
@@ -9891,8 +9896,9 @@ private fun SlockFilePreviewDownloadStatusBar(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                // raft-ui Card (popover layer: it floats over the preview).
+                .borderRadius(SlockRadius.Container)
+                .slockRaftCardSurface(fill = SlockColor.Popover)
                 .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
@@ -9985,10 +9991,11 @@ internal fun SlockFilePreviewMarkdownPanel(
         return
     }
     Column(
+        // raft-ui FilePreview panel: Card chrome, clipped so the header sits inside the radius.
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            .borderRadius(SlockRadius.Container)
+            .slockRaftCardSurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         SlockFilePreviewPanelHeader(
@@ -9996,7 +10003,7 @@ internal fun SlockFilePreviewMarkdownPanel(
             meta = meta,
             statusLabel = statusLabel
         )
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SlockRaftHairline()
         when (status) {
             "content" ->
                 LazyColumn(
@@ -10056,10 +10063,11 @@ internal fun SlockFilePreviewTextPanel(
         return
     }
     Column(
+        // raft-ui FilePreview panel: Card chrome, clipped so the header sits inside the radius.
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            .borderRadius(SlockRadius.Container)
+            .slockRaftCardSurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         SlockFilePreviewPanelHeader(
@@ -10067,12 +10075,12 @@ internal fun SlockFilePreviewTextPanel(
             meta = meta,
             statusLabel = null
         )
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SlockRaftHairline()
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 280.dp, max = 560.dp)
-                .background(SlockColor.SurfaceCream)
+                .background(SlockColor.Code)
                 .padding(SlockSpacing.Sm)
         ) {
             Text(
@@ -10100,10 +10108,11 @@ internal fun SlockFilePreviewXlsxPanel(
             sheets.firstOrNull { it.name == selectedSheetName } ?: sheets.firstOrNull()
         }
     Column(
+        // raft-ui FilePreview panel: Card chrome, clipped so the header sits inside the radius.
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .borderRadius(SlockRadius.Container)
+            .slockRaftCardSurface()
     ) {
         SlockFilePreviewPanelHeader(
             name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
@@ -10115,8 +10124,9 @@ internal fun SlockFilePreviewXlsxPanel(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        // raft-ui segmented tabs: fill-muted rail, selected tab on the card layer.
+                        .background(SlockColor.FillMuted)
+                        .padding(SlockSpacing.Xxs)
             ) {
                 sheets.forEach { sheet ->
                     val selected = sheet.name == selectedSheet?.name
@@ -10124,18 +10134,15 @@ internal fun SlockFilePreviewXlsxPanel(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .background(if (selected) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                                .border(
-                                    width = if (selected) SlockStroke.Default else SlockStroke.Thin,
-                                    color = SlockColor.BorderBlack
-                                )
+                                .borderRadius(SlockRadius.Chip)
+                                .background(if (selected) SlockColor.Card else Color.Transparent)
                                 .clickable { selectedSheetName = sheet.name }
                                 .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm)
                     ) {
                         Text(
                             text = sheet.name,
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                            color = SlockColor.TextBlack,
+                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = if (selected) SlockColor.TextBlack else SlockColor.TextMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -10143,20 +10150,20 @@ internal fun SlockFilePreviewXlsxPanel(
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SlockRaftHairline()
         if (selectedSheet == null) {
             Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 280.dp, max = 560.dp)
-                        .background(SlockColor.SurfaceCream)
+                        .background(SlockColor.Canvas)
                         .padding(SlockSpacing.Sm)
             ) {
                 Text(
                     text = stringResource(MR.strings.file_preview_no_preview),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMuted
                 )
             }
         } else {
@@ -10166,7 +10173,7 @@ internal fun SlockFilePreviewXlsxPanel(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 280.dp, max = 560.dp)
-                        .background(SlockColor.SurfaceCream),
+                        .background(SlockColor.Canvas),
                 contentPadding = PaddingValues(SlockSpacing.Sm)
             ) {
                 item(key = "xlsx-header") {
@@ -10176,13 +10183,14 @@ internal fun SlockFilePreviewXlsxPanel(
                                 modifier =
                                     Modifier
                                         .weight(1f)
-                                        .background(SlockColor.SurfaceWhite)
-                                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                        // raft-ui table head cell: fill-muted, hairline grid.
+                                        .background(SlockColor.FillMuted)
+                                        .border(SlockStroke.Thin, SlockColor.BorderHairline)
                                         .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm)
                             ) {
                                 Text(
                                     text = selectedSheet.headers.getOrNull(column).orEmpty(),
-                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
+                                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.SemiBold),
                                     color = SlockColor.TextBlack,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
@@ -10199,13 +10207,13 @@ internal fun SlockFilePreviewXlsxPanel(
                                 modifier =
                                     Modifier
                                         .weight(1f)
-                                        .background(SlockColor.SurfaceWhite)
-                                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                        .background(SlockColor.Card)
+                                        .border(SlockStroke.Thin, SlockColor.BorderHairline)
                                         .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Sm)
                             ) {
                                 Text(
                                     text = row.getOrNull(column).orEmpty(),
-                                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                                     color = SlockColor.TextBlack,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
@@ -10218,8 +10226,8 @@ internal fun SlockFilePreviewXlsxPanel(
                     item(key = "xlsx-truncated-hint") {
                         Text(
                             text = stringResource(MR.strings.file_preview_truncated_open_with_hint),
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextMutedGray,
+                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextMuted,
                             modifier = Modifier.padding(top = SlockSpacing.Sm)
                         )
                     }
@@ -10277,7 +10285,7 @@ internal fun SlockFilePreviewMessage(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(34.dp), color = "#FF000000")
+        SlockLucideIcon(iconName, modifier = Modifier.size(34.dp), color = slockArgbHex(SlockColor.TextMuted))
         Text(
             text = title,
             style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
@@ -10316,9 +10324,9 @@ private fun SlockFilePreviewPanelHeader(
     statusLabel: String?
 ) {
     Column(
+        // raft-ui FilePreview header: sits on the card layer, the hairline below separates it.
         modifier = Modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceCream)
             .padding(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {

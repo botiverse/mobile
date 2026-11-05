@@ -5331,8 +5331,7 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF7F4EA), RoundedCornerShape(SlockRadius.Sm))
-                            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
+                            .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
                             .padding(vertical = SlockSpacing.Xs)
                 ) {
                     ThreadMessageReactionRow(
@@ -16799,7 +16798,6 @@ private fun ThreadHeaderFocusModeMenu(
         },
         enabled = true,
         size = 28.dp,
-        shadowOffset = SlockShadow.BrutalSmall,
         iconSize = 14.dp,
         modifier = Modifier.slockCaptureLiveRootAnchor(anchorRef),
         contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
@@ -24972,15 +24970,14 @@ internal fun ThreadNewMessageMenu(
     val contentSize =
         with(density) {
             Size(
-                width = (ThreadNewMessageMenuWidth + SlockShadow.BrutalSmall).toPx(),
+                width = ThreadNewMessageMenuWidth.toPx(),
                 height =
                     (
                         ThreadNewMessageMenuReactionRowHeight +
                             SlockStroke.Thin +
                             ThreadNewMessageMenuToolRowHeight +
                             ThreadNewMessageMenuMoreOverlayHeight +
-                            ThreadNewMessageMenuVerticalPadding * 2 +
-                            SlockShadow.BrutalSmall
+                            ThreadNewMessageMenuVerticalPadding * 2
                     ).toPx()
             )
         }
@@ -26320,7 +26317,6 @@ internal fun threadAuthorDescriptionPopoverDimensions(
             height = 36.dp
         )
     }
-    val shadowOffset = SlockShadow.BrutalSmall
     val strokeExtra = SlockStroke.Default * 2
     val horizontalPadding = (ThreadAuthorDescriptionPopoverHorizontalPaddingDp * 2).dp
     val verticalPadding = (ThreadAuthorDescriptionPopoverVerticalPaddingDp * 2).dp
@@ -26329,12 +26325,12 @@ internal fun threadAuthorDescriptionPopoverDimensions(
     val estimatedLines = ((clean.length + approxCharsPerLine - 1) / approxCharsPerLine).coerceAtLeast(1)
 
     val estimatedWidth = if (estimatedLines == 1) {
-        val singleLineWidth = (clean.length * ThreadAuthorDescriptionPopoverApproxCharWidthDp).dp + horizontalPadding + strokeExtra + shadowOffset
-        singleLineWidth.coerceIn(ThreadAuthorDescriptionPopoverMinWidthDp.dp, maxWidth + shadowOffset)
+        val singleLineWidth = (clean.length * ThreadAuthorDescriptionPopoverApproxCharWidthDp).dp + horizontalPadding + strokeExtra
+        singleLineWidth.coerceIn(ThreadAuthorDescriptionPopoverMinWidthDp.dp, maxWidth)
     } else {
-        maxWidth + shadowOffset
+        maxWidth
     }
-    val estimatedHeight = (estimatedLines * ThreadAuthorDescriptionPopoverLineHeightDp).dp + verticalPadding + strokeExtra + shadowOffset
+    val estimatedHeight = (estimatedLines * ThreadAuthorDescriptionPopoverLineHeightDp).dp + verticalPadding + strokeExtra
     return ThreadAuthorDescriptionPopoverDimensions(
         width = estimatedWidth,
         height = estimatedHeight.coerceIn(36.dp, 320.dp)
@@ -29136,8 +29132,8 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.AccentCyan)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                // raft sticker avatar: info fill, sticker radius, 1.5dp sticker-ink edge.
+                .slockRaftControlSurface(fill = SlockColor.Info, border = SlockColor.StickerInk, radius = SlockRadius.Sticker)
                 .alpha(if (muted) 0.62f else 1f),
         contentAlignment = Alignment.Center
     ) {
@@ -31803,7 +31799,6 @@ internal fun ThreadShareSelectionToolbar(
                     onClick = onCopyLinks,
                     enabled = hasSelection,
                     size = 28.dp,
-                    shadowOffset = SlockShadow.BrutalSmall,
                     iconSize = 14.dp
                 )
                 SlockBrutalIconButton(
@@ -31813,7 +31808,6 @@ internal fun ThreadShareSelectionToolbar(
                     },
                     enabled = hasSelection,
                     size = 28.dp,
-                    shadowOffset = SlockShadow.BrutalSmall,
                     iconSize = 14.dp,
                     modifier = Modifier.slockCaptureLiveRootAnchor(moreAnchor),
                     contentDescription = stringResource(MR.strings.thread_new_message_menu_more)
@@ -31858,7 +31852,8 @@ private fun ThreadShareSelectionActionButton(
         leadingIcon = icon,
         leadingIconSize = 14.dp,
         contentSpacing = 4.dp,
-        shadowOffset = SlockShadow.BrutalSmall,
+        // raft controls cast no shadow.
+        shadowOffset = 0.dp,
         textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp)
     )
 }

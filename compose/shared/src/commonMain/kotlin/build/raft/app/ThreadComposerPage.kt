@@ -4546,7 +4546,6 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                         .height(4.dp)
-                        .slockSquareCorners()
                         .background(SlockColor.FillMuted)
             ) {
                 Box(
@@ -4554,7 +4553,6 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
                         Modifier
                             .fillMaxWidth(progress.coerceAtLeast(4) / 100f)
                             .height(4.dp)
-                            .slockSquareCorners()
                             .background(SlockColor.AccentPink)
                 )
             }

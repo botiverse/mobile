@@ -1,5 +1,7 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.layout.onSizeChanged
+import build.raft.app.components.SlockRaftTab
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SlockBrutalActionButton
@@ -7611,6 +7613,7 @@ private fun MembersAgentTabBar(
     var draggedTab by remember(tabs) { mutableStateOf<MembersAgentDetailTab?>(null) }
     var dragStartIndex by remember(tabs) { mutableStateOf(-1) }
     var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
+    val tabWidthsPx = remember(tabs) { mutableMapOf<MembersAgentDetailTab, Float>() }
     if (autoScrollSelectedTab) {
         LaunchedEffect(tabs, selectedTab) {
             if (tabs.isNotEmpty() && !listState.isScrollInProgress) {
@@ -7641,25 +7644,17 @@ private fun MembersAgentTabBar(
                 val spec = tab.toSlockTabSpec()
                 val selected = tab == selectedTab
                 val dragging = tab == draggedTab
-                val tabShape = RoundedCornerShape(SlockRadius.Control)
-                Row(
+                SlockRaftTab(
+                    label = spec.label,
+                    iconName = spec.iconName,
+                    selected = selected,
+                    highlighted = dragging,
                     modifier = Modifier
-                        .widthIn(min = spec.width)
-                        .height(SlockTopTabBarDefaults.Height)
-                        .then(
-                            when {
-                                dragging -> Modifier.background(SlockColor.InfoSoft, tabShape)
-                                selected ->
-                                    Modifier
-                                        .background(SlockColor.Brand, tabShape)
-                                        .border(SlockStroke.Control, SlockColor.StickerInk, tabShape)
-                                else -> Modifier
-                            }
-                        )
+                        .onSizeChanged { tabWidthsPx[tab] = it.width.toFloat() }
                         .clickable { onSelectedTabChange(tab) }
                         .pointerInput(tabs, tab, onReorderTabs) {
                             if (onReorderTabs == null) return@pointerInput
-                            val stepWidthPx = spec.width.toPx().coerceAtLeast(1f)
+                            val fallbackStepPx = spec.width.toPx()
                             detectDragGesturesAfterLongPress(
                                 onDragStart = {
                                     draggedTab = tab
@@ -7668,6 +7663,9 @@ private fun MembersAgentTabBar(
                                 },
                                 onDragEnd = {
                                     val fromIndex = dragStartIndex
+                                    // Tabs hug their labels, so a reorder step is the dragged
+                                    // tab's measured width.
+                                    val stepWidthPx = (tabWidthsPx[tab] ?: fallbackStepPx).coerceAtLeast(1f)
                                     val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
                                         .coerceIn(0, tabs.lastIndex)
                                     if (fromIndex in tabs.indices && toIndex != fromIndex) {
@@ -7686,27 +7684,7 @@ private fun MembersAgentTabBar(
                                 dragOffsetX += dragAmount.x
                             }
                         }
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-                ) {
-                    val contentColor = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
-                    SlockLucideIcon(
-                        spec.iconName,
-                        modifier = Modifier.size(16.dp),
-                        color = slockArgbHex(contentColor),
-                        strokeWidth = 2f
-                    )
-                    Text(
-                        text = spec.label,
-                        style =
-                            SlockType.Button
-                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
-                                .copy(fontSize = 14.sp, lineHeight = 20.sp, color = contentColor),
-                        color = contentColor,
-                        maxLines = 1
-                    )
-                }
+                )
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))

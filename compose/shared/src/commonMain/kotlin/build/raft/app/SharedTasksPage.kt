@@ -6,6 +6,13 @@ import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockAnchoredToolbarChip
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockRaftBadgeChrome
+import build.raft.app.components.SlockRaftHairline
+import build.raft.app.components.SlockRaftText
+import build.raft.app.components.SlockRaftUiBanner
+import build.raft.app.components.SlockRaftUiBannerStatus
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository
 import build.raft.app.data.ScreenLoadState
@@ -45,7 +52,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -61,7 +67,6 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
@@ -70,7 +75,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.items
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -1140,8 +1144,7 @@ private fun SharedTasksToolbar(
             backgroundColor = SlockColor.AccentPink,
             minWidth = 0.dp,
             minHeight = 30.dp,
-            shadowOffset = 2.dp,
-            textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            textStyle = SlockType.TabLabel.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine),
             onClick = onCreateClick
         )
     }
@@ -1209,13 +1212,8 @@ private fun SharedTasksToolbar(
                 }
             }
         }
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(SlockStroke.Default)
-                    .background(SlockColor.BorderBlack)
-        )
+        // raft panel seam under the toolbar (1dp, line-seam).
+        SlockRaftHairline(color = SlockColor.BorderSeam)
     }
 }
 
@@ -1286,8 +1284,8 @@ private fun SharedTasksBoardColumn(
             Modifier
                 .width(320.dp)
                 .fillMaxHeight()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                // raft board lane: muted fill, container radius, hairline.
+                .slockRaftCardSurface(fill = SlockColor.FillMuted)
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1302,7 +1300,7 @@ private fun SharedTasksBoardColumn(
                 Text(
                     text = localizedTasksEmptyStatus(status),
                     style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    color = SlockColor.TextMuted
                 )
             } else {
                 // Nested LazyColumn inside the outer LazyRow lets each column scroll its
@@ -1361,19 +1359,19 @@ private fun BoardSectionHeader(
         Text(
             text = count.toString(),
             style = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
-            color = SlockColor.TextBlack.copy(alpha = 0.5f),
+            color = SlockColor.ForegroundHint,
             maxLines = 1
         )
         Spacer(Modifier.weight(1f))
         SlockLucideIcon(
             "chevron-down",
             modifier = Modifier.size(14.dp).rotate(if (collapsed) -90f else 0f),
-            color = "#FF000000"
+            color = slockArgbHex(SlockColor.TextMuted)
         )
     }
 }
 
-/** React's TaskCard equivalent: brutalist shadow, source label, title, status badge. */
+/** raft-ui TaskCard equivalent: hairline card (no shadow), source label, title, status badge. */
 @Composable
 private fun SharedTaskCard(
     task: TaskSummary,
@@ -1403,7 +1401,6 @@ private fun SharedTaskCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(end = 3.dp, bottom = 3.dp)
             .then(
                 if (captureLongPressAnchor) {
                     Modifier.slockCaptureLiveRootAnchor(rootAnchor)
@@ -1412,17 +1409,11 @@ private fun SharedTaskCard(
                 }
             )
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = 3.dp, y = 3.dp)
-                .background(SlockColor.ShadowBlack)
-        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                // raft-ui Card: container radius, card layer, 1dp hairline.
+                .slockRaftCardSurface()
                 .slockGesturePointerInput(gestureOwner) { owner ->
                     var gesture: SlockGestureSession<SharedTaskCardGestureCallbacks>? = null
                     // tap = open task; long-press = open status menu. Wrapping both in the
@@ -1456,8 +1447,8 @@ private fun SharedTaskCard(
                 task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
                     Text(
                         text = source,
-                        style = SlockType.TabLabel.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                        style = SlockType.TabLabel.copy(fontSize = SlockRaftText.Caption, lineHeight = SlockRaftText.CaptionLine),
+                        color = SlockColor.TextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1465,8 +1456,8 @@ private fun SharedTaskCard(
                 task.taskNumber?.let { taskNumber ->
                     Text(
                         text = "#$taskNumber",
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.35f),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = SlockRaftText.Caption, lineHeight = SlockRaftText.CaptionLine),
+                        color = SlockColor.ForegroundHint,
                         maxLines = 1
                     )
                 }
@@ -1482,8 +1473,8 @@ private fun SharedTaskCard(
                     SlockRelativeTimestampText(
                         value = updatedAt,
                         timeContext = timeContext,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.35f),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = SlockRaftText.Caption, lineHeight = SlockRaftText.CaptionLine),
+                        color = SlockColor.ForegroundHint,
                         maxLines = 1
                     )
                 }
@@ -1498,8 +1489,8 @@ private fun SharedTaskCard(
             description?.let { desc ->
                 Text(
                     text = desc,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                    style = SlockType.Caption.copy(fontSize = SlockRaftText.Caption, lineHeight = SlockRaftText.CaptionLine),
+                    color = SlockColor.TextMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1586,26 +1577,12 @@ private fun SharedTasksStatusLabel(
     label: String? = null,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = Modifier
-            .then(modifier)
-            .background(status.color)
-            // React's section-header status pill uses a 1px border; android's 2dp
-            // read as "too black / heavier" vs react's thinner (lighter-looking)
-            // line. Same black color, just match the 1px stroke (task #384).
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = (label ?: status.localizedLabel()).slockDisplayUppercase(),
-            style = SlockType.TabLabel,
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    // raft-ui TaskStatusBadge: solid sticker badge in the status colour, source case.
+    SlockRaftBadgeChrome(
+        label = label ?: status.localizedLabel(),
+        modifier = modifier,
+        fill = status.color
+    )
 }
 
 @Composable
@@ -1618,14 +1595,10 @@ private fun SharedTasksPillButton(
     Box(
         modifier =
             Modifier
-                .padding(end = if (selected) 2.dp else 0.dp, bottom = if (selected) 2.dp else 0.dp)
                 .widthIn(min = 44.dp)
                 .heightIn(min = 30.dp),
         contentAlignment = Alignment.Center
     ) {
-        if (selected) {
-            Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
-        }
         Button(
             onClick = onClick,
             enabled = enabled,
@@ -1635,15 +1608,22 @@ private fun SharedTasksPillButton(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                    .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray, RoundedCornerShape(SlockRadius.Xs))
+                    // raft control chrome: control radius, 1.5dp edge, brand-soft when selected.
+                    .slockRaftControlSurface(
+                        fill = if (selected) SlockColor.BrandSoft else SlockColor.Card,
+                        border = if (enabled) SlockColor.BorderBlack else SlockColor.BorderHairline
+                    )
                     .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = label.slockDisplayUppercase(),
-                    style = SlockType.SectionLabel,
-                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    text = label,
+                    style = SlockType.Body.copy(
+                        fontSize = SlockRaftText.Footnote,
+                        lineHeight = SlockRaftText.FootnoteLine,
+                        letterSpacing = 0.sp
+                    ).withSlockFontWeight(FontWeight.SemiBold),
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1679,19 +1659,13 @@ private fun SharedTasksNotice(
     detail: String,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1064
-                .background(SlockColor.AccentRed.copy(alpha = 0.12f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(text = title, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
-        Text(text = detail, style = SlockType.Caption, color = SlockColor.AccentRed)
-    }
+    // raft-ui Banner intent="destructive".
+    SlockRaftUiBanner(
+        status = SlockRaftUiBannerStatus.Destructive,
+        title = title,
+        description = detail,
+        modifier = modifier.fillMaxWidth()
+    )
 }
 
 @Composable
@@ -1837,7 +1811,7 @@ private fun TasksStatusDialog(
                 Text(
                     text = stringResource(MR.strings.tasks_current_status, task.status.localizedLabel()),
                     style = SlockType.Caption,
-                    color = SlockColor.TextBlack.copy(alpha = 0.65f)
+                    color = SlockColor.TextMuted
                 )
             }
             items(TaskStatus.values().size) { idx ->
@@ -1846,7 +1820,7 @@ private fun TasksStatusDialog(
                 SlockModalFullWidthActionButton(
                     label = status.localizedLabel(),
                     icon = if (selected) SlockLucideIconName.Check else SlockLucideIconName.Circle,
-                    color = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+                    color = if (selected) SlockColor.BrandSoft else SlockColor.SurfaceWhite,
                     enabled = !updating && !selected,
                     onClick = { onSelect(status) }
                 )
@@ -1856,7 +1830,7 @@ private fun TasksStatusDialog(
                     Text(
                         text = "${stringResource(MR.strings.tasks_error_update_status)}: $code",
                         style = SlockType.Caption,
-                        color = SlockColor.AccentRed
+                        color = SlockColor.DangerStrong
                     )
                 }
             }
@@ -1891,7 +1865,7 @@ private fun TasksCreateDialog(
                 Text(
                     text = stringResource(MR.strings.tasks_create_multiple_hint),
                     style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    color = SlockColor.TextMuted
                 )
             }
             items(titles.size) { index ->
@@ -1902,15 +1876,15 @@ private fun TasksCreateDialog(
                         titles = titles.toMutableList().also { it[index] = next }
                     },
                     placeholder = stringResource(MR.strings.tasks_label_title),
-                    placeholderColor = SlockColor.TextMutedGray,
+                    placeholderColor = SlockColor.ForegroundHint,
                     enabled = !loading,
                     autoFocus = index == 0,
                     maxLines = 2,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 36.dp)
-                        .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        // raft Input chrome: card layer, control radius, 1.5dp line-field edge.
+                        .slockRaftControlSurface(fill = SlockColor.Card, border = SlockColor.LineField)
                         .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
                 )
             }
@@ -1928,7 +1902,7 @@ private fun TasksCreateDialog(
                     Text(
                         text = code,
                         style = SlockType.Caption,
-                        color = SlockColor.AccentRed,
+                        color = SlockColor.DangerStrong,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )

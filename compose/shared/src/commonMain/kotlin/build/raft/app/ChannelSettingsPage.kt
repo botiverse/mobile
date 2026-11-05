@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftControlSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -523,8 +524,8 @@ private fun ChannelMembersCard(
                     modifier =
                         Modifier
                             .size(44.dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack),
+                            // raft outline icon control: control radius, 1.5dp line-strong edge.
+                            .slockRaftControlSurface(fill = SlockColor.Card, border = SlockColor.BorderBlack),
                     contentAlignment = Alignment.Center
                 ) {
                     SlockLucideIcon(SlockLucideIconName.Plus, Modifier.size(20.dp), color = "#FF111111")

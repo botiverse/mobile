@@ -1,8 +1,12 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.foundation.layout.heightIn
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.resources.MR
@@ -27,6 +31,7 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
@@ -183,7 +188,7 @@ internal fun ThreadFilesContent(
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas),
         verticalArrangement = Arrangement.Top
     ) {
         when (payload.status) {
@@ -361,10 +366,11 @@ private fun ThreadFileRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(82.dp)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .heightIn(min = 80.dp)
+            // raft-ui FileRow = web AvatarListRow (align="start") on its own Card:
+            // container radius, card layer, 1dp hairline, px-4 py-3.
+            .slockRaftCardSurface()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -373,15 +379,17 @@ private fun ThreadFileRow(
         }
         Column(
             modifier = Modifier.weight(1f).clickable(onClick = openIfIdle),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            // ListRow title: text-body 16/24 semibold ink.
             Text(
                 text = item.name,
-                style = SlockType.Input.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
+                style = SlockType.Body.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    letterSpacing = 0.sp,
                     color = SlockColor.TextBlack
-                ),
+                ).withSlockFontWeight(FontWeight.SemiBold),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -390,12 +398,12 @@ private fun ThreadFileRow(
             openState.localizedThreadAttachmentStatusLabel()?.let { statusLabel ->
                 Text(
                     text = statusLabel,
-                    style = SlockType.Input.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray
+                    style = SlockType.Caption.copy(
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMuted
                     ),
-                    color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -437,8 +445,10 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
     Box(
         modifier = Modifier
             .size(56.dp)
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            // raft-ui FileRow visual: rounded-control, fill-muted, 1dp hairline, clipped.
+            .borderRadius(SlockRadius.Control)
+            .background(SlockColor.FillMuted)
+            .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         if (isImage && thumbnailUrl != null) {
@@ -453,10 +463,43 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
         if (!(isImage && thumbnailUrl != null)) {
             SlockLucideIcon(
                 name = item.threadFileTypeIconName().wireName,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(18.dp),
+                color = slockArgbHex(SlockColor.TextMuted)
             )
         }
+        threadFileTypeBadgeLabel(item.name)?.let { label ->
+            // raft-ui FilePreviewBadge (inline): 28x14 sticker chip, fill-muted, 1dp
+            // line-muted ring, Space Mono 10 bold muted ink, in the thumbnail's corner.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .size(width = 28.dp, height = 14.dp)
+                    .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Sticker))
+                    .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Sticker)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextMuted,
+                    maxLines = 1
+                )
+            }
+        }
     }
+}
+
+private val ThreadFileBadgedExtensions =
+    setOf(
+        "pdf", "doc", "docx", "txt", "md", "markdown", "csv", "json", "zip", "html",
+        "png", "jpg", "jpeg", "gif", "webp", "svg", "mp4", "mov"
+    )
+
+/** Web `attachmentBadgeLabel`: the upper-cased extension for the kinds that get a chip. */
+internal fun threadFileTypeBadgeLabel(fileName: String): String? {
+    val extension = fileName.substringAfterLast('.', "").lowercase()
+    return if (extension in ThreadFileBadgedExtensions) extension.uppercase() else null
 }
 
 @Composable
@@ -466,14 +509,16 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         item.displaySizeLabel().takeIf { it.isNotBlank() }?.let { label ->
+            // ListRow meta: Space Mono 12/16, hint ink.
             Text(
                 text = label,
-                style = SlockType.Input.copy(
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    color = SlockColor.TextMutedGray
+                style = SlockType.Caption.copy(
+                    fontFamily = SlockMonoFamily,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = SlockColor.ForegroundHint
                 ),
-                color = SlockColor.TextMutedGray,
+                color = SlockColor.ForegroundHint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -486,16 +531,17 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
                 SlockLucideIcon(
                     name = SlockLucideIconName.Clock3.wireName,
                     modifier = Modifier.size(12.dp),
-                    color = SlockColor.TextMutedGrayArgb
+                    color = slockArgbHex(SlockColor.ForegroundHint)
                 )
                 SlockRelativeTimestampText(
                     value = label,
-                    style = SlockType.Input.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        color = SlockColor.TextMutedGray
+                    style = SlockType.Caption.copy(
+                        fontFamily = SlockMonoFamily,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = SlockColor.ForegroundHint
                     ),
-                    color = SlockColor.TextMutedGray,
+                    color = SlockColor.ForegroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -519,10 +565,12 @@ private fun ThreadFileIconActionButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    // Web Button size="icon-sm" variant="ghost".
     SlockBrutalIconButton(
         iconName = iconName,
         onClick = onClick,
         enabled = enabled,
+        backgroundColor = Color.Transparent,
         size = 28.dp,
         iconSize = 14.dp,
         iconSpinning = iconName == SlockLucideIconName.LoaderCircle

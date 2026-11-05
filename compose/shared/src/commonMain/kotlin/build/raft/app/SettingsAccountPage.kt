@@ -3,10 +3,16 @@ package build.raft.app
 import build.raft.app.SlockCachedImage
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalReadOnlyField
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockFormFieldSize
+import build.raft.app.components.SlockRaftCard
+import build.raft.app.components.SlockRaftHairline
+import build.raft.app.components.SlockRaftTag
+import build.raft.app.components.SlockRaftTagTone
+import build.raft.app.components.SlockRaftText
+import build.raft.app.components.SlockSectionEyebrow
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
@@ -28,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -394,14 +399,9 @@ private fun SettingsAccountSectionHeader(title: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.User, color = "#FF737373", modifier = Modifier.size(14.dp))
-        Text(
-            title,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        SlockLucideIcon(SlockLucideIconName.User, color = slockArgbHex(SlockColor.ForegroundHint), modifier = Modifier.size(14.dp))
+        // raft-ui section title (`rf-section`), source case.
+        SlockSectionEyebrow(label = title)
     }
 }
 
@@ -472,10 +472,10 @@ private fun SettingsAccountProfileCard(
         payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
             SettingsAccountWarning(stringResource(MR.strings.settings_account_profile_save_failed, code))
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SlockRaftHairline()
         if (connectedAccounts.isNotEmpty()) {
             SettingsConnectedAccounts(payload, connectedAccounts, onEvent)
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            SlockRaftHairline()
         }
         SettingsPasswordDisclosure(
             title = payload.changePasswordTitle,
@@ -561,8 +561,8 @@ private fun SettingsProfileAvatar(
                 modifier =
                     Modifier
                         .size(30.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        // raft Card surface chip over the avatar while uploading.
+                        .slockRaftCardSurface(fill = SlockColor.Card, radius = SlockRadius.Control),
                 contentAlignment = Alignment.Center
             ) {
                 SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), spinning = true)
@@ -580,7 +580,11 @@ private fun SettingsEmailField(
     verifiedLabel: String
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Text(
+            label,
+            style = SlockType.SectionLabel.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine, letterSpacing = 0.sp, color = SlockColor.TextMuted),
+            color = SlockColor.TextMuted
+        )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 value.ifBlank { placeholder },
@@ -590,7 +594,7 @@ private fun SettingsEmailField(
                 overflow = TextOverflow.Ellipsis
             )
             if (verified) {
-                SettingsStatusBadge(verifiedLabel.slockDisplayUppercase(), SlockColor.AccentLime, SlockLucideIconName.Shield)
+                SettingsStatusBadge(verifiedLabel, SlockRaftTagTone.Success, SlockLucideIconName.Shield)
             }
         }
     }
@@ -606,7 +610,7 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 96.dp,
         minHeight = 32.dp,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+        textStyle = SlockType.ButtonBold.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine, color = SlockColor.TextBlack)
     )
 }
 
@@ -620,8 +624,8 @@ private fun KuiklySettingsAccountPayload.profileSaveButtonLabel(): String =
 
 @Composable
 private fun SettingsAccountHardShadowCard(content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit) {
-    SlockBrutalCard(
-        shadowOffset = 3.dp,
+    // raft-ui Card (default): container radius, hairline, no shadow.
+    SlockRaftCard(
         contentPadding = 16.dp,
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content
@@ -759,8 +763,8 @@ private fun SettingsConnectedAccountRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 64.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.30f))
+                    // raft Card surface (quiet hairline) per connected provider.
+                    .slockRaftCardSurface(fill = SlockColor.Card, radius = SlockRadius.Control)
                     .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -793,8 +797,8 @@ private fun SettingsConnectedAccountRow(
                     onClick = { onEvent("connectProvider", providerId) }
                 )
             } else {
-                val (label, color, icon) = connectedStatus(status, payload)
-                SettingsStatusBadge(label, color, icon)
+                val (label, tone, icon) = connectedStatus(status, payload)
+                SettingsStatusBadge(label, tone, icon)
             }
         }
         if (failed) {
@@ -811,11 +815,11 @@ private fun SettingsConnectedAccountRow(
 @Composable
 private fun SettingsDisclosureRow(iconName: SlockLucideIconName, title: String, subtitle: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).slockRaftCardSurface().padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        IconBox(iconName, SlockColor.SurfaceWhite)
+        IconBox(iconName, SlockColor.FillMuted)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -892,28 +896,17 @@ private fun SettingsAccountSectionTitle(text: String, iconName: SlockLucideIconN
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (iconName != null) {
-            SlockLucideIcon(iconName, color = "#FF737373", modifier = Modifier.size(14.dp))
+            SlockLucideIcon(iconName, color = slockArgbHex(SlockColor.ForegroundHint), modifier = Modifier.size(14.dp))
         }
-        Text(text, style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        // raft-ui section title (`rf-section`), source case.
+        SlockSectionEyebrow(label = text)
     }
 }
 
 @Composable
-private fun SettingsStatusBadge(text: String, color: Color, iconName: SlockLucideIconName? = null) {
-    Row(
-        modifier = Modifier.background(color).border(1.dp, SlockColor.BorderBlack).padding(horizontal = 6.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        iconName?.let { SlockLucideIcon(it, modifier = Modifier.size(12.dp)) }
-        Text(
-            text,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+private fun SettingsStatusBadge(text: String, tone: SlockRaftTagTone, iconName: SlockLucideIconName? = null) {
+    // raft-ui Badge (soft appearance), label in source case.
+    SlockRaftTag(label = text, tone = tone, leadingIcon = iconName)
 }
 
 @Composable
@@ -926,14 +919,15 @@ private fun SettingsProviderConnectButton(text: String, enabled: Boolean, onClic
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 84.dp,
         minHeight = 32.dp,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+        textStyle = SlockType.ButtonBold.copy(fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine, color = SlockColor.TextBlack)
     )
 }
 
 @Composable
 private fun SettingsAccountWarning(text: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        // raft warning notice: WarningSoft wash on the card hairline.
+        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.WarningSoft, radius = SlockRadius.Control).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -945,7 +939,8 @@ private fun SettingsAccountWarning(text: String) {
 @Composable
 private fun SettingsAccountSuccess(text: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.AccentLime).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        // raft success notice: SuccessSoft wash on the card hairline.
+        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.SuccessSoft, radius = SlockRadius.Control).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -957,7 +952,8 @@ private fun SettingsAccountSuccess(text: String) {
 @Composable
 private fun IconBox(iconName: SlockLucideIconName, color: Color, invert: Boolean = false) {
     Box(
-        modifier = Modifier.size(38.dp).background(color).border(SlockStroke.Default, SlockColor.BorderBlack),
+        // raft icon tile: [color] fill at control radius with the hairline.
+        modifier = Modifier.size(38.dp).slockRaftCardSurface(fill = color, radius = SlockRadius.Control),
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(iconName, color = if (invert) "#FFFFFFFF" else "#FF000000", modifier = Modifier.size(18.dp))
@@ -977,7 +973,8 @@ private fun providerIconAssetSource(provider: String): String? =
 @Composable
 private fun SettingsAccountEmptyMessage(title: String, detail: String) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(16.dp),
+        // raft muted inset note (empty state).
+        modifier = Modifier.fillMaxWidth().slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1018,10 +1015,10 @@ private fun connectedAccountStatusDetail(account: KuiklySettingsConnectedAccount
         stringResource(MR.strings.settings_account_not_connected)
     }
 
-private fun connectedStatus(status: String, payload: KuiklySettingsAccountPayload): Triple<String, Color, SlockLucideIconName?> =
+private fun connectedStatus(status: String, payload: KuiklySettingsAccountPayload): Triple<String, SlockRaftTagTone, SlockLucideIconName?> =
     when (status) {
-        "connected" -> Triple(payload.connectedLabel, SlockColor.AccentCyan, SlockLucideIconName.Link)
-        "loading" -> Triple(payload.connectingLabel, SlockColor.BrandYellow, SlockLucideIconName.Link)
-        "failed" -> Triple(payload.failedLabel, SlockColor.AccentPink, null)
-        else -> Triple(payload.connectLabel, SlockColor.SurfaceWhite, null)
+        "connected" -> Triple(payload.connectedLabel, SlockRaftTagTone.Information, SlockLucideIconName.Link)
+        "loading" -> Triple(payload.connectingLabel, SlockRaftTagTone.Warning, SlockLucideIconName.Link)
+        "failed" -> Triple(payload.failedLabel, SlockRaftTagTone.Danger, null)
+        else -> Triple(payload.connectLabel, SlockRaftTagTone.Default, null)
     }

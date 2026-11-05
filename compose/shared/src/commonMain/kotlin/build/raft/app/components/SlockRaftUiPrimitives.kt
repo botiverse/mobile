@@ -356,8 +356,50 @@ internal fun SlockAvatarListRow(
     onClick: (() -> Unit)? = null,
     rightContent: (@Composable RowScope.() -> Unit)? = null,
     actionContent: (@Composable RowScope.() -> Unit)? = null,
-    avatarSize: Dp = 32.dp
+    avatarSize: Dp = 32.dp,
+    divider: Boolean = false
 ) {
+    if (slockRaftActive()) {
+        // raft-ui ListRow in an inset list (web AvatarListRow / `rf-row`): the 35dp
+        // list-row avatar, 16/24 semibold name, the mono subtitle on its own line, the
+        // trailing slots centred. Inside a SlockRaftInsetList the rows share its card and
+        // hairlines start at the text column; a lone row gets a one-row list of its own.
+        val raftAvatarSize = if (avatarSize == 32.dp) 35.dp else avatarSize
+        val row: @Composable (Modifier) -> Unit = { rowModifier ->
+            SlockRaftListRow(
+                title = name,
+                modifier = rowModifier,
+                meta = subtitle,
+                leadingSize = raftAvatarSize,
+                leading = {
+                    SlockAvatar(
+                        avatarWireValue = avatarWireValue,
+                        label = avatarLabel,
+                        avatarSize = raftAvatarSize,
+                        borderWidth = SlockStroke.Control
+                    )
+                },
+                trailing =
+                    if (rightContent != null || actionContent != null) {
+                        {
+                            rightContent?.invoke(this)
+                            actionContent?.invoke(this)
+                        }
+                    } else {
+                        null
+                    },
+                onClick = onClick,
+                divider = divider,
+                selected = selected
+            )
+        }
+        if (LocalSlockRaftInsetList.current) {
+            row(modifier)
+        } else {
+            SlockRaftInsetList(modifier = modifier) { row(Modifier) }
+        }
+        return
+    }
     SlockSurfaceListItem(
         modifier = modifier,
         selected = selected,

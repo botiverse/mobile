@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftOverlaySurface
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.ComposeLocalDataStore
@@ -286,19 +287,13 @@ internal fun SlockForegroundMessageBannerView(
                         )
                     }
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = 3.dp, y = 3.dp)
-                        .background(SlockColor.ShadowBlack)
-            )
+            // raft-ui Toast: an overlay surface (container radius, popover layer, seam ring,
+            // float shadow) instead of the brutal ink box and 3dp offset shadow.
             Row(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockRaftOverlaySurface()
                         .padding(start = 10.dp, top = 6.dp, end = 10.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftControlSurface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -803,15 +804,15 @@ internal fun SettingsWebViewErrorContent(
     onAction: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
             modifier =
                 Modifier
                     .size(52.dp)
-                    .background(SlockColor.BrandYellow)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    // raft sticker tile (warning): sticker radius, 1.5dp sticker-ink edge.
+                    .slockRaftControlSurface(fill = SlockColor.Warning, border = SlockColor.StickerInk, radius = SlockRadius.Sticker),
             contentAlignment = Alignment.Center,
         ) {
             SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))

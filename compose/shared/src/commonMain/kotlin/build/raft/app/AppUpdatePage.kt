@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.components.SlockRaftHairline
+import build.raft.app.components.slockRaftControlSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -371,7 +373,8 @@ internal fun AppUpdateSummary(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
-                modifier = Modifier.size(40.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                // raft sticker tile: brand fill, sticker radius, 1.5dp sticker-ink edge.
+                modifier = Modifier.size(40.dp).slockRaftControlSurface(fill = SlockColor.Brand, border = SlockColor.StickerInk, radius = SlockRadius.Sticker),
                 contentAlignment = Alignment.Center
             ) {
                 SlockLucideIcon(SlockLucideIconName.Download, modifier = Modifier.size(20.dp))
@@ -424,7 +427,7 @@ internal fun AppUpdateSummary(
                 Text(text = label, style = SlockType.Caption, color = SlockColor.TextMutedGray)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        SlockRaftHairline()
         if (appUpdateCanSkipVersion(snapshot)) {
             Text(
                 text = stringResource(MR.strings.app_update_skip_version),

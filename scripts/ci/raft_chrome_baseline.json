@@ -1,0 +1,44 @@
+{
+  "comment": "Ratchet baseline for scripts/ci/check_raft_chrome.py: brutal chrome still allowed per page file. Counts may only go down; remove a file once it reaches zero.",
+  "files": {
+    "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt": {
+      "reason": "Legacy Modifier.border(Border) helper keeps square corners for its brutal callers; retire with the helper.",
+      "counts": {
+        "square-corners": 1
+      }
+    },
+    "compose/shared/src/commonMain/kotlin/build/raft/app/SlockBrutalDropdownMenu.kt": {
+      "reason": "Brutal-register branch only; under raft the menu renders SlockRaftDropdownMenuSurface. Remove with the brutal register.",
+      "counts": {
+        "ink-border": 1,
+        "offset-shadow": 1
+      }
+    },
+    "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt": {
+      "reason": "Child-page host smoke/debug page frames only (not product UI).",
+      "counts": {
+        "ink-border": 2
+      }
+    },
+    "compose/shared/src/commonMain/kotlin/build/raft/app/SlockModalComponents.kt": {
+      "reason": "Brutal-register branches only (behind slockRaftActive()); the raft branch draws the raft-ui dialog / lg button. Remove with the brutal register.",
+      "counts": {
+        "ink-border": 2,
+        "offset-shadow": 2
+      }
+    },
+    "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTabBar.kt": {
+      "reason": "Tablet navigation rail server tile and the smoke-only floating dock still brutal: pending a raft-ui AppRail port.",
+      "counts": {
+        "ink-border": 3,
+        "offset-shadow": 4
+      }
+    },
+    "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadAgentFollowers.kt": {
+      "reason": "Brutal-register branches only (`if (brutal)` / `!theme.isAmbient`); raft uses the ambient shadow path.",
+      "counts": {
+        "offset-shadow": 2
+      }
+    }
+  }
+}

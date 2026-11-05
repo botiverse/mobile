@@ -9,10 +9,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -102,8 +102,10 @@ internal fun ThreadInlineVideoAttachmentCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    // raft-ui FilePreview (video) card: container radius, card layer, hairline;
+                    // clipped so the black stage follows the rounded top corners.
+                    .borderRadius(SlockRadius.Container)
+                    .slockRaftCardSurface()
         ) {
             ThreadInlineVideoSurface(
                 attachment = attachment,
@@ -244,7 +246,7 @@ private fun ThreadInlineVideoOverlay(
     onSecondaryAction: () -> Unit = {}
 ) {
     Column(
-        modifier = Modifier.background(Color(0xCC000000)).padding(SlockSpacing.Sm),
+        modifier = Modifier.borderRadius(SlockRadius.Control).background(Color(0xCC000000)).padding(SlockSpacing.Sm),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {

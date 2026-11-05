@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftOverlaySurface
 import androidx.compose.runtime.Composable
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.resources.MR
@@ -84,8 +85,8 @@ internal fun SlockTasksDetailOverlay(
                     Modifier
                         .fillMaxWidth()
                         .weight(SlockTasksDetailOverlayPanelFraction)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        // raft overlay surface (dialog radius, popover layer, seam ring, float shadow).
+                        .slockRaftOverlaySurface(radius = SlockRadius.Dialog)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),

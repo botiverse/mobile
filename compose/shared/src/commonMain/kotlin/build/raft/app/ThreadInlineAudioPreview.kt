@@ -10,10 +10,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -133,8 +134,8 @@ internal fun ThreadInlineAudioAttachmentCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    // raft-ui FilePreview (audio) card: container radius, card layer, hairline.
+                    .slockRaftCardSurface()
                     .padding(SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
@@ -146,14 +147,14 @@ internal fun ThreadInlineAudioAttachmentCard(
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        // raft-ui FileRow visual: rounded-control, fill-muted, hairline.
+                        .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control),
                     contentAlignment = Alignment.Center
                 ) {
                     SlockLucideIcon(
                         name = SlockLucideIconName.FileMusic,
                         modifier = Modifier.size(20.dp),
-                        color = "#000000"
+                        color = slockArgbHex(SlockColor.TextMuted)
                     )
                 }
                 Column(
@@ -216,8 +217,8 @@ private fun ThreadInlineAudioSurface(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                    // raft muted inset: fill-muted, control radius, hairline.
+                    .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
                     .padding(SlockSpacing.Xs),
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
@@ -251,8 +252,8 @@ private fun ThreadInlineAudioSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(36.dp)
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                    // raft muted inset: fill-muted, control radius, hairline.
+                    .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
                     .padding(horizontal = SlockSpacing.Sm),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
@@ -260,7 +261,7 @@ private fun ThreadInlineAudioSurface(
                 SlockLucideIcon(
                     name = SlockLucideIconName.LoaderCircle,
                     modifier = Modifier.size(16.dp),
-                    color = "#000000",
+                    color = slockArgbHex(SlockColor.TextMuted),
                     spinning = true
                 )
                 Text(
@@ -304,8 +305,8 @@ private fun ThreadInlineAudioSurface(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        // raft muted inset: fill-muted, control radius, hairline.
+                        .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
                         .padding(SlockSpacing.Xs),
                     horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
                     verticalAlignment = Alignment.CenterVertically
@@ -355,7 +356,7 @@ private fun ThreadInlineAudioSurface(
 }
 
 /**
- * Web InlineAudioPlayer row: play button, seekable rail with a square thumb, and a
+ * Web InlineAudioPlayer row: play button, seekable rail with a round thumb, and a
  * fixed-width "current / total" mono label.
  */
 @Composable
@@ -373,8 +374,8 @@ internal fun ThreadInlineAudioControls(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceCream)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            // raft muted inset: fill-muted, control radius, hairline.
+            .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
             .padding(SlockSpacing.Sm),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
@@ -426,8 +427,8 @@ internal fun ThreadInlineAudioControls(
 }
 
 /**
- * Seekable progress rail matching web's audio-seek-rail: an 8dp bordered white
- * rail with a cyan fill and a 12dp square thumb, inside a 28dp touch target. The
+ * Seekable progress rail matching web's audio-seek-rail: an 8dp rounded muted
+ * rail with a cyan fill and a 12dp round thumb, inside a 28dp touch target. The
  * rail is inset by half the thumb so the thumb never leaves the seek area. Tap
  * seeks; a horizontal drag follows the finger (onScrub) and seeks on release.
  * Pointer modifiers are always attached and gated by seekEnabled.
@@ -491,8 +492,9 @@ private fun ThreadInlineAudioSeekBar(
                 .padding(horizontal = 6.dp)
                 .fillMaxWidth()
                 .height(8.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                // raft rail: rounded fill-strong track, no outline.
+                .borderRadius(4.dp)
+                .background(SlockColor.FillStrong)
         ) {
             Box(
                 modifier = Modifier
@@ -505,8 +507,8 @@ private fun ThreadInlineAudioSeekBar(
             modifier = Modifier
                 .offset { IntOffset((fraction * trackPx).roundToInt(), 0) }
                 .size(12.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                // raft slider thumb: round card-layer knob with the control edge.
+                .slockRaftControlSurface(fill = SlockColor.Card, border = SlockColor.BorderBlack, radius = 6.dp)
         )
     }
 }

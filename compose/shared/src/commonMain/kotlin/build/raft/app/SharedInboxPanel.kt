@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.components.slockRaftControlSurface
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -121,7 +123,6 @@ import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
-private val ActivitySelectedRowShadowOffset = 2.dp
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -1606,28 +1607,12 @@ private fun SharedActivitySelectedRowSurface(
     modifier: Modifier = Modifier,
     content: @Composable (Modifier) -> Unit
 ) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(end = ActivitySelectedRowShadowOffset, bottom = ActivitySelectedRowShadowOffset)
-    ) {
-        if (selected) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .offset(x = ActivitySelectedRowShadowOffset, y = ActivitySelectedRowShadowOffset)
-                    .background(SlockColor.ShadowBlack)
-            )
-        }
+    // raft-ui ListRow on its own Card: selection is the `--info-soft` wash, never a lift.
+    Box(modifier = modifier.fillMaxWidth()) {
         content(
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(
-                    SlockStroke.Default,
-                    if (selected) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.3f)
-                )
+                .slockRaftCardSurface(fill = if (selected) SlockColor.InfoSoft else SlockColor.Card)
         )
     }
 }
@@ -2093,9 +2078,8 @@ private fun SharedActivityFooterDraftBadge(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .size(20.dp)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite)
-                .slockSquareCorners(),
+                // raft sticker: paper fill, sticker radius, 1.5dp sticker-ink edge.
+                .slockRaftControlSurface(fill = SlockColor.StickerPaper, border = SlockColor.StickerInk, radius = SlockRadius.Sticker),
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(

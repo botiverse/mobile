@@ -1,5 +1,11 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
+import build.raft.app.components.SlockSectionEyebrow
+import build.raft.app.components.SlockRaftTagTone
+import build.raft.app.components.SlockRaftTag
+import build.raft.app.components.slockRaftControlSurface
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.data.SharedSettingsActionState
@@ -293,8 +299,8 @@ private fun BillingNoticeCard(notice: KuiklySettingsBillingNotice) {
     Column(
         modifier =
             Modifier.fillMaxWidth()
-                .background(background)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                // raft-ui Banner surface in the notice's state wash.
+                .slockRaftCardSurface(fill = background)
                 .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -314,10 +320,10 @@ private fun BillingNoticeCard(notice: KuiklySettingsBillingNotice) {
 
 private fun billingNoticeBackground(tone: String): Color =
     when (tone) {
-        "warning" -> SlockColor.AccentOrange
-        "success" -> SlockColor.AccentLime
-        "trial" -> SlockColor.BrandYellow
-        else -> SlockColor.SurfaceCream
+        "warning" -> SlockColor.WarningSoft
+        "success" -> SlockColor.SuccessSoft
+        "trial" -> SlockColor.BrandSoft
+        else -> SlockColor.InfoSoft
     }
 
 private val SettingsBillingSoftDivider = Color(0x1A000000)
@@ -525,8 +531,8 @@ private fun SettingsBillingLoadingContent() {
                     modifier =
                         Modifier.fillMaxWidth()
                             .height(if (index == 0) 28.dp else 18.dp)
-                            .background(if (index == 0) SlockColor.EmptyStateGray else SlockColor.SurfaceCream)
-                            .border(1.dp, SlockColor.BorderBlack)
+                            // raft Skeleton bar: muted fill, chip radius.
+                            .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
                 )
             }
         }
@@ -539,14 +545,13 @@ private fun SettingsBillingLoadingContent() {
                 modifier =
                     Modifier.fillMaxWidth()
                         .height(112.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .slockRaftCardSurface()
                         .padding(14.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth().height(18.dp).background(SlockColor.EmptyStateGray))
-                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.SurfaceCream))
-                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.SurfaceCream))
+                    Box(Modifier.fillMaxWidth().height(18.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip)))
+                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip)))
+                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip)))
                 }
             }
         }
@@ -564,10 +569,13 @@ private fun PlanCard(
         Column(
             modifier =
                 Modifier.fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(
-                        SlockStroke.Default,
-                        if (plan.comingSoon) SlockColor.TextMutedGray else SlockColor.BorderBlack
+                    // raft-ui Card; the current plan takes the selected-option ink edge.
+                    .then(
+                        if (plan.current) {
+                            Modifier.slockRaftControlSurface(fill = SlockColor.Card, border = SlockColor.BorderBlack, radius = SlockRadius.Container)
+                        } else {
+                            Modifier.slockRaftCardSurface()
+                        }
                     )
                     .alpha(if (plan.comingSoon) 0.68f else 1f)
                     .padding(14.dp),
@@ -580,7 +588,7 @@ private fun PlanCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        plan.name.uppercase(),
+                        plan.name,
                         style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
@@ -630,10 +638,7 @@ private fun PlanCard(
     if (plan.comingSoon) {
         Box(modifier = Modifier.fillMaxWidth()) { content() }
     } else {
-        Box(modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)) {
-            Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
-            content()
-        }
+        Box(modifier = Modifier.fillMaxWidth()) { content() }
     }
 }
 
@@ -669,31 +674,18 @@ private fun SettingsBillingSectionHeader(iconName: SlockLucideIconName, label: S
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
-        Text(
-            label,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = slockArgbHex(SlockColor.ForegroundHint))
+        SlockSectionEyebrow(label = label)
     }
 }
 
 @Composable
 private fun SettingsStatusBadge(text: String, color: Color) {
-    Box(
-        modifier = Modifier.background(color).border(1.dp, SlockColor.BorderBlack).padding(horizontal = 8.dp, vertical = 3.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text,
-            style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    // raft-ui soft Badge.
+    SlockRaftTag(
+        label = text,
+        tone = if (color == SlockColor.AccentLime) SlockRaftTagTone.Success else SlockRaftTagTone.Muted
+    )
 }
 
 @Composable
@@ -710,7 +702,6 @@ private fun SettingsBillingStatusPanel(title: String) {
 @Composable
 private fun HardShadowCard(content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit) {
     SlockBrutalCard(
-        shadowOffset = 2.dp,
         contentPadding = 14.dp,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         content = content

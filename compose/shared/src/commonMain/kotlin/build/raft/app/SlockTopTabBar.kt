@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.SlockRaftTab
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.markdown.traceMarkdownSection
@@ -164,41 +165,12 @@ internal fun SlockTopTabBar(
             items(items.size, key = { "$itemKeyPrefix-${items[it].key}" }) { index ->
                 val item = items[index]
                 val selected = item.key == selectedKey
-                val shape = RoundedCornerShape(SlockRadius.Control)
-                Row(
-                    modifier = Modifier
-                        .height(SlockTopTabBarDefaults.Height)
-                        .then(
-                            if (selected) {
-                                Modifier
-                                    .background(SlockColor.Brand, shape)
-                                    .border(SlockStroke.Control, SlockColor.StickerInk, shape)
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .clickable { onSelectedKeyChange(item.key) }
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-                ) {
-                    val contentColor = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
-                    SlockLucideIcon(
-                        item.iconName,
-                        modifier = Modifier.size(16.dp),
-                        color = slockArgbHex(contentColor),
-                        strokeWidth = 2f
-                    )
-                    Text(
-                        text = item.label,
-                        style =
-                            SlockType.Button
-                                .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
-                                .copy(fontSize = 14.sp, lineHeight = 20.sp, color = contentColor),
-                        color = contentColor,
-                        maxLines = 1
-                    )
-                }
+                SlockRaftTab(
+                    label = item.label,
+                    iconName = item.iconName,
+                    selected = selected,
+                    modifier = Modifier.clickable { onSelectedKeyChange(item.key) }
+                )
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))

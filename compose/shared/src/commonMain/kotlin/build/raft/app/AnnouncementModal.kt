@@ -70,7 +70,7 @@ internal fun SharedAnnouncementModal(
             page.title?.takeIf { it.isNotBlank() }?.let { pageTitle ->
                 item {
                     Text(
-                        text = pageTitle.slockDisplayUppercase(),
+                        text = pageTitle,
                         style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 22.sp),
                         color = SlockColor.TextBlack
                     )

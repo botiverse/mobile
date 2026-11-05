@@ -93,6 +93,9 @@ internal fun SlockRaftCard(
     )
 }
 
+/** True inside [SlockRaftInsetList]: list rows then sit on the list's card instead of their own. */
+internal val LocalSlockRaftInsetList = staticCompositionLocalOf { false }
+
 /**
  * raft-ui inset list (`rf-list--inset`): ONE card holding a run of [SlockRaftListRow]s.
  * The rows draw the hairline between siblings themselves (`divider = index > 0`), starting
@@ -104,21 +107,23 @@ internal fun SlockRaftInsetList(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(SlockRadius.Container)
-    Column(
-        modifier = modifier.fillMaxWidth().clip(shape).slockRaftCardSurface(),
-        content = content
-    )
+    CompositionLocalProvider(LocalSlockRaftInsetList provides true) {
+        Column(
+            modifier = modifier.fillMaxWidth().clip(shape).slockRaftCardSurface(),
+            content = content
+        )
+    }
 }
 
 /**
  * raft-ui `ListRow` (`rf-row`): 12dp block / 16dp inline padding, a 12dp gap, the
  * optional [leading] slot (avatar / tile, [leadingSize] wide), the title at the list-row
- * scale (`text-body` 16/24 semibold ink) with an optional mono [meta] on the same line
- * (`text-mono-meta`, hint ink), the [description] on its own line (`text-callout` 14/20,
- * muted ink) and a vertically centred [trailing] slot. With [divider] the row draws the
+ * scale (`text-body` 16/24 semibold ink), then on their own lines the mono [meta]
+ * (`text-mono-meta` 12/16, hint ink) and the [description] (`text-callout` 14/20, muted
+ * ink), and a vertically centred [trailing] slot. With [divider] the row draws the
  * sibling hairline at its top edge, starting at the text column (16 + leading + 12).
+ * Outside a [SlockRaftInsetList] wrap it in one.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SlockRaftListRow(
     title: String,
@@ -156,31 +161,24 @@ internal fun SlockRaftListRow(
         ) {
             leading?.invoke()
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
+                Text(
+                    text = title,
+                    style =
+                        SlockType.Body
+                            .copy(fontSize = SlockRaftText.Body, lineHeight = SlockRaftText.BodyLine, letterSpacing = 0.sp)
+                            .withSlockFontWeight(FontWeight.SemiBold),
+                    color = if (enabled) titleColor else SlockColor.ForegroundDisabled,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                meta?.takeIf { it.isNotBlank() }?.let {
                     Text(
-                        text = title,
-                        style =
-                            SlockType.Body
-                                .copy(fontSize = SlockRaftText.Body, lineHeight = SlockRaftText.BodyLine, letterSpacing = 0.sp)
-                                .withSlockFontWeight(FontWeight.SemiBold),
-                        color = if (enabled) titleColor else SlockColor.ForegroundDisabled,
+                        text = it,
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    meta?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            text = it,
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                            color = SlockColor.ForegroundHint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
                 description?.takeIf { it.isNotBlank() }?.let {
                     Text(
@@ -503,5 +501,58 @@ internal fun SlockRaftSection(
             }
             content()
         }
+    }
+}
+
+/** raft-ui `TabsTab` height in a panel tab strip (`h-8`). */
+internal val SlockRaftTabHeight = 32.dp
+
+/**
+ * One raft-ui `TabsTab` (`variant="default"`, as in ConversationPanelTabs): a 32dp tab
+ * hugging its 16dp icon and 14/20 label with 12dp side padding; the selected tab is the
+ * yellow `--brand` sticker (control radius, 1.5dp sticker-ink edge, bold ink), the rest
+ * ghost on muted ink (semibold). [highlighted] lays the `--info-soft` wash (e.g. a tab
+ * being dragged). [modifier] carries the caller's click / gesture handling.
+ */
+@Composable
+internal fun SlockRaftTab(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    iconName: SlockLucideIconName? = null,
+    highlighted: Boolean = false
+) {
+    val shape = RoundedCornerShape(SlockRadius.Control)
+    val contentColor = if (selected) SlockColor.StickerInk else SlockColor.TextMuted
+    Row(
+        modifier =
+            modifier
+                .height(SlockRaftTabHeight)
+                .then(
+                    when {
+                        highlighted -> Modifier.background(SlockColor.InfoSoft, shape)
+                        selected ->
+                            Modifier
+                                .background(SlockColor.Brand, shape)
+                                .border(SlockStroke.Control, SlockColor.StickerInk, shape)
+                        else -> Modifier
+                    }
+                )
+                .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+    ) {
+        iconName?.let {
+            SlockLucideIcon(it, modifier = Modifier.size(16.dp), color = slockArgbHex(contentColor), strokeWidth = 2f)
+        }
+        Text(
+            text = label,
+            style =
+                SlockType.Button
+                    .withSlockFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
+                    .copy(fontSize = 14.sp, lineHeight = 20.sp, color = contentColor),
+            color = contentColor,
+            maxLines = 1
+        )
     }
 }

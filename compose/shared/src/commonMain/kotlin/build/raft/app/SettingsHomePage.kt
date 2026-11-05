@@ -13200,8 +13200,7 @@ private fun SettingsServerPublicAccessCard(
                 Modifier
                     .fillMaxWidth()
                     .height(64.dp)
-                    .background(SlockColor.EmptyStateGray)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.15f))
+                    .slockRaftCardSurface(fill = SlockColor.FillMuted)
             )
         } else {
             SettingsPublicAccessChannelList(channels)
@@ -13311,8 +13310,7 @@ private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedCh
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.25f))
+                    .slockRaftCardSurface(fill = SlockColor.FillMuted)
                     .padding(horizontal = 12.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -21211,8 +21209,8 @@ private fun SharedHomeSearchHistoryTag(
             modifier =
                 Modifier
                     .height(30.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f)),
+                    // raft-ui soft chip on the card layer: chip radius, hairline ring.
+                    .slockRaftCardSurface(radius = SlockRadius.Chip),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(

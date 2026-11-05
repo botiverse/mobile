@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.SlockRaftCard
+import build.raft.app.components.SlockRaftText
+import build.raft.app.components.slockRaftCardSurface
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
@@ -13,7 +16,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -218,11 +220,13 @@ private fun SettingsStorageSummary(
     refreshLabel: String,
     onRefresh: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(title.slockDisplayUppercase(), style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+    // raft-ui Card (default): storage total + refresh action.
+    SlockRaftCard(contentPadding = 14.dp, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            title,
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMuted, fontSize = SlockRaftText.Footnote, lineHeight = SlockRaftText.FootnoteLine),
+            color = SlockColor.TextMuted
+        )
         Text(size, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
         SettingsStorageButton(refreshLabel, iconName = SlockLucideIconName.RefreshCw, enabled = true, loading = false, onClick = onRefresh)
     }
@@ -230,10 +234,8 @@ private fun SettingsStorageSummary(
 
 @Composable
 private fun SettingsStorageRow(row: KuiklySettingsStorageRow, onClear: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    // raft-ui Card (default): one storage bucket with its clear action.
+    SlockRaftCard(contentPadding = 14.dp, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -277,7 +279,6 @@ private fun SettingsStorageButton(
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 0.dp,
         minHeight = 44.dp,
-        shadowOffset = 2.dp,
         textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
     )
 }
@@ -288,8 +289,8 @@ private fun SettingsStorageFeedback(text: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.AccentCyan)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                // raft info notice: InfoSoft wash on the card hairline.
+                .slockRaftCardSurface(fill = SlockColor.InfoSoft, radius = SlockRadius.Control)
                 .padding(14.dp)
     ) {
         Text(
@@ -303,7 +304,8 @@ private fun SettingsStorageFeedback(text: String) {
 @Composable
 private fun IconBox(iconName: SlockLucideIconName) {
     Box(
-        modifier = Modifier.size(42.dp).background(SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack),
+        // raft muted icon tile: FillMuted at control radius with the hairline.
+        modifier = Modifier.size(42.dp).slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control),
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(iconName, modifier = Modifier.size(22.dp))

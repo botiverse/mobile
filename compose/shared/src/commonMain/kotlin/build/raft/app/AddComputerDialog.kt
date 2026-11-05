@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SlockRaftText
+import build.raft.app.components.SlockRaftValueBlock
+import build.raft.app.components.slockRaftCardSurface
+import build.raft.app.components.slockRaftControlSurface
 import build.raft.app.data.AddComputerCommandTarget
 import build.raft.app.data.AddComputerDialogState
 import build.raft.app.data.AddComputerStep
@@ -16,8 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -100,8 +102,8 @@ private fun AddComputerTypeStep(
         if (!state.canManage || state.atLimit) {
             Text(
                 userFacingError ?: stringResource(MR.strings.settings_computers_error_add_permission),
-                style = SlockType.Caption.copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed
+                style = SlockType.Caption.copy(color = SlockColor.DangerStrong),
+                color = SlockColor.DangerStrong
             )
         }
         Text(
@@ -135,7 +137,7 @@ private fun AddComputerTypeStep(
             color = SlockColor.TextBlack
         )
         userFacingError?.takeIf { it.isNotBlank() && state.canManage && !state.atLimit }?.let {
-            Text(it, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+            Text(it, style = SlockType.Caption.copy(color = SlockColor.DangerStrong), color = SlockColor.DangerStrong)
         }
         SlockDialogFooter {
             SlockBrutalActionButton(
@@ -203,8 +205,14 @@ private fun AddComputerWaitingStep(
         if (!computerCommand.isNullOrBlank()) {
             Text(
                 stringResource(MR.strings.settings_computers_detail_computer),
-                style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                // raft CommandRow step label: text-footnote semibold ink (source case).
+                style = SlockType.Body.copy(
+                    fontSize = SlockRaftText.Footnote,
+                    lineHeight = SlockRaftText.FootnoteLine,
+                    letterSpacing = 0.sp,
+                    color = SlockColor.TextBlack
+                ).withSlockFontWeight(FontWeight.SemiBold),
+                color = SlockColor.TextBlack
             )
             AddComputerCommandRow(
                 command = computerCommand,
@@ -213,10 +221,10 @@ private fun AddComputerWaitingStep(
                 onIntent = onIntent
             )
         }
+        // raft-ui Banner intent="info": soft info wash, hairline card, status lead.
         Row(
             modifier = Modifier.fillMaxWidth()
-                .background(SlockColor.SurfaceCream)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockRaftCardSurface(fill = SlockColor.InfoSoft, radius = SlockRadius.Control)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -232,12 +240,12 @@ private fun AddComputerWaitingStep(
         state.apiKeyPrefix?.takeIf { it.isNotBlank() }?.let {
             Text(
                 stringResource(MR.strings.settings_computers_api_key_prefix, it),
-                style = SlockType.Caption.copy(fontSize = 12.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = SlockType.Caption.copy(fontSize = SlockRaftText.Caption, color = SlockColor.TextMuted),
+                color = SlockColor.TextMuted
             )
         }
         userFacingError?.takeIf { it.isNotBlank() }?.let {
-            Text(it, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+            Text(it, style = SlockType.Caption.copy(color = SlockColor.DangerStrong), color = SlockColor.DangerStrong)
         }
         SlockDialogFooter {
             SlockBrutalActionButton(
@@ -269,10 +277,10 @@ private fun AddComputerConnectedStep(
         mutableStateOf(TextFieldValue(state.name, selection = TextRange(state.name.length)))
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // raft-ui Banner intent="success": soft success wash, hairline card.
         Row(
             modifier = Modifier.fillMaxWidth()
-                .background(SlockColor.AccentLime)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockRaftCardSurface(fill = SlockColor.SuccessSoft, radius = SlockRadius.Control)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -292,9 +300,9 @@ private fun AddComputerConnectedStep(
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
                             fontFamily = SlockMonoFamily,
-                            color = SlockColor.TextMutedGray
+                            color = SlockColor.TextMuted
                         ),
-                        color = SlockColor.TextMutedGray,
+                        color = SlockColor.TextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -338,41 +346,53 @@ private fun AddComputerTypeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Web AddMachineDialog type card: rounded-control, 1.5dp line-strong edge,
+    // info-soft when selected; the unavailable card is fill-muted with a hairline.
+    val active = enabled || selected
     Row(
         modifier = modifier
-            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, if (enabled || selected) SlockColor.BorderBlack else SlockColor.EmptyStateGray)
+            .let {
+                if (active) {
+                    it.slockRaftControlSurface(
+                        fill = if (selected) SlockColor.InfoSoft else SlockColor.Card,
+                        border = SlockColor.BorderBlack
+                    )
+                } else {
+                    it.slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
+                }
+            }
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         SlockLucideIcon(
             iconName,
-            modifier = Modifier.size(18.dp),
-            color = if (enabled || selected) "#FF000000" else "#66000000"
+            modifier = Modifier.size(20.dp),
+            color = slockArgbHex(if (active) SlockColor.TextBlack else SlockColor.ForegroundHint)
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                title.slockDisplayUppercase(),
-                // Web AddMachineDialog type cards: text-sm title, text-xs detail.
-                style = SlockType.Button.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    color = if (enabled || selected) SlockColor.TextBlack else SlockColor.TextMutedGray
-                ),
-                color = if (enabled || selected) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                title,
+                // Web AddMachineDialog type cards: text-callout semibold title, text-footnote detail.
+                style = SlockType.Body.copy(
+                    fontSize = SlockRaftText.Callout,
+                    lineHeight = SlockRaftText.CalloutLine,
+                    letterSpacing = 0.sp,
+                    color = if (active) SlockColor.TextBlack else SlockColor.ForegroundHint
+                ).withSlockFontWeight(FontWeight.SemiBold),
+                color = if (active) SlockColor.TextBlack else SlockColor.ForegroundHint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 detail,
                 style = SlockType.Caption.copy(
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    color = if (enabled || selected) SlockColor.TextMutedGray else SlockColor.EmptyStateGray
+                    fontSize = SlockRaftText.Footnote,
+                    lineHeight = SlockRaftText.FootnoteLine,
+                    color = if (active) SlockColor.TextMuted else SlockColor.ForegroundHint
                 ),
-                color = if (enabled || selected) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
+                color = if (active) SlockColor.TextMuted else SlockColor.ForegroundHint,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -392,30 +412,16 @@ private fun AddComputerCommandRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.weight(1f)
-                .background(SlockColor.TextBlack)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(10.dp)
-        ) {
-            Text(
-                command,
-                style = SlockType.Input.copy(
-                    fontFamily = SlockMonoFamily,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp,
-                    color = SlockColor.AccentLime
-                ),
-                color = SlockColor.AccentLime,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        // raft-ui CopyableCode: code layer, hairline, mono 13/20.
+        SlockRaftValueBlock(
+            value = command,
+            modifier = Modifier.weight(1f),
+            maxLines = 4
+        )
         SlockBrutalIconButton(
             iconName = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
             onClick = { onIntent(SharedSettingsIntent.CopyAddComputerCommand(copyTarget)) },
             size = 30.dp,
-            shadowOffset = 2.dp,
             backgroundColor = SlockColor.SurfaceWhite
         )
     }
@@ -424,10 +430,10 @@ private fun AddComputerCommandRow(
 @Composable
 private fun SettingsComputerCommandFallback(state: AddComputerDialogState) {
     val pending = stringResource(MR.strings.settings_computers_api_key_pending)
+    // raft muted inset note: fill-muted, control radius, hairline.
     Box(
         modifier = Modifier.fillMaxWidth()
-            .background(SlockColor.SurfaceCream)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
             .padding(12.dp)
     ) {
         Text(
