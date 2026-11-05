@@ -11,7 +11,12 @@ import androidx.compose.runtime.setValue
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.model.formatRaftTimestampLabel
+import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
+import build.raft.app.data.RaftDatetimeFoundationOwner
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveRaftRelativeTimeLabel
 import androidx.compose.foundation.clickable
@@ -115,10 +120,28 @@ internal fun raftRelativeTimestampLabel(
     val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext)
     return when (val label = if (clampFuture) resolved.clampedFutureToNow() else resolved) {
         RaftRelativeTimeLabel.Empty -> ""
-        RaftRelativeTimeLabel.Unknown -> stringResource(Res.string.relative_time_unknown)
+        RaftRelativeTimeLabel.Unknown ->
+            raftDeviceZoneAbsoluteLabel(value) ?: stringResource(Res.string.relative_time_unknown)
         is RaftRelativeTimeLabel.Literal -> label.value
         is RaftRelativeTimeLabel.Relative -> label.localized()
     }
+}
+
+/**
+ * A readable time with no time context: the absolute local time in the device zone ("14:05",
+ * "11-06 12:10"), never "unknown time" for a timestamp that parses (artin 11-05). Every page has
+ * a base context now (BasePager), so this is only the last fallback; null when [value] is not a
+ * timestamp.
+ */
+internal fun raftDeviceZoneAbsoluteLabel(
+    value: String?,
+    nowEpochMillis: Long = defaultNowMillis(),
+    foundationOwner: RaftDatetimeFoundationOwner = ProcessRaftDatetimeFoundationOwner,
+): String? {
+    val offset = foundationOwner.localOffsetMinutesAt(nowEpochMillis, 0)
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(value, offset) ?: return null
+    val todayEpochDay = (nowEpochMillis + offset * 60_000L).floorDiv(86_400_000L)
+    return formatRaftTimestampEpochMillis(epochMillis, offset, todayEpochDay, RaftTimeFormat24Hour)
 }
 
 /**
