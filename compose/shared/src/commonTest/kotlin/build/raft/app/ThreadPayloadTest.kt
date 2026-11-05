@@ -138,10 +138,10 @@ class ThreadPayloadTest {
         val identity =
             ThreadLaunchConversationIdentity(
                 threadId = ThreadId("thread-1"),
-                channelId = ChannelId("857c43c7-2439-4a80-869a-3fc22745ba27"),
+                channelId = ChannelId("parent-1"),
                 thread =
                     ThreadConversation(
-                        parentChannelId = ChannelId("857c43c7-2439-4a80-869a-3fc22745ba27"),
+                        parentChannelId = ChannelId("parent-1"),
                         parentMessageId = MessageId("msg-1"),
                         streamChannelId = ChannelId("thread-1"),
                         parentSurfaceKind = null,
@@ -174,8 +174,8 @@ class ThreadPayloadTest {
                 kind = ConversationKind.Thread,
                 channelId = ChannelId("reply-thread-1"),
                 threadChannelId = ChannelId("reply-thread-1"),
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("message-1"),
                 parentSurfaceKind = ConversationKind.Channel.threadParentSurfaceKindOrNull(),
                 parentChannelKind = ConversationKind.Channel.threadChannelKindWireValue()
             )
@@ -490,18 +490,18 @@ class ThreadPayloadTest {
     fun threadMessagePermalinkMatchesReactChannelRoute() {
         val payload =
             RaftThreadScreenPayload(
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 channelKind = "channel"
             )
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", "u-artin", "artin"),
+                message = threadMessage("message-1", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+            "https://app.raft.build/s/workspace/channel/channel-1?msg=message-1",
             permalink
         )
     }
@@ -511,8 +511,8 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "857c43c7-2439-4a80-869a-3fc22745ba27",
+                parentChannelId = "channel-1",
+                parentMessageId = "parent-1",
                 sourceThreadId = "thread-1",
                 streamChannelId = "thread-1",
                 parentChannelKind = "channel"
@@ -520,12 +520,12 @@ class ThreadPayloadTest {
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("4e62d346-1968-4079-80dc-388dde56e2ef", "u-artin", "artin"),
+                message = threadMessage("reply-1", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/channel/6cb4981e-00c7-4076-81b0-0d46c208c132?msg=4e62d346-1968-4079-80dc-388dde56e2ef&thread=6cb4981e-00c7-4076-81b0-0d46c208c132%3A857c43c7-2439-4a80-869a-3fc22745ba27",
+            "https://app.raft.build/s/workspace/channel/channel-1?msg=reply-1&thread=channel-1%3Aparent-1",
             permalink
         )
     }
@@ -538,8 +538,8 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentChannelId = "633e0bfb-caef-43c7-8a5a-e0ef367f90b3",
-                parentMessageId = "857c43c7-2439-4a80-869a-3fc22745ba27",
+                parentChannelId = "dm-parent",
+                parentMessageId = "parent-1",
                 sourceThreadId = "thread-1",
                 streamChannelId = "thread-1",
                 parentChannelKind = "direct"
@@ -547,12 +547,12 @@ class ThreadPayloadTest {
 
         val permalink =
             payload.threadMessagePermalink(
-                message = threadMessage("4e62d346-1968-4079-80dc-388dde56e2ef", "u-artin", "artin"),
+                message = threadMessage("reply-1", "u-artin", "artin"),
                 serverSlug = "workspace"
             )
 
         assertEquals(
-            "https://app.raft.build/s/workspace/dm/633e0bfb-caef-43c7-8a5a-e0ef367f90b3?msg=4e62d346-1968-4079-80dc-388dde56e2ef&thread=633e0bfb-caef-43c7-8a5a-e0ef367f90b3%3A857c43c7-2439-4a80-869a-3fc22745ba27",
+            "https://app.raft.build/s/workspace/dm/dm-parent?msg=reply-1&thread=dm-parent%3Aparent-1",
             permalink
         )
     }
@@ -561,9 +561,9 @@ class ThreadPayloadTest {
     fun threadMessageRowPreservesFollowedThreadState() {
         val row =
             Message(
-                id = MessageId("857c43c7-2439-4a80-869a-3fc22745ba27"),
-                threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                id = MessageId("parent-1"),
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
                 threadChannelId = ChannelId("thread-1"),
                 author = MemberProfile(
                     id = MemberId("u-artin"),
@@ -623,7 +623,7 @@ class ThreadPayloadTest {
                         deliveryState = ThreadMessageDeliverySending,
                         pendingSendContext =
                             RaftThreadPendingSendContext(
-                                channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                channelId = "channel-1",
                                 body = "optimistic"
                             )
                     ),
@@ -874,7 +874,7 @@ class ThreadPayloadTest {
                 channelLabel = "#首页专修:5fbf9608",
                 threadShortId = "5fbf9608",
                 parentMessageId = "5fbf9608-1111-2222-3333-444444444444",
-                focusedMessageId = "4e62d346-1968-4079-80dc-388dde56e2ef",
+                focusedMessageId = "reply-1",
                 threadChannelId = "thread-channel-id"
             )
 
@@ -885,7 +885,7 @@ class ThreadPayloadTest {
         assertEquals("5fbf9608-1111-2222-3333-444444444444", payload.parentMessageId)
         assertEquals("thread-channel-id", payload.sourceThreadId)
         assertEquals("thread-channel-id", payload.streamChannelId)
-        assertEquals("4e62d346-1968-4079-80dc-388dde56e2ef", payload.focusedMessageId)
+        assertEquals("reply-1", payload.focusedMessageId)
         assertEquals("chat", payload.selectedTab)
         assertEquals("loading", payload.status)
         assertEquals(emptyList(), payload.messages)
@@ -902,11 +902,11 @@ class ThreadPayloadTest {
                 """
                 {
                   "channelId": "thread-channel-id",
-                  "targetMessageId": "4e62d346-1968-4079-80dc-388dde56e2ef",
+                  "targetMessageId": "reply-1",
                   "canonicalTarget": {
                     "kind": "thread",
                     "channelId": "home-channel-id",
-                    "messageId": "4e62d346-1968-4079-80dc-388dde56e2ef",
+                    "messageId": "reply-1",
                     "threadParentMessageId": "5fbf9608-1111-2222-3333-444444444444",
                     "threadChannelId": "thread-channel-id"
                   },
@@ -918,7 +918,7 @@ class ThreadPayloadTest {
 
         assertEquals("thread", payload.canonicalTarget?.kind)
         assertEquals(ChannelId("home-channel-id"), payload.canonicalTarget?.channelId)
-        assertEquals(MessageId("4e62d346-1968-4079-80dc-388dde56e2ef"), payload.canonicalTarget?.messageId)
+        assertEquals(MessageId("reply-1"), payload.canonicalTarget?.messageId)
         assertEquals(
             MessageId("5fbf9608-1111-2222-3333-444444444444"),
             payload.canonicalTarget?.threadParentMessageId
@@ -1537,7 +1537,7 @@ class ThreadPayloadTest {
                 threadId = "reply-stream",
                 sourceThreadId = "reply-stream",
                 streamChannelId = "reply-stream",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 parentMessageId = "message-parent",
                 originParentMessageId = "message-parent",
                 focusedMessageId = "message-reply",
@@ -1690,7 +1690,7 @@ class ThreadPayloadTest {
                 messages =
                     listOf(
                         testThreadMessage("reply-0").copy(body = "unrelated"),
-                        testThreadMessage("4e62d346-1968-4079-80dc-388dde56e2ef").copy(body = "Launch follow-up"),
+                        testThreadMessage("reply-1").copy(body = "Launch follow-up"),
                         testThreadMessage("reply-2").copy(body = "other")
                     )
             )
@@ -1699,7 +1699,7 @@ class ThreadPayloadTest {
         assertEquals(
             listOf(
                 ThreadInlineSearchMatch(messageId = "origin", listItemIndex = 0),
-                ThreadInlineSearchMatch(messageId = "4e62d346-1968-4079-80dc-388dde56e2ef", listItemIndex = 3)
+                ThreadInlineSearchMatch(messageId = "reply-1", listItemIndex = 3)
             ),
             matches
         )
@@ -1712,14 +1712,14 @@ class ThreadPayloadTest {
                 messages =
                     listOf(
                         testThreadMessage("reply-0").copy(authorName = "Artin", body = "hello"),
-                        testThreadMessage("4e62d346-1968-4079-80dc-388dde56e2ef").copy(authorHandle = "Android-Developer-2", body = "ship it")
+                        testThreadMessage("reply-1").copy(authorHandle = "Android-Developer-2", body = "ship it")
                     )
             )
         val timeline = payload.toThreadTimelineSlice()
 
         assertEquals(emptyList<ThreadInlineSearchMatch>(), timeline.threadInlineSearchMatches("   "))
         assertEquals(
-            listOf(ThreadInlineSearchMatch(messageId = "4e62d346-1968-4079-80dc-388dde56e2ef", listItemIndex = 2)),
+            listOf(ThreadInlineSearchMatch(messageId = "reply-1", listItemIndex = 2)),
             timeline.threadInlineSearchMatches("developer-2")
         )
     }
@@ -1728,7 +1728,7 @@ class ThreadPayloadTest {
     fun threadRealOlderBoundaryRendersWithFullMessageList() {
         val fullPayload =
             RaftThreadScreenPayload(
-                messages = listOf(testThreadMessage("reply-0"), testThreadMessage("4e62d346-1968-4079-80dc-388dde56e2ef")),
+                messages = listOf(testThreadMessage("reply-0"), testThreadMessage("reply-1")),
                 canLoadMoreBefore = false,
                 olderMessagesStatus = "idle"
             )
@@ -2234,8 +2234,8 @@ class ThreadPayloadTest {
                     {
                       "instanceId": "thread-bad-surface",
                       "surfaceKind": "spaceship",
-                      "sourceThreadId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                      "streamChannelId": "6cb4981e-00c7-4076-81b0-0d46c208c132"
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1"
                     }
                     """.trimIndent(),
                 instanceId = "fallback"
@@ -2256,8 +2256,8 @@ class ThreadPayloadTest {
                       "instanceId": "thread-bad-kind",
                       "surfaceKind": "channel",
                       "channelKind": "spaceship",
-                      "sourceThreadId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                      "streamChannelId": "6cb4981e-00c7-4076-81b0-0d46c208c132"
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1"
                     }
                     """.trimIndent(),
                 instanceId = "fallback"
@@ -2279,8 +2279,8 @@ class ThreadPayloadTest {
                       "surfaceKind": "thread",
                       "sourceThreadId": "reply-stream-1",
                       "streamChannelId": "reply-stream-1",
-                      "parentChannelId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                      "parentMessageId": "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                      "parentChannelId": "channel-1",
+                      "parentMessageId": "message-1",
                       "parentSurfaceKind": "spaceship"
                     }
                     """.trimIndent(),
@@ -2351,8 +2351,8 @@ class ThreadPayloadTest {
                       "instanceId": "thread-launch-1",
                       "title": "general",
                       "status": "content",
-                      "sourceThreadId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                      "streamChannelId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1",
                       "membersCount": 2,
                       "joined": false,
                       "canSend": false,
@@ -2367,8 +2367,8 @@ class ThreadPayloadTest {
         assertEquals("thread-launch-1", payload.instanceId)
         assertEquals("", payload.title)
         assertEquals("loading", payload.status)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.streamChannelId)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
         assertEquals(0, payload.membersCount)
         assertEquals(true, payload.joined)
         assertEquals(true, payload.canSend)
@@ -2389,8 +2389,8 @@ class ThreadPayloadTest {
                     """
                     {
                       "instanceId": "thread-launch-1",
-                      "sourceThreadId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                      "streamChannelId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1",
                       "filesPayload": "{\"instanceId\":\"seed-instance\",\"status\":\"content\",\"items\":[{\"attachmentId\":\"seed-file\",\"name\":\"must-not-seed.pdf\"}]}"
                     }
                     """.trimIndent(),
@@ -2503,8 +2503,8 @@ class ThreadPayloadTest {
                     {
                       "instanceId": "thread-channel-1",
                       "surfaceKind": "channel",
-                      "sourceThreadId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                      "streamChannelId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1",
                       "composerSeedText": "draft from route",
                       "composerPendingAttachments": [
                         {
@@ -2673,8 +2673,8 @@ class ThreadPayloadTest {
     fun appShellChannelPayloadUsesConversationHeaderProjectionForTitleOnly() {
         val conversation =
             ConversationSummary(
-                threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
                 kind = ConversationKind.Channel,
                 name = "首页专修",
                 subtitle = "Home repair",
@@ -2725,15 +2725,15 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "Channel",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel
             )
         val projection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132", "stream-channel-1"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1", "stream-channel-1"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "private",
@@ -2749,8 +2749,8 @@ class ThreadPayloadTest {
         assertEquals("Channel", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals("channel", payload.channelKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.streamChannelId)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
     }
@@ -2761,8 +2761,8 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "wrong-network-title",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint"
             )
@@ -2779,8 +2779,8 @@ class ThreadPayloadTest {
             WireThreadLaunchPayload(
                 instanceId = "notification-thread-channel-1-msg-42",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 focusedMessageId = "msg-42"
             ).toInitialPayload("notification-thread-channel-1-msg-42")
         val input = routePayload.threadHeaderProjectionInput()
@@ -2817,8 +2817,8 @@ class ThreadPayloadTest {
                 title = "wrong-network-title",
                 subtitle = "wrong-network-subtitle",
                 status = "content",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 messages =
@@ -2834,8 +2834,8 @@ class ThreadPayloadTest {
         val projection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Joint,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
@@ -2848,7 +2848,7 @@ class ThreadPayloadTest {
         val displayWithProjection = input.displayModel(projection, routePayload)
         val displayWithoutProjection = input.displayModel(null, routePayload)
 
-        assertEquals(listOf("6cb4981e-00c7-4076-81b0-0d46c208c132", "6cb4981e-00c7-4076-81b0-0d46c208c132"), input.lookupIds)
+        assertEquals(listOf("channel-1", "channel-1"), input.lookupIds)
         assertEquals("", routePayload.title)
         assertEquals(null, routePayload.subtitle)
         assertEquals("loading", routePayload.status)
@@ -2867,8 +2867,8 @@ class ThreadPayloadTest {
                 instanceId = "thread-channel-1",
                 title = "Channel",
                 subtitle = null,
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint"
             )
@@ -2905,8 +2905,8 @@ class ThreadPayloadTest {
         val dmProjection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "633e0bfb-caef-43c7-8a5a-e0ef367f90b3",
-                aliases = setOf("633e0bfb-caef-43c7-8a5a-e0ef367f90b3"),
+                canonicalChannelId = "dm-parent",
+                aliases = setOf("dm-parent"),
                 conversationKind = ConversationKind.DirectMessage,
                 surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
@@ -2915,8 +2915,8 @@ class ThreadPayloadTest {
         val channelProjection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "633e0bfb-caef-43c7-8a5a-e0ef367f90b3",
-                aliases = setOf("633e0bfb-caef-43c7-8a5a-e0ef367f90b3"),
+                canonicalChannelId = "dm-parent",
+                aliases = setOf("dm-parent"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
@@ -2928,7 +2928,7 @@ class ThreadPayloadTest {
                 title = "",
                 sourceThreadId = "reply-stream",
                 streamChannelId = "reply-stream",
-                parentChannelId = "633e0bfb-caef-43c7-8a5a-e0ef367f90b3",
+                parentChannelId = "dm-parent",
                 parentMessageId = "parent-message",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentSurfaceKind = "direct"
@@ -2948,8 +2948,8 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint"
             )
@@ -2957,8 +2957,8 @@ class ThreadPayloadTest {
         val acceptedProjection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Joint,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
@@ -3133,16 +3133,16 @@ class ThreadPayloadTest {
                 title = ThreadReplyPageTitle,
                 sourceThreadId = "reply-thread-1",
                 streamChannelId = "reply-thread-1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentSurfaceKind = RaftThreadSurfaceKind.Channel
             )
         val projection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
@@ -3155,23 +3155,23 @@ class ThreadPayloadTest {
         assertEquals(null, payload.subtitle)
         assertEquals("reply-thread-1", payload.sourceThreadId)
         assertEquals("reply-thread-1", payload.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.parentChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.parentMessageId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
     }
 
     @Test
     fun activityReplyThreadKeepsParentChromeAfterLoadedPayloadTransition() {
         val request =
             InboxItem(
-                key = "thread:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                key = "thread:message-1",
                 kind = InboxItemKind.Thread,
                 channelId = ChannelId("reply-thread-1"),
                 channelName = "reply-thread",
                 threadChannelId = ChannelId("reply-thread-1"),
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentMessageId = MessageId("message-1"),
                 latestActivityMessageId = MessageId("reply-message-1")
             ).toHomeMessageOpenRequestForTest()
         val launch =
@@ -3199,8 +3199,8 @@ class ThreadPayloadTest {
         val parentProjection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
@@ -3213,8 +3213,8 @@ class ThreadPayloadTest {
 
         assertEquals("#general", headerDisplay.subtitle)
         assertTrue(loaded.threadHeaderOpenInParentActionVisible())
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", loaded.parentChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", loaded.parentMessageId)
+        assertEquals("channel-1", loaded.parentChannelId)
+        assertEquals("message-1", loaded.parentMessageId)
     }
 
     @Test
@@ -3242,15 +3242,15 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "reply-thread-1",
                 streamChannelId = "reply-thread-1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
                 parentSurfaceKind = RaftThreadSurfaceKind.Channel
             )
         val parentProjection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
@@ -3270,7 +3270,7 @@ class ThreadPayloadTest {
                     serverId: ServerId,
                     id: String
                 ): SharedConversationDirectoryProjection? =
-                    parentProjection.takeIf { serverId.value == "server-1" && id == "6cb4981e-00c7-4076-81b0-0d46c208c132" }
+                    parentProjection.takeIf { serverId.value == "server-1" && id == "channel-1" }
             }
         val input = payload.threadHeaderProjectionInput()
         val initialMap =
@@ -3288,7 +3288,7 @@ class ThreadPayloadTest {
                 title = "",
                 subtitle = null
             )
-        val incompleteOutcome = owner.accept(mapOf("6cb4981e-00c7-4076-81b0-0d46c208c132" to incompleteParentProjection))
+        val incompleteOutcome = owner.accept(mapOf("channel-1" to incompleteParentProjection))
         val secondaryProjection =
             parentProjection.copy(
                 canonicalChannelId = "reply-thread-1",
@@ -3301,11 +3301,11 @@ class ThreadPayloadTest {
 
         assertEquals("#general", initialDisplay.subtitle)
         assertEquals("#general", initialDisplay.threadComposerMentionScopeChannelLabel())
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.composer.mentionChannelId ?: payload.parentChannelId)
+        assertEquals("channel-1", payload.composer.mentionChannelId ?: payload.parentChannelId)
         assertEquals("#general", loadedDisplay.subtitle)
         assertEquals("#general", loadedDisplay.threadComposerMentionScopeChannelLabel())
         assertTrue(loadedPayload.threadHeaderOpenInParentActionVisible())
-        assertEquals(setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"), owner.state.value.keys)
+        assertEquals(setOf("channel-1"), owner.state.value.keys)
         assertEquals(parentProjection, owner.selectedProjection())
         assertEquals(
             ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection,
@@ -3325,16 +3325,16 @@ class ThreadPayloadTest {
                 title = ThreadReplyPageTitle,
                 sourceThreadId = "reply-thread-1",
                 streamChannelId = "reply-thread-1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 activityMuteSupported = true
             )
         val parentProjection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132", "reply-thread-1"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1", "reply-thread-1"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
@@ -3355,10 +3355,10 @@ class ThreadPayloadTest {
     fun channelPayloadKeepsActivityMuteStateWhenProjectionClaimsReplyThread() {
         val payload =
             RaftThreadScreenPayload(
-                instanceId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                instanceId = "channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 joined = true,
                 activityMuteSupported = true
@@ -3366,8 +3366,8 @@ class ThreadPayloadTest {
         val wrongProjection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Thread,
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = "channel",
@@ -3382,7 +3382,7 @@ class ThreadPayloadTest {
 
         val muteState = payload.threadActivityMuteState(wrongProjection)
 
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", muteState?.channelId)
+        assertEquals("channel-1", muteState?.channelId)
         assertEquals(true, muteState?.muted)
         assertEquals(true, muteState?.supported)
         assertTrue(payload.threadActivityMutedIndicatorVisible(wrongProjection))
@@ -3392,9 +3392,9 @@ class ThreadPayloadTest {
     fun mutedIndicatorFollowsCanonicalMuteStateAcrossChannelAndDirectMessageSurfaces() {
         val unmutedChannel =
             RaftThreadScreenPayload(
-                instanceId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                instanceId = "channel-1",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 activityMuted = false,
                 activityMuteSupported = true
@@ -3465,16 +3465,16 @@ class ThreadPayloadTest {
                 title = ThreadReplyPageTitle,
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentSurfaceKind = RaftThreadSurfaceKind.Channel,
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
-                originParentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                originParentMessageId = "message-1",
                 subtitle = null
             )
         val projection =
             SharedConversationDirectoryProjection(
                 serverId = "server-1",
-                canonicalChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                aliases = setOf("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
@@ -3496,8 +3496,8 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 title = ThreadReplyPageTitle,
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
                 subtitle = "#product"
             )
 
@@ -3641,8 +3641,8 @@ class ThreadPayloadTest {
             WireThreadLaunchPayload(
                 instanceId = "row-actions-thread",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 showReactionActions = false
             ).toInitialPayload("fallback")
 
@@ -3758,7 +3758,7 @@ class ThreadPayloadTest {
                     """
                     {
                       "instanceId": "thread-settings-boundary",
-                      "sourceThreadId": "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                      "sourceThreadId": "channel-1",
                       "settingsActions": [
                         {
                           "id": "visibility",
@@ -3786,8 +3786,8 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 joined = true,
                 canSend = true,
@@ -3795,7 +3795,7 @@ class ThreadPayloadTest {
                     RaftThreadComposerPayload(
                         surfaceKind = RaftThreadSurfaceKind.Channel,
                         enabled = true,
-                        streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132"
+                        streamChannelId = "channel-1"
                     )
             )
         val unrelatedAccessFallback =
@@ -3820,8 +3820,8 @@ class ThreadPayloadTest {
         val payload =
             buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
-                    threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                    channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
                     kind = ConversationKind.Channel,
                     name = "general",
                     subtitle = "Team channel",
@@ -3840,7 +3840,7 @@ class ThreadPayloadTest {
         assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals("loading", payload.status)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.sourceThreadId)
+        assertEquals("channel-1", payload.sourceThreadId)
         assertEquals(true, payload.canSend)
         assertEquals(0, payload.membersCount)
         assertEquals(480, payload.localOffsetMinutes)
@@ -3849,7 +3849,7 @@ class ThreadPayloadTest {
         assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(true, payload.showSettingsAction)
         assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.streamChannelId)
+        assertEquals("channel-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
         assertEquals(
@@ -3857,9 +3857,9 @@ class ThreadPayloadTest {
             payload.settingsActions.map { it.id }
         )
         val composer = payload.resolveThreadComposer()
-        assertEquals("Message #6cb4981e-00c7-4076-81b0-0d46c208c132", composer.placeholder)
+        assertEquals("Message #channel-1", composer.placeholder)
         assertEquals(RaftThreadSurfaceKind.Channel, composer.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", composer.streamChannelId)
+        assertEquals("channel-1", composer.streamChannelId)
         assertEquals("idle", composer.composerMode)
     }
 
@@ -3900,7 +3900,7 @@ class ThreadPayloadTest {
         fun payloadFor(parentKind: String) =
             buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
-                    threadId = threadIdentity(ChannelId("joint-1"), MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f")),
+                    threadId = threadIdentity(ChannelId("joint-1"), MessageId("message-1")),
                     channelId = ChannelId("joint-1"),
                     kind = ConversationKind.Thread,
                     name = "Reply thread",
@@ -3909,7 +3909,7 @@ class ThreadPayloadTest {
                     thread =
                         ThreadConversation(
                             parentChannelId = ChannelId("joint-1"),
-                            parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                            parentMessageId = MessageId("message-1"),
                             streamChannelId = ChannelId("thread-message-1"),
                             parentChannelKind = parentKind
                         )
@@ -3999,8 +3999,8 @@ class ThreadPayloadTest {
         val replyPayload =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                parentMessageId = "857c43c7-2439-4a80-869a-3fc22745ba27",
-                originParentMessageId = "857c43c7-2439-4a80-869a-3fc22745ba27",
+                parentMessageId = "parent-1",
+                originParentMessageId = "parent-1",
                 showTaskStatusActions = true
             )
         val disabledPayload =
@@ -4043,7 +4043,7 @@ class ThreadPayloadTest {
                 deliveryState = ThreadMessageDeliverySending,
                 pendingSendContext =
                     RaftThreadPendingSendContext(
-                        channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                        channelId = "channel-1",
                         body = "pending"
                     )
             ).canConvertToTask()
@@ -4337,12 +4337,12 @@ class ThreadPayloadTest {
         val payload =
             buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
-                    threadId = threadIdentity(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"), MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f")),
-                    channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                    threadId = threadIdentity(ChannelId("channel-1"), MessageId("message-1")),
+                    channelId = ChannelId("channel-1"),
                     thread =
                         ThreadConversation(
-                            parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                            parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                            parentChannelId = ChannelId("channel-1"),
+                            parentMessageId = MessageId("message-1"),
                             streamChannelId = ChannelId("thread-1"),
                             parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                             parentChannelKind = "channel"
@@ -4361,7 +4361,7 @@ class ThreadPayloadTest {
         assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.originMessage)
         assertEquals(null, payload.originPreview)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals(RaftThreadSurfaceKind.Channel, payload.parentSurfaceKind)
         assertEquals(null, payload.parentNavigationHint)
         assertEquals(null, payload.toWireThreadLaunchPayload().parentNavigationHint)
@@ -4414,8 +4414,8 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 conversation =
                     ConversationSummary(
-                        threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                        channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
                         kind = ConversationKind.Channel,
                         name = "#对话流专修"
                     ),
@@ -4440,16 +4440,16 @@ class ThreadPayloadTest {
                         thread =
                             ThreadConversation(
                                 parentChannelId = ChannelId("parent-channel-1"),
-                                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                                parentMessageId = MessageId("message-1"),
                                 streamChannelId = ChannelId("thread-1")
                             )
                     ),
                 originMessage = null,
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentMessageId = "message-1",
                 originPending = true
             )
 
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", context.originParentMessageId)
+        assertEquals("message-1", context.originParentMessageId)
         assertEquals("loading", context.originStatus)
     }
 
@@ -4469,14 +4469,14 @@ class ThreadPayloadTest {
                         thread =
                             ThreadConversation(
                                 parentChannelId = ChannelId("dm-1"),
-                                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                                parentMessageId = MessageId("message-1"),
                                 streamChannelId = ChannelId("dm-thread-1"),
                                 parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
                                 parentChannelKind = "dm"
                             )
                     ),
                 originMessage = null,
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
+                parentMessageId = "message-1"
             )
 
         assertEquals("@Jiacheng", context.subtitle)
@@ -4496,15 +4496,15 @@ class ThreadPayloadTest {
                         thread =
                             ThreadConversation(
                                 parentChannelId = ChannelId("parent-channel-1"),
-                                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                                parentMessageId = MessageId("message-1"),
                                 streamChannelId = ChannelId("thread-1")
                             )
                     ),
                 originMessage = null,
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
+                parentMessageId = "message-1"
             )
 
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", context.originParentMessageId)
+        assertEquals("message-1", context.originParentMessageId)
         assertEquals("missing", context.originStatus)
     }
 
@@ -4512,15 +4512,15 @@ class ThreadPayloadTest {
     fun appShellActivityThreadItemOpensReplyThreadChrome() {
         val request =
             InboxItem(
-                key = "thread:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                key = "thread:message-1",
                 kind = InboxItemKind.Thread,
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 channelName = "thread-stream-name",
                 threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
                 parentMessageSenderKind = MemberKind.Human,
@@ -4537,7 +4537,7 @@ class ThreadPayloadTest {
             ))
 
         assertEquals("reply-message-1", request.anchorMessageId)
-        assertEquals(threadIdentity(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"), MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f")), conversation.threadId)
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
         assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
@@ -4545,9 +4545,9 @@ class ThreadPayloadTest {
         assertEquals("reply-message-1", payload.focusedMessageId)
         assertEquals("thread-channel-1", payload.sourceThreadId)
         assertEquals("thread-channel-1", payload.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.parentChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.parentMessageId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals("missing", payload.originStatus)
         assertEquals("Parent message preview", payload.originPreview)
         assertEquals(null, payload.originMessage)
@@ -4561,15 +4561,15 @@ class ThreadPayloadTest {
     fun appShellThreadOriginFallbackIsCarriedOutsideConversationSummary() {
         val request =
             InboxItem(
-                key = "thread:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                key = "thread:message-1",
                 kind = InboxItemKind.Thread,
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 channelName = "thread-stream-name",
                 threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
                 parentMessageSenderKind = MemberKind.Human,
@@ -4586,8 +4586,8 @@ class ThreadPayloadTest {
         assertEquals("Parent message preview", request.originFallback?.preview)
         assertEquals("user-1", request.originFallback?.senderId)
         assertEquals(MemberKind.Human, request.originFallback?.senderKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", request.conversationIdentity.resolveThreadRouteIdentity().parentKey)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("channel-1:message-1", request.conversationIdentity.resolveThreadRouteIdentity().parentKey)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals("missing", payload.originStatus)
         assertEquals("Parent message preview", payload.originPreview)
     }
@@ -4596,21 +4596,21 @@ class ThreadPayloadTest {
     fun appShellThreadOriginFallbackMustMatchParentIdentity() {
         val request =
             InboxItem(
-                key = "thread:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                key = "thread:message-1",
                 kind = InboxItemKind.Thread,
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 channelName = "thread-stream-name",
                 threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                parentChannelId = ChannelId("channel-1"),
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityMessageId = MessageId("reply-message-1")
             ).toHomeMessageOpenRequestForTest()
         val wrongFallback =
             ThreadLaunchOriginFallback(
                 parentChannelId = "channel-2",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentMessageId = "message-1",
                 preview = "Wrong parent preview",
                 senderId = null,
                 senderKind = null
@@ -4623,7 +4623,7 @@ class ThreadPayloadTest {
                 originFallback = wrongFallback
             ))
 
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals("missing", payload.originStatus)
         assertEquals(null, payload.originPreview)
     }
@@ -4632,7 +4632,7 @@ class ThreadPayloadTest {
     fun contentSliceUsesPatchHeaderContextInsteadOfSeededReplyOrigin() {
         val origin =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "user-1",
                 authorName = "Artin",
                 body = "Parent message preview"
@@ -4652,10 +4652,10 @@ class ThreadPayloadTest {
                 status = "loading",
                 sourceThreadId = "thread-channel-1",
                 streamChannelId = "thread-channel-1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                originParentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                originParentMessageId = "message-1",
                 originMessage = origin,
                 originPreview = "Parent message preview",
                 originStatus = "loaded"
@@ -4695,7 +4695,7 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "reply-stream-1",
                 streamChannelId = "reply-stream-1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 parentMessageId = "parent-message-1",
                 originParentMessageId = "parent-message-1",
                 showModeTabs = false,
@@ -4708,7 +4708,7 @@ class ThreadPayloadTest {
                 messages =
                     listOf(
                         RaftThreadMessageItem(
-                            id = "4e62d346-1968-4079-80dc-388dde56e2ef",
+                            id = "reply-1",
                             authorId = "agent-1",
                             authorName = "Agent",
                             body = "reply"
@@ -4731,8 +4731,8 @@ class ThreadPayloadTest {
                 status = "content",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "public",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 parentChannelId = null,
                 parentMessageId = null,
                 originParentMessageId = null,
@@ -4764,7 +4764,7 @@ class ThreadPayloadTest {
         assertEquals("channel", payload.channelKind)
         assertEquals("reply-stream-1", payload.sourceThreadId)
         assertEquals("reply-stream-1", payload.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.parentChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
         assertEquals("parent-message-1", payload.parentMessageId)
         assertEquals(null, payload.originParentMessageId)
         assertEquals(false, payload.showModeTabs)
@@ -4784,7 +4784,7 @@ class ThreadPayloadTest {
     fun refreshPatchPreservesLoadedOriginWhenNetworkSnapshotOnlyProvesSameParent() {
         val origin =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "user-1",
                 authorName = "Artin",
                 body = "Original task body"
@@ -4797,10 +4797,10 @@ class ThreadPayloadTest {
                 status = "content",
                 sourceThreadId = "thread-channel-1",
                 streamChannelId = "thread-channel-1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                originParentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                originParentMessageId = "message-1",
                 originMessage = origin,
                 originStatus = "loaded",
                 messages =
@@ -4832,14 +4832,14 @@ class ThreadPayloadTest {
                     ),
                 originMessage = null,
                 originPreview = null,
-                originParentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                originParentMessageId = "message-1",
                 originStatus = "missing"
             )
 
         val payload = refreshPatch.preserveStableTimelineFrom(previous)
 
         assertEquals("loaded", payload.originStatus)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals("Original task body", payload.originMessage?.body)
         assertEquals(listOf("reply-message-1", "reply-message-2"), payload.messages.map { it.id })
     }
@@ -5047,15 +5047,15 @@ class ThreadPayloadTest {
     fun appShellActivityThreadItemShowsMissingOriginFallbackWhenPreviewIsUnavailable() {
         val request =
             InboxItem(
-                key = "thread:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                key = "thread:message-1",
                 kind = InboxItemKind.Thread,
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 channelName = "thread-stream-name",
                 threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentMessageId = MessageId("message-1"),
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequestForTest()
 
@@ -5064,7 +5064,7 @@ class ThreadPayloadTest {
         )
 
         assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals("missing", payload.originStatus)
         assertEquals(null, payload.originMessage)
         assertEquals(null, payload.originPreview)
@@ -5074,14 +5074,14 @@ class ThreadPayloadTest {
     fun appShellActivityThreadItemKeepsStreamUnresolvedWhenThreadStreamIsMissing() {
         val request =
             InboxItem(
-                key = "thread:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                key = "thread:message-1",
                 kind = InboxItemKind.Thread,
                 channelId = ChannelId("thread-channel-compat"),
                 channelName = "general",
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequestForTest()
@@ -5089,16 +5089,16 @@ class ThreadPayloadTest {
 
         val payload = requireNotNull(buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId))
 
-        assertEquals(threadIdentity(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"), MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f")), conversation.threadId)
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
         assertEquals("", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.sourceThreadId)
         assertEquals(null, payload.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.parentChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.parentMessageId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals(null, conversation.thread?.streamChannelId)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
@@ -5111,7 +5111,7 @@ class ThreadPayloadTest {
             InboxItem(
                 key = "channel:general",
                 kind = InboxItemKind.Channel,
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 channelName = "general",
                 lastMessagePreview = "Latest channel message",
                 lastMessageId = MessageId("latest-channel-message"),
@@ -5121,7 +5121,7 @@ class ThreadPayloadTest {
 
         val payload = requireNotNull(buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId))
 
-        assertEquals(ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"), conversation.threadId)
+        assertEquals(ThreadId("channel-1"), conversation.threadId)
         assertEquals(ConversationKind.Channel, conversation.kind)
         assertEquals("", payload.title)
         assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
@@ -5138,8 +5138,8 @@ class ThreadPayloadTest {
         val payload =
             buildAppShellThreadPayloadFromSummary(
                 ConversationSummary(
-                    threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                    channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
                     kind = ConversationKind.Channel,
                     name = "general",
                     subtitle = null,
@@ -5159,8 +5159,8 @@ class ThreadPayloadTest {
         val launch =
             buildStandaloneConversationThreadLaunchPayloadFromSummary(
                 ConversationSummary(
-                    threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                    channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
                     channelType = "private",
                     kind = ConversationKind.Channel,
                     name = "release-room",
@@ -5182,8 +5182,8 @@ class ThreadPayloadTest {
         assertEquals("shared-shell-thread-channel-1", launch.instanceId)
         assertEquals(RaftThreadSurfaceKind.Channel, launch.surfaceKind)
         assertEquals(null, launch.threadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", launch.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", launch.streamChannelId)
+        assertEquals("channel-1", launch.sourceThreadId)
+        assertEquals("channel-1", launch.streamChannelId)
         assertEquals(null, launch.parentChannelId)
         assertEquals(null, launch.parentMessageId)
         assertEquals("message-focus", launch.focusedMessageId)
@@ -5202,7 +5202,7 @@ class ThreadPayloadTest {
         assertEquals("loading", initialPayload.status)
         assertEquals("", initialPayload.title)
         assertEquals(RaftThreadSurfaceKind.Channel, initialPayload.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", initialPayload.sourceThreadId)
+        assertEquals("channel-1", initialPayload.sourceThreadId)
         assertEquals("message-focus", initialPayload.focusedMessageId)
         assertEquals(launch.focusedMessageRequestNonce, initialPayload.focusedMessageRequestNonce)
         assertEquals(emptyList<RaftThreadMessageItem>(), initialPayload.messages)
@@ -5216,7 +5216,7 @@ class ThreadPayloadTest {
 
         val composer = initialPayload.resolveThreadComposer()
         assertEquals(RaftThreadSurfaceKind.Channel, composer.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", composer.streamChannelId)
+        assertEquals("channel-1", composer.streamChannelId)
         assertEquals(null, composer.mentionChannelId)
         assertEquals(null, composer.parentMessageId)
         assertEquals(true, composer.showAsTaskToggle)
@@ -5226,8 +5226,8 @@ class ThreadPayloadTest {
     fun standaloneFocusedChannelLaunchesUseFreshFocusIntentNonce() {
         val conversation =
             ConversationSummary(
-                threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
                 kind = ConversationKind.Channel,
                 name = "visual-testing"
             )
@@ -5261,15 +5261,15 @@ class ThreadPayloadTest {
     fun standaloneChannelLaunchIgnoresReplyThreadMetadataOnSummary() {
         val conversation =
             ConversationSummary(
-                threadId = ThreadId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
                 channelType = "channel",
                 kind = ConversationKind.Channel,
                 name = "general",
                 thread =
                     ThreadConversation(
-                        parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
-                        parentMessageId = MessageId("857c43c7-2439-4a80-869a-3fc22745ba27"),
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("parent-1"),
                         streamChannelId = ChannelId("reply-thread-1")
                     )
             )
@@ -5281,12 +5281,12 @@ class ThreadPayloadTest {
         val routeIdentity = conversation.resolveThreadRouteIdentity()
 
         assertEquals(RaftThreadSurfaceKind.Channel, routeIdentity.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", routeIdentity.timelineChannelId)
-        assertEquals("channel:6cb4981e-00c7-4076-81b0-0d46c208c132", routeIdentity.instanceKey)
+        assertEquals("channel-1", routeIdentity.timelineChannelId)
+        assertEquals("channel:channel-1", routeIdentity.instanceKey)
         assertEquals(RaftThreadSurfaceKind.Channel, launch.surfaceKind)
         assertEquals(null, launch.threadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", launch.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", launch.streamChannelId)
+        assertEquals("channel-1", launch.sourceThreadId)
+        assertEquals("channel-1", launch.streamChannelId)
         assertEquals(null, launch.parentChannelId)
         assertEquals(null, launch.parentMessageId)
         assertEquals(null, launch.originParentMessageId)
@@ -5298,8 +5298,8 @@ class ThreadPayloadTest {
             )
 
         assertEquals(RaftThreadSurfaceKind.Channel, initialPayload.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", initialPayload.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", initialPayload.streamChannelId)
+        assertEquals("channel-1", initialPayload.sourceThreadId)
+        assertEquals("channel-1", initialPayload.streamChannelId)
         assertEquals(null, initialPayload.parentChannelId)
         assertEquals(null, initialPayload.parentMessageId)
         assertEquals(null, initialPayload.originParentMessageId)
@@ -5307,13 +5307,13 @@ class ThreadPayloadTest {
         val appShellPayload = buildAppShellThreadPayloadFromSummary(conversation)
         val appShellComposer = appShellPayload.resolveThreadComposer()
         assertEquals(RaftThreadSurfaceKind.Channel, appShellPayload.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", appShellPayload.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", appShellPayload.streamChannelId)
+        assertEquals("channel-1", appShellPayload.sourceThreadId)
+        assertEquals("channel-1", appShellPayload.streamChannelId)
         assertEquals(null, appShellPayload.parentChannelId)
         assertEquals(null, appShellPayload.parentMessageId)
         assertEquals(null, appShellPayload.originParentMessageId)
         assertEquals(RaftThreadSurfaceKind.Channel, appShellComposer.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", appShellComposer.streamChannelId)
+        assertEquals("channel-1", appShellComposer.streamChannelId)
         assertEquals(null, appShellComposer.mentionChannelId)
         assertEquals(null, appShellComposer.parentMessageId)
     }
@@ -5330,7 +5330,7 @@ class ThreadPayloadTest {
                     name = "parent reply",
                     thread =
                         ThreadConversation(
-                            parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                            parentChannelId = ChannelId("channel-1"),
                             parentMessageId = MessageId("m1"),
                             streamChannelId = null
                         )
@@ -5343,7 +5343,7 @@ class ThreadPayloadTest {
         assertEquals(null, launch.threadId)
         assertEquals(null, launch.sourceThreadId)
         assertEquals(null, launch.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", launch.parentChannelId)
+        assertEquals("channel-1", launch.parentChannelId)
         assertEquals("m1", launch.parentMessageId)
         assertEquals("m1", launch.originParentMessageId)
 
@@ -5356,7 +5356,7 @@ class ThreadPayloadTest {
         assertEquals(RaftThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals(null, initialPayload.sourceThreadId)
         assertEquals(null, initialPayload.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", initialPayload.parentChannelId)
+        assertEquals("channel-1", initialPayload.parentChannelId)
         assertEquals("m1", initialPayload.parentMessageId)
         assertEquals(null, initialPayload.resolveThreadRouteIdentity().timelineKey)
     }
@@ -5367,8 +5367,8 @@ class ThreadPayloadTest {
             WireThreadLaunchPayload(
                 instanceId = "shared-shell-thread-channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 selectedTab = "chat",
             )
 
@@ -5382,8 +5382,8 @@ class ThreadPayloadTest {
         assertEquals(THREAD_PAGE, pageData.optString("pageName"))
         assertEquals("shared-shell-thread-channel-1", pageData.optString("instanceId"))
         assertEquals("shared-shell-thread-channel-1", parsed.instanceId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", parsed.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", parsed.streamChannelId)
+        assertEquals("channel-1", parsed.sourceThreadId)
+        assertEquals("channel-1", parsed.streamChannelId)
     }
 
     @Test
@@ -5392,8 +5392,8 @@ class ThreadPayloadTest {
             WireThreadLaunchPayload(
                 instanceId = "shared-shell-thread-channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 selectedTab = "chat"
             )
 
@@ -5415,15 +5415,15 @@ class ThreadPayloadTest {
     fun standaloneActivityThreadLaunchShowsOpenInConversationAction() {
         val request =
             InboxItem(
-                key = "thread:3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                key = "thread:message-1",
                 kind = InboxItemKind.Thread,
                 channelId = ChannelId("thread-channel-1"),
                 channelName = "thread-stream-name",
                 threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityMessageId = MessageId("reply-message-1"),
                 latestActivityPreview = "Latest reply"
@@ -5445,16 +5445,16 @@ class ThreadPayloadTest {
         assertEquals(RaftThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals("thread-channel-1", launch.threadId)
         assertEquals("thread-channel-1", launch.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", launch.parentChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", launch.parentMessageId)
+        assertEquals("channel-1", launch.parentChannelId)
+        assertEquals("message-1", launch.parentMessageId)
         assertEquals(RaftThreadSurfaceKind.Channel, launch.parentSurfaceKind)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", launch.originParentMessageId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", launch.originFallbackParentMessageId)
+        assertEquals("message-1", launch.originParentMessageId)
+        assertEquals("message-1", launch.originFallbackParentMessageId)
         assertEquals("Parent message preview", launch.originFallbackPreview)
         assertEquals("reply-message-1", launch.focusedMessageId)
         assertEquals(RaftThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals(RaftThreadSurfaceKind.Channel, initialPayload.parentSurfaceKind)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", initialPayload.originParentMessageId)
+        assertEquals("message-1", initialPayload.originParentMessageId)
         assertEquals("missing", initialPayload.originStatus)
         assertEquals("Parent message preview", initialPayload.originPreview)
         assertEquals("reply-message-1", initialPayload.focusedMessageId)
@@ -5528,7 +5528,7 @@ class ThreadPayloadTest {
                 messages =
                     listOf(
                         RaftThreadMessageItem(
-                            id = "4e62d346-1968-4079-80dc-388dde56e2ef",
+                            id = "reply-1",
                             authorId = "agent-1",
                             authorName = "Android Dev",
                             timestampLabel = "now",
@@ -5641,7 +5641,7 @@ class ThreadPayloadTest {
                         title = "Fix slow route",
                         status = TaskStatus.InProgress,
                         taskNumber = 42,
-                        messageId = MessageId("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"),
+                        messageId = MessageId("message-1"),
                         parentMessageId = MessageId("parent-message-1"),
                         channelId = ChannelId("parent-channel-1"),
                         threadId = ThreadId("thread-channel-1"),
@@ -5688,7 +5688,7 @@ class ThreadPayloadTest {
         assertEquals("parent-channel-1", launch.parentChannelId)
         assertEquals("parent-message-1", launch.parentMessageId)
         assertEquals("parent-message-1", launch.originParentMessageId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", launch.focusedMessageId)
+        assertEquals("message-1", launch.focusedMessageId)
         assertEquals(480, launch.localOffsetMinutes)
         assertEquals(20593, launch.todayEpochDay)
         assertEquals(true, launch.alignOwnMessagesRight)
@@ -5706,7 +5706,7 @@ class ThreadPayloadTest {
         assertEquals("thread-channel-1", initialPayload.sourceThreadId)
         assertEquals("parent-channel-1", initialPayload.parentChannelId)
         assertEquals("parent-message-1", initialPayload.parentMessageId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", initialPayload.focusedMessageId)
+        assertEquals("message-1", initialPayload.focusedMessageId)
         assertEquals(emptyList<RaftThreadMessageItem>(), initialPayload.messages)
         assertEquals(emptyList<RaftThreadTaskItem>(), initialPayload.tasks)
         assertEquals(emptyList(), initialPayload.settingsActions)
@@ -5719,7 +5719,7 @@ class ThreadPayloadTest {
     fun buildsReplyThreadLoadingPayloadWithoutFetchingParentChannel() {
         val parent =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "u1",
                 authorName = "Artin",
                 body = "Parent message"
@@ -5728,12 +5728,12 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "content",
                 messages = listOf(parent)
             ).replyThreadLoadingPayload(
                 parentMessageId = parent.id,
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 threadChannelId = parent.threadChannelId
             )
 
@@ -5742,14 +5742,14 @@ class ThreadPayloadTest {
         assertEquals("#general", payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.originParentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.parentChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", payload.parentMessageId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
         val composer = payload.resolveThreadComposer()
         assertEquals(RaftThreadSurfaceKind.ReplyThread, composer.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", composer.mentionChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", composer.parentMessageId)
+        assertEquals("channel-1", composer.mentionChannelId)
+        assertEquals("message-1", composer.parentMessageId)
         assertEquals("Reply in thread", composer.placeholder)
         assertEquals("none", payload.originStatus)
         assertEquals(false, payload.showModeTabs)
@@ -5791,7 +5791,7 @@ class ThreadPayloadTest {
     fun replyThreadLoadingPayloadUsesKnownThreadChannelAsRouteIdentityOnly() {
         val parent =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "u1",
                 authorName = "Artin",
                 body = "Parent message",
@@ -5801,12 +5801,12 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "content",
                 messages = listOf(parent)
             ).replyThreadLoadingPayload(
                 parentMessageId = parent.id,
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 threadChannelId = parent.threadChannelId
             )
 
@@ -5820,9 +5820,9 @@ class ThreadPayloadTest {
         assertEquals("thread-message-1", launch.threadId)
         assertEquals("thread-message-1", launch.sourceThreadId)
         assertEquals("thread-message-1", launch.streamChannelId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", launch.parentChannelId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", launch.parentMessageId)
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", launch.originParentMessageId)
+        assertEquals("channel-1", launch.parentChannelId)
+        assertEquals("message-1", launch.parentMessageId)
+        assertEquals("message-1", launch.originParentMessageId)
     }
 
     @Test
@@ -5869,7 +5869,7 @@ class ThreadPayloadTest {
     fun replyThreadLoadingPayloadOmitsUnreadableChannelSubtitle() {
         val parent =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "u1",
                 authorName = "Artin",
                 body = "Parent message"
@@ -5877,12 +5877,12 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 title = "76c3c868",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "content",
                 messages = listOf(parent)
             ).replyThreadLoadingPayload(
                 parentMessageId = parent.id,
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 threadChannelId = parent.threadChannelId
             )
 
@@ -5900,7 +5900,7 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "reply-stream-1",
                 streamChannelId = "reply-stream-1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 parentMessageId = "parent-message-1",
                 originParentMessageId = "parent-message-1",
                 showOpenInChannelAction = true
@@ -5909,8 +5909,8 @@ class ThreadPayloadTest {
         assertEquals("shared-shell-thread-channel-1", payload.instanceId)
         assertEquals("loading", payload.status)
         assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.sourceThreadId)
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", payload.streamChannelId)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
         assertEquals(null, payload.originParentMessageId)
@@ -5968,7 +5968,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading"
             )
         val session =
@@ -5988,7 +5988,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m1",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -6054,7 +6054,7 @@ class ThreadPayloadTest {
             buildSharedThreadPayloadFromMessagesPage(
                 basePayload =
                     RaftThreadScreenPayload(
-                        sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                        sourceThreadId = "channel-1",
                         status = "loading",
                     ),
                 session =
@@ -6069,7 +6069,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "secret-invalid-sender-id",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "future-member",
                                     senderId = "secret-sender-id",
                                     senderName = "Secret Sender",
@@ -6078,7 +6078,7 @@ class ThreadPayloadTest {
                                 ),
                                 WireMessage(
                                     id = "invalid-system-sender",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "system",
                                     senderId = "system",
                                     senderName = "System",
@@ -6087,7 +6087,7 @@ class ThreadPayloadTest {
                                 ),
                                 WireMessage(
                                     id = "secret-invalid-type-id",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -6096,7 +6096,7 @@ class ThreadPayloadTest {
                                 ),
                                 WireMessage(
                                     id = "task-invalid-status",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -6107,7 +6107,7 @@ class ThreadPayloadTest {
                                 ),
                                 WireMessage(
                                     id = "task-invalid-assignee",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -6121,7 +6121,7 @@ class ThreadPayloadTest {
                                 ),
                                 WireMessage(
                                     id = "valid-message",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "agent",
                                     senderId = "agent-1",
                                     senderName = "Agent One",
@@ -6175,7 +6175,7 @@ class ThreadPayloadTest {
                 body = "private body",
             ).toMessage(
                 threadId = ThreadId("thread-1"),
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 diagnostics = logs::add,
             )
 
@@ -6211,7 +6211,7 @@ class ThreadPayloadTest {
                 Message(
                     id = MessageId("message-$index"),
                     threadId = ThreadId("thread-1"),
-                    channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                    channelId = ChannelId("channel-1"),
                     author = author,
                     timestampLabel = "now",
                     body = "Task $index",
@@ -6222,7 +6222,7 @@ class ThreadPayloadTest {
             assertEquals(status.toWireValue(), messageItem.taskStatus, status.name)
             assertEquals(
                 status,
-                messageItem.toMessage(ThreadId("thread-1"), ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"))?.task?.status,
+                messageItem.toMessage(ThreadId("thread-1"), ChannelId("channel-1"))?.task?.status,
                 status.name,
             )
 
@@ -6233,7 +6233,7 @@ class ThreadPayloadTest {
             assertEquals(status.toWireValue(), linkedItem.taskStatus, status.name)
             assertEquals(
                 status,
-                linkedItem.toMessage(ThreadId("thread-1"), ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"))?.task?.status,
+                linkedItem.toMessage(ThreadId("thread-1"), ChannelId("channel-1"))?.task?.status,
                 status.name,
             )
         }
@@ -6267,7 +6267,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "parent",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -6284,7 +6284,7 @@ class ThreadPayloadTest {
                                     content = "missing row identity"
                                 ),
                                 WireMessage(
-                                    id = "4e62d346-1968-4079-80dc-388dde56e2ef",
+                                    id = "reply-1",
                                     channelId = "thread-m1",
                                     senderType = "user",
                                     senderId = "u1",
@@ -6308,7 +6308,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading"
             )
         val session =
@@ -6328,7 +6328,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m-action",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "agent",
                                     senderId = "agent-cindy",
                                     senderName = "Cindy",
@@ -6370,7 +6370,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading"
             )
         val session =
@@ -6389,7 +6389,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m-channel-create",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "agent",
                                     senderId = "agent-cindy",
                                     senderName = "Cindy",
@@ -6413,7 +6413,7 @@ class ThreadPayloadTest {
                                 ),
                                 WireMessage(
                                     id = "m-channel-members",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "agent",
                                     senderId = "agent-cindy",
                                     senderName = "Cindy",
@@ -6461,7 +6461,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading"
             )
         val session =
@@ -6481,7 +6481,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m-login-card",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "agent",
                                     senderId = "agent-cindy",
                                     senderName = "Cindy",
@@ -6532,7 +6532,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading",
                 localOffsetMinutes = 480,
                 todayEpochDay = 20593
@@ -6554,7 +6554,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m1",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -6605,7 +6605,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "design",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading"
             )
         val session =
@@ -6625,7 +6625,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m1",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "agent",
                                     senderId = "agent-android",
                                     senderName = "Android Developer",
@@ -6652,7 +6652,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "content",
                 messages =
                     listOf(
@@ -6681,7 +6681,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m2",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -7031,7 +7031,7 @@ class ThreadPayloadTest {
     fun threadTaskStatusChipClickIdentityRebindsByMessageTaskAndStatus() {
         val todoMessage =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "agent-1",
                 authorName = "Agent",
                 body = "task one",
@@ -7082,7 +7082,7 @@ class ThreadPayloadTest {
     fun strippedTimelineActionMessageCanRecoverReplyThreadRouteMetadata() {
         val message =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "user_artin",
                 authorName = "Artin",
                 body = "parent",
@@ -7094,13 +7094,13 @@ class ThreadPayloadTest {
             )
         val payload =
             RaftThreadScreenPayload(
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
-                streamChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 messages = listOf(message)
             )
         val timeline = payload.toThreadTimelineSlice()
-        val strippedActionMessage = timeline.threadActionMessage("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f")
+        val strippedActionMessage = timeline.threadActionMessage("message-1")
 
         val replyMetadata = payload.toThreadReplyMetadataMap().threadReplyMetadataFor(strippedActionMessage!!)
         val loadingPayload =
@@ -7907,7 +7907,7 @@ class ThreadPayloadTest {
             )
         store.publishSnapshot(
             serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")),
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
             snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
         )
         store.publishSnapshot(
@@ -7922,7 +7922,7 @@ class ThreadPayloadTest {
                                 title = "new task",
                                 status = TaskStatus.InReview,
                                 taskNumber = 288,
-                                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                                channelId = ChannelId("channel-1"),
                                 messageId = MessageId("message-new"),
                                 updatedAtLabel = ""
                             )
@@ -7931,7 +7931,7 @@ class ThreadPayloadTest {
                 )
         )
         val payload = RaftThreadScreenPayload(messages = listOf(message))
-        val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")))
+        val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
 
         val projected =
             payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
@@ -7952,7 +7952,7 @@ class ThreadPayloadTest {
                 title = "convert me",
                 status = TaskStatus.Todo,
                 taskNumber = 291,
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 messageId = MessageId("message-convert"),
                 updatedAtLabel = ""
             )
@@ -7970,7 +7970,7 @@ class ThreadPayloadTest {
                             return HomeNetworkResponse(
                                 code = 200,
                                 bodyText =
-                                    """{"tasks":[{"id":"message-convert","channelId":"6cb4981e-00c7-4076-81b0-0d46c208c132","taskNumber":291,"title":"convert me","status":"todo","createdByType":"user","createdById":"user-1"}]}"""
+                                    """{"tasks":[{"id":"message-convert","channelId":"channel-1","taskNumber":291,"title":"convert me","status":"todo","createdByType":"user","createdById":"user-1"}]}"""
                             )
                         }
 
@@ -8030,7 +8030,7 @@ class ThreadPayloadTest {
                             HomeNetworkResponse(
                                 code = 200,
                                 bodyText =
-                                    """{"task":{"id":"message-convert","channelId":"6cb4981e-00c7-4076-81b0-0d46c208c132","taskNumber":291,"title":"convert me","status":"todo","createdByType":"user","createdById":"user-1"}}"""
+                                    """{"task":{"id":"message-convert","channelId":"channel-1","taskNumber":291,"title":"convert me","status":"todo","createdByType":"user","createdById":"user-1"}}"""
                             ).also { assertEquals(ServerId("server-1"), serverId) }
 
                         override suspend fun updateTaskStatus(
@@ -8290,7 +8290,7 @@ class ThreadPayloadTest {
             )
         store.publishSnapshot(
             serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")),
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
             snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
         )
         store.upsertTask(
@@ -8301,13 +8301,13 @@ class ThreadPayloadTest {
                     title = "realtime task",
                     status = TaskStatus.InProgress,
                     taskNumber = 289,
-                    channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                    channelId = ChannelId("channel-1"),
                     messageId = MessageId("message-realtime"),
                     updatedAtLabel = ""
                 )
         )
         val payload = RaftThreadScreenPayload(messages = listOf(message))
-        val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")))
+        val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
 
         val projected =
             payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
@@ -8344,12 +8344,12 @@ class ThreadPayloadTest {
             )
         store.publishSnapshot(
             serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")),
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
             snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
         )
         store.upsertTask("server-1", unscopedTask)
         val staleChannelSlice =
-            store.channelProjectionFlow("server-1", "6cb4981e-00c7-4076-81b0-0d46c208c132", "general").first()
+            store.channelProjectionFlow("server-1", "channel-1", "general").first()
         val serverSlice = store.projection("server-1", SharedTasksScope.Server)
 
         val staleProjected =
@@ -8367,10 +8367,10 @@ class ThreadPayloadTest {
 
         store.publishSnapshot(
             serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")),
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
             snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
         )
-        val freshChannelSlice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")))
+        val freshChannelSlice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
         val freshProjected =
             payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
                 threadLinkedTasksProjection(
@@ -8419,12 +8419,12 @@ class ThreadPayloadTest {
 
     @Test
     fun threadTasksJoinStartsOnlyAfterContentGate() {
-        val taskChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")
+        val taskChannelId = ChannelId("channel-1")
         val loadingPayload =
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading",
                 showTaskStatusActions = true
             )
@@ -8448,7 +8448,7 @@ class ThreadPayloadTest {
                 refreshStarted = true
             )
         )
-        assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132", taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
         assertTrue(
             shouldStartThreadTasksJoin(
@@ -8481,7 +8481,7 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "wrong-thread",
                 streamChannelId = "wrong-thread",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
                 status = "loading"
@@ -8514,7 +8514,7 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
                 status = "loading"
@@ -8549,7 +8549,7 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "wrong-thread",
                 streamChannelId = "wrong-thread",
-                parentChannelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
                 status = "loading",
@@ -8565,8 +8565,8 @@ class ThreadPayloadTest {
         val resolvedTaskChannelId = resolvedPayload.resolvedTaskLookupChannelId()?.let(::ChannelId)
 
         assertEquals("thread-m1", resolvedPayload.resolvedAuxiliaryThreadId())
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", resolvedPayload.resolvedTaskLookupChannelId())
-        assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")))
+        assertEquals("channel-1", resolvedPayload.resolvedTaskLookupChannelId())
+        assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("channel-1")))
         assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = resolvedTaskChannelId))
         assertTrue(
             shouldStartThreadTasksJoin(
@@ -8585,7 +8585,7 @@ class ThreadPayloadTest {
             RaftThreadScreenPayload(
                 instanceId = "thread-channel-1",
                 title = "general",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 status = "loading"
             )
         val session =
@@ -8605,7 +8605,7 @@ class ThreadPayloadTest {
                             listOf(
                                 WireMessage(
                                     id = "m1",
-                                    channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                                    channelId = "channel-1",
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
@@ -8707,7 +8707,7 @@ class ThreadPayloadTest {
     fun threadAuthorGestureIdentityChangesWhenVirtualizedRowAuthorChanges() {
         val authorA =
             RaftThreadMessageItem(
-                id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                id = "message-1",
                 authorId = "agent-a",
                 authorName = "Agent A",
                 authorKind = "agent"
@@ -8715,7 +8715,7 @@ class ThreadPayloadTest {
         val authorB = authorA.copy(authorId = "agent-b", authorName = "Agent B")
         val nextMessageFromA = authorA.copy(id = "message-2")
 
-        assertEquals("3d6b824f-d8c1-420e-8a04-7d21fee6fb1f|agent-a|agent", authorA.threadAuthorGestureIdentity())
+        assertEquals("message-1|agent-a|agent", authorA.threadAuthorGestureIdentity())
         assertNotEquals(authorA.threadAuthorGestureIdentity(), authorB.threadAuthorGestureIdentity())
         assertNotEquals(authorA.threadAuthorGestureIdentity(), nextMessageFromA.threadAuthorGestureIdentity())
     }
@@ -8725,7 +8725,7 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 instanceId = "thread-1",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
                 nowEpochMillis = 1782200000000,
@@ -8735,13 +8735,13 @@ class ThreadPayloadTest {
         val pageData =
             payload.toThreadMembersPageData(
                 serverId = ServerId("server-1"),
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")
+                channelId = ChannelId("channel-1")
             )
 
         assertEquals(THREAD_MEMBERS_PAGE, pageData.optString("pageName"))
         assertEquals("thread-members-thread-1", pageData.optString("instanceId"))
         assertEquals("server-1", pageData.optString("serverId"))
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", pageData.optString("channelId"))
+        assertEquals("channel-1", pageData.optString("channelId"))
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("memberCandidates"))
         assertEquals("", pageData.optString("title"))
@@ -8751,7 +8751,7 @@ class ThreadPayloadTest {
             ThreadMembersPageRoute(
                 instanceId = "thread-members-thread-1",
                 serverId = ServerId("server-1"),
-                channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132"),
+                channelId = ChannelId("channel-1"),
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
                 nowEpochMillis = 1782200000000,
@@ -8764,10 +8764,10 @@ class ThreadPayloadTest {
     @Test
     fun threadMembersTargetServerSurvivesDifferentInheritedShellOwnerServer() {
         val pageData =
-            RaftThreadScreenPayload(instanceId = "thread-1", sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132")
+            RaftThreadScreenPayload(instanceId = "thread-1", sourceThreadId = "channel-1")
                 .toThreadMembersPageData(
                     serverId = ServerId("server-target"),
-                    channelId = ChannelId("6cb4981e-00c7-4076-81b0-0d46c208c132")
+                    channelId = ChannelId("channel-1")
                 )
                 .withRaftShellStoreScope(
                     RaftShellStoreScope.create("shell-a", "server-owner")
@@ -8809,7 +8809,7 @@ class ThreadPayloadTest {
         val payload =
             RaftThreadScreenPayload(
                 instanceId = "thread-1",
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
@@ -8821,7 +8821,7 @@ class ThreadPayloadTest {
 
         assertEquals(HOME_SEARCH_PAGE, pageData.optString("pageName"))
         assertEquals("search", pageData.optString("destination"))
-        assertEquals("6cb4981e-00c7-4076-81b0-0d46c208c132", pageData.optString(HOME_SEARCH_SELECTED_CHANNEL_ID))
+        assertEquals("channel-1", pageData.optString(HOME_SEARCH_SELECTED_CHANNEL_ID))
         assertEquals("", pageData.optString(HOME_SEARCH_INITIAL_OPEN_FILTER_ID))
         assertEquals(true, pageData.optBoolean(HOME_SEARCH_FOCUS_INPUT, false))
         assertEquals("", pageData.optString("title"))
@@ -8862,7 +8862,7 @@ class ThreadPayloadTest {
         assertEquals(
             ThreadHeaderSearchAction.ChannelSearch,
             RaftThreadScreenPayload(
-                sourceThreadId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                sourceThreadId = "channel-1",
                 surfaceKind = RaftThreadSurfaceKind.Channel
             ).threadHeaderSearchAction()
         )
@@ -9081,7 +9081,7 @@ class ThreadPayloadTest {
                 showMembersAction = true,
                 showSettingsAction = true,
                 showOpenInChannelAction = true,
-                originParentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f"
+                originParentMessageId = "message-1"
             ).withSharedShellEventCapabilities()
 
         assertEquals(false, payload.showSettingsAction)
@@ -9259,7 +9259,7 @@ class ThreadPayloadTest {
     fun threadFollowActionRequiresPersistedMessage() {
         val replyMetadata =
             ThreadReplyMetadata(
-                parentMessageId = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f",
+                parentMessageId = "message-1",
                 threadChannelId = "thread-1",
                 replyCount = 2,
                 unreadReplyCount = 0,
@@ -9268,13 +9268,13 @@ class ThreadPayloadTest {
             )
         val pendingContext =
             RaftThreadPendingSendContext(
-                channelId = "6cb4981e-00c7-4076-81b0-0d46c208c132",
+                channelId = "channel-1",
                 body = "Pending message"
             )
 
         assertTrue(
             shouldShowThreadFollowAction(
-                message = RaftThreadMessageItem(id = "3d6b824f-d8c1-420e-8a04-7d21fee6fb1f", authorId = "author-1", authorName = "Author"),
+                message = RaftThreadMessageItem(id = "message-1", authorId = "author-1", authorName = "Author"),
                 replyMetadata = replyMetadata
             )
         )
@@ -9449,6 +9449,6 @@ class ThreadPayloadTest {
  * the task row has its own uuid; the converted message is `messageId` / `hostMessageId`.
  */
 private val REAL_LEGACY_CONVERTED_TASK_JSON =
-    """{"id":"7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10","messageId":"message-convert","hostMessageId":"message-convert","sourceMessageId":"message-convert","conversationReplyCount":0,"conversationChannelId":null,"conversationAnchored":false,"channelId":"6cb4981e-00c7-4076-81b0-0d46c208c132","channelName":"general","channelType":"channel","taskNumber":2,"title":"convert me","description":null,"status":"todo","createdByType":"user","createdById":"user-1","createdByName":"Artin","createdByHandle":"artin","createdByMembershipStatus":"active","claimedByType":null,"claimedById":null,"claimedByName":null,"claimedAt":null,"completedAt":null,"requiresResourceReceipt":false,"resourceReceipt":null,"resourceReceiptRecordedAt":null,"resourceTeardownOwnerAgentId":null,"resourceExpiryFollowupId":null,"createdAt":"2026-10-28T08:00:00.000Z","updatedAt":"2026-10-28T08:00:00.000Z","revision":1,"isLegacy":false,"readOnlyReason":null}"""
+    """{"id":"7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10","messageId":"message-convert","hostMessageId":"message-convert","sourceMessageId":"message-convert","conversationReplyCount":0,"conversationChannelId":null,"conversationAnchored":false,"channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":2,"title":"convert me","description":null,"status":"todo","createdByType":"user","createdById":"user-1","createdByName":"Artin","createdByHandle":"artin","createdByMembershipStatus":"active","claimedByType":null,"claimedById":null,"claimedByName":null,"claimedAt":null,"completedAt":null,"requiresResourceReceipt":false,"resourceReceipt":null,"resourceReceiptRecordedAt":null,"resourceTeardownOwnerAgentId":null,"resourceExpiryFollowupId":null,"createdAt":"2026-10-28T08:00:00.000Z","updatedAt":"2026-10-28T08:00:00.000Z","revision":1,"isLegacy":false,"readOnlyReason":null}"""
 
 private val REAL_LEGACY_CONVERT_RESPONSE = """{"task":$REAL_LEGACY_CONVERTED_TASK_JSON}"""
