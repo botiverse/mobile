@@ -154,18 +154,18 @@ private fun raftLanguagePluralForm(resourceKey: String, args: List<Any>): String
     return if (forms.isEmpty()) null else raftPluralFormFor(forms, language, resourceKey, args)
 }
 
-private val raftPluralFormsByLanguage = HashMap<String, RaftPluralForms>()
+/**
+ * `files/plurals/ru.json`, read once. A thread-safe lazy, not a shared map: strings resolve on
+ * background threads too.
+ */
+private val raftRussianPluralForms: RaftPluralForms by lazy {
+    runCatching { parseRaftPluralForms(runBlocking { Res.readBytes("files/plurals/ru.json") }.decodeToString()) }
+        .getOrDefault(emptyMap())
+}
 
-/** The language's `files/plurals/<language>.json`, read once; empty when the language has none. */
+/** The language's plural forms; empty when the language has none (only ru has a file). */
 private fun raftPluralFormsFor(language: String): RaftPluralForms =
-    raftPluralFormsByLanguage.getOrPut(language) {
-        if (language != "ru") {
-            emptyMap()
-        } else {
-            runCatching { parseRaftPluralForms(runBlocking { Res.readBytes("files/plurals/$language.json") }.decodeToString()) }
-                .getOrDefault(emptyMap())
-        }
-    }
+    if (language == "ru") raftRussianPluralForms else emptyMap()
 
 /** Language and region of the catalog [localeType] selects ("" = no region). */
 internal data class RaftResourceLocale(val language: String, val region: String) {
