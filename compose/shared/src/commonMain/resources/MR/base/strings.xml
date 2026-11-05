@@ -1480,6 +1480,7 @@
     <string name="agent_create_error_name_characters">Agent name must start with a letter and can only contain letters, numbers, hyphens, and underscores</string>
     <string name="agent_create_label_fast_mode">Fast mode</string>
     <string name="agent_create_hint_command">Spawn-time command. Raft passes stream-json args; the executable must read stream-json from stdin and emit Claude-compatible JSON on stdout. Enter only a path or command name; flags are not shell-parsed.</string>
+    <string name="agent_create_label_more">More</string>
     <string name="agent_create_label_advanced">Advanced</string>
     <string name="agent_create_action_add_env_var">+ Add env var</string>
     <string name="agent_create_reasoning_low">Low</string>

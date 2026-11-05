@@ -1478,7 +1478,7 @@ internal fun SharedCreateAgentDialog(
                             maxLines = 3,
                             // `<Textarea rows={3}>`: three 24dp lines, py-2.5 and the 1dp frame.
                             fieldMinHeight = 96.dp,
-                            verticalPadding = 11.dp
+                            verticalPadding = 10.dp
                         )
                     }
                 }
@@ -1717,7 +1717,8 @@ internal fun SharedCreateAgentDialog(
                             command = command,
                             onCommandChange = { command = it },
                             advancedOpen = advancedOpen,
-                            onAdvancedOpenChange = { advancedOpen = it }
+                            onAdvancedOpenChange = { advancedOpen = it },
+                            moreDisclosure = true
                             )
                         }
                     }
@@ -1856,10 +1857,9 @@ internal fun CreateAgentStableField(
                 required = required,
                 optional = optional,
                 compact = false,
-                modifier = Modifier.weight(1f, fill = false)
+                modifier = Modifier.weight(1f)
             )
             if (labelAccessory != null) {
-                Spacer(Modifier.weight(1f))
                 Box(
                     modifier =
                         Modifier.layout { measurable, constraints ->
@@ -1898,7 +1898,9 @@ internal fun CreateAgentStableField(
                     text = counter,
                     style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
                     color = RaftColor.ForegroundHint,
-                    maxLines = 1
+                    maxLines = 1,
+                    // Space Mono's ascent/descent would grow the reserved 16dp row.
+                    modifier = Modifier.height(16.dp)
                 )
             }
         }
@@ -2273,7 +2275,10 @@ internal fun AdvancedRuntimeSection(
     command: String,
     onCommandChange: (String) -> Unit,
     advancedOpen: Boolean,
-    onAdvancedOpenChange: (Boolean) -> Unit
+    onAdvancedOpenChange: (Boolean) -> Unit,
+    // Create dialog: Reasoning / Mode live under the "More" disclosure with the command and
+    // env vars (web `technicalFieldsMode="advanced"`); Agent Details keeps them inline.
+    moreDisclosure: Boolean = false
 ) {
     val supportedRuntimes = RUNTIMES.filter { it.supported }
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
@@ -2304,6 +2309,86 @@ internal fun AdvancedRuntimeSection(
     val providerKeyInvalid = providerUrlRequired && providerApiKey.text.isBlank()
     val focusManager = LocalFocusManager.current
 
+    val technicalFields: @Composable () -> Unit = {
+            if (supportsRuntimeReasoningEffort(runtime)) {
+                val reasoningModel =
+                    if (customModelMode) customModelName.trim() else model
+                val reasoningOptions =
+                    createAgentReasoningDropdownItems(
+                        defaultLabel = stringResource(MR.strings.agent_create_action_default),
+                        runtime = runtime,
+                        model = reasoningModel,
+                        runtimeModelsOverride = runtimeModelsOverride
+                    )
+                val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
+                CreateAgentStableField(label = stringResource(MR.strings.agent_create_label_reasoning)) {
+                RaftBrutalSelectField(
+                    options = reasoningOptions.toBrutalSelectOptions(),
+                    selectedId = reasoningSelectedId,
+                    selectedLabel =
+                        reasoningOptions.firstOrNull { it.id == reasoningSelectedId }?.label
+                            ?: stringResource(MR.strings.agent_create_action_default),
+                    placeholder = stringResource(MR.strings.agent_create_action_default),
+                    enabled = enabled,
+                    rowHeight = 36.dp,
+                    triggerHeight = 44.dp,
+                    fieldChrome = true,
+                    onSelect = { option ->
+                        focusManager.clearFocus(force = true)
+                        onReasoningEffortChange(
+                            if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
+                        )
+                    }
+                )
+                }
+            }
+            // kimi-sdk (task #275): separate gate — live catalog + resolved form ref only,
+            // never the static REASONING_EFFORT_RUNTIMES/BASE fallbacks above.
+            if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningCapability != null) {
+                RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
+                val kimiReasoningOptions =
+                    createAgentKimiSdkReasoningDropdownItems(
+                        capability = kimiSdkReasoningCapability,
+                        defaultLabel = stringResource(MR.strings.agent_create_action_default)
+                    )
+                val kimiReasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
+                RaftBrutalSelectField(
+                    options = kimiReasoningOptions.toBrutalSelectOptions(),
+                    selectedId = kimiReasoningSelectedId,
+                    selectedLabel =
+                        kimiReasoningOptions.firstOrNull { it.id == kimiReasoningSelectedId }?.label
+                            ?: stringResource(MR.strings.agent_create_action_default),
+                    placeholder = stringResource(MR.strings.agent_create_action_default),
+                    enabled = enabled,
+                    rowHeight = 36.dp,
+                    onSelect = { option ->
+                        focusManager.clearFocus(force = true)
+                        onReasoningEffortChange(
+                            if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
+                        )
+                    }
+                )
+            }
+            if (supportsRuntimeFastMode(runtime)) {
+                RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_mode))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RaftAppCheckbox(
+                        checked = fastMode,
+                        onCheckedChange = { onFastModeChange(it) },
+                        enabled = enabled
+                    )
+                    Text(
+                        text = stringResource(MR.strings.agent_create_label_fast_mode),
+                        style = RaftType.Caption,
+                        color = RaftColor.TextBlack
+                    )
+                }
+            }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         CreateAgentStableField(
             label = stringResource(MR.strings.agent_create_label_runtime),
@@ -2506,97 +2591,32 @@ internal fun AdvancedRuntimeSection(
                 }
             }
         }
-        if (supportsRuntimeReasoningEffort(runtime)) {
-            val reasoningModel =
-                if (customModelMode) customModelName.trim() else model
-            val reasoningOptions =
-                createAgentReasoningDropdownItems(
-                    defaultLabel = stringResource(MR.strings.agent_create_action_default),
-                    runtime = runtime,
-                    model = reasoningModel,
-                    runtimeModelsOverride = runtimeModelsOverride
-                )
-            val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
-            CreateAgentStableField(label = stringResource(MR.strings.agent_create_label_reasoning)) {
-            RaftBrutalSelectField(
-                options = reasoningOptions.toBrutalSelectOptions(),
-                selectedId = reasoningSelectedId,
-                selectedLabel =
-                    reasoningOptions.firstOrNull { it.id == reasoningSelectedId }?.label
-                        ?: stringResource(MR.strings.agent_create_action_default),
-                placeholder = stringResource(MR.strings.agent_create_action_default),
-                enabled = enabled,
-                rowHeight = 36.dp,
-                triggerHeight = 44.dp,
-                fieldChrome = true,
-                onSelect = { option ->
-                    focusManager.clearFocus(force = true)
-                    onReasoningEffortChange(
-                        if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
-                    )
-                }
-            )
-            }
-        }
-        // kimi-sdk (task #275): separate gate — live catalog + resolved form ref only,
-        // never the static REASONING_EFFORT_RUNTIMES/BASE fallbacks above.
-        if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningCapability != null) {
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
-            val kimiReasoningOptions =
-                createAgentKimiSdkReasoningDropdownItems(
-                    capability = kimiSdkReasoningCapability,
-                    defaultLabel = stringResource(MR.strings.agent_create_action_default)
-                )
-            val kimiReasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
-            RaftBrutalSelectField(
-                options = kimiReasoningOptions.toBrutalSelectOptions(),
-                selectedId = kimiReasoningSelectedId,
-                selectedLabel =
-                    kimiReasoningOptions.firstOrNull { it.id == kimiReasoningSelectedId }?.label
-                        ?: stringResource(MR.strings.agent_create_action_default),
-                placeholder = stringResource(MR.strings.agent_create_action_default),
-                enabled = enabled,
-                rowHeight = 36.dp,
-                onSelect = { option ->
-                    focusManager.clearFocus(force = true)
-                    onReasoningEffortChange(
-                        if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
-                    )
-                }
-            )
-        }
-        if (supportsRuntimeFastMode(runtime)) {
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_mode))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RaftAppCheckbox(
-                    checked = fastMode,
-                    onCheckedChange = { onFastModeChange(it) },
-                    enabled = enabled
-                )
-                Text(
-                    text = stringResource(MR.strings.agent_create_label_fast_mode),
-                    style = RaftType.Caption,
-                    color = RaftColor.TextBlack
-                )
-            }
-        }
+        if (!moreDisclosure) technicalFields()
         AdvancedToggleButton(
             open = advancedOpen,
+            label = if (moreDisclosure) stringResource(MR.strings.agent_create_label_more) else null,
             onToggle = {
                 focusManager.clearFocus(force = true)
                 onAdvancedOpenChange(!advancedOpen)
             }
         )
         if (advancedOpen) {
+            if (moreDisclosure) {
+                // Web RuntimeConfigFields `technicalFieldsMode="advanced"`: one "More" level
+                // (`mt-3 stack-y-3`) holding the tuning fields, the command and env vars.
+                Spacer(Modifier.height(8.dp))
+                technicalFields()
+            }
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
-                    .padding(RaftAppSpacing.Sm),
+                modifier =
+                    if (moreDisclosure) {
+                        Modifier.fillMaxWidth()
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
+                            .padding(RaftAppSpacing.Sm)
+                    },
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 EnvVarsEditor(
@@ -2626,7 +2646,27 @@ internal fun AdvancedRuntimeSection(
 }
 
 @Composable
-internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
+internal fun AdvancedToggleButton(open: Boolean, label: String? = null, onToggle: () -> Unit) {
+    if (label != null) {
+        // Web RuntimeDisclosureToggle: a section-title button, 13/18 bold muted, 14dp chevron, gap-2.
+        Row(
+            modifier = Modifier.clickable { onToggle() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RaftLucideIcon(
+                if (open) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
+                modifier = Modifier.size(14.dp),
+                color = raftArgbHex(RaftColor.TextMuted)
+            )
+            Text(
+                text = label,
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp).withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.TextMuted
+            )
+        }
+        return
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
