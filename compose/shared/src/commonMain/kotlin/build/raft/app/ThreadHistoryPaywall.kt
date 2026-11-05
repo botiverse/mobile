@@ -178,8 +178,14 @@ internal fun rememberThreadHiddenHistory(channelId: String?): HiddenHistory? {
     return channelId?.let { byChannel[it] }
 }
 
-/** The paywall action: on the thread page it opens Plan & Billing ([openSettingsBillingPage]). */
+/**
+ * The paywall action: on the thread page it opens the upgrade dialog for the 30-day window
+ * ([openRaftUpgradeDialog] `history_30d`), or the view-only Plan & Billing page on iOS.
+ */
 internal const val ThreadOpenPlanBillingEvent = "openPlanBilling"
+
+/** A limit banner's Upgrade on the thread page: the upgrade dialog for the gate in `itemId` ([RaftUpgradeGate.wire]). */
+internal const val ThreadOpenUpgradeEvent = "openUpgrade"
 
 /**
  * The history paywall (see the file comment): [hidden]'s glimpse fading toward the top, the card,

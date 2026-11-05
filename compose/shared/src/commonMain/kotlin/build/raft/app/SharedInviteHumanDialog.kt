@@ -214,6 +214,12 @@ internal fun SharedServerInviteHumanDialogHost(
     copyToPasteboard: (String) -> Unit,
     onDismiss: () -> Unit,
     nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /**
+     * A send refused at the seat limit (web `isSeatLimitError`): the error's "View billing", which
+     * opens the upgrade dialog (`seat_limit_invite`: Free → upgrade, Pro → add seats). Null (iOS):
+     * the error alone.
+     */
+    onSeatLimit: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val errorStrings = localizedErrorPresentationStrings()
@@ -240,6 +246,7 @@ internal fun SharedServerInviteHumanDialogHost(
     var copied by remember(serverId) { mutableStateOf(false) }
     var sending by remember(serverId) { mutableStateOf(false) }
     var error by remember(serverId) { mutableStateOf<String?>(null) }
+    var seatLimitHit by remember(serverId) { mutableStateOf(false) }
 
     fun adoptLink(link: SettingsServerJoinLinkSnapshot?) {
         joinLink = link
@@ -345,10 +352,10 @@ internal fun SharedServerInviteHumanDialogHost(
         sending = true
         scope.launch {
             val results = targets.map { membersDataSource.sendInvite(serverId, it.email, it.role) }
-            val failure =
-                results.firstOrNull { it !is DataResult.Content }
-                    ?.failureMessage(failedSend, sendInvitesForbidden)
+            val failed = results.firstOrNull { it !is DataResult.Content }
+            val failure = failed?.failureMessage(failedSend, sendInvitesForbidden)
             sending = false
+            seatLimitHit = (failed as? DataResult.Error)?.error?.let { raftIsSeatLimitError(it.code, it.serverMessage) } == true
             if (failure == null) onDismiss() else error = failure
         }
     }
@@ -358,6 +365,13 @@ internal fun SharedServerInviteHumanDialogHost(
             tab = tab,
             onTabChange = { tab = it },
             error = error,
+            errorAction =
+                onSeatLimit?.takeIf { seatLimitHit && !error.isNullOrBlank() }?.let { open ->
+                    {
+                        onDismiss()
+                        open()
+                    }
+                },
             invitees = invitees,
             canOfferGuest = canOfferGuest,
             onInviteeChange = { updated ->
@@ -423,6 +437,7 @@ private fun InviteHumanDialogContent(
     tab: InviteHumanTab,
     onTabChange: (InviteHumanTab) -> Unit,
     error: String?,
+    errorAction: (() -> Unit)? = null,
     invitees: List<InviteHumanInvitee>,
     canOfferGuest: Boolean,
     onInviteeChange: (InviteHumanInvitee) -> Unit,
@@ -483,6 +498,7 @@ private fun InviteHumanDialogContent(
                 tab = tab,
                 onTabChange = onTabChange,
                 error = error,
+                errorAction = errorAction,
                 invitees = invitees,
                 canOfferGuest = canOfferGuest,
                 onInviteeChange = onInviteeChange,
@@ -562,6 +578,7 @@ private fun InviteHumanDialogBody(
     tab: InviteHumanTab,
     onTabChange: (InviteHumanTab) -> Unit,
     error: String?,
+    errorAction: (() -> Unit)? = null,
     invitees: List<InviteHumanInvitee>,
     canOfferGuest: Boolean,
     onInviteeChange: (InviteHumanInvitee) -> Unit,
@@ -586,7 +603,20 @@ private fun InviteHumanDialogBody(
     val typography = RaftTheme.typography
     val linkChoiceLabels = inviteHumanLinkChoiceLabels()
     if (!error.isNullOrBlank()) {
-        RaftBanner(description = error, status = RaftBannerStatus.Warning)
+        RaftBanner(
+            description = error,
+            status = RaftBannerStatus.Warning,
+            action =
+                errorAction?.let { open ->
+                    {
+                        RaftButton(
+                            text = stringResource(Res.string.invite_human_view_billing),
+                            onClick = open,
+                            variant = RaftButtonVariant.Default,
+                        )
+                    }
+                },
+        )
     }
     RaftBanner(
         description = stringResource(Res.string.invite_human_agent_reach_hint),
