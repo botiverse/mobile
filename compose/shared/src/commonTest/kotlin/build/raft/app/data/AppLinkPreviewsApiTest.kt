@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.links.raftAppLinkReadUrls
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -129,7 +130,7 @@ class AppLinkPreviewsApiTest {
             """.trimIndent()
         assertEquals(
             listOf("https://a.example.test/pr/1", "https://a.example.test/pr/3", "https://a.example.test/pr/4"),
-            appLinkMessagePreviewUrls(content),
+            raftAppLinkReadUrls(content, emptyList(), 3),
         )
         assertEquals(
             listOf(
@@ -138,10 +139,10 @@ class AppLinkPreviewsApiTest {
                 "https://a.example.test/pr/4",
                 "https://a.example.test/pr/8",
             ),
-            appLinkMessagePreviewUrls(content, limit = 10),
+            raftAppLinkReadUrls(content, emptyList(), 10),
         )
         // GFM autolink: a closing parenthesis it didn't open and trailing punctuation are not the link.
-        assertEquals(listOf("https://x.example.test/a"), appLinkMessagePreviewUrls("(see https://x.example.test/a).", limit = 10))
+        assertEquals(listOf("https://x.example.test/a"), raftAppLinkReadUrls("(see https://x.example.test/a).", emptyList(), 10))
     }
 
     @Test

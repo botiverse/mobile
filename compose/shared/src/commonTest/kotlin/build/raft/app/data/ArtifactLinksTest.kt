@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.links.MESSAGE_OBJECT_LINK_LIMIT
+import build.raft.app.links.planRaftMessageLinks
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -79,7 +81,7 @@ class ArtifactLinksTest {
             )
         for (link in links) {
             assertNull(parseArtifactLinkTarget(link, withContent), link)
-            assertEquals(emptyList(), artifactMessageLinkTargets(link, withContent), link)
+            assertEquals(emptyList(), planRaftMessageLinks(link, withContent).objectTargets, link)
         }
     }
 
@@ -101,7 +103,7 @@ class ArtifactLinksTest {
             """.trimIndent()
         assertEquals(
             listOf(ArtifactLinkTarget(id), ArtifactLinkTarget(id, 2), ArtifactLinkTarget("pt_bare")),
-            artifactMessageLinkTargets(content, hosts),
+            planRaftMessageLinks(content, hosts).objectTargets,
         )
     }
 
@@ -109,7 +111,7 @@ class ArtifactLinksTest {
     fun aMessageReadsAtMostTenReferences() {
         // web useMessageLinkCards.ts MESSAGE_OBJECT_LINK_LIMIT; repeats don't count, in message order.
         val content = "https://app.raft.build/artifacts/pt_1 " + (1..30).joinToString(" ") { "https://app.raft.build/artifacts/pt_$it" }
-        val targets = artifactMessageLinkTargets(content, hosts)
+        val targets = planRaftMessageLinks(content, hosts).objectTargets
         assertEquals(MESSAGE_OBJECT_LINK_LIMIT, targets.size)
         assertEquals(10, MESSAGE_OBJECT_LINK_LIMIT)
         assertEquals((1..10).map { ArtifactLinkTarget("pt_$it") }, targets)
@@ -164,7 +166,7 @@ class ArtifactLinksTest {
         assertEquals(ArtifactLinkTarget(webId).key, ArtifactLinkTarget(short).key)
         // As web's distinct-by-objectRefKey: the first link's form is kept.
         val content = "https://app.raft.build/artifacts/$short and https://app.raft.build/artifacts/$webId"
-        assertEquals(listOf(ArtifactLinkTarget(short)), artifactMessageLinkTargets(content, hosts))
+        assertEquals(listOf(ArtifactLinkTarget(short)), planRaftMessageLinks(content, hosts).objectTargets)
         // The viewer's page gets the short id as written.
         assertEquals("https://app.raft.build/artifacts/$short/v/2", artifactWebUrl("https://app.raft.build", ArtifactLinkTarget(short, 2)))
     }
