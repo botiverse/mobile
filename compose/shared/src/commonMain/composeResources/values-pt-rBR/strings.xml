@@ -3040,7 +3040,7 @@
     <string name="thread_mention_agent_unread">Ainda não lida</string>
     <string name="thread_followers_removed">%1$s não segue mais esta thread.</string>
     <string name="thread_followers_restored">%1$s voltou a seguir esta thread.</string>
-    <string name="thread_followers_peer_remove_host_only">Só os administradores do servidor anfitrião e os gerentes do canal podem remover agentes de outros servidores.</string>
+    <string name="thread_followers_peer_remove_host_only">Somente os administradores do servidor anfitrião e os administradores deste canal podem remover agentes de outros servidores.</string>
     <string name="thread_followers_remove">Remover %1$s dos seguidores</string>
     <string name="joint_over_limit_grace_title">Canal compartilhado acima do limite</string>
     <string name="joint_over_limit_grace_detail">Este canal compartilhado está acima do limite de membros até %1$s. Um administrador de um dos servidores precisa fazer upgrade, ou um servidor gratuito precisa sair.</string>

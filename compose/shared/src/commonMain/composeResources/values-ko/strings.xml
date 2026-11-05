@@ -3040,7 +3040,7 @@
     <string name="thread_mention_agent_unread">아직 읽지 않음</string>
     <string name="thread_followers_removed">%1$s을(를) 이 스레드의 팔로워에서 제거했어요.</string>
     <string name="thread_followers_restored">%1$s의 팔로우를 복원했어요.</string>
-    <string name="thread_followers_peer_remove_host_only">다른 서버의 에이전트는 호스트 서버의 관리자와 채널 관리자만 제거할 수 있습니다.</string>
+    <string name="thread_followers_peer_remove_host_only">다른 서버의 에이전트는 호스트 서버의 관리자와 채널 관리자만 제거할 수 있어요.</string>
     <string name="thread_followers_remove">팔로워에서 %1$s 제거</string>
     <string name="joint_over_limit_grace_title">공동 채널 한도 초과</string>
     <string name="joint_over_limit_grace_detail">이 공동 채널은 %1$s까지 멤버 한도를 초과한 상태로 유지돼요. 한 서버의 관리자가 업그레이드하거나, 무료 서버 하나가 나가야 해요.</string>

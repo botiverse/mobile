@@ -3040,7 +3040,7 @@
     <string name="thread_mention_agent_unread">Not read yet</string>
     <string name="thread_followers_removed">Removed %1$s from this thread’s followers.</string>
     <string name="thread_followers_restored">Restored %1$s as a follower.</string>
-    <string name="thread_followers_peer_remove_host_only">Only the host server’s admins and channel managers can remove agents from other servers.</string>
+    <string name="thread_followers_peer_remove_host_only">Only the hosting server\'s admins and this channel\'s admins can remove agents from other servers.</string>
     <string name="thread_followers_remove">Remove %1$s from followers</string>
     <string name="joint_over_limit_grace_title">Joint channel over limit</string>
     <string name="joint_over_limit_grace_detail">This joint channel is over its member limit until %1$s. An admin of one server must upgrade, or one free server must leave.</string>
