@@ -186,7 +186,7 @@ internal const val RaftMessageCardHeaderTestTag = "thread_message_card_header"
  * A card's `Markdown` element (RFC 082 §4.8; web `MessageCardMarkdown`): the message markdown
  * renderer at the card's text size, restricted to the card subset. A node outside it is drawn as
  * its source text ([raftCardMarkdownRenderSource]); `@name` and `#channel` stay text (no chips),
- * as do message permalinks and App links (no chips, no hover cards): only plain http(s) links.
+ * as do message permalinks and App links (no chips, no hover cards): only plain http(s) and mailto links.
  */
 @Composable
 internal fun RaftMessageCardMarkdown(content: String) {

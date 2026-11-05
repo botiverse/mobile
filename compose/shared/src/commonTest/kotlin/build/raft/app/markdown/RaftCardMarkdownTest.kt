@@ -40,5 +40,9 @@ class RaftCardMarkdownTest {
         assertTrue("Release notes" in raftCardMarkdownRenderSource("# Release notes"))
         assertEquals("Plain **words** stay as written.", raftCardMarkdownRenderSource("Plain **words** stay as written."))
         assertEquals("[x](https://EXAMPLE.COM/)", raftCardMarkdownRenderSource("[x](HTTPS://EXAMPLE.COM/)"))
+        // Links may be http, https or mailto (as a message's); an e-mail literal is drawn as a mailto autolink.
+        assertEquals(emptyList(), nodes("[x](mailto:a@b) and <a@example.com> and mail ci@example.com"))
+        assertEquals("mail <ci@example.com>", raftCardMarkdownRenderSource("mail ci@example.com"))
+        assertEquals(listOf("link", "link"), nodes("[x](tel:+15551234567) <tel:+15551234567>"))
     }
 }

@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 
 /**
  * Runs every case of the vendored shared message-card.v1 vector (RFC 082 v2.0 §4.8;
- * botiverse/slock #13224 @ 1fe74e604812110b8a91104943c44e83334b60d5,
+ * botiverse/slock #13224, staging @ 48cf48c24288f88f44c39c1d3e3e8497cbfed4a9,
  * `packages/shared/src/messageCard.v1.vector.json`, pinned by
  * scripts/check_message_card_v1_vector.sh) through this App's card reader and its card Markdown
  * subset check. Compared as JSON values: key order is irrelevant.
@@ -42,11 +42,11 @@ class MessageCardVectorTest {
     @Test
     fun vendoredVectorIsThePinnedSharedArtifact() {
         val digest = sha256(vectorBytes)
-        assertEquals("ded479113f6850b08996827942e83945964a1a3a38586bef985a5f2d5e67ee71", digest)
+        assertEquals("abd37d310fddd04af2d0817dab79074ede13c111f96458910b04ac61560ce560", digest)
         assertEquals(digest, resource("/messagecard/messageCard.v1.vector.sha256").decodeToString().substringBefore(' ').trim())
         assertEquals("message-card.v1", vector.string("contract"))
         assertEquals("1", vector.getValue("schemaVersion").jsonPrimitive.content)
-        assertEquals(listOf(48, 56), listOf("cards", "markdown").map { vector.getValue(it).jsonArray.size })
+        assertEquals(listOf(48, 60), listOf("cards", "markdown").map { vector.getValue(it).jsonArray.size })
     }
 
     @Test
@@ -104,6 +104,8 @@ class MessageCardVectorTest {
             val name = case.string("name")
             val content = case.string("content")
             val check = raftCardMarkdownCheck(content)
+            // An allowed client difference (Tenny): how it is drawn isn't compared, only the hard rule.
+            val mayDiffer = case["display"]?.jsonPrimitive?.content == "may_differ"
             val found =
                 check.violations.map { violation ->
                     val (line, column) = raftCardMarkdownLineColumn(content, violation.start)
@@ -113,7 +115,11 @@ class MessageCardVectorTest {
                 "accept" -> {
                     if (found.isNotEmpty()) failures += "$name: found $found, the Server accepts it"
                     val nodes = case.getValue("nodes").jsonArray.map { it.jsonPrimitive.content }
-                    if (check.nodeTypes.sorted() != nodes) failures += "$name: nodes ${check.nodeTypes.sorted()}, the Server's $nodes"
+                    if (mayDiffer) {
+                        failures += hardRule(name, content, nodes, case["text"]?.jsonPrimitive?.content.orEmpty())
+                    } else if (check.nodeTypes.sorted() != nodes) {
+                        failures += "$name: nodes ${check.nodeTypes.sorted()}, the Server's $nodes"
+                    }
                 }
                 "refuse" -> {
                     val expected =
@@ -132,7 +138,25 @@ class MessageCardVectorTest {
             if (left.isNotEmpty()) failures += "$name: drawn source ${Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(drawn))} still holds $left"
         }
         assertEquals(emptyList(), failures)
-        assertEquals(56, cases.size)
+        assertEquals(60, cases.size)
+    }
+
+    /**
+     * The hard rule for a `display: "may_differ"` case: the App may draw it otherwise (4-space
+     * indented lines, an undefined `[ref]`, an entity), but every word of its text stays visible in
+     * what is drawn, and nothing in it becomes a link the Server's tree has none of (or anything
+     * outside the subset, checked for every case). Buttons are never made from Markdown, and card
+     * Markdown draws no mention chips at all (RaftMessageCardMarkdown: no tag is valid).
+     */
+    private fun hardRule(name: String, content: String, nodes: List<String>, text: String): List<String> {
+        val failures = mutableListOf<String>()
+        val drawn = raftCardMarkdownCheck(raftCardMarkdownRenderSource(content))
+        if ("link" !in nodes && "link" in drawn.nodeTypes) failures += "$name: may differ, but it draws a link the Server's tree has none of"
+        val visible = drawn.content.replace("\\", "")
+        for (word in Regex("[\\p{L}\\p{N}]+").findAll(text).map { it.value }) {
+            if (word !in visible) failures += "$name: may differ, but \"$word\" is not drawn"
+        }
+        return failures
     }
 
     /** The header and the Markdown, Fields and Divider elements as read, against the stored card. */

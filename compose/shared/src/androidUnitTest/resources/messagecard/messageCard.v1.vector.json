@@ -1,7 +1,7 @@
 {
   "contract": "message-card.v1",
   "schemaVersion": 1,
-  "notes": "Shared contract for card messages (RFC 082), the v2.0 parts: the card `header` and the `Markdown`, `Fields` and `Divider` elements (RFC 082 §4.8). botiverse/slock packages/shared/src/messageCard.ts and messageCardMarkdown.ts; this file is pinned by messageCard.v1.vector.sha256. Compare as JSON values: key order is irrelevant, an absent key differs from a null one.\ncards[]: `card` is what a sender sends. `verdict` is the Server's: accept or refuse (400 card_invalid with `problem.path` and `problem.limit`; `problem.node` with limit markdown). On accept: `parsed` is the stored card (defaults filled in: Fields mono false, and the v1 defaults); `agentText` is renderMessageCardMarkdown (what agents read under `card:`, at most 4000 code points); `fallback` is the content Raft stores when the sender wrote none (the same rendering, at most 500 code points, cut with …), or null with `fallbackProblem` when the card has nothing to derive it from (then the sender must write content). A client reads a stored card with the strict schema: every accepted card here is one a client must draw in full (the header, Markdown, Fields, Divider), and one it does not know must make it show the whole fallback, never part of the card.\nmarkdown[]: `content` is one Markdown element's content in { version: 1, root: \"m\", elements: { m: { type: \"Markdown\", props: { content } } } }. The parser is CommonMark + GFM (micromark / mdast-util-from-markdown with GFM, as remark-parse + remark-gfm), with Raft math ($…$ and $$…$$, not money), CJK-friendly emphasis, and indented code off. The allowlist (node types): paragraph, text, break, strong, emphasis, delete, inlineCode, code (fenced), list, listItem (not a task list item), blockquote, link (http: or https:, case-insensitive). Lists and quotes together nest at most 3 levels. On refuse: `found` lists every node outside it, outermost first, in document order (nothing inside one is looked at): `node` (the mdast type; taskListItem for a GFM task list item; link for a link to another scheme; list or blockquote nested too deep), its `source` slice, `line` and `column` (1-based); the Server refuses with the first. A client draws each `found` node as its `source` text (never rendered) and the rest as Markdown; its own parser must find the same nodes. On accept: `nodes` are the node types in the tree (root aside, sorted), `text` the values of its text, inlineCode and code nodes in order with a line break for each break node (what a reader sees, entities decoded), and `agentText` the agent text. No @name or #channel in Markdown is a mention or a channel link: clients draw no chips in it.",
+  "notes": "Shared contract for card messages (RFC 082), the v2.0 parts: the card `header` and the `Markdown`, `Fields` and `Divider` elements (RFC 082 §4.8). botiverse/slock packages/shared/src/messageCard.ts and messageCardMarkdown.ts; this file is pinned by messageCard.v1.vector.sha256. Compare as JSON values: key order is irrelevant, an absent key differs from a null one.\nschemaVersion 1 (2026-11-05): Markdown links take a message's schemes, http:, https: and mailto: (Tenny, #13224): bare and angle email autolinks and [x](mailto:…) are allowed; tel: and sms: are refused.\ncards[]: `card` is what a sender sends. `verdict` is the Server's: accept or refuse (400 card_invalid with `problem.path` and `problem.limit`; `problem.node` with limit markdown). On accept: `parsed` is the stored card (defaults filled in: Fields mono false, and the v1 defaults); `agentText` is renderMessageCardMarkdown (what agents read under `card:`, at most 4000 code points); `fallback` is the content Raft stores when the sender wrote none (the same rendering, at most 500 code points, cut with …), or null with `fallbackProblem` when the card has nothing to derive it from (then the sender must write content). A client reads a stored card with the strict schema: every accepted card here is one a client must draw in full (the header, Markdown, Fields, Divider), and one it does not know must make it show the whole fallback, never part of the card.\nmarkdown[]: `content` is one Markdown element's content in { version: 1, root: \"m\", elements: { m: { type: \"Markdown\", props: { content } } } }. The parser is CommonMark + GFM (micromark / mdast-util-from-markdown with GFM, as remark-parse + remark-gfm), with Raft math ($…$ and $$…$$, not money), CJK-friendly emphasis, and indented code off. The allowlist (node types): paragraph, text, break, strong, emphasis, delete, inlineCode, code (fenced), list, listItem (not a task list item), blockquote, link (http:, https: or mailto:, case-insensitive, the schemes a message's links take, so GFM's email autolinks are links; a link must parse as a URL). Lists and quotes together nest at most 3 levels. On refuse: `found` lists every node outside it, outermost first, in document order (nothing inside one is looked at): `node` (the mdast type; taskListItem for a GFM task list item; link for a link to another scheme, such as tel: or sms:; list or blockquote nested too deep), its `source` slice, `line` and `column` (1-based); the Server refuses with the first. A client draws each `found` node as its `source` text (never rendered) and the rest as Markdown; its own parser must find the same nodes. On accept: `nodes` are the node types in the tree (root aside, sorted), `text` the values of its text, inlineCode and code nodes in order with a line break for each break node (what a reader sees, entities decoded), and `agentText` the agent text. No @name or #channel in Markdown is a mention or a channel link: clients draw no chips in it.",
   "cards": [
     {
       "name": "header_full",
@@ -2735,46 +2735,47 @@
     },
     {
       "name": "autolink_angle_mailto",
-      "note": "<mailto:…> is a link to mailto:: refused.",
+      "note": "<mailto:…> is a mailto: link, a scheme a message's links take: allowed.",
       "content": "write to <mailto:a@example.com>",
-      "verdict": "refuse",
-      "problem": {
-        "path": "card.elements.m.props.content",
-        "limit": "markdown",
-        "node": "link"
-      },
-      "found": [
-        {
-          "node": "link",
-          "source": "<mailto:a@example.com>",
-          "line": 1,
-          "column": 10
-        }
-      ]
+      "verdict": "accept",
+      "nodes": [
+        "link",
+        "paragraph",
+        "text"
+      ],
+      "text": "write to mailto:a@example.com",
+      "agentText": "write to <mailto:a@example.com>"
     },
     {
       "name": "autolink_angle_email",
-      "note": "<a@b.c> is an email autolink, a mailto: link: refused.",
+      "note": "<a@b.c> is an email autolink, a mailto: link: allowed, as in a message.",
       "content": "<foo@example.com>",
-      "verdict": "refuse",
-      "problem": {
-        "path": "card.elements.m.props.content",
-        "limit": "markdown",
-        "node": "link"
-      },
-      "found": [
-        {
-          "node": "link",
-          "source": "<foo@example.com>",
-          "line": 1,
-          "column": 1
-        }
-      ]
+      "verdict": "accept",
+      "nodes": [
+        "link",
+        "paragraph",
+        "text"
+      ],
+      "text": "foo@example.com",
+      "agentText": "<foo@example.com>"
     },
     {
       "name": "autolink_literal_email",
-      "note": "A bare email address is a mailto: link (GFM): refused; write it as inline code.",
+      "note": "A bare email address is a mailto: link (GFM): allowed, as in a message.",
       "content": "mail ci@example.com",
+      "verdict": "accept",
+      "nodes": [
+        "link",
+        "paragraph",
+        "text"
+      ],
+      "text": "mail ci@example.com",
+      "agentText": "mail ci@example.com"
+    },
+    {
+      "name": "autolink_angle_tel",
+      "note": "<tel:…> is a link to tel:: refused (links are http:, https: or mailto:).",
+      "content": "call <tel:+15551234567>",
       "verdict": "refuse",
       "problem": {
         "path": "card.elements.m.props.content",
@@ -2784,7 +2785,7 @@
       "found": [
         {
           "node": "link",
-          "source": "ci@example.com",
+          "source": "<tel:+15551234567>",
           "line": 1,
           "column": 6
         }
@@ -2810,8 +2811,59 @@
       ]
     },
     {
+      "name": "link_mailto",
+      "note": "A mailto: link is allowed, as in a message.",
+      "content": "[x](mailto:a@b)",
+      "verdict": "accept",
+      "nodes": [
+        "link",
+        "paragraph",
+        "text"
+      ],
+      "text": "x",
+      "agentText": "[x](mailto:a@b)"
+    },
+    {
+      "name": "link_tel",
+      "note": "A tel: link is refused: links are http:, https: or mailto:.",
+      "content": "[x](tel:+15551234567)",
+      "verdict": "refuse",
+      "problem": {
+        "path": "card.elements.m.props.content",
+        "limit": "markdown",
+        "node": "link"
+      },
+      "found": [
+        {
+          "node": "link",
+          "source": "[x](tel:+15551234567)",
+          "line": 1,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "name": "link_sms",
+      "note": "An sms: link is refused: links are http:, https: or mailto:.",
+      "content": "[x](sms:+15551234567)",
+      "verdict": "refuse",
+      "problem": {
+        "path": "card.elements.m.props.content",
+        "limit": "markdown",
+        "node": "link"
+      },
+      "found": [
+        {
+          "node": "link",
+          "source": "[x](sms:+15551234567)",
+          "line": 1,
+          "column": 1
+        }
+      ]
+    },
+    {
       "name": "link_javascript",
-      "note": "Links are http: and https: only.",
+      "note": "Links are http:, https: and mailto: only.",
       "content": "[x](javascript:alert(1))",
       "verdict": "refuse",
       "problem": {

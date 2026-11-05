@@ -13,21 +13,21 @@ import org.intellij.markdown.parser.MarkdownParser
  * A card message's `Markdown` element (RFC 082 v2.0 §4.8): the card Markdown subset, checked on
  * this App's own parse (the message renderer's parser, [RaftGFMFlavourDescriptor]).
  *
- * Contract: botiverse/slock #13224 @ 1fe74e604812110b8a91104943c44e83334b60d5
+ * Contract: botiverse/slock #13224, staging @ 48cf48c24288f88f44c39c1d3e3e8497cbfed4a9
  * `packages/shared/src/messageCardMarkdown.ts` (`MESSAGE_CARD_MARKDOWN_NODE_TYPES`,
  * `messageCardMarkdownViolations`) and the shared contract vectors (`messageCard.v1.vector.json`
  * `markdown[]`); the web's drawing is #13225 `remarkMessageCardMarkdown.ts`.
  *
  * The allowlist, as mdast node types: paragraph, text, break, strong, emphasis, delete,
- * inlineCode, code (fenced), list, listItem (not a task list item), blockquote, link (http: or
- * https:). Lists and quotes together nest at most 3 levels. The Server refuses a card with
+ * inlineCode, code (fenced), list, listItem (not a task list item), blockquote, link (http:,
+ * https: or mailto:, as a message's own links; a card Button stays https: only). Lists and quotes together nest at most 3 levels. The Server refuses a card with
  * anything else; a client still checks on its own parse and draws each node outside the subset
  * as its source text, never rendered (Tenny, #13213), so a stored card never depends on the
  * Server having been right. `@name` and `#channel` in card Markdown are text: no chips.
  *
  * This parser is not the Server's (micromark), so the walk maps its tree onto mdast's and covers
- * where they differ: GFM e-mail literals (the Server's are `mailto:` links, outside the subset;
- * this lexer has none), footnotes (this parser reads `[^1]` as a reference link), references
+ * where they differ: GFM e-mail literals (the Server's are `mailto:` links; this lexer has none,
+ * so they are drawn as `<address>` autolinks), footnotes (this parser reads `[^1]` as a reference link), references
  * without a definition (text to the Server), indented code (off on the Server: text), and the
  * Raft-only `raft://` literal links (text to the Server).
  */
@@ -45,8 +45,8 @@ internal class RaftCardMarkdownCheck(
     internal val edits: List<RaftCardMarkdownEdit>,
 )
 
-/** A stretch of the content drawn otherwise: as plain text ([lowercase] false) or with its URL scheme lower-cased. */
-internal data class RaftCardMarkdownEdit(val start: Int, val end: Int, val lowercase: Boolean = false)
+/** A stretch of the content drawn otherwise: as plain text, with its URL scheme lower-cased ([lowercase]), or as an `<…>` autolink ([autolink]). */
+internal data class RaftCardMarkdownEdit(val start: Int, val end: Int, val lowercase: Boolean = false, val autolink: Boolean = false)
 
 /** Lists and quotes, together, nest at most this many levels (`MESSAGE_CARD_MARKDOWN_MAX_NESTING`). */
 internal const val RAFT_CARD_MARKDOWN_MAX_NESTING = 3
@@ -96,7 +96,11 @@ internal fun RaftCardMarkdownCheck.renderSource(): String {
     for (edit in edits) {
         if (edit.start < cursor) continue
         out.append(content, cursor, edit.start)
-        if (edit.lowercase) out.append(content.substring(edit.start, edit.end).lowercase()) else out.append(sourceAsText(content, edit.start, edit.end))
+        when {
+            edit.lowercase -> out.append(content.substring(edit.start, edit.end).lowercase())
+            edit.autolink -> out.append('<').append(content, edit.start, edit.end).append('>')
+            else -> out.append(sourceAsText(content, edit.start, edit.end))
+        }
         cursor = edit.end
     }
     out.append(content, cursor, content.length)
@@ -145,10 +149,10 @@ private val HeadingTypes: Set<IElementType> =
 
 private val CardLinkScheme = Regex("^([A-Za-z][A-Za-z0-9+.-]*):")
 
-/** A link the subset allows: an `http:` or `https:` URL (scheme case-insensitive). */
+/** A link the subset allows: an `http:`, `https:` or `mailto:` URL (scheme case-insensitive), as a message's links. */
 private fun isCardMarkdownLinkUrl(url: String): Boolean {
     val scheme = CardLinkScheme.find(url)?.groupValues?.get(1)?.lowercase() ?: return false
-    if (scheme != "http" && scheme != "https") return false
+    if (scheme != "http" && scheme != "https" && scheme != "mailto") return false
     val rest = url.substring(scheme.length + 1)
     return rest.isNotEmpty() && rest.none { it.isWhitespace() }
 }
@@ -293,7 +297,8 @@ private class CardMarkdownWalker(private val content: String, private val define
                 val before = siblings.getOrNull(index - 1)?.takeIf { it.type == MarkdownTokenTypes.LT && it.endOffset == node.startOffset }
                 val after = siblings.getOrNull(index + 1)?.takeIf { it.type == MarkdownTokenTypes.GT && it.startOffset == node.endOffset }
                 val inner = node.text(content)
-                if (type == MarkdownTokenTypes.AUTOLINK && isCardMarkdownLinkUrl(inner)) {
+                // `<a@example.com>` is a `mailto:` link, in the subset.
+                if (type == MarkdownTokenTypes.EMAIL_AUTOLINK || isCardMarkdownLinkUrl(inner)) {
                     if (report) types += setOf("link", "text")
                 } else {
                     outside("link", before?.startOffset ?: node.startOffset, after?.endOffset ?: node.endOffset, report)
@@ -355,7 +360,8 @@ private class CardMarkdownWalker(private val content: String, private val define
 
     /**
      * GFM e-mail literals in a paragraph's own text (outside code, links, HTML and math): the
-     * Server's parser reads each as a `mailto:` link, outside the subset; this lexer has none.
+     * Server's parser reads each as a `mailto:` link, in the subset; this lexer has none, so each
+     * is drawn as an `<address>` autolink (a mailto link here too).
      */
     private fun scanEmails(paragraph: ASTNode, report: Boolean) {
         val runs = mutableListOf<IntArray>()
@@ -381,7 +387,8 @@ private class CardMarkdownWalker(private val content: String, private val define
                 if (before != null && (before.isLetterOrDigit() || before in CardEmailLocalChars || before == '@' || before == '/')) continue
                 val last = match.value.last()
                 if (last == '-' || last == '_') continue
-                outside("link", start + match.range.first, start + match.range.last + 1, report)
+                if (report) types += setOf("link", "text")
+                edits += RaftCardMarkdownEdit(start + match.range.first, start + match.range.last + 1, autolink = true)
             }
         }
     }
