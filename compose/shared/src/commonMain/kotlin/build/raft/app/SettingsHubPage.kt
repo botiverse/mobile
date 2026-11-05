@@ -80,7 +80,8 @@ internal fun SettingsAppShellHomeContent(
     /** The server's `slack_bridge_v0` flag: the IM Bridges row. */
     imBridgesEnabled: Boolean = false,
 ) {
-    val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled)
+    // The phone's Settings: Computers and Apps are on the server panel that opened it.
+    val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled, serverPanelPages = true)
     SettingsHomeContent(
         payload =
             payload.copy(
@@ -102,7 +103,12 @@ internal fun SettingsAppShellHomeContent(
  * Notifications (its level alone; the personal Notifications page shows it too); Workspace;
  * Resources, with Documentation leaving Raft for the docs site. The "On {server}" group is there
  * only with a current server ([hasThemeServer]), as is the web's. The app's own rows stay: Mobile
- * and Storage (this device), Applications and Computers (the web has them on the rail).
+ * and Storage (this device's settings, which the web has not).
+ * On the phone ([serverPanelPages]) the list is the web phone's (artin 2026-11-05, dm task #17):
+ * Computers is not a row, it is a page on the server panel (web MobileServerTab), and Applications
+ * is a row only for a guest ([guest]; web useSidebarRoute `currentRole === "guest"`): a guest has
+ * no Apps page, and their Applications holds only their own link previews; everyone else opens
+ * Apps from the server panel. The wide list keeps both rows, next to the rail's Computers and Apps.
  * Mobile is a phone page: with [appPreferencesUnderAppearance] (the desktop app) its cards are part
  * of Appearance, the web's home for them, and there is no Mobile row. IM Bridges follows
  * Administration, as on the web (settingsNavigation.ts, Sidebar.tsx), only with [imBridges]: the
@@ -113,6 +119,8 @@ internal fun settingsHomeRowKeys(
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     imBridges: Boolean = false,
     releaseNotes: Boolean = settingsReleaseNotesAvailable(),
+    serverPanelPages: Boolean = false,
+    guest: Boolean = false,
 ): List<String> =
     listOfNotNull(
         SettingsDestinationAccount,
@@ -127,8 +135,8 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationBilling,
         SettingsDestinationAdministration,
         SettingsDestinationImBridges.takeIf { imBridges },
-        SettingsDestinationConnectedApps,
-        SettingsDestinationComputers,
+        SettingsDestinationConnectedApps.takeIf { !serverPanelPages || guest },
+        SettingsDestinationComputers.takeUnless { serverPanelPages },
         SettingsNativeDetailPage.About.key,
         SettingsDestinationDocumentation,
         SettingsDestinationHandsFeedback,
@@ -156,6 +164,8 @@ internal fun appShellSettingsHomePayload(
     imBridgesEnabled: Boolean = false,
     /** iOS: Billing opens the system browser ([settingsBillingLeavesRaft]), its row a trailing ↗. */
     billingOpensExternally: Boolean = settingsBillingLeavesRaft(),
+    /** The phone: Computers and Apps are on the server panel ([settingsHomeRowKeys]). */
+    serverPanelPages: Boolean = false,
 ): RaftSettingsHomePayload {
     val personalSection = stringResource(Res.string.settings_navigation_section_personal)
     val workspaceSection = stringResource(Res.string.settings_navigation_section_workspace)
@@ -305,6 +315,8 @@ internal fun appShellSettingsHomePayload(
                 hasThemeServer = themeServer != null,
                 appPreferencesUnderAppearance = appPreferencesUnderAppearance,
                 imBridges = imBridgesEnabled,
+                serverPanelPages = serverPanelPages,
+                guest = session?.currentServerSummary()?.role.equals("guest", ignoreCase = true),
             ).mapNotNull(rows::get),
     )
 }

@@ -16,11 +16,15 @@ class RaftServerMenuModelTest {
         // raft-design #741 (navigation.md, "The server in the apps' desktop mode").
         val all = RaftServerMenuEntry.entries
         assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = false), "the phone keeps every page")
-        assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = true), "the phone's row is unchanged")
+        assertEquals(
+            listOf(RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers, RaftServerMenuEntry.Settings),
+            raftServerMenuEntriesFor(all, wide = false, guest = true),
+            "a guest has no Apps page (their Applications is a Settings row)",
+        )
         assertEquals(
             emptyList(),
             raftServerMenuEntriesFor(all, wide = true, guest = false),
-            "the rail has Members and Settings; Computers is a Settings section",
+            "the rail has Members, Computers, Apps and Settings",
         )
         assertEquals(emptyList(), raftServerMenuEntriesFor(all, wide = true, guest = true), "a guest's wide popover has no row")
     }
@@ -42,10 +46,10 @@ class RaftServerMenuModelTest {
         assertEquals("s1", model.currentServer.id)
         assertEquals("Botiverse", model.currentServer.name)
         assertEquals(
-            listOf(RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers, RaftServerMenuEntry.Settings),
+            listOf(RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers, RaftServerMenuEntry.Apps, RaftServerMenuEntry.Settings),
             model.entries,
         )
-        assertEquals(listOf("members", SettingsDestinationComputers, "settings"), model.entries.map { it.key })
+        assertEquals(listOf("members", SettingsDestinationComputers, "apps", "settings"), model.entries.map { it.key })
     }
 
     @Test
