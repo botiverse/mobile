@@ -58,7 +58,7 @@ class RaftArtifactViewerEmbedTest {
                 "$web/s/acme?shown=4" to RaftArtifactViewerNavigation.Close,
                 // Its original message (the toolbar's link): open it natively.
                 "$web/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009&$embed" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000009&$embed"),
-                "$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Am_1" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Am_1"),
+                "$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Aa0a0a0a0-0000-4000-8000-000000000001" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=d0d0d0d0-0000-4000-8000-000000000002%3Aa0a0a0a0-0000-4000-8000-000000000001"),
                 // Anywhere else in the web app (the server after a Delete, another Artifact, a bad version): close.
                 "$web/s/acme?$embed" to RaftArtifactViewerNavigation.Close,
                 "$web/" to RaftArtifactViewerNavigation.Close,
