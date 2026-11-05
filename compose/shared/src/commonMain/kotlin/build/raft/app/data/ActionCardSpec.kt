@@ -13,8 +13,8 @@ import kotlinx.serialization.json.put
 /*
  * `action-card.v1`: Raft's first-party action cards described as data (`presentation.card`).
  *
- * Contract: botiverse/slock 05e38737 (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381, schemaVersion 6 #11668,
- * schemaVersion 7 #11937)
+ * Contract: botiverse/slock bffda833 (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381, schemaVersion 6 #11668,
+ * schemaVersion 7 #11937, schemaVersion 8 question cards: Choice, form steps and placement, too_few, the raw Msg)
  * `packages/shared/src/actionCardSpec.ts`, pinned by
  * the vendored `actionCard.v1.vector.json` (scripts/check_action_card_v1_vector.sh). An action
  * card keeps its durable row, `confirmationVersion`, state machine and `/api/actions` endpoints;
@@ -46,7 +46,7 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
     listOf(
         "card.v1", "confirm.v1", "form.v1",
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
-        "field.agent_picker",
+        "field.agent_picker", "field.choice",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form", "intent.upgrade_dialog",
         "intent.feedback_ticket", "intent.add_seats",
     )
@@ -100,10 +100,23 @@ object ActionCardSpecLimits {
     const val MAX_OPTIONS = 32
     const val MAX_PARAMS = 8
     const val MAX_PICKER_ITEMS = 50
+
+    /** A form's `steps` (schemaVersion 8): 2-10 pages. */
+    const val MIN_FORM_STEPS = 2
+    const val MAX_FORM_STEPS = 10
+
+    /** A Choice's "Other" text: at most this many code points (its `maxLength`, 1-500). */
+    const val MAX_CHOICE_OTHER_LENGTH = 500
 }
 
 /** The display locales a Msg may carry (`DISPLAY_LOCALES`); `en` is always there. */
-val ACTION_CARD_SPEC_LOCALES: List<String> = listOf("en", "es", "pt-br", "ko", "ja", "zh-cn", "zh-tw")
+val ACTION_CARD_SPEC_LOCALES: List<String> = listOf("en", "es", "pt-br", "ru", "ko", "ja", "zh-cn", "zh-tw")
+
+/**
+ * The value a Choice option may not take (schemaVersion 8, `ACTION_CARD_CHOICE_RESERVED_VALUE`): what the
+ * person writes in "Other" travels as the value's `other`, never as a selected value.
+ */
+const val ACTION_CARD_CHOICE_RESERVED_VALUE = "other"
 
 /** Header icons; the frame paints them. An icon this App does not know reads as no icon. */
 enum class ActionCardSpecIcon(val wire: String) {
@@ -577,6 +590,55 @@ data class ActionCardSpecToggleField(
     override val capability: String get() = "field.toggle"
 }
 
+/** A Choice option (schemaVersion 8): [label] and [description] are Msgs; an agent's text is the raw Msg (`actionCardRawText`). */
+data class ActionCardSpecChoiceOption(
+    val value: String,
+    val label: ActionCardSpecMsg,
+    val description: ActionCardSpecMsg? = null,
+)
+
+/**
+ * A Choice's "Other": the last row of the list, which opens a one-line input for the person's own
+ * answer (the value's `other`, at most [maxLength] code points).
+ */
+data class ActionCardSpecChoiceOther(
+    val label: ActionCardSpecMsg,
+    val description: ActionCardSpecMsg? = null,
+    val placeholder: ActionCardSpecMsg? = null,
+    val maxLength: Int,
+)
+
+/**
+ * A Choice field (schemaVersion 8, capability `field.choice`): every option shown at once, one
+ * ([multiple] false) or several, optionally with [other]. Items count the chosen options plus a
+ * non-blank `other`: a single Choice takes at most one, a multiple one [minRequired]..[maxSelectable]
+ * (default 1 and every item). Its value is [ActionCardFormValue.Choice], and so is its [default].
+ */
+data class ActionCardSpecChoiceField(
+    override val name: String,
+    override val label: ActionCardSpecMsg,
+    override val placeholder: ActionCardSpecMsg? = null,
+    override val description: ActionCardSpecMsg? = null,
+    val required: Boolean? = null,
+    val multiple: Boolean,
+    val minItems: Int? = null,
+    val maxItems: Int? = null,
+    val options: List<ActionCardSpecChoiceOption>,
+    val other: ActionCardSpecChoiceOther? = null,
+    val default: ActionCardFormValue.Choice? = null,
+) : ActionCardSpecKnownField {
+    override val capability: String get() = "field.choice"
+
+    /** How many items it offers: its options, plus "Other" when it has one. */
+    val itemCount: Int get() = options.size + if (other != null) 1 else 0
+
+    /** At most how many items it takes: one when single, else [maxItems] (default: every item). */
+    val maxSelectable: Int get() = if (multiple) maxItems ?: itemCount else 1
+
+    /** At least how many items it takes once anything is chosen: [minItems] when multiple (default 1). */
+    val minRequired: Int get() = if (multiple) minItems ?: 1 else 1
+}
+
 enum class ActionCardSpecMemberKind(val wire: String) {
     Human("human"),
     Agent("agent"),
@@ -640,12 +702,27 @@ data class ActionCardSpecAgentPickerField(
     override val capability: String get() = "field.agent_picker"
 }
 
-/** A form sheet: 1-12 fields with unique names. */
+/** Where a form is filled in (schemaVersion 8): the sheet its button opens (the default), or the card itself. Only how it is drawn. */
+enum class ActionCardSpecFormPlacement(val wire: String) {
+    Sheet("sheet"),
+    Inline("inline"),
+}
+
+/** One page of a form (schemaVersion 8): an optional [title], and the names of its [fields] in order. */
+data class ActionCardSpecFormStep(val title: ActionCardSpecMsg? = null, val fields: List<String>)
+
+/**
+ * A form sheet: 1-12 fields with unique names. [steps] (schemaVersion 8) are its pages, each naming
+ * fields of [fields], every field in exactly one (a read that finds otherwise drops them: one page).
+ * [placement] is where it is filled in; absent is the sheet, and an unknown value reads as absent.
+ */
 data class ActionCardSpecForm(
     val title: ActionCardSpecMsg,
     val submitLabel: ActionCardSpecMsg,
     val submitLabels: ActionCardSpecSubmitLabels? = null,
     val description: ActionCardSpecMsg? = null,
+    val steps: List<ActionCardSpecFormStep>? = null,
+    val placement: ActionCardSpecFormPlacement? = null,
     val fields: List<ActionCardSpecFormField>,
 ) {
     /**
@@ -714,7 +791,7 @@ private val ACTION_KEYS: Map<String, Set<String>> =
     )
 private val BUTTON_PROPS = setOf("label", "emphasis", "action", "disabledReason")
 private val CONFIRM_KEYS = setOf("title", "confirmLabel", "spec")
-private val KNOWN_FIELD_TYPES = setOf("TextInput", "TextArea", "Select", "Toggle", "MemberPicker", "ChannelPicker", "AgentPicker")
+private val KNOWN_FIELD_TYPES = setOf("TextInput", "TextArea", "Select", "Toggle", "MemberPicker", "ChannelPicker", "AgentPicker", "Choice")
 
 /**
  * Reads `presentation.card` as the contract's read mode does (`parseActionCardSpec(raw, { mode:
@@ -732,7 +809,7 @@ private val KNOWN_FIELD_TYPES = setOf("TextInput", "TextArea", "Select", "Toggle
  * 6. any other object's key it does not know is dropped, its value unchecked: on an element
  *    (besides type, props and a Stack's children) and the props of every element but a Button, a
  *    Msg, an EntityRef (element, Field value, param, picker default), a navigate target (chosen by
- *    kind), a tree, a form, a known field and a Select option. Known keys keep their rules, and
+ *    kind), a tree, a form, a form step, a known field, a Select or Choice option, a Choice's `other` and its default. Known keys keep their rules, and
  *    `children` on an element other than a Stack is still refused;
  * 7. except where a key could change what a press does: a key outside a Button's props, outside
  *    its action's kind ([ACTION_KEYS]), or outside a confirm (title, confirmLabel, spec). The known
@@ -1178,6 +1255,7 @@ private object ActionCardSpecReader {
                 checkPicker(field, what) { it == ActionCardSpecEntityKind.Channel }
                 field
             }
+            "Choice" -> choice(obj, what, fieldName(), label(), placeholder(), description(), required())
             "AgentPicker" -> {
                 val field = ActionCardSpecAgentPickerField(fieldName(), label(), placeholder(), description(), required(), emptyText(), multiple(), maxItems(), defaults())
                 checkPicker(field, what) { it == ActionCardSpecEntityKind.Agent }
@@ -1192,17 +1270,103 @@ private object ActionCardSpecReader {
         }
     }
 
+    /** A Choice (schemaVersion 8): unknown keys on it, its options, its `other` and its default are dropped (leniency 6). */
+    private fun choice(
+        obj: JsonObject,
+        what: String,
+        name: String,
+        label: ActionCardSpecMsg,
+        placeholder: ActionCardSpecMsg?,
+        description: ActionCardSpecMsg?,
+        required: Boolean?,
+    ): ActionCardSpecChoiceField {
+        val maxItemsBound = ActionCardSpecLimits.MAX_OPTIONS + 1
+        val multiple = obj["multiple"].bool("$what.multiple")
+        val minItems = obj.opt("minItems") { it.int("$what.minItems", 1..maxItemsBound) }
+        val maxItems = obj.opt("maxItems") { it.int("$what.maxItems", 1..maxItemsBound) }
+        val options =
+            obj["options"].array("$what.options", 1..ActionCardSpecLimits.MAX_OPTIONS).mapIndexed { i, rawOption ->
+                val option = rawOption.obj("$what.options[$i]")
+                val value = matching(option["value"], "$what.options[$i].value", OPTION_VALUE)
+                if (value == ACTION_CARD_CHOICE_RESERVED_VALUE) invalid("$what.options[$i].value: \"$value\" is reserved for the Other text")
+                ActionCardSpecChoiceOption(
+                    value = value,
+                    label = msg(option["label"], 80, "$what.options[$i].label"),
+                    description = option.opt("description") { msg(it, 200, "$what.options[$i].description") },
+                )
+            }
+        if (options.map { it.value }.toSet().size != options.size) invalid("$what.options: values must be unique")
+        val other =
+            obj.opt("other") { rawOther ->
+                val o = rawOther.obj("$what.other")
+                ActionCardSpecChoiceOther(
+                    label = msg(o["label"], 40, "$what.other.label"),
+                    description = o.opt("description") { msg(it, 120, "$what.other.description") },
+                    placeholder = o.opt("placeholder") { msg(it, 120, "$what.other.placeholder") },
+                    maxLength = o["maxLength"].int("$what.other.maxLength", 1..ActionCardSpecLimits.MAX_CHOICE_OTHER_LENGTH),
+                )
+            }
+        val default =
+            obj.opt("default") { rawDefault ->
+                val d = rawDefault.obj("$what.default")
+                val selected =
+                    d["selected"].array("$what.default.selected", 0..ActionCardSpecLimits.MAX_OPTIONS).mapIndexed { i, s -> s.str("$what.default.selected[$i]") }
+                ActionCardFormValue.Choice(selected, d.opt("other") { it.str("$what.default.other") })
+            }
+        val field = ActionCardSpecChoiceField(name, label, placeholder, description, required, multiple, minItems, maxItems, options, other, default)
+        // The Choice's own rules (`checkChoice`): bounds only on a multiple one and within its items; a default it could submit.
+        val items = field.itemCount
+        if (!multiple && (minItems != null || maxItems != null)) invalid("$what: only a multiple Choice takes minItems and maxItems")
+        if (minItems != null && minItems > items) invalid("$what.minItems: more than the Choice offers")
+        if (maxItems != null && maxItems > items) invalid("$what.maxItems: more than the Choice offers")
+        if (minItems != null && maxItems != null && minItems > maxItems) invalid("$what.minItems: more than maxItems")
+        if (default != null) {
+            if (default.selected.toSet().size != default.selected.size || default.selected.any { s -> options.none { it.value == s } }) {
+                invalid("$what.default: selects options of the Choice, once each")
+            }
+            if (default.other != null && (other == null || isActionCardBlank(default.other) || cardCodePoints(default.other) > other.maxLength)) {
+                invalid("$what.default: other needs the Choice's Other, and fits its maxLength")
+            }
+            if (default.selected.size + (if (default.other != null) 1 else 0) > field.maxSelectable) invalid("$what.default: chooses more than the Choice takes")
+        }
+        return field
+    }
+
+    /** One page of a form: an optional title and 1-12 field names. */
+    private fun formStep(raw: JsonElement?, what: String): ActionCardSpecFormStep {
+        val obj = raw.obj(what)
+        return ActionCardSpecFormStep(
+            title = obj.opt("title") { msg(it, 80, "$what.title") },
+            fields = obj["fields"].array("$what.fields", 1..ActionCardSpecLimits.MAX_FIELDS).mapIndexed { i, n -> name(n, "$what.fields[$i]", FIELD_NAME) },
+        )
+    }
+
     fun form(raw: JsonElement?, what: String = "form"): ActionCardSpecForm {
         val obj = raw.obj(what)
         val fields = obj["fields"].array("$what.fields", 1..ActionCardSpecLimits.MAX_FIELDS).mapIndexed { i, f -> field(f, "$what.fields[$i]") }
         if (fields.map { it.name }.toSet().size != fields.size) invalid("$what.fields: names must be unique")
+        val steps =
+            obj.opt("steps") { rawSteps ->
+                rawSteps.array("$what.steps", ActionCardSpecLimits.MIN_FORM_STEPS..ActionCardSpecLimits.MAX_FORM_STEPS)
+                    .mapIndexed { i, step -> formStep(step, "$what.steps[$i]") }
+            }
+        // A read drops steps that do not name every field exactly once (one page), and a placement it does not know (the sheet).
+        val placement = obj["placement"].cardString()?.let { wire -> ActionCardSpecFormPlacement.entries.firstOrNull { it.wire == wire } }
         return ActionCardSpecForm(
             title = msg(obj["title"], 80, "$what.title"),
             submitLabel = msg(obj["submitLabel"], 24, "$what.submitLabel"),
             submitLabels = obj.opt("submitLabels") { submitLabels(it, "$what.submitLabels") },
             description = obj.opt("description") { msg(it, 500, "$what.description") },
+            steps = steps?.takeIf { stepsCoverFields(it, fields.map { f -> f.name }) },
+            placement = placement,
             fields = fields,
         )
+    }
+
+    /** Whether [steps] name every one of the form's fields exactly once (`stepsCoverFields`). */
+    private fun stepsCoverFields(steps: List<ActionCardSpecFormStep>, names: List<String>): Boolean {
+        val named = steps.flatMap { it.fields }
+        return named.toSet().size == named.size && named.size == names.size && names.all { it in named }
     }
 
     /** `submitLabels`: a field name and up to 32 labels by option value; unknown keys dropped. */
@@ -1275,7 +1439,7 @@ val ACTION_CARD_OPEN_IN_WEB_LABEL: ActionCardSpecMsg =
     ActionCardSpecMsg(
         key = "actionCard.openInWeb",
         text = mapOf(
-            "en" to "Open in web", "es" to "Abrir en la web", "pt-br" to "Abrir na web", "ko" to "웹에서 열기",
+            "en" to "Open in web", "es" to "Abrir en la web", "pt-br" to "Abrir na web", "ru" to "Открыть в веб-версии", "ko" to "웹에서 열기",
             "ja" to "ウェブで開く", "zh-cn" to "在网页打开", "zh-tw" to "在網頁開啟",
         ),
     )
@@ -1327,13 +1491,19 @@ fun stripActionCardSpec(
 // ---------------------------------------------------------------------------
 // Forms: value checks (the client part of `checkActionCardFormValues`).
 
-/** A value per field: text fields and Select a string, a Toggle a boolean, a picker its ids. */
+/** A value per field: text fields and Select a string, a Toggle a boolean, a picker its ids, a Choice its [Choice] value. */
 sealed interface ActionCardFormValue {
     data class Text(val value: String) : ActionCardFormValue
 
     data class Toggle(val value: Boolean) : ActionCardFormValue
 
     data class Ids(val ids: List<String>) : ActionCardFormValue
+
+    /**
+     * A Choice's value (schemaVersion 8, `ActionCardChoiceValue`): the chosen option values, and the
+     * person's own text ([other]) while "Other" is chosen: present, even empty, then.
+     */
+    data class Choice(val selected: List<String>, val other: String? = null) : ActionCardFormValue
 }
 
 enum class ActionCardFormIssueCode(val wire: String) {
@@ -1345,6 +1515,9 @@ enum class ActionCardFormIssueCode(val wire: String) {
     NotAllowed("not_allowed"),
     Conflict("conflict"),
     InvalidFormat("invalid_format"),
+
+    /** A multiple Choice under its minItems (schemaVersion 8). */
+    TooFew("too_few"),
 }
 
 /** One problem with a form: under its [field], or at the top of the sheet when [field] is null. */
@@ -1354,40 +1527,44 @@ data class ActionCardFormIssue(
     val message: ActionCardSpecMsg,
 )
 
-/** The generic message per issue code, in every display locale (`ACTION_CARD_FORM_ISSUE_MESSAGES`); too_long and too_many take `{max}`. */
+/** The generic message per issue code, in every display locale (`ACTION_CARD_FORM_ISSUE_MESSAGES`); too_long and too_many take `{max}`, too_few `{min}`. */
 val ACTION_CARD_FORM_ISSUE_MESSAGES: Map<ActionCardFormIssueCode, ActionCardSpecMsg> =
     listOf(
         ActionCardFormIssueCode.Required to mapOf(
-            "en" to "This field is required.", "es" to "Este campo es obligatorio.", "pt-br" to "Este campo é obrigatório.", "ko" to "필수 항목이에요.",
+            "en" to "This field is required.", "es" to "Este campo es obligatorio.", "pt-br" to "Este campo é obrigatório.", "ru" to "Это обязательное поле.", "ko" to "필수 항목이에요.",
             "ja" to "この項目は必須です。", "zh-cn" to "此项为必填项。", "zh-tw" to "此欄位為必填。",
         ),
         ActionCardFormIssueCode.TooLong to mapOf(
-            "en" to "Use {max} characters or fewer.", "es" to "Usa {max} caracteres o menos.", "pt-br" to "Use no máximo {max} caracteres.", "ko" to "{max}자 이하로 입력해 주세요.",
+            "en" to "Use {max} characters or fewer.", "es" to "Usa {max} caracteres o menos.", "pt-br" to "Use no máximo {max} caracteres.", "ru" to "Максимальное количество символов: {max}.", "ko" to "{max}자 이하로 입력해 주세요.",
             "ja" to "{max} 文字以内で入力してください。", "zh-cn" to "最多 {max} 个字符。", "zh-tw" to "最多 {max} 個字元。",
         ),
         ActionCardFormIssueCode.TooMany to mapOf(
-            "en" to "Choose {max} or fewer.", "es" to "Elige {max} o menos.", "pt-br" to "Escolha no máximo {max}.", "ko" to "{max}개 이하로 선택해 주세요.",
+            "en" to "Choose {max} or fewer.", "es" to "Elige {max} o menos.", "pt-br" to "Escolha no máximo {max}.", "ru" to "Выберите не больше {max}.", "ko" to "{max}개 이하로 선택해 주세요.",
             "ja" to "{max} 個以内で選択してください。", "zh-cn" to "最多选择 {max} 项。", "zh-tw" to "最多選擇 {max} 項。",
         ),
         ActionCardFormIssueCode.InvalidOption to mapOf(
-            "en" to "Choose one of the options.", "es" to "Elige una de las opciones.", "pt-br" to "Escolha uma das opções.", "ko" to "옵션 중에서 선택해 주세요.",
+            "en" to "Choose one of the options.", "es" to "Elige una de las opciones.", "pt-br" to "Escolha uma das opções.", "ru" to "Выберите один из вариантов.", "ko" to "옵션 중에서 선택해 주세요.",
             "ja" to "選択肢から選択してください。", "zh-cn" to "请从选项中选择。", "zh-tw" to "請從選項中選擇。",
         ),
         ActionCardFormIssueCode.NotFound to mapOf(
-            "en" to "This no longer exists.", "es" to "Ya no existe.", "pt-br" to "Isso não existe mais.", "ko" to "더 이상 존재하지 않아요.",
+            "en" to "This no longer exists.", "es" to "Ya no existe.", "pt-br" to "Isso não existe mais.", "ru" to "Этот элемент больше не существует.", "ko" to "더 이상 존재하지 않아요.",
             "ja" to "これはもう存在しません。", "zh-cn" to "该项已不存在。", "zh-tw" to "該項目已不存在。",
         ),
         ActionCardFormIssueCode.NotAllowed to mapOf(
-            "en" to "You can't choose this.", "es" to "No puedes elegir esto.", "pt-br" to "Você não pode escolher isso.", "ko" to "이 항목은 선택할 수 없어요.",
+            "en" to "You can't choose this.", "es" to "No puedes elegir esto.", "pt-br" to "Você não pode escolher isso.", "ru" to "Этот вариант нельзя выбрать.", "ko" to "이 항목은 선택할 수 없어요.",
             "ja" to "これは選択できません。", "zh-cn" to "你不能选择此项。", "zh-tw" to "你無法選擇此項。",
         ),
         ActionCardFormIssueCode.Conflict to mapOf(
-            "en" to "This is already taken.", "es" to "Ya está en uso.", "pt-br" to "Isso já está em uso.", "ko" to "이미 사용 중이에요.",
+            "en" to "This is already taken.", "es" to "Ya está en uso.", "pt-br" to "Isso já está em uso.", "ru" to "Уже используется.", "ko" to "이미 사용 중이에요.",
             "ja" to "すでに使用されています。", "zh-cn" to "已被占用。", "zh-tw" to "已被使用。",
         ),
         ActionCardFormIssueCode.InvalidFormat to mapOf(
-            "en" to "This value is not valid.", "es" to "Este valor no es válido.", "pt-br" to "Este valor não é válido.", "ko" to "유효하지 않은 값이에요.",
+            "en" to "This value is not valid.", "es" to "Este valor no es válido.", "pt-br" to "Este valor não é válido.", "ru" to "Недопустимое значение.", "ko" to "유효하지 않은 값이에요.",
             "ja" to "この値は無効です。", "zh-cn" to "此值无效。", "zh-tw" to "此值無效。",
+        ),
+        ActionCardFormIssueCode.TooFew to mapOf(
+            "en" to "Choose at least {min}.", "es" to "Elige al menos {min}.", "pt-br" to "Escolha pelo menos {min}.", "ru" to "Выберите не меньше {min}.", "ko" to "{min}개 이상 선택해 주세요.",
+            "ja" to "{min} 個以上選択してください。", "zh-cn" to "至少选择 {min} 项。", "zh-tw" to "至少選擇 {min} 項。",
         ),
     ).associate { (code, text) -> code to ActionCardSpecMsg(key = "actionCard.form.issue.${code.wire}", text = text) }
 
@@ -1426,6 +1603,14 @@ fun checkActionCardFormValues(form: ActionCardSpecForm, values: Map<String, Acti
                     is ActionCardFormValue.Text -> put(name, value.value)
                     is ActionCardFormValue.Toggle -> put(name, value.value)
                     is ActionCardFormValue.Ids -> put(name, buildJsonArray { value.ids.forEach { add(JsonPrimitive(it)) } })
+                    is ActionCardFormValue.Choice ->
+                        put(
+                            name,
+                            buildJsonObject {
+                                put("selected", buildJsonArray { value.selected.forEach { add(JsonPrimitive(it)) } })
+                                value.other?.let { put("other", it) }
+                            },
+                        )
                 }
             }
         },
@@ -1464,6 +1649,7 @@ internal fun checkActionCardFormValuesJson(form: ActionCardSpecForm, values: Jso
                 }
             }
             is ActionCardSpecToggleField -> null
+            is ActionCardSpecChoiceField -> choiceIssue(field, provided, value)
             is ActionCardSpecPickerField -> {
                 val ids = if (provided) (value as? JsonArray)?.takeIf { array -> array.all { it.cardString() != null } } ?: return@mapNotNull null else JsonArray(emptyList())
                 when {
@@ -1475,4 +1661,36 @@ internal fun checkActionCardFormValuesJson(form: ActionCardSpecForm, values: Jso
             }
         }
     }
+}
+
+/**
+ * A Choice's client checks (`choiceIssue`, client mode), at most one issue, in this order: `required`
+ * (nothing selected and `other` absent or blank), `too_long` (`other` over its Other's maxLength), then
+ * with any item (a non-blank `other` counts as one) `too_many` and `too_few`. A value that is not
+ * `{ selected: string[], other?: string }` is left to the server, as are repeated or unknown options.
+ */
+private fun choiceIssue(field: ActionCardSpecChoiceField, provided: Boolean, value: JsonElement?): ActionCardFormIssue? {
+    var selected = emptyList<String>()
+    var other: String? = null
+    if (provided) {
+        val obj = value as? JsonObject ?: return null
+        if (obj.keys.any { it != "selected" && it != "other" }) return null
+        val array = obj["selected"] as? JsonArray ?: return null
+        selected = array.map { it.cardString() ?: return null }
+        if ("other" in obj) other = obj["other"].cardString() ?: return null
+    }
+    val items = selected.size + if (other != null && !isActionCardBlank(other)) 1 else 0
+    if (items == 0 && field.required == true) return actionCardFormIssue(field.name, ActionCardFormIssueCode.Required)
+    val otherMax = field.other?.maxLength
+    if (other != null && otherMax != null && cardCodePoints(other) > otherMax) {
+        return actionCardFormIssue(field.name, ActionCardFormIssueCode.TooLong, mapOf("max" to ActionCardSpecMsgParam.Integer(otherMax.toLong())))
+    }
+    if (items == 0) return null
+    if (items > field.maxSelectable) {
+        return actionCardFormIssue(field.name, ActionCardFormIssueCode.TooMany, mapOf("max" to ActionCardSpecMsgParam.Integer(field.maxSelectable.toLong())))
+    }
+    if (items < field.minRequired) {
+        return actionCardFormIssue(field.name, ActionCardFormIssueCode.TooFew, mapOf("min" to ActionCardSpecMsgParam.Integer(field.minRequired.toLong())))
+    }
+    return null
 }

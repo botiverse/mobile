@@ -10,9 +10,9 @@
 set -euo pipefail
 
 readonly WEB_REPOSITORY="botiverse/slock"
-readonly WEB_HEAD="05e3873718324869e0b687493a0ad385c8b59542"
+readonly WEB_HEAD="bffda8337a3942c4aee9b012feca2291e03449ba"
 readonly WEB_PATH="packages/shared/src/actionCard.v1.vector.json"
-readonly EXPECTED_SHA256="df99645e2c3612d83aa4615bdbb345cc1d8f04f82da16affdf6e74389710a0e8"
+readonly EXPECTED_SHA256="96497594e344ce842343a3f22a4d90a2e705e15193d16c13ea2a78434d69da57"
 readonly VENDORED_PATH="compose/shared/src/androidUnitTest/resources/actioncard/actionCard.v1.vector.json"
 readonly VENDORED_DIGEST_PATH="compose/shared/src/androidUnitTest/resources/actioncard/actionCard.v1.vector.sha256"
 

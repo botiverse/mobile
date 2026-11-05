@@ -30,6 +30,7 @@ import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecAgentPickerField
 import build.raft.app.data.ActionCardSpecChannelPickerField
 import build.raft.app.data.ActionCardSpecChannelScope
+import build.raft.app.data.ActionCardSpecChoiceField
 import build.raft.app.data.ActionCardSpecForm
 import build.raft.app.data.ActionCardSpecKnownField
 import build.raft.app.data.ActionCardSpecMemberKind
@@ -304,6 +305,8 @@ private fun ActionCardFormField(
                 }
                 if (error != null) RaftFieldError(error, enabled = enabled)
             }
+        // Rendered by the question-card UI change; until then `field.choice` is not in RAFT_APP_ACTION_CARD_CAPABILITIES, so strip never opens a form holding one.
+        is ActionCardSpecChoiceField -> Unit
         is ActionCardSpecPickerField ->
             RaftField(label = label, description = description, error = error, enabled = enabled, required = field.required == true) {
                 val ids = (value as? ActionCardFormValue.Ids)?.ids.orEmpty()
