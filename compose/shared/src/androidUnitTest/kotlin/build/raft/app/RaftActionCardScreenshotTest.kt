@@ -98,6 +98,10 @@ class RaftActionCardScreenshotTest {
 
     @Test fun approveCallDark() = capture("thread.action-card.approve-call.dark", RaftAppAppearance.Dark) { Card("form_submit_labels") }
 
+    @Test fun questionCardLight() = capture("thread.action-card.question", RaftAppAppearance.Light) { QuestionCards() }
+
+    @Test fun questionCardDark() = capture("thread.action-card.question.dark", RaftAppAppearance.Dark) { QuestionCards() }
+
     @Test fun limitsLight() = capture("thread.action-card.limits", RaftAppAppearance.Light) { Limits() }
 
     @Test fun limitsDark() = capture("thread.action-card.limits.dark", RaftAppAppearance.Dark) { Limits() }
@@ -220,6 +224,14 @@ private fun StackRoles() {
     Card("stack_roles")
     Card("stack_role_wrong_direction")
     Card("stack_role_unknown")
+}
+
+/** The question card (schemaVersion 8): waiting for an answer, answered (its result lists each answer), and frozen. */
+@Composable
+private fun QuestionCards() {
+    Card("question_card")
+    Card("question_card_answered", RaftActionCardFrameState(status = RaftActionCardStatus.Executed, record = "Answered by Alice Chen"))
+    Card("question_card_single_anyone", RaftActionCardFrameState(status = RaftActionCardStatus.Frozen))
 }
 
 @Composable

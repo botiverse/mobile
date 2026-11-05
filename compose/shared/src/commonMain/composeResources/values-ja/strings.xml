@@ -3695,6 +3695,12 @@
     <string name="action_card_form_channels_search">チャンネルを検索</string>
     <string name="action_card_form_channels_no_matches">「%1$s」に一致するチャンネルはありません</string>
     <string name="action_card_form_channels_empty">選択できるチャンネルはありません</string>
+    <string name="action_card_question_page">質問 %1$d/%2$d</string>
+    <string name="action_card_question_back">戻る</string>
+    <string name="action_card_question_next">次へ</string>
+    <string name="action_card_question_choose_first">先に選択肢を選んでください。</string>
+    <string name="action_card_question_write_first">先に回答を入力してください。</string>
+    <string name="action_card_question_other_placeholder">回答を入力</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">最新は v%1$d</string>
