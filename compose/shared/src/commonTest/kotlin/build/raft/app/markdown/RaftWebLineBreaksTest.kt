@@ -8,8 +8,8 @@ import kotlin.test.assertTrue
 
 /** [withRaftWebTextBreaks] and [withRaftInlineChipGlue]: where the marks go, and that copy drops them. */
 class RaftWebLineBreaksTest {
-    private val zwsp = "​"
-    private val wj = "⁠"
+    private val zwsp = "\u200B"
+    private val wj = "\u2060"
 
     @Test
     fun aHyphenInsideAWordGetsABreakMark() {
@@ -37,11 +37,11 @@ class RaftWebLineBreaksTest {
 
     @Test
     fun emojiAndSurrogatePairsAreNeverSplitInText() {
-        val text = "👩‍💻-dev ❤️/ok 𠀀-a"
+        val text = "👩\u200D💻-dev ❤\uFE0F/ok 𠀀-a"
         val marked = text.withRaftWebTextBreaks()
         assertEquals(text, marked.raftCopyText())
-        assertTrue(marked.contains("❤️/${wj}ok"))
-        assertTrue(marked.contains("👩‍💻-dev"), "no letter before the hyphen: no mark")
+        assertTrue(marked.contains("❤\uFE0F/${wj}ok"))
+        assertTrue(marked.contains("👩\u200D💻-dev"), "no letter before the hyphen: no mark")
     }
 
     @Test
@@ -74,21 +74,21 @@ class RaftWebLineBreaksTest {
         )
         // A CJK character outside the BMP is one code point: no joiner inside its surrogate pair.
         val glued = "#𠀀𠀁".withRaftInlineChipGlue()
-        assertEquals("#$wj𠀀$wj𠀁", glued)
+        assertEquals("#${wj}𠀀${wj}𠀁", glued)
     }
 
     @Test
     fun emojiInAChipLabelStayWhole() {
         // ZWJ sequence, VS16 and a skin tone: joiners only round the space, never inside a cluster.
-        assertEquals("@Dev$wj $wj👩‍💻", "@Dev 👩‍💻".withRaftInlineChipGlue())
-        assertEquals("@Lily$wj $wj❤️", "@Lily ❤️".withRaftInlineChipGlue())
-        assertEquals("@Sam$wj $wj👍🏽", "@Sam 👍🏽".withRaftInlineChipGlue())
+        assertEquals("@Dev$wj ${wj}👩\u200D💻", "@Dev 👩\u200D💻".withRaftInlineChipGlue())
+        assertEquals("@Lily$wj ${wj}❤\uFE0F", "@Lily ❤\uFE0F".withRaftInlineChipGlue())
+        assertEquals("@Sam$wj ${wj}👍🏽", "@Sam 👍🏽".withRaftInlineChipGlue())
         assertEquals("@🦊", "@🦊".withRaftInlineChipGlue())
-        listOf("@Dev 👩‍💻", "@Lily ❤️", "#对话流 ❤️ ok-go").forEach { label ->
+        listOf("@Dev 👩\u200D💻", "@Lily ❤\uFE0F", "#对话流 ❤\uFE0F ok-go").forEach { label ->
             val glued = label.withRaftInlineChipGlue()
             assertEquals(label, glued.raftCopyText())
-            assertFalse(glued.contains("$wj‍") || glued.contains("‍$wj"), "no joiner beside a ZWJ in $label")
-            assertFalse(glued.contains("$wj️"), "no joiner before a variation selector in $label")
+            assertFalse(glued.contains("${wj}\u200D") || glued.contains("\u200D$wj"), "no joiner beside a ZWJ in $label")
+            assertFalse(glued.contains("${wj}\uFE0F"), "no joiner before a variation selector in $label")
         }
     }
 }
