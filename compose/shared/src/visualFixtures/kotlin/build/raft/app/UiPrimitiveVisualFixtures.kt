@@ -16,7 +16,7 @@ import build.raft.app.components.RaftSelectionPopoverOption
 import build.raft.app.components.RaftAppSkeleton
 import build.raft.app.components.RaftSkeletonRow
 import build.raft.app.components.RaftAppSkeletonVariant
-import build.raft.app.components.RaftSlugInput
+import build.raft.designsystem.components.RaftTextFieldAddonVariant
 import build.raft.app.components.raftCardSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
@@ -269,11 +269,19 @@ internal fun UiSlugInputVisualContent() {
         // raft-ui InputGroup has no shadow gutter, so react's gap-4 is 16dp.
         // React renders the second row read-only at opacity-60 (not disabled).
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            RaftSlugInput(value = "design-lab", onValueChange = {}, modifier = Modifier.width(310.dp))
-            RaftSlugInput(
+            RaftTextField(
+                value = "design-lab",
+                onValueChange = {},
+                modifier = Modifier.width(310.dp),
+                prefix = "/",
+                addonVariant = RaftTextFieldAddonVariant.Container
+            )
+            RaftTextField(
                 value = "partner-workspace",
                 onValueChange = {},
-                modifier = Modifier.width(310.dp).alpha(0.6f)
+                modifier = Modifier.width(310.dp).alpha(0.6f),
+                prefix = "/",
+                addonVariant = RaftTextFieldAddonVariant.Container
             )
         }
     }

@@ -7,6 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +31,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
@@ -91,6 +95,21 @@ object RaftTextFieldDefaults {
      * composition can still hit it); drop this reason once CMP ships the fix.
      */
     val NoAutoCorrectKeyboardOptions: KeyboardOptions = KeyboardOptions(autoCorrectEnabled = false)
+}
+
+/**
+ * raft-ui InputGroupAddon `variant` for a [RaftTextField]'s text addons (`prefix`, `suffix`).
+ */
+enum class RaftTextFieldAddonVariant {
+    /** A light mark inside the field: the text 2dp from the value (a search `/`, a unit). */
+    Default,
+
+    /**
+     * Part of the value's structure (a protocol, a domain, a slug's `/`, the handle's `@`): a
+     * `fill-muted` cell, `px-3`, behind a 1dp `line-hairline` divider; the value keeps its 12dp.
+     * For a field with no icon addon on that side.
+     */
+    Container,
 }
 
 /** Resolved colours of a field box (input, input group, textarea) in one state. */
@@ -165,7 +184,8 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  * wider [RaftKbd] key hint, kept 18dp tall)
  * ([LocalRaftContentColor]), 12dp from the edge and 8dp from the text. [prefix] /
  * [suffix] take fixed text (a `/`, a domain, a unit) in Space Mono `text-mono-code`,
- * `foreground-hint`, 2dp from the text.
+ * `foreground-hint`, 2dp from the text; [addonVariant] [RaftTextFieldAddonVariant.Container] sets
+ * them in a `fill-muted` cell behind a hairline divider instead (InputGroupAddon `variant="container"`).
  *
  * [trailingAction] is InputGroup's button addon at the very end: a [RaftTextFieldAction]
  * (show the password, copy) or [RaftTextFieldClearAction] (show it once there is text). It
@@ -195,6 +215,7 @@ fun RaftTextField(
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
     leadingAction: (@Composable () -> Unit)? = null,
+    addonVariant: RaftTextFieldAddonVariant = RaftTextFieldAddonVariant.Default,
 ) {
     RaftTextField(
         state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
@@ -213,6 +234,7 @@ fun RaftTextField(
         interactionSource = interactionSource,
         trailingAction = trailingAction,
         leadingAction = leadingAction,
+        addonVariant = addonVariant,
     )
 }
 
@@ -236,6 +258,7 @@ fun RaftTextField(
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
     leadingAction: (@Composable () -> Unit)? = null,
+    addonVariant: RaftTextFieldAddonVariant = RaftTextFieldAddonVariant.Default,
 ) {
     RaftTextField(
         state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
@@ -254,6 +277,7 @@ fun RaftTextField(
         interactionSource = interactionSource,
         trailingAction = trailingAction,
         leadingAction = leadingAction,
+        addonVariant = addonVariant,
     )
 }
 
@@ -280,6 +304,7 @@ fun RaftTextField(
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
     leadingAction: (@Composable () -> Unit)? = null,
+    addonVariant: RaftTextFieldAddonVariant = RaftTextFieldAddonVariant.Default,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
@@ -301,7 +326,7 @@ fun RaftTextField(
         cursorBrush = SolidColor(RaftTheme.colors.foreground),
         outputTransformation = outputTransformation,
         decorator = { inner ->
-            RaftInputBox(look, focused, state.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, leadingAction, inner)
+            RaftInputBox(look, focused, state.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, leadingAction, addonVariant, inner)
         },
     )
 }
@@ -535,6 +560,7 @@ private fun RaftInputBox(
     suffix: String?,
     trailingAction: (@Composable () -> Unit)?,
     leadingAction: (@Composable () -> Unit)?,
+    addonVariant: RaftTextFieldAddonVariant,
     inner: @Composable () -> Unit,
 ) {
     // input-group.tsx: an addon is `px-3`, trimmed to 8dp (icon) / 2dp (text) on the
@@ -550,12 +576,19 @@ private fun RaftInputBox(
     val startEdge = if (leadingAction != null) 4.dp else edge
     val hasStart = leading != null || prefix != null || leadingAction != null
     val hasEnd = trailing != null || suffix != null || hasAction
+    val container = addonVariant == RaftTextFieldAddonVariant.Container
+    val prefixCell = container && prefix != null
+    val suffixCell = container && suffix != null
     Row(
         Modifier
             .fillMaxWidth()
             // A minimum, so text at a large font scale grows the box instead of clipping.
             .heightIn(min = RaftTheme.controls.height)
-            .raftFieldChrome(look, focused),
+            // A container cell runs the box's full height (`self-stretch`).
+            .then(if (container) Modifier.height(IntrinsicSize.Min) else Modifier)
+            .raftFieldChrome(look, focused)
+            // Its fill stays inside the rounded corners; the ring and border are drawn outside the clip.
+            .then(if (container) Modifier.clip(RoundedCornerShape(RaftRadius.Control)) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leadingAction != null) {
@@ -571,7 +604,10 @@ private fun RaftInputBox(
                     contentAlignment = Alignment.Center,
                 ) { leading() }
             }
-            if (prefix != null) {
+            if (prefix != null && prefixCell) {
+                RaftTextFieldAddonCell(prefix, look, start = if (leading != null) 12.dp else startEdge, end = 12.dp)
+                RaftTextFieldAddonDivider()
+            } else if (prefix != null) {
                 // raft-ui 0.13: a text prefix takes at most half the field, then ellipsizes. A
                 // cap, not a weight: a weight would hold half the field for a short prefix too
                 // and leave the input only the other half.
@@ -590,7 +626,10 @@ private fun RaftInputBox(
         Box(
             Modifier
                 .weight(1f)
-                .padding(start = if (hasStart) 0.dp else edge, end = if (hasEnd) 0.dp else edge),
+                .padding(
+                    start = if (prefixCell) 12.dp else if (hasStart) 0.dp else edge,
+                    end = if (suffixCell) 12.dp else if (hasEnd) 0.dp else edge,
+                ),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (showPlaceholder && placeholder != null) {
@@ -605,7 +644,10 @@ private fun RaftInputBox(
             inner()
         }
         CompositionLocalProvider(LocalRaftContentColor provides look.addon) {
-            if (suffix != null) {
+            if (suffix != null && suffixCell) {
+                RaftTextFieldAddonDivider()
+                RaftTextFieldAddonCell(suffix, look, start = 12.dp, end = if (trailing != null || hasAction) 12.dp else endEdge)
+            } else if (suffix != null) {
                 AddonText(suffix, Modifier.padding(start = 2.dp, end = if (trailing != null) 8.dp else endEdge), look.addon)
             }
             if (trailing != null) {
@@ -693,6 +735,26 @@ fun RaftTextFieldClearAction(
     RaftTextFieldAction(onClick = onClear, label = label, modifier = modifier, enabled = enabled) {
         RaftGlyphIcon(RaftGlyph.X, size = 16.dp)
     }
+}
+
+/** InputGroupAddon `variant="container"` text: a `fill-muted` cell the box's height, `px-3`. */
+@Composable
+private fun RaftTextFieldAddonCell(text: String, look: RaftFieldBoxLook, start: Dp, end: Dp) {
+    Box(
+        Modifier
+            .fillMaxHeight()
+            .background(RaftTheme.colors.fillMuted)
+            .padding(start = start, end = end),
+        contentAlignment = Alignment.Center,
+    ) {
+        AddonText(text, Modifier, look.addon)
+    }
+}
+
+/** The container cell's `border-r` / `border-l`: 1dp `line-hairline`. */
+@Composable
+private fun RaftTextFieldAddonDivider() {
+    Box(Modifier.width(1.dp).fillMaxHeight().background(RaftTheme.colors.lineHairline))
 }
 
 @Composable

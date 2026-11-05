@@ -4,7 +4,7 @@ import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftFieldLabelSize
-import build.raft.app.components.RaftPrefixedInputFrame
+import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftSeparator
@@ -550,24 +550,9 @@ internal fun SettingsProfileIdentityCard(
 
 /**
  * Web read-only `PrefixedInput` / `SlugInput` (the username's "@", the server slug's "/"): the
- * `fill-muted` / `line-hairline` input group with its prefix addon and the value in
- * `foreground-muted`. Long-press copies [copyText].
+ * design system's read-only field with its container prefix. Long-press copies [copyText].
  */
 @Composable
 internal fun SettingsReadOnlyPrefixedField(prefix: String, text: String, copyText: String? = text) {
-    RaftPrefixedInputFrame(
-        prefix = prefix,
-        enabled = false,
-        fieldHeight = 44.dp,
-        modifier = Modifier.raftCopyable(copyText)
-    ) {
-        RaftText(
-            text,
-            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-            style = RaftTheme.typography.field,
-            color = RaftTheme.colors.foregroundMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    RaftReadOnlyField(text = text, prefix = prefix, copyText = copyText)
 }

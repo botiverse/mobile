@@ -110,8 +110,8 @@ import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 
 import build.raft.app.components.RaftAnchoredMetaChip
-import build.raft.app.components.RaftAttachmentPreviewCard
-import build.raft.app.components.RaftAttachmentPreviewCardAction
+import build.raft.designsystem.components.RaftMessageAttachmentAction
+import build.raft.designsystem.components.RaftMessageAttachmentCard
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftChipLoadingIndicator
 import build.raft.app.components.rememberRaftDesignSystemEditor
@@ -35980,31 +35980,27 @@ private fun ThreadAttachmentChip(
     // raft-ui MessageAttachmentCard: one affordance icon, Eye for a file with an in-app preview,
     // Download for one that opens its file page. Both only open the page (web AttachmentChip).
     val route = attachment.threadAttachmentOpenRoute()
-    val affordance =
+    val (affordanceIcon, affordanceLabel) =
         if (route is RaftThreadAttachmentOpenRoute.Preview) {
-            RaftAttachmentPreviewCardAction(
-                RaftLucideIconName.Eye,
-                "${stringResource(Res.string.file_preview_action_open)} ${attachment.name}",
-                onOpen
-            )
+            RaftLucideIconName.Eye to "${stringResource(Res.string.file_preview_action_open)} ${attachment.name}"
         } else {
-            RaftAttachmentPreviewCardAction(
-                RaftLucideIconName.Download,
-                "${stringResource(Res.string.file_preview_action_download)} ${attachment.name}",
-                onOpen
-            )
+            RaftLucideIconName.Download to "${stringResource(Res.string.file_preview_action_download)} ${attachment.name}"
         }
-    RaftAttachmentPreviewCard(
+    val badge = threadFileTypeBadgeLabel(attachment.name)
+    RaftMessageAttachmentCard(
         title = attachment.name,
-        typeBadge = threadFileTypeBadgeLabel(attachment.name),
+        typeBadge = if (badge != null) ({ ThreadFileTypeBadge(label = badge, inline = true) }) else null,
         meta = statusLabel ?: metaLabel,
         metaSize = attachment.displaySizeLabel().takeIf { statusLabel == null },
         commentCount = if (statusLabel == null) attachment.threadAttachmentCardCommentCount() else 0,
-        actions = listOf(affordance),
         loading = isOpening || centerEntry?.status == RaftDownloadStatus.Downloading,
         failed = centerLabel == null && openState.threadAttachmentOpenFailed(),
         onClick = if (isOpening) ({}) else onOpen
-    )
+    ) {
+        RaftMessageAttachmentAction(onClick = onOpen, contentDescription = affordanceLabel) {
+            RaftSlotIcon(affordanceIcon, size = 16.dp)
+        }
+    }
 }
 
 @Composable

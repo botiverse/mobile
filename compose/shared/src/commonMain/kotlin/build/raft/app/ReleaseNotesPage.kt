@@ -13,7 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftUiEmptyState
+import build.raft.designsystem.components.RaftEmptyState
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.ScreenLoadState
@@ -343,11 +343,12 @@ private fun ReleaseNotesErrorState(onRetry: () -> Unit) {
         modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas),
         contentAlignment = Alignment.Center,
     ) {
-        RaftUiEmptyState(
+        RaftEmptyState(
             title = stringResource(Res.string.release_notes_error_title),
             description = stringResource(Res.string.release_notes_error_body),
             modifier = Modifier.fillMaxSize(),
-            action = {
+            icon = { RaftSlotIcon(RaftLucideIconName.TriangleAlert) },
+            actions = {
                 RaftButton(
                     text = stringResource(Res.string.common_retry),
                     onClick = onRetry,

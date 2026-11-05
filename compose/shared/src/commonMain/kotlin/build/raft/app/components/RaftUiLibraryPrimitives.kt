@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -211,7 +212,20 @@ internal fun RaftUiCheckboxLabelRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    RaftCheckboxLabelRow(label = label, checked = checked, modifier = modifier, enabled = enabled)
+    Row(
+        modifier = modifier.widthIn(min = 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RaftCheckboxIndicator(checked = checked, enabled = enabled)
+        Text(
+            text = label,
+            style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -302,52 +316,6 @@ private fun RaftLookBanner(
                 Box(modifier = Modifier.padding(top = 8.dp)) {
                     it()
                 }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun RaftUiEmptyState(
-    title: String,
-    description: String,
-    modifier: Modifier = Modifier,
-    iconText: String = "∅",
-    action: (@Composable () -> Unit)? = null
-) {
-    // raft-ui EmptyState: px-6 py-12, 8dp gap, hint-ink icon (36), headline 17/22 bold
-    // muted title, callout 14/20 hint description (max 300dp), actions 20dp below.
-    Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = iconText,
-            style = RaftType.PageTitle.copy(fontSize = 34.sp, lineHeight = 38.sp),
-            color = RaftColor.ForegroundHint,
-            maxLines = 1
-        )
-        Text(
-            text = title,
-            style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp).withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMuted,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = description,
-            modifier = Modifier.widthIn(max = 300.dp),
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = RaftColor.ForegroundHint,
-            textAlign = TextAlign.Center,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
-        )
-        action?.let {
-            Box(modifier = Modifier.padding(top = 12.dp)) {
-                it()
             }
         }
     }
@@ -481,6 +449,10 @@ internal fun RaftUiTextarea(
         )
     }
 }
+
+/** [maxLines] lines of the field type (24dp line) inside the textarea's 10dp vertical padding. */
+private fun raftTextareaMaxHeight(fieldHeight: Dp, maxLines: Int): Dp =
+    if (maxLines == Int.MAX_VALUE) Dp.Infinity else maxOf(fieldHeight, 24.dp * maxLines + 20.dp)
 
 @Composable
 internal fun RaftUiInputGroup(

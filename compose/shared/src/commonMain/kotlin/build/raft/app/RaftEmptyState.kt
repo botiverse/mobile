@@ -22,6 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
+/**
+ * The app's page-filling empty state: [RaftColor.SurfaceWhite] edge to edge, the message centred
+ * in the safe area. Its type and spacing predate the design system's
+ * [build.raft.designsystem.components.RaftEmptyState] (raft-ui EmptyState: 8dp gaps,
+ * `foreground-muted` title, `foreground-hint` description); new screens use that one.
+ */
 @Composable
 internal fun RaftEmptyState(
     title: String,
