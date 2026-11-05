@@ -13,7 +13,7 @@ class RaftTopPageHeaderContractTest {
     @Test
     fun canonicalFrameKeepsAllSurfacesAtTheRaftFiftySixDpHeadWithoutSafeArea() {
         assertEquals(
-            RaftTopPageHeaderFrameMetrics(totalHeight = 56.dp, contentHeight = 54.5.dp),
+            RaftTopPageHeaderFrameMetrics(totalHeight = 56.dp, contentHeight = 55.dp),
             raftTopPageHeaderFrameMetrics(topSafeArea = 0.dp),
         )
     }
@@ -21,7 +21,7 @@ class RaftTopPageHeaderContractTest {
     @Test
     fun canonicalFrameAddsSafeAreaWithoutChangingHeaderGeometry() {
         assertEquals(
-            RaftTopPageHeaderFrameMetrics(totalHeight = 80.dp, contentHeight = 78.5.dp),
+            RaftTopPageHeaderFrameMetrics(totalHeight = 80.dp, contentHeight = 79.dp),
             raftTopPageHeaderFrameMetrics(topSafeArea = 24.dp),
         )
     }

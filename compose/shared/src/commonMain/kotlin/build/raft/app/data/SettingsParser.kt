@@ -56,7 +56,8 @@ private data class WireAuthProvider(
 
 @Serializable
 private data class WireAuthIdentitiesResponse(
-    val identities: List<WireAuthIdentity> = emptyList()
+    val identities: List<WireAuthIdentity> = emptyList(),
+    val passwordConfigured: Boolean? = null
 )
 
 @Serializable
@@ -108,24 +109,31 @@ fun parseSharedAccountProviderLinkStartResult(
     AccountProviderLinkStartResult(providerId = providerId, url = response.url.takeIf { it.isNotBlank() } ?: return@runCatching null)
 }.getOrNull()
 
+/** `passwordConfigured` of a `GET /api/auth/identities` (or unlink) response; null when absent. */
+fun parseSharedAccountPasswordConfigured(identitiesBodyText: String): Boolean? = runCatching {
+    settingsJson.decodeFromString(WireAuthIdentitiesResponse.serializer(), identitiesBodyText).passwordConfigured
+}.getOrNull()
+
 fun parseSharedAccountConnectedAccounts(
     providersBodyText: String,
     identitiesBodyText: String,
     fallbackEmail: String
 ): List<ConnectedAccountSnapshot>? = runCatching {
     val providers = settingsJson.decodeFromString(WireAuthProvidersResponse.serializer(), providersBodyText).providers
-    val identities =
-        settingsJson
-            .decodeFromString(WireAuthIdentitiesResponse.serializer(), identitiesBodyText)
-            .identities
-            .associateBy { it.provider.trim().lowercase() }
+    val identitiesResponse = settingsJson.decodeFromString(WireAuthIdentitiesResponse.serializer(), identitiesBodyText)
+    val identities = identitiesResponse.identities.associateBy { it.provider.trim().lowercase() }
     buildList {
         add(
             ConnectedAccountSnapshot(
                 providerId = "password",
                 provider = "Email password",
                 identifier = fallbackEmail,
-                status = ConnectedAccountStatus.Connected,
+                status =
+                    if (identitiesResponse.passwordConfigured == false) {
+                        ConnectedAccountStatus.NotConnected
+                    } else {
+                        ConnectedAccountStatus.Connected
+                    },
                 canConnect = false
             )
         )

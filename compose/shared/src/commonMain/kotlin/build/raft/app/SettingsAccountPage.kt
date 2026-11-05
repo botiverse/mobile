@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,7 +136,13 @@ internal data class RaftSettingsAccountPayload(
     val canUploadAvatar: Boolean = true,
     val canChangePassword: Boolean = true,
     val saveInProgress: Boolean = false,
-    val saveErrorCode: String? = null
+    val saveErrorCode: String? = null,
+    /** false: the account signs in only through providers ("Set a password" instead of "Change password"). */
+    val passwordConfigured: Boolean? = true,
+    val passwordSetupInProgress: Boolean = false,
+    val passwordSetupSent: Boolean = false,
+    val passwordSetupErrorCode: String? = null,
+    val disconnectingProviderId: String? = null
 )
 
 @Serializable
@@ -330,6 +337,11 @@ private fun handleStandaloneAccountAction(
             value?.takeIf { it.isNotBlank() }?.let { providerId ->
                 dispatch(SharedSettingsIntent.ConnectAccountProvider(AccountProviderLinkStartRequest(providerId = providerId)))
             }
+        "disconnectProvider" ->
+            value?.takeIf { it.isNotBlank() }?.let { providerId ->
+                dispatch(SharedSettingsIntent.DisconnectAccountProvider(providerId))
+            }
+        "sendPasswordSetup" -> dispatch(SharedSettingsIntent.SendAccountPasswordSetup)
         "saveProfile" -> {
             val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
             val displayName = value.orEmpty().trim()
@@ -361,25 +373,30 @@ internal fun SettingsAccountContent(
     val localizedPayload = payload.localizedPresentationCopy()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
     val visibleConnectedAccounts = localizedPayload.connectedAccounts.visibleSettingsConnectedAccounts()
+    // Web SettingsPanel Account tab: px-4 py-4, the Account section (profile card holding
+    // the profile form, connected accounts and the password credential), then Session.
     LazyColumn(
         modifier =
             Modifier
                 .fillMaxSize()
                 .dismissInputFocusOnScrollableChrome()
-                .background(RaftColor.SurfaceWhite)
+                .background(RaftColor.Canvas)
                 .padding(top = topSafeArea)
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(SettingsPanelKit.SectionGap)
     ) {
-        item { SettingsAccountSectionHeader(localizedPayload.profileSectionTitle) }
         item {
-            SettingsAccountProfileCard(
-                localizedPayload,
-                visibleConnectedAccounts,
-                avatarCacheIdentity,
-                onEvent,
-                onPasswordChange
-            )
+            Column {
+                SettingsPanelSectionHeader(RaftLucideIconName.User, stringResource(MR.strings.settings_account_section_label))
+                Spacer(Modifier.height(SettingsPanelKit.SectionHeadGap))
+                SettingsAccountProfileCard(
+                    localizedPayload,
+                    visibleConnectedAccounts,
+                    avatarCacheIdentity,
+                    onEvent,
+                    onPasswordChange
+                )
+            }
         }
         item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -419,103 +436,229 @@ private fun SettingsAccountProfileCard(
     val newPasswordState = remember { mutableStateOf(TextFieldValue("")) }
     val confirmPasswordState = remember { mutableStateOf(TextFieldValue("")) }
     val passwordDraftError = remember { mutableStateOf<String?>(null) }
+    val pendingDisconnect = remember { mutableStateOf<RaftSettingsConnectedAccount?>(null) }
     val passwordMinimumError = stringResource(MR.strings.settings_account_password_too_short)
     val passwordMismatchError = stringResource(MR.strings.settings_account_password_mismatch)
     val displayName = displayNameState.value
-    SettingsAccountHardShadowCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val dirty = displayName.trim().isNotEmpty() && displayName.trim() != profile.displayName
+    // Web SettingsProfileCard: avatar + name + @handle, a hairline, then the profile form.
+    SettingsPanelCard(verticalSpacing = 16.dp) {
+        SettingsPanelProfileHead(
+            title = profile.displayName.ifBlank { stringResource(MR.strings.settings_account_title) },
+            subtitle = profile.handle.removePrefix("@").takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
+            avatar = { SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent) }
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(SettingsPanelKit.FieldGap)) {
+            SettingsPanelSeparator(Modifier.padding(bottom = 4.dp))
+            payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
                 Text(
-                    profile.displayName.ifBlank { stringResource(MR.strings.settings_account_title) },
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    stringResource(MR.strings.settings_account_avatar_upload_failed, code),
+                    style = settingsPanelText(12.sp, 16.sp, FontWeight.Medium),
+                    color = RaftColor.DangerStrong
                 )
-                settingsAccountHeaderHandleLabel(profile.handle)?.let {
-                    Text(
-                        it,
-                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                        color = RaftColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
-        }
-        payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning(stringResource(MR.strings.settings_account_avatar_upload_failed, code))
-        }
-        RaftBrutalReadOnlyField(
-            label = payload.handleLabel,
-            value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
-            textStyle = settingsAccountInputTextStyle(RaftColor.TextMutedGray),
-            textColor = RaftColor.TextMutedGray
-        )
-        RaftBrutalTextField(
-            label = payload.displayNameLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = displayName,
-            placeholder = payload.displayNamePlaceholder,
-            onValueChange = { displayNameState.value = it },
-            enabled = payload.canEditProfile && !payload.saveInProgress,
-            textStyle = settingsAccountInputTextStyle()
-        )
-        SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
-        SettingsProfileSaveButton(
-            text = payload.profileSaveButtonLabel(),
-            enabled = payload.canEditProfile && !payload.saveInProgress,
-            onClick = { onEvent("saveProfile", displayName.trim()) }
-        )
-        payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning(stringResource(MR.strings.settings_account_profile_save_failed, code))
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
-        if (connectedAccounts.isNotEmpty()) {
-            SettingsConnectedAccounts(payload, connectedAccounts, onEvent)
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
-        }
-        SettingsPasswordDisclosure(
-            title = payload.changePasswordTitle,
-            expanded = passwordExpandedState.value,
-            enabled = payload.canChangePassword && !payload.passwordInProgress
-        ) {
-            passwordExpandedState.value = !passwordExpandedState.value
-            passwordDraftError.value = null
-        }
-        if (passwordExpandedState.value) {
-            SettingsPasswordForm(
-                payload = payload,
-                currentPassword = currentPasswordState.value,
-                newPassword = newPasswordState.value,
-                confirmPassword = confirmPasswordState.value,
-                draftError = passwordDraftError.value,
-                onCurrentPasswordChange = {
-                    currentPasswordState.value = it
-                    passwordDraftError.value = null
-                },
-                onNewPasswordChange = {
-                    newPasswordState.value = it
-                    passwordDraftError.value = null
-                },
-                onConfirmPasswordChange = {
-                    confirmPasswordState.value = it
-                    passwordDraftError.value = null
-                },
-                onSubmit = {
-                    val current = currentPasswordState.value.text
-                    val next = newPasswordState.value.text
-                    val confirm = confirmPasswordState.value.text
-                    when {
-                        next.length < 8 -> passwordDraftError.value = passwordMinimumError
-                        next != confirm -> passwordDraftError.value = passwordMismatchError
-                        else -> {
-                            passwordDraftError.value = null
-                            onPasswordChange(current, next)
-                        }
+            SettingsPanelField(payload.displayNameLabel) {
+                SettingsPanelInput(
+                    value = displayName,
+                    onValueChange = { displayNameState.value = it },
+                    enabled = payload.canEditProfile && !payload.saveInProgress,
+                    placeholder = payload.displayNamePlaceholder
+                )
+            }
+            SettingsPanelField(stringResource(MR.strings.settings_account_username)) {
+                SettingsPanelPrefixedInput(prefix = "@", value = profile.handle.removePrefix("@"))
+            }
+            SettingsPanelField(payload.emailLabel) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        profile.email.ifBlank { payload.emailPlaceholder },
+                        style = settingsPanelMono(13.sp, 20.sp),
+                        color = RaftColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (profile.verified) {
+                        SettingsPanelBadge(payload.verifiedLabel, RaftLucideIconName.Shield, RaftColor.SuccessSoft)
                     }
                 }
+            }
+            payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { SettingsPanelWarningBanner(it) }
+            SettingsPanelButton(
+                label = payload.profileSaveButtonLabel(),
+                onClick = { onEvent("saveProfile", displayName.trim()) },
+                enabled = payload.canEditProfile && !payload.saveInProgress && dirty,
+                variant = SettingsPanelButtonVariant.Accent
+            )
+        }
+        SettingsPanelSeparator()
+        if (connectedAccounts.isNotEmpty()) {
+            Column {
+                Text(
+                    payload.connectedAccountsTitle,
+                    style = settingsPanelText(15.sp, 20.sp, FontWeight.SemiBold),
+                    color = RaftColor.TextBlack,
+                    maxLines = 1
+                )
+                Spacer(Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    connectedAccounts.forEachIndexed { index, account ->
+                        SettingsConnectedAccountRow(
+                            account = account,
+                            index = index,
+                            payload = payload,
+                            onEvent = onEvent,
+                            onRequestDisconnect = { pendingDisconnect.value = it }
+                        )
+                    }
+                }
+            }
+            SettingsPanelSeparator()
+        }
+        if (payload.passwordConfigured == false) {
+            // Web: an account without a password credential sets one by email.
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        stringResource(MR.strings.settings_account_set_password),
+                        style = settingsPanelText(15.sp, 20.sp, FontWeight.SemiBold),
+                        color = RaftColor.TextBlack
+                    )
+                    Text(
+                        stringResource(MR.strings.settings_account_set_password_description),
+                        style = settingsPanelText(13.sp, 18.sp),
+                        color = RaftColor.TextMuted
+                    )
+                }
+                payload.passwordSetupErrorCode?.takeIf { it.isNotBlank() }?.let { SettingsPanelWarningBanner(it) }
+                if (payload.passwordSetupSent) {
+                    SettingsAccountSuccess(stringResource(MR.strings.settings_account_password_setup_sent))
+                }
+                SettingsPanelButton(
+                    label =
+                        if (payload.passwordSetupInProgress) {
+                            stringResource(MR.strings.settings_account_sending_setup_email)
+                        } else {
+                            stringResource(MR.strings.settings_account_set_password_by_email)
+                        },
+                    onClick = { onEvent("sendPasswordSetup", null) },
+                    enabled = !payload.passwordSetupInProgress,
+                    variant = SettingsPanelButtonVariant.Accent
+                )
+            }
+        } else {
+            SettingsPasswordDisclosure(
+                title = payload.changePasswordTitle,
+                expanded = passwordExpandedState.value,
+                enabled = payload.canChangePassword && !payload.passwordInProgress
+            ) {
+                passwordExpandedState.value = !passwordExpandedState.value
+                passwordDraftError.value = null
+            }
+            if (passwordExpandedState.value) {
+                SettingsPasswordForm(
+                    payload = payload,
+                    currentPassword = currentPasswordState.value,
+                    newPassword = newPasswordState.value,
+                    confirmPassword = confirmPasswordState.value,
+                    draftError = passwordDraftError.value,
+                    onCurrentPasswordChange = {
+                        currentPasswordState.value = it
+                        passwordDraftError.value = null
+                    },
+                    onNewPasswordChange = {
+                        newPasswordState.value = it
+                        passwordDraftError.value = null
+                    },
+                    onConfirmPasswordChange = {
+                        confirmPasswordState.value = it
+                        passwordDraftError.value = null
+                    },
+                    onSubmit = {
+                        val current = currentPasswordState.value.text
+                        val next = newPasswordState.value.text
+                        val confirm = confirmPasswordState.value.text
+                        when {
+                            next.length < 8 -> passwordDraftError.value = passwordMinimumError
+                            next != confirm -> passwordDraftError.value = passwordMismatchError
+                            else -> {
+                                passwordDraftError.value = null
+                                onPasswordChange(current, next)
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+    pendingDisconnect.value?.let { account ->
+        SettingsDisconnectProviderDialog(
+            account = account,
+            requiresPassword = payload.passwordConfigured == false && connectedAccounts.count { it.status == "connected" } <= 1,
+            busy = payload.disconnectingProviderId != null || payload.passwordSetupInProgress,
+            onDismiss = { pendingDisconnect.value = null },
+            onConfirm = { requiresPassword ->
+                val providerId = account.providerId.ifBlank { account.provider.lowercase() }
+                onEvent(if (requiresPassword) "sendPasswordSetup" else "disconnectProvider", providerId)
+                pendingDisconnect.value = null
+            }
+        )
+    }
+}
+
+/**
+ * Web Disconnect confirmation (ConfirmDialog): disconnect the provider, or, when it is the
+ * last way in and no password is set, send the set-a-password email first.
+ */
+@Composable
+private fun SettingsDisconnectProviderDialog(
+    account: RaftSettingsConnectedAccount,
+    requiresPassword: Boolean,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (requiresPassword: Boolean) -> Unit
+) {
+    val label = account.provider
+    RaftUnifiedDialog(
+        title =
+            if (requiresPassword) {
+                stringResource(MR.strings.settings_account_password_required_title)
+            } else {
+                stringResource(MR.strings.settings_account_disconnect_title, label)
+            },
+        onDismiss = onDismiss,
+        dismissEnabled = !busy,
+        contentPadding = 20.dp,
+        titleFontSize = 17
+    ) {
+        Text(
+            if (requiresPassword) {
+                stringResource(MR.strings.settings_account_password_required_message, label)
+            } else {
+                stringResource(MR.strings.settings_account_disconnect_message, label)
+            },
+            style = settingsPanelText(14.sp, 20.sp),
+            color = RaftColor.TextBlack
+        )
+        RaftDialogFooter {
+            SettingsPanelButton(
+                label = stringResource(MR.strings.common_cancel),
+                onClick = onDismiss,
+                enabled = !busy,
+                variant = SettingsPanelButtonVariant.Ghost,
+                size = SettingsPanelButtonSize.Lg
+            )
+            SettingsPanelButton(
+                label =
+                    if (requiresPassword) {
+                        stringResource(MR.strings.settings_account_send_setup_email)
+                    } else {
+                        stringResource(MR.strings.settings_account_disconnect)
+                    },
+                onClick = { onConfirm(requiresPassword) },
+                enabled = !busy,
+                variant = if (requiresPassword) SettingsPanelButtonVariant.Accent else SettingsPanelButtonVariant.Danger,
+                size = SettingsPanelButtonSize.Lg
             )
         }
     }
@@ -540,30 +683,38 @@ private fun SettingsProfileAvatar(
     avatarCacheIdentity: RaftMemberAvatarCacheIdentity?,
     onEvent: (String, String?) -> Unit
 ) {
+    // Web AvatarSlot `profile-tile`: a 51dp sticker tile; a person without a picture
+    // gets the lavender tile with the User glyph.
+    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
     Box(
         modifier =
             Modifier
-                .size(56.dp)
+                .size(51.dp)
                 .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
         contentAlignment = Alignment.Center
     ) {
-        RaftAppAvatar(
-            avatarWireValue = profile.avatarUrl,
-            label = profile.avatarLabel,
-            avatarSize = 56.dp,
-            cacheSubject = avatarCacheIdentity?.subject,
-            cacheServerId = avatarCacheIdentity?.serverId
-        )
-        if (payload.avatarInProgress) {
+        if (profile.avatarUrl.isNullOrBlank()) {
             Box(
-                modifier =
-                    Modifier
-                        .size(30.dp)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                modifier = Modifier.size(51.dp).background(RaftColor.AccentLavender, shape).border(1.dp, RaftColor.StickerInk, shape),
                 contentAlignment = Alignment.Center
             ) {
-                RaftLucideIcon(RaftLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), spinning = true)
+                RaftLucideIcon(RaftLucideIconName.User, modifier = Modifier.size(24.dp), color = raftArgbHex(RaftColor.StickerInk))
+            }
+        } else {
+            RaftAppAvatar(
+                avatarWireValue = profile.avatarUrl,
+                label = profile.avatarLabel,
+                avatarSize = 51.dp,
+                cacheSubject = avatarCacheIdentity?.subject,
+                cacheServerId = avatarCacheIdentity?.serverId
+            )
+        }
+        if (payload.avatarInProgress) {
+            Box(
+                modifier = Modifier.size(51.dp).background(Color.Black.copy(alpha = 0.65f), shape),
+                contentAlignment = Alignment.Center
+            ) {
+                RaftLucideIcon(RaftLucideIconName.LoaderCircle, modifier = Modifier.size(20.dp), color = "#FFFFFFFF", spinning = true)
             }
         }
     }
@@ -612,7 +763,6 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
 private fun RaftSettingsAccountPayload.profileSaveButtonLabel(): String =
     when {
         saveInProgress -> stringResource(MR.strings.settings_account_saving)
-        saveErrorCode != null -> stringResource(MR.strings.common_retry)
         else -> saveChangesLabel
     }
 
@@ -739,60 +889,66 @@ private fun SettingsConnectedAccountRow(
     account: RaftSettingsConnectedAccount,
     index: Int,
     payload: RaftSettingsAccountPayload,
-    onEvent: (String, String?) -> Unit
+    onEvent: (String, String?) -> Unit,
+    onRequestDisconnect: (RaftSettingsConnectedAccount) -> Unit
 ) {
     val providerId = account.providerId.ifBlank { account.provider.lowercase() }
     val connecting = payload.providerConnectingId == providerId
     val failed = payload.providerErrorId == providerId
-    val status =
-        when {
-            connecting -> "loading"
-            failed -> "failed"
-            else -> account.status
-        }
-    val connected = status == "connected"
+    val connected = account.status == "connected"
+    // Web ProviderAccountRow: a Card row (12dp / 16dp in), the 35dp IconTile with the
+    // provider mark, name + "Connected as …" / "Not connected", and Connect / Disconnect.
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 64.dp)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.30f))
-                    .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            RaftCachedImage(
-                source = providerIconAssetSource(providerId),
-                contentDescription = account.provider,
-                modifier = Modifier.size(28.dp)
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    account.provider.ifBlank { stringResource(MR.strings.settings_account_provider_fallback, index + 1) },
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    connectedAccountStatusDetail(account, connected),
-                    style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (account.canConnect && !connected) {
-                SettingsProviderConnectButton(
-                    text = if (connecting) payload.connectingLabel else payload.connectLabel,
-                    enabled = !connecting,
-                    onClick = { onEvent("connectProvider", providerId) }
-                )
-            } else {
-                val (label, color, icon) = connectedStatus(status, payload)
-                SettingsStatusBadge(label, color, icon)
+        SettingsPanelCard(padding = 0.dp) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(35.dp).background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Control)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    RaftCachedImage(
+                        source = providerIconAssetSource(providerId),
+                        contentDescription = account.provider,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        account.provider.ifBlank { stringResource(MR.strings.settings_account_provider_fallback, index + 1) },
+                        style = settingsPanelText(15.sp, 20.sp, FontWeight.SemiBold),
+                        color = RaftColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        connectedAccountStatusDetail(account, connected),
+                        style = settingsPanelText(13.sp, 18.sp),
+                        color = RaftColor.TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (connected) {
+                    SettingsPanelButton(
+                        label =
+                            if (payload.disconnectingProviderId == providerId) {
+                                stringResource(MR.strings.settings_account_disconnecting)
+                            } else {
+                                stringResource(MR.strings.settings_account_disconnect)
+                            },
+                        onClick = { onRequestDisconnect(account) },
+                        enabled = payload.disconnectingProviderId == null
+                    )
+                } else if (account.canConnect) {
+                    SettingsPanelButton(
+                        label = if (connecting) payload.connectingLabel else payload.connectLabel,
+                        onClick = { onEvent("connectProvider", providerId) },
+                        enabled = !connecting
+                    )
+                }
             }
         }
         if (failed) {
@@ -825,49 +981,49 @@ private fun SettingsDisclosureRow(iconName: RaftLucideIconName, title: String, s
 @Composable
 private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle(stringResource(MR.strings.settings_account_session), RaftLucideIconName.LogOut)
-        SettingsAccountHardShadowCard {
-            Text(
-                payload.logoutTitle,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(payload.logoutDetail, style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
-            if (confirming.value) {
-                SettingsAccountWarning(payload.logoutConfirmMessage)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftBrutalActionButton(
-                        label = payload.logoutCancelLabel,
-                        onClick = { confirming.value = false },
-                        enabled = true,
-                        modifier = Modifier.weight(1f),
-                        backgroundColor = RaftColor.SurfaceWhite,
-                        minWidth = 0.dp,
-                        minHeight = 44.dp,
-                        shadowOffset = 0.dp
-                    )
-                    RaftBrutalActionButton(
-                        label = payload.logoutConfirmLabel,
-                        onClick = onConfirmLogout,
-                        modifier = Modifier.weight(1f),
-                        backgroundColor = RaftColor.AccentRed,
-                        minWidth = 0.dp,
-                        minHeight = 44.dp,
-                        textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
-                    )
+    // Web AccountSignOutSection: the LogOut section head and a Card with the title, the
+    // description and the warning "Log Out" button; the button opens a confirmation.
+    Column {
+        SettingsPanelSectionHeader(RaftLucideIconName.LogOut, stringResource(MR.strings.settings_account_session))
+        Spacer(Modifier.height(SettingsPanelKit.SectionHeadGap))
+        SettingsPanelCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(payload.logoutTitle, style = settingsPanelText(15.sp, 20.sp, FontWeight.SemiBold), color = RaftColor.TextBlack)
+                    Text(payload.logoutDetail, style = settingsPanelText(13.sp, 18.sp), color = RaftColor.TextMuted)
                 }
-            } else {
-                RaftBrutalActionButton(
-                    label = payload.logoutLabel,
+                Spacer(Modifier.width(16.dp))
+                SettingsPanelButton(
+                    label = stringResource(MR.strings.settings_account_log_out_action),
                     onClick = { confirming.value = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    backgroundColor = RaftColor.AccentRed,
-                    minWidth = 0.dp,
-                    minHeight = 48.dp,
-                    textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
+                    variant = SettingsPanelButtonVariant.Warning
+                )
+            }
+        }
+    }
+    if (confirming.value) {
+        RaftUnifiedDialog(
+            title = payload.logoutTitle,
+            onDismiss = { confirming.value = false },
+            contentPadding = 20.dp,
+            titleFontSize = 17
+        ) {
+            Text(payload.logoutConfirmMessage, style = settingsPanelText(14.sp, 20.sp), color = RaftColor.TextBlack)
+            RaftDialogFooter {
+                SettingsPanelButton(
+                    label = payload.logoutCancelLabel,
+                    onClick = { confirming.value = false },
+                    variant = SettingsPanelButtonVariant.Ghost,
+                    size = SettingsPanelButtonSize.Lg
+                )
+                SettingsPanelButton(
+                    label = stringResource(MR.strings.settings_account_log_out_action),
+                    onClick = {
+                        confirming.value = false
+                        onConfirmLogout()
+                    },
+                    variant = SettingsPanelButtonVariant.Warning,
+                    size = SettingsPanelButtonSize.Lg
                 )
             }
         }

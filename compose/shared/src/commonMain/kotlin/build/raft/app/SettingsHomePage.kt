@@ -360,6 +360,8 @@ import build.raft.app.data.ACCOUNT_ACTION_AVATAR_UPLOAD
 import build.raft.app.data.ACCOUNT_ACTION_PASSWORD_CHANGE
 import build.raft.app.data.ACCOUNT_ACTION_PROFILE_SAVE
 import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_CONNECT
+import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_DISCONNECT
+import build.raft.app.data.ACCOUNT_ACTION_PASSWORD_SETUP
 import build.raft.app.data.AgentAvatarUploadRequest
 import build.raft.app.data.AgentMachineAssignmentRequest
 import build.raft.app.data.AgentProfileUpdateRequest
@@ -534,6 +536,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.semantics.role
 import androidx.compose.foundation.layout.width
@@ -9531,16 +9534,12 @@ private fun SettingsAppearanceContent(
     onSave: () -> Unit,
     onRetry: () -> Unit
 ) {
+    // Web AppearanceSection order: the Appearance section (message font size) first; the
+    // app-only Activity sender avatars setting follows it.
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(SettingsPanelKit.SectionGap)
     ) {
-        item {
-            SettingsActivitySenderAvatarsCard(
-                enabled = activitySenderAvatarsEnabled,
-                onEnabledChange = onActivitySenderAvatarsChange
-            )
-        }
         when (state) {
             ScreenLoadState.Loading ->
                 item {
@@ -9593,6 +9592,12 @@ private fun SettingsAppearanceContent(
                     )
                 }
         }
+        item {
+            SettingsActivitySenderAvatarsCard(
+                enabled = activitySenderAvatarsEnabled,
+                onEnabledChange = onActivitySenderAvatarsChange
+            )
+        }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
@@ -9639,9 +9644,20 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_title)) {
+    Column {
+    SettingsPanelSectionHeader(RaftLucideIconName.Type, stringResource(MR.strings.settings_appearance_title))
+    Spacer(Modifier.height(SettingsPanelKit.SectionHeadGap))
+    SettingsPanelCard(verticalSpacing = 16.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                stringResource(MR.strings.settings_appearance_message_font_size),
+                style = settingsPanelText(15.sp, 20.sp, FontWeight.SemiBold),
+                color = RaftColor.TextBlack
+            )
+            Text(snapshot.messageBodyFontSize.detail, style = settingsPanelText(13.sp, 18.sp), color = RaftColor.TextMuted)
+        }
         SettingsSegmentedControlField(
-            detail = snapshot.messageBodyFontSize.detail,
+            detail = null,
             selectedValue = selected,
             options =
                 snapshot.messageBodyFontSize.options.map {
@@ -9653,8 +9669,9 @@ private fun SettingsAppearanceFontSizeCard(
         if (actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
-        SettingsFormDivider()
+        Text(stringResource(MR.strings.settings_appearance_saved_on_device), style = settingsPanelText(12.sp, 16.sp, FontWeight.Medium), color = RaftColor.ForegroundHint)
         SettingsAppearancePreview(fontSizeKey = selected)
+    }
     }
 }
 
@@ -12476,16 +12493,35 @@ private fun SettingsServerDeleteConfirmationDialog(
                         color = RaftColor.TextBlack
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        settingsServerDeleteTypeToConfirmAnnotated(
-                            slug = resolvedSlug,
-                            prefix = stringResource(MR.strings.settings_server_delete_type_prefix) + " ",
-                            suffix = stringResource(MR.strings.settings_server_delete_confirm_suffix)
-                        ),
-                        style = settingsPanelText(13.sp, 20.sp, FontWeight.SemiBold),
-                        color = RaftColor.TextBlack,
-                        maxLines = 1
-                    )
+                    // "Type <code>slug</code> to confirm:" — the web `<code>` is Space Mono
+                    // 13/20 (semibold renders as the Bold face) on `fill-muted`, 4dp each side.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(MR.strings.settings_server_delete_type_prefix),
+                            style = settingsPanelText(13.sp, 20.sp, FontWeight.SemiBold),
+                            color = RaftColor.TextBlack,
+                            maxLines = 1
+                        )
+                        // The word space before the code (Space Grotesk: 0.255em); a trailing
+                        // space would not count toward a Text's width.
+                        Spacer(Modifier.width(3.315.dp))
+                        Text(
+                            resolvedSlug,
+                            style = settingsPanelMono(13.sp, 20.sp).copy(fontFamily = raftMonoFamilyForWeight(FontWeight.Bold)),
+                            color = RaftColor.TextBlack,
+                            maxLines = 1,
+                            modifier =
+                                Modifier
+                                    .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker))
+                                    .padding(horizontal = 4.dp)
+                        )
+                        Text(
+                            stringResource(MR.strings.settings_server_delete_confirm_suffix).replace('\u00A0', ' '),
+                            style = settingsPanelText(13.sp, 20.sp, FontWeight.SemiBold),
+                            color = RaftColor.TextBlack,
+                            maxLines = 1
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     SettingsPanelPrefixedInput(
                         prefix = "/",
@@ -12526,14 +12562,6 @@ private fun SettingsServerDeleteConfirmationDialog(
         }
     }
 }
-
-private fun settingsServerDeleteTypeToConfirmAnnotated(slug: String, prefix: String, suffix: String): AnnotatedString =
-    buildAnnotatedString {
-        append(prefix.replace('\u00A0', ' '))
-        // Web `<code>`: Space Mono 13/20 on `fill-muted`, 4dp each side.
-        withStyle(SpanStyle(fontFamily = RaftMonoFamily, background = RaftColor.FillMuted)) { append("\u2009" + slug + "\u2009") }
-        append(suffix.replace('\u00A0', ' '))
-    }
 
 internal fun settingsServerDeleteWarningBannerText(
     serverName: String?,
@@ -15435,7 +15463,7 @@ internal fun SettingsDetailShell(
             // edge (16dp padding, -13dp pull), the 17/22 bold title 8dp after it.
             contentStartPadding = 3.dp,
             contentSpacing = 8.dp,
-            titleStyle = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp),
+            titleStyle = settingsPanelText(17.sp, 22.sp, FontWeight.Bold),
             titleLeadingContent = {
                 SettingsDetailBackButton(onBack)
             },
@@ -15545,7 +15573,13 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
             passwordErrorCode = actionErrorMessage.takeIf { actionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE },
             providerConnectingId = providerActionId.takeIf { actionState?.inProgress == true },
             providerErrorId = providerActionId.takeIf { actionErrorMessage != null },
-            providerErrorCode = actionErrorMessage.takeIf { providerActionId != null }
+            providerErrorCode = actionErrorMessage.takeIf { providerActionId != null },
+            passwordSetupInProgress = actionState?.action == ACCOUNT_ACTION_PASSWORD_SETUP && actionState.inProgress,
+            passwordSetupSent =
+                actionState?.action == ACCOUNT_ACTION_PASSWORD_SETUP && !actionState.inProgress && actionErrorMessage == null,
+            passwordSetupErrorCode = actionErrorMessage.takeIf { actionState?.action == ACCOUNT_ACTION_PASSWORD_SETUP },
+            disconnectingProviderId =
+                actionState?.itemId?.takeIf { actionState.action == ACCOUNT_ACTION_PROVIDER_DISCONNECT && actionState.inProgress }
         )
 }
 
@@ -15594,7 +15628,8 @@ private fun AccountSettingsSnapshot.toAccountPayload(): RaftSettingsAccountPaylo
             },
         canEditProfile = canEditProfile,
         canUploadAvatar = canUploadAvatar,
-        canChangePassword = canChangePassword
+        canChangePassword = canChangePassword,
+        passwordConfigured = passwordConfigured ?: true
     )
 
 private fun appShellAccountPayload(session: StoredAuthSession?): RaftSettingsAccountPayload {
@@ -25349,9 +25384,11 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                     RaftSettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
             else ->
+                // The web fixture's /auth/identities: Google linked (as the owner email), no
+                // password credential, GitHub offered.
                 listOf(
-                    RaftSettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
-                    RaftSettingsConnectedAccount("google", "Google", "Not connected", "notConnected", canConnect = true),
+                    RaftSettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "notConnected", canConnect = false),
+                    RaftSettingsConnectedAccount("google", "Google", fixture.ownerEmail, "connected", canConnect = false),
                     RaftSettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
         }
@@ -25368,12 +25405,10 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                         roleLabel = fixture.ownerRoleLabel
                     ),
                 connectedAccounts = connectedAccounts,
-                passwordExpanded = variant == "account-password-expanded" || variant == "account-error",
-                saveErrorCode = "server_unavailable".takeIf { variant == "account-error" },
-                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" },
-                passwordErrorCode = "invalid_current_password".takeIf { variant == "account-error" },
-                providerErrorId = "github".takeIf { variant == "account-error" },
-                providerErrorCode = "oauth_provider_unavailable".takeIf { variant == "account-error" }
+                passwordConfigured = variant == "account-password-expanded" || variant == "account-provider-linked",
+                passwordExpanded = variant == "account-password-expanded",
+                // The web case seeds the profile error banner with this message.
+                saveErrorCode = "Avatar upload failed: upload_failed".takeIf { variant == "account-error" }
             ),
         applyTopSafeArea = false,
         onPasswordChange = { _, _ -> },
@@ -26997,14 +27032,18 @@ internal fun SettingsHomeContent(
                     .background(RaftColor.Frame)
                     .padding(top = topSafeArea + 56.dp)
         ) {
-            Text(
-                payload.title,
-                style = settingsPanelText(34.sp, 40.sp, FontWeight.Bold).copy(letterSpacing = (-0.68).sp),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 14.dp, top = 4.dp, bottom = 8.dp)
-            )
-            Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderSeam))
+            // CSS lets the 34px glyphs overflow the 40px line box; Compose would grow the
+            // box to the font's ascent + descent, so the line box is fixed at 40dp.
+            Box(Modifier.padding(start = 14.dp, top = 4.dp, bottom = 8.dp).height(40.dp), contentAlignment = Alignment.CenterStart) {
+                Text(
+                    payload.title,
+                    style = settingsPanelText(34.sp, 40.sp, FontWeight.Bold).copy(letterSpacing = (-0.68).sp),
+                    color = RaftColor.TextBlack,
+                    maxLines = 1,
+                    modifier = Modifier.wrapContentHeight(align = Alignment.CenterVertically, unbounded = true)
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderSeam.settingsPanelOver(RaftColor.Frame)))
         }
         val groups = payload.items.groupBy { it.section.orEmpty() }
         LazyColumn(
@@ -27063,7 +27102,7 @@ private fun SettingsHomeRow(link: SettingsHomePageLinkPayload, onClick: () -> Un
         RaftLucideIcon(
             link.iconName,
             modifier = Modifier.padding(start = 10.5.dp).size(16.dp),
-            color = raftArgbHex(RaftColor.ForegroundHint)
+            color = raftArgbHex(RaftColor.ForegroundHint.settingsPanelOver(RaftColor.Canvas))
         )
         Text(
             link.title,

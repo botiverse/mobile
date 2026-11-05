@@ -1259,7 +1259,13 @@ data class AccountSettingsSnapshot(
     val connectedAccounts: List<ConnectedAccountSnapshot>,
     val canEditProfile: Boolean = true,
     val canUploadAvatar: Boolean = true,
-    val canChangePassword: Boolean = true
+    val canChangePassword: Boolean = true,
+    /**
+     * `GET /api/auth/identities` `passwordConfigured`: false for an account that signs in
+     * only through a provider (it gets "Set a password" instead of "Change password"); null
+     * when the identities call did not answer.
+     */
+    val passwordConfigured: Boolean? = null
 )
 
 data class AccountProfileSnapshot(

@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,13 +60,22 @@ internal object SettingsPanelKit {
     val FieldGap: Dp = 12.dp
 }
 
-/** A Space Grotesk text style at an exact size, line height and weight (CSS line box). */
+/**
+ * An alpha line or wash laid over a known opaque [surface], blended here: Android rounds an
+ * alpha blend down where the browser rounds to nearest, which moves hairlines one step.
+ */
+internal fun Color.settingsPanelOver(surface: Color): Color = compositeOver(surface)
+
+/**
+ * A Space Grotesk text style at an exact size, line height and weight (CSS line box), wrapped
+ * greedily like CSS (`LineBreak.Simple`; Compose's default paragraph breaking balances lines).
+ */
 internal fun settingsPanelText(size: TextUnit, lineHeight: TextUnit, weight: FontWeight = FontWeight.Normal): TextStyle =
-    RaftType.Body.copy(fontSize = size, lineHeight = lineHeight, letterSpacing = 0.sp).withRaftFontWeight(weight)
+    RaftType.Body.copy(fontSize = size, lineHeight = lineHeight, letterSpacing = 0.sp, lineBreak = LineBreak.Simple).withRaftFontWeight(weight)
 
 /** A Space Mono text style at an exact size and line height. */
 internal fun settingsPanelMono(size: TextUnit, lineHeight: TextUnit, weight: FontWeight = FontWeight.Normal): TextStyle =
-    RaftType.Body.copy(fontFamily = RaftMonoFamily, fontSize = size, lineHeight = lineHeight, letterSpacing = 0.sp, fontWeight = weight)
+    RaftType.Body.copy(fontFamily = RaftMonoFamily, fontSize = size, lineHeight = lineHeight, letterSpacing = 0.sp, fontWeight = weight, lineBreak = LineBreak.Simple)
 
 /**
  * Web `SectionHeader`: a 16dp icon in `foreground-hint`, 8dp, then the group label
@@ -82,7 +93,7 @@ internal fun SettingsPanelSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (iconName != null) {
-            RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftColor.ForegroundHint))
+            RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftColor.ForegroundHint.settingsPanelOver(RaftColor.Canvas)))
         }
         Text(
             label,
@@ -108,8 +119,9 @@ internal fun SettingsPanelCard(
             modifier
                 .fillMaxWidth()
                 .background(RaftColor.Card, shape)
-                .border(1.dp, RaftColor.BorderHairline, shape)
-                .padding(padding),
+                .border(1.dp, RaftColor.BorderHairline.settingsPanelOver(RaftColor.Card), shape)
+                // CSS padding sits inside the 1dp border.
+                .padding(padding + 1.dp),
         verticalArrangement = Arrangement.spacedBy(verticalSpacing),
         content = content,
     )
@@ -118,7 +130,7 @@ internal fun SettingsPanelCard(
 /** raft-ui `Separator`: a 1dp hairline rule. */
 @Composable
 internal fun SettingsPanelSeparator(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderHairline))
+    Box(modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderHairline.settingsPanelOver(RaftColor.Card)))
 }
 
 /**
@@ -217,7 +229,7 @@ internal fun SettingsPanelInput(
                         .fillMaxWidth()
                         .height(SettingsPanelKit.FieldHeight)
                         .background(if (enabled) RaftColor.Card else RaftColor.FillMuted, shape)
-                        .border(1.dp, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
+                        .border(1.dp, if (enabled) RaftColor.LineField else RaftColor.BorderHairline.settingsPanelOver(RaftColor.FillMuted), shape)
                         .padding(horizontal = 13.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
@@ -249,7 +261,7 @@ internal fun SettingsPanelPrefixedInput(
     val shape = RoundedCornerShape(SettingsPanelKit.ControlRadius)
     val textStyle = if (monoValue) settingsPanelMono(16.sp, 24.sp) else settingsPanelText(16.sp, 24.sp)
     val fill = if (readOnly) RaftColor.FillMuted else RaftColor.Card
-    val edge = if (readOnly) RaftColor.BorderHairline else RaftColor.LineField
+    val edge = if (readOnly) RaftColor.BorderHairline.settingsPanelOver(fill) else RaftColor.LineField
     Row(
         modifier =
             modifier
@@ -268,7 +280,7 @@ internal fun SettingsPanelPrefixedInput(
                 modifier = Modifier.padding(horizontal = 12.dp),
                 maxLines = 1,
             )
-            Box(Modifier.width(1.dp).fillMaxHeight().background(RaftColor.BorderHairline))
+            Box(Modifier.width(1.dp).fillMaxHeight().background(RaftColor.BorderHairline.settingsPanelOver(RaftColor.FillMuted)))
         }
         BasicTextField(
             value = value,
@@ -322,12 +334,12 @@ internal fun SettingsPanelButton(
             if (variant == SettingsPanelButtonVariant.Ghost) {
                 Triple(Color.Transparent, Color.Transparent, RaftColor.ForegroundDisabled)
             } else {
-                Triple(RaftColor.FillMuted, RaftColor.BorderHairline, RaftColor.ForegroundDisabled)
+                Triple(RaftColor.FillMuted, RaftColor.BorderHairline.settingsPanelOver(RaftColor.FillMuted), RaftColor.ForegroundDisabled)
             }
         } else {
             when (variant) {
                 SettingsPanelButtonVariant.Accent -> Triple(RaftColor.Attention, RaftColor.StickerInk, RaftColor.StickerInk)
-                SettingsPanelButtonVariant.Warning -> Triple(RaftColor.Danger, RaftColor.StickerInk, RaftColor.StickerInk)
+                SettingsPanelButtonVariant.Warning -> Triple(RaftColor.Warning, RaftColor.StickerInk, RaftColor.StickerInk)
                 SettingsPanelButtonVariant.Danger -> Triple(RaftColor.Danger, RaftColor.StickerInk, RaftColor.StickerInk)
                 SettingsPanelButtonVariant.Default -> Triple(RaftColor.Card, RaftColor.LineField, RaftColor.TextBlack)
                 SettingsPanelButtonVariant.Ghost -> Triple(Color.Transparent, Color.Transparent, RaftColor.TextBlack)
@@ -400,11 +412,42 @@ internal fun SettingsPanelDangerBanner(content: @Composable ColumnScope.() -> Un
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.DangerSoft, shape)
-                .border(1.dp, RaftColor.BorderHairline, shape)
+                .border(1.dp, RaftColor.BorderHairline.settingsPanelOver(RaftColor.DangerSoft), shape)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         RaftLucideIcon(RaftLucideIconName.OctagonAlert, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftColor.TextBlack))
         Column(Modifier.weight(1f), content = content)
+    }
+}
+
+/** Web `Banner intent="warning" density="sm"`: `warning-soft`, inset hairline, 10dp corners, 8dp / 12dp, 13/18 ink. */
+@Composable
+internal fun SettingsPanelWarningBanner(text: String) {
+    val shape = RoundedCornerShape(SettingsPanelKit.CardRadius)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(RaftColor.WarningSoft, shape)
+                .border(1.dp, RaftColor.BorderHairline.settingsPanelOver(RaftColor.WarningSoft), shape)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text(text, style = settingsPanelText(13.sp, 18.sp), color = RaftColor.TextBlack)
+    }
+}
+
+/** raft-ui `Badge appearance="soft"`: 22dp, 6dp in, a 14dp icon 4dp before the 12/16 semibold label. */
+@Composable
+internal fun SettingsPanelBadge(label: String, iconName: RaftLucideIconName?, fill: Color) {
+    Row(
+        modifier = Modifier.height(22.dp).background(fill, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (iconName != null) {
+            RaftLucideIcon(iconName, modifier = Modifier.size(14.dp), color = raftArgbHex(RaftColor.TextBlack))
+        }
+        Text(label, style = settingsPanelText(12.sp, 16.sp, FontWeight.SemiBold), color = RaftColor.TextBlack, maxLines = 1)
     }
 }

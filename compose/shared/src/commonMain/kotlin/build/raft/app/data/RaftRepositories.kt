@@ -36,6 +36,12 @@ interface SettingsRepository {
     suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot>
     suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot>
     suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult>
+    /** `DELETE /api/auth/identities/:provider`, then the reloaded account. */
+    suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST /api/auth/forgot-password` for the signed-in email: the set-a-password email. */
+    suspend fun sendAccountPasswordSetup(): DataResult<Unit> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot>
     suspend fun registerConnectedApp(
         request: SettingsConnectedAppRegisterRequest

@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -89,7 +90,9 @@ internal fun raftTopPageHeaderFrameMetrics(
     headerHeight: Dp = RaftAppSize.PageHeaderHeight,
 ): RaftTopPageHeaderFrameMetrics {
     val boundedHeaderHeight = headerHeight.coerceAtLeast(0.dp)
-    val contentHeight = (boundedHeaderHeight - RaftAppStroke.Default).coerceAtLeast(0.dp)
+    // The head's bottom seam is the 1dp `line-seam` rule; the content row centres in the
+    // rest (raft panel head: 56px with a 1px border-bottom).
+    val contentHeight = (boundedHeaderHeight - RaftAppStroke.Thin).coerceAtLeast(0.dp)
     return RaftTopPageHeaderFrameMetrics(
         totalHeight = topSafeArea.coerceAtLeast(0.dp) + boundedHeaderHeight,
         contentHeight = topSafeArea.coerceAtLeast(0.dp) + contentHeight,
@@ -238,7 +241,9 @@ internal fun RaftTopPageHeaderFrame(
                 Modifier
                     .fillMaxWidth()
                     .height(RaftAppStroke.Thin)
-                    .background(RaftColor.BorderSeam)
+                    // Pre-blended over the head fill: Android rounds an alpha blend down
+                    // where the browser rounds to nearest, which shifts the seam by one step.
+                    .background(RaftColor.BorderSeam.compositeOver(backgroundColor))
                     .align(Alignment.BottomCenter)
         )
     }

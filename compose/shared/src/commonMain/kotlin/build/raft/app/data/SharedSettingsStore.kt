@@ -374,6 +374,8 @@ sealed interface SharedSettingsIntent {
     data object RequestAccountAvatarUpload : SharedSettingsIntent
     data class ChangeAccountPassword(val request: AccountPasswordChangeRequest) : SharedSettingsIntent
     data class ConnectAccountProvider(val request: AccountProviderLinkStartRequest) : SharedSettingsIntent
+    data class DisconnectAccountProvider(val providerId: String) : SharedSettingsIntent
+    data object SendAccountPasswordSetup : SharedSettingsIntent
     data class RegisterConnectedApp(val request: SettingsConnectedAppRegisterRequest) : SharedSettingsIntent
     data class UpdateConnectedApp(val request: SettingsConnectedAppUpdateRequest) : SharedSettingsIntent
     data class RequestConnectedAppLogoUpload(val clientRecordId: String) : SharedSettingsIntent
@@ -670,6 +672,12 @@ class SharedSettingsDataSource(
             is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
         }
     }
+
+    suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> =
+        settingsRepository?.disconnectAccountProvider(providerId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun sendAccountPasswordSetup(): DataResult<Unit> =
+        settingsRepository?.sendAccountPasswordSetup() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> =
         when (val mobile = platformCapabilities.startMobileOAuthAccountLink(request.providerId)) {
@@ -2106,6 +2114,22 @@ class SharedSettingsStore(
             is SharedSettingsIntent.ChangeAccountPassword -> {
                 runAction(ACCOUNT_ACTION_PASSWORD_CHANGE) {
                     dataSource.changeAccountPassword(intent.request).applyAccountActionResult(ACCOUNT_ACTION_PASSWORD_CHANGE)
+                }
+            }
+            is SharedSettingsIntent.DisconnectAccountProvider -> {
+                runAction(ACCOUNT_ACTION_PROVIDER_DISCONNECT, intent.providerId) {
+                    dataSource.disconnectAccountProvider(intent.providerId)
+                        .applyAccountActionResult(ACCOUNT_ACTION_PROVIDER_DISCONNECT)
+                }
+            }
+            SharedSettingsIntent.SendAccountPasswordSetup -> {
+                runAction(ACCOUNT_ACTION_PASSWORD_SETUP) {
+                    val result = dataSource.sendAccountPasswordSetup().toScreenLoadState()
+                    _state.value =
+                        _state.value.copy(
+                            actionState = result.toSettingsActionState(ACCOUNT_ACTION_PASSWORD_SETUP),
+                            routeErrorCode = result.routeErrorCode()
+                        )
                 }
             }
             is SharedSettingsIntent.ConnectAccountProvider -> {
@@ -3757,6 +3781,8 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.RequestAccountAvatarUpload,
             is SharedSettingsIntent.ChangeAccountPassword,
             is SharedSettingsIntent.ConnectAccountProvider,
+            is SharedSettingsIntent.DisconnectAccountProvider,
+            SharedSettingsIntent.SendAccountPasswordSetup,
             is SharedSettingsIntent.RegisterConnectedApp,
             is SharedSettingsIntent.UpdateConnectedApp,
             is SharedSettingsIntent.RequestConnectedAppLogoUpload,
@@ -4085,6 +4111,8 @@ internal const val ACCOUNT_ACTION_PROFILE_SAVE = "saveProfile"
 internal const val ACCOUNT_ACTION_AVATAR_UPLOAD = "accountAvatarUpload"
 internal const val ACCOUNT_ACTION_PASSWORD_CHANGE = "accountPasswordChange"
 internal const val ACCOUNT_ACTION_PROVIDER_CONNECT = "accountProviderConnect"
+internal const val ACCOUNT_ACTION_PROVIDER_DISCONNECT = "accountProviderDisconnect"
+internal const val ACCOUNT_ACTION_PASSWORD_SETUP = "accountPasswordSetup"
 internal const val SERVER_ACTION_PROFILE_SAVE = "serverProfileSave"
 internal const val SERVER_ACTION_INVITE_CREATE = "serverInviteCreate"
 internal const val SERVER_ACTION_INVITE_REVOKE = "serverInviteRevoke"

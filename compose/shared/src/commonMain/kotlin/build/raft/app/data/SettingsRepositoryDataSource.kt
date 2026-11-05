@@ -39,6 +39,18 @@ private suspend fun RaftNetworkClient.settingsAccountAuthProviders(priority: Dat
 private suspend fun RaftNetworkClient.settingsAccountAuthIdentities(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "auth/identities")
 
+private suspend fun RaftNetworkClient.deleteSettingsAccountIdentity(
+    priority: DataRequestPriority,
+    providerId: String
+): HomeNetworkResponse =
+    request(priority, "auth/identities/${providerId.sanitizeAccountProviderId()}", method = "DELETE")
+
+private suspend fun RaftNetworkClient.sendSettingsAccountPasswordSetup(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "auth/forgot-password", method = "POST", bodyText = bodyText)
+
 private suspend fun RaftNetworkClient.startSettingsAccountProviderLink(
     priority: DataRequestPriority,
     providerId: String,
@@ -374,6 +386,42 @@ class RealSettingsRepository(
         ).withConnectedAccountProviders(session.user.email)
     }
 
+    override suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> {
+        sessionStore.readSession() ?: return authRequired()
+        val sanitized = providerId.sanitizeAccountProviderId().takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError("account_provider_invalid", retryable = false))
+        val unlink =
+            executeSettings(
+                emptyReason = EmptyReason.NoSettingsAvailable,
+                block = { networkClient.deleteSettingsAccountIdentity(DataRequestPriority.Foreground, sanitized) },
+                errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+                mapper = { }
+            )
+        return when (unlink) {
+            is DataResult.Content -> getAccount()
+            is DataResult.Empty -> DataResult.Empty(unlink.reason)
+            is DataResult.Error -> DataResult.Error(unlink.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(unlink.blocker)
+        }
+    }
+
+    override suspend fun sendAccountPasswordSetup(): DataResult<Unit> {
+        val session = sessionStore.readSession() ?: return authRequired()
+        val email = session.user.email.trim().takeIf { it.isNotEmpty() }
+            ?: return DataResult.Error(ScreenError("account_email_missing", retryable = false))
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = {
+                networkClient.sendSettingsAccountPasswordSetup(
+                    DataRequestPriority.Foreground,
+                    buildSharedAccountPasswordSetupBody(email)
+                )
+            },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+            mapper = { }
+        )
+    }
+
     override suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> {
         sessionStore.readSession() ?: return authRequired()
         val providerId = request.providerId.sanitizeAccountProviderId().takeIf { it.isNotBlank() }
@@ -418,7 +466,12 @@ class RealSettingsRepository(
             warningLogger("settings_account_connected_accounts_parse_failed")
             return this
         }
-        return DataResult.Content(data.copy(connectedAccounts = accounts))
+        return DataResult.Content(
+            data.copy(
+                connectedAccounts = accounts,
+                passwordConfigured = parseSharedAccountPasswordConfigured(identities.bodyText.orEmpty())
+            )
+        )
     }
 
     override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> {
@@ -3171,6 +3224,13 @@ fun buildSharedAccountPasswordChangeBody(request: AccountPasswordChangeRequest):
             newPassword = request.newPassword
         )
     )
+
+@Serializable
+internal data class AccountPasswordSetupRequestBody(val email: String)
+
+/** `POST /api/auth/forgot-password` body: the set-a-password email goes to [email]. */
+fun buildSharedAccountPasswordSetupBody(email: String): String =
+    settingsRepositoryJson.encodeToString(AccountPasswordSetupRequestBody(email = email))
 
 fun buildSharedAccountProviderLinkStartBody(request: AccountProviderLinkStartRequest): String =
     settingsRepositoryJson.encodeToString(
