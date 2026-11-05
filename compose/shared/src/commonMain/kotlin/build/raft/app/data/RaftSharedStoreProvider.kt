@@ -3049,7 +3049,7 @@ internal class RaftSharedStoreProvider private constructor(
                     projectionCache = processActivityUnreadProjectionCache,
                     scope = CoroutineScope(SupervisorJob()),
                     logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread")
-                )
+                ).also { store -> store.followAppLifecycle() }
             // ONE sink instance shared by the legacy and every scoped realtime
             // owner — the single production presence write edge.
             val memberPresenceRealtimeSink =

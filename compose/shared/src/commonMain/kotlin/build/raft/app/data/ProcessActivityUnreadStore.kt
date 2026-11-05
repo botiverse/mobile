@@ -17,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -129,7 +130,12 @@ internal class ProcessActivityUnreadStore(
     private var nextRevision = 0L
     private var processGeneration = 0L
 
-    init {
+    /**
+     * Reads once on every background -> foreground return of [appForeground]. Started by the host
+     * (not by the constructor): the collector never completes, so a store built on a test scope
+     * would otherwise keep that scope from finishing.
+     */
+    fun followAppLifecycle(): Job =
         scope.launch {
             var previous = appForeground.value
             appForeground.collect { foreground ->
@@ -138,7 +144,6 @@ internal class ProcessActivityUnreadStore(
                 if (returned) onReturnedToForeground()
             }
         }
-    }
 
     /** One read per known owner for the return; a resume read already started by the shell folds into it. */
     private suspend fun onReturnedToForeground() {

@@ -2,12 +2,12 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlin.coroutines.coroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,7 +33,7 @@ class ProcessActivityUnreadThrottleTest {
         val store =
             ProcessActivityUnreadStore(
                 fetchSummary = { _, _ ->
-                    reads += testScheduler.currentTime to coroutineContext[InboxFetchReasonContext]?.reason
+                    reads += testScheduler.currentTime to currentCoroutineContext()[InboxFetchReasonContext]?.reason
                     DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 3, totalCount = 5))
                 },
                 ownerResolver = { serverId -> owner.takeIf { it.serverId == serverId } },
@@ -42,6 +42,7 @@ class ProcessActivityUnreadThrottleTest {
                 nowMillis = { testScheduler.currentTime },
                 appForeground = foreground
             )
+        store.followAppLifecycle()
         return Fixture(store, reads)
     }
 

@@ -20,7 +20,7 @@ class SharedActivityStoreBackgroundReadReasonTest {
         val reasons = mutableListOf<InboxFetchReason?>()
 
         override suspend fun loadInitial(serverId: ServerId, filter: InboxFilter, limit: Int): DataResult<InboxSnapshot> {
-            reasons += kotlin.coroutines.coroutineContext[InboxFetchReasonContext]?.reason
+            reasons += kotlinx.coroutines.currentCoroutineContext()[InboxFetchReasonContext]?.reason
             return inner.loadInitial(serverId, filter, limit)
         }
     }
