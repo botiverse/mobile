@@ -401,7 +401,7 @@ jobs:
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
-      - name: Compile, test and package Android (one Gradle invocation)
+      - name: Compile, test and package Android
         working-directory: compose
         env:
           RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
@@ -434,11 +434,17 @@ jobs:
               mv "$GUH/gradle.properties.tmp" "$GUH/gradle.properties"
             fi
             printf '%s\n' 'org.gradle.jvmargs=-Xmx6g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> "$GUH/gradle.properties"
-            tasks+=(
-              :shared:assembleDebugAndroidTest
-              :androidApp:assembleConnectedTest
-              :androidApp:assembleConnectedTestAndroidTest
-            )
+            # Its own invocation, before the tests: run together, the APK build's D8/R8 work in the
+            # 6g daemon overlapped the :shared test JVMs and the runner killed the job ~2 min into
+            # :shared:testDebugUnitTest (task #proj-mobile#74; runs 41812394919, 41825428986). The
+            # test invocation below finds these compile outputs up to date.
+            ./gradlew "${tasks[@]}" \
+              :shared:assembleDebugAndroidTest \
+              :androidApp:assembleConnectedTest \
+              :androidApp:assembleConnectedTestAndroidTest \
+              --no-daemon \
+              --console=plain \
+              --stacktrace
           fi
           tasks+=(
             :core:testAndroidHostTest
