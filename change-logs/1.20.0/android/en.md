@@ -32,6 +32,7 @@
 🐛 Fixed
 - Fixed crashes right after sending a message in some cases, and when scrolling past the facts row at the top of a task
 - A message that failed to send no longer stays pinned at the bottom of the conversation; it stays where it was sent, and Retry sends it again as a new message
+- Tasks moved to Backlog no longer disappear from the task list, the board and task chips on messages; they show in the Backlog group
 - Tapping an Artifact in Activity opens it in the app instead of the browser
 - When someone changes their avatar or display name, messages, member lists and profile cards update right away, without reopening the app
 - When a server has reached its plan's agent limit, Create Agent and Create External Agent say so up front with a link to upgrade, instead of failing after you try

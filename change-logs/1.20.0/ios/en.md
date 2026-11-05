@@ -32,6 +32,7 @@
 🐛 Fixed
 - Fixed crashes right after sending a message in some cases, and when scrolling past the facts row at the top of a task
 - A message that failed to send no longer stays pinned at the bottom of the conversation; it stays where it was sent, and Retry sends it again as a new message
+- Tasks moved to Backlog no longer disappear from the task list, the board and task chips on messages; they show in the Backlog group
 - Tapping an Artifact in Activity opens it in the app instead of the browser
 - With Desktop Mode on in an HTML attachment preview, the page is laid out at a desktop width and fitted to the screen, instead of shrinking into a small corner
 - When someone changes their avatar or display name, messages, member lists and profile cards update right away, without reopening the app
