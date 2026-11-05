@@ -298,10 +298,9 @@ internal fun ThreadTimelineSlice.visibleReadMarkerKey(sourceThreadId: String?): 
 
 /**
  * The message the read marker follows: the rendered tail, or the loaded tail when none is known.
- * A local-only send (sending / failed, task #78) is never a read frontier and sits last, below every
- * server message, so the marker steps back to the newest server-backed message at or before it;
- * otherwise a failed send pinned at the tail would freeze the marker key and the read state would
- * never advance past the messages that arrived above it.
+ * A local-only send (sending / failed, task #78) is never a read frontier, so the marker steps back
+ * to the newest server-backed message at or before it; otherwise a failed send at the tail would
+ * freeze the marker key and the read state would never advance past the messages around it.
  */
 private fun ThreadTimelineSlice.readMarkerMessage(visibleTailIndex: Int?): RaftThreadMessageItem? {
     val tailIndex = visibleTailIndex?.takeIf { it in messages.indices } ?: messages.lastIndex
@@ -554,10 +553,10 @@ internal fun List<RaftThreadMessageItem>.localSendIds(): Set<String> =
     filter { message -> message.hasLocalSendState() }.mapTo(mutableSetOf()) { message -> message.id }
 
 /**
- * How the list's message ids changed. Local-only sends (sending / failed, [localSendIds]) always sit
- * below every server message, so a server message that arrives above a failed send is still an
- * append at the tail, not an unrelated height change (task #78): the comparison ignores local rows
- * whenever the literal one is not a prefix / suffix match.
+ * How the list's message ids changed. Local-only sends (sending / failed, [localSendIds]) sit where
+ * they were sent ([sortedByThreadTimeline]); a server message that lands above one (a send that
+ * just started at the tail) is still an append, not an unrelated height change (task #78): the
+ * comparison ignores local rows whenever the literal one is not a prefix / suffix match.
  */
 internal fun classifyThreadViewportMutation(
     previousIds: List<String>,

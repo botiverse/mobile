@@ -14604,11 +14604,19 @@ internal fun List<RaftThreadMessageItem>.newestPerLocalId(): List<RaftThreadMess
 private fun RaftThreadScreenPayload.withLocalSendStarted(
     message: RaftThreadMessageItem
 ): RaftThreadScreenPayload {
+    // A send (or a retry) starts after everything already on screen, even when this device's
+    // clock is behind the server's: never earlier than the newest server-backed row
+    // (web: optimisticDisplaySeq = lastSeq + 1).
+    val newestServerBacked = messages.newestServerBackedCreatedAtEpochMillis()
     val sendingMessage =
         message.copy(
             deliveryState = ThreadMessageDeliverySending,
             pendingSendErrorCode = null,
-            pendingSendErrorMessage = null
+            pendingSendErrorMessage = null,
+            createdAtEpochMillis =
+                message.createdAtEpochMillis?.let { createdAt ->
+                    if (newestServerBacked != null && newestServerBacked > createdAt) newestServerBacked else createdAt
+                }
         )
     val nextMessages =
         if (messages.any { it.id == sendingMessage.id }) {
@@ -14742,17 +14750,57 @@ internal fun RaftThreadScreenPayload.withOriginReplyCountAtLeastLoadedReplies():
     return copy(originMessage = origin.copy(replyCount = loadedReplyCount))
 }
 
-internal fun List<RaftThreadMessageItem>.sortedByThreadTimeline(): List<RaftThreadMessageItem> =
-    sortedWith(SharedThreadTimelineComparator)
+/**
+ * The thread timeline, oldest first.
+ *
+ * Server-backed rows keep [SharedThreadTimelineComparator]'s order. Local sends (sending / failed)
+ * sit where they were sent: each one goes right after the last server-backed row created at or
+ * before it, so messages that arrive later land below it (web `compareMessagesForDisplay`: a
+ * local row sits where its server `seq` would land). A failed send from days ago therefore scrolls
+ * up with the conversation instead of staying pinned under every newer message. A send that just
+ * started is stamped no earlier than the newest row it was sent after ([withLocalSendStarted]),
+ * so it is still the bottom row. A local row with no creation instant stays last.
+ *
+ * A merge rather than one comparator: the server order is by `seq`, the local placement by time,
+ * and a single comparator mixing the two is not transitive when `seq` and time disagree.
+ */
+internal fun List<RaftThreadMessageItem>.sortedByThreadTimeline(): List<RaftThreadMessageItem> {
+    if (none { it.hasLocalSendState() }) return sortedWith(SharedThreadTimelineComparator)
+    val (localSends, serverBacked) = partition { it.hasLocalSendState() }
+    val timeline = serverBacked.sortedWith(SharedThreadTimelineComparator)
+    // Same comparator within the local lane: creation instant, then the local-send ordinal; an
+    // unknown instant sorts last, so the insertion points below never go backwards.
+    val locals = localSends.sortedWith(SharedThreadTimelineComparator)
+    val merged = ArrayList<RaftThreadMessageItem>(size)
+    var next = 0
+    locals.forEach { local ->
+        val createdAt = local.createdAtEpochMillis
+        val insertAt =
+            if (createdAt == null) {
+                timeline.size
+            } else {
+                timeline.indexOfLast { row -> row.createdAtEpochMillis?.let { it <= createdAt } == true } + 1
+            }
+        while (next < insertAt) merged += timeline[next++]
+        merged += local
+    }
+    while (next < timeline.size) merged += timeline[next++]
+    return merged
+}
+
+/** The newest creation instant among server-backed rows; a send started now sorts no earlier. */
+internal fun List<RaftThreadMessageItem>.newestServerBackedCreatedAtEpochMillis(): Long? =
+    filterNot { it.hasLocalSendState() }.mapNotNull { it.createdAtEpochMillis }.maxOrNull()
 
 /**
  * A single lexicographic total order for every message pair.
  *
  * Canonical server messages stay sequence-authoritative. A sent message whose
  * sequence has not arrived yet is kept in a separate fallback lane ordered by
- * its numeric creation instant. Optimistic/failed sends remain last and use
- * their creation instant plus a stable local-send ordinal. No branch reads the
- * localized [RaftThreadMessageItem.timestampLabel].
+ * its numeric creation instant. Optimistic/failed sends form their own lane,
+ * ordered by creation instant plus a stable local-send ordinal;
+ * [sortedByThreadTimeline] then places them among the server rows by time. No
+ * branch reads the localized [RaftThreadMessageItem.timestampLabel].
  *
  * The old pair-dependent comparator used `seq` only when both operands had it,
  * then compared display strings for mixed pairs. That admitted cycles such as
