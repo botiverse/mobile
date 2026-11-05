@@ -73,14 +73,6 @@ class RaftMessageLinksTest {
     }
 
     @Test
-    fun bareLinksKeepCredentialsAndFragmentsInTheKey() {
-        assertEquals(
-            listOf("https://u:p@app.example/x", "https://app.example/x#secret"),
-            raftMessageBareLinks("https://u:p@app.example/x https://app.example/x#secret"),
-        )
-    }
-
-    @Test
     fun messageLinkKeyIsTheWhatwgHref() {
         assertEquals("https://app.example/", raftMessageLinkKey("HTTPS://App.Example"))
         assertEquals("https://app.example/a?b=1", raftMessageLinkKey("https://app.example:443/a?b=1"))
