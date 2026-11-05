@@ -153,7 +153,7 @@ internal enum class RaftServerMenuAnchor {
  * compact): [model]'s servers (name, `/slug` under it, unread or the current check), scrolling
  * inside; then Join Community, Switch or Create Server and, for owners and admins, Invite
  * Human; and at the very bottom, nearest the thumb (stdrc 10-22), the server's pages (Members,
- * Computers, Settings) as one row of destinations, each with its own dot. At most 60% of [screenHeight], below [topInset]. It closes on a tap outside,
+ * Computers, Apps, Settings) as one row of destinations, each with its own dot. At most 60% of [screenHeight], below [topInset]. It closes on a tap outside,
  * on Back ([RaftBackHandler]) and after a pick. [bottomInset] is space under the content area
  * the popover must clear (the iOS system bar floats over it).
  */
@@ -207,6 +207,7 @@ internal fun RaftAppServerMenuOverlay(
         mapOf(
             RaftServerMenuEntry.Members to stringResource(Res.string.tab_members),
             RaftServerMenuEntry.Computers to stringResource(Res.string.settings_computers_title),
+            RaftServerMenuEntry.Apps to stringResource(Res.string.tab_apps),
             RaftServerMenuEntry.Settings to stringResource(Res.string.tab_settings),
         )
     RaftFloatingOverlayHost(
@@ -351,5 +352,6 @@ internal fun raftServerMenuEntryIcon(entry: RaftServerMenuEntry): RaftLucideIcon
     when (entry) {
         RaftServerMenuEntry.Members -> RaftLucideIconName.Users
         RaftServerMenuEntry.Computers -> RaftLucideIconName.Monitor
+        RaftServerMenuEntry.Apps -> RaftLucideIconName.Blocks
         RaftServerMenuEntry.Settings -> RaftLucideIconName.Settings
     }

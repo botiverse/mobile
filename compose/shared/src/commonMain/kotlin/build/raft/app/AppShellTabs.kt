@@ -262,6 +262,7 @@ internal const val AppShellServerTabKey = "more"
 internal enum class RaftServerMenuEntry(val key: String) {
     Members(RaftAppDestination.Members.id),
     Computers(RaftAppDestination.Computers.id),
+    Apps(RaftAppDestination.Apps.id),
     Settings(RaftAppDestination.Settings.id),
     ;
 
@@ -313,15 +314,22 @@ internal fun raftServerMenuModel(
 
 /**
  * The server's pages in the popover's bottom row (raft-design #741, navigation.md "The server
- * in the apps' desktop mode"). The phone keeps every page: it has no rail. On a wide screen the
- * rail already has Members, Computers and Settings, so the row would only repeat them and the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
+ * in the apps' desktop mode"). The phone keeps every page: it has no rail, and its Settings has
+ * no Computers or Apps row (artin 2026-11-05, dm task #17; [settingsHomeRowKeys]). A guest has no
+ * Apps page (web MobileServerTab): their Applications row stays in Settings. On a wide screen the
+ * rail already has Members, Computers, Apps and Settings, so the row would only repeat them and
+ * the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
  */
 internal fun raftServerMenuEntriesFor(
     entries: List<RaftServerMenuEntry>,
     wide: Boolean,
     guest: Boolean,
 ): List<RaftServerMenuEntry> =
-    if (!wide) entries else emptyList()
+    when {
+        wide -> emptyList()
+        guest -> entries - RaftServerMenuEntry.Apps
+        else -> entries
+    }
 
 /** The unread count a server row shows: the Home switcher's label, or null. */
 internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? =

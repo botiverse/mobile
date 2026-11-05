@@ -643,14 +643,15 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
 
 /**
  * raft-ui SidebarGroupLabel: a plain group heading that doesn't collapse (the web settings
- * hub's Personal / Workspace / Resources, `SettingsSidebarList`). `px-5 pt-4` (20dp from the
- * list's edges with the page's 8dp), the
+ * hub's Personal / Workspace / Resources, `SettingsSidebarList`). `px-5 pt-4 pb-0` (20dp from the
+ * list's edges with the page's 8dp; nothing under it, the group's `py-2` list is the gap to its
+ * first row), the
  * [title] in `text-footnote` 700 `foreground-hint`, sentence case as written; a heading in
  * semantics. It is [RaftSectionEyebrow] with the sidebar's padding.
  */
 @Composable
 fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
-    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp))
+    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 12.dp, end = 12.dp, top = 16.dp))
 }
 
 /**

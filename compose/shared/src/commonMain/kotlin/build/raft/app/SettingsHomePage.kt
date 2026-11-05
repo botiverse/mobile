@@ -7105,6 +7105,12 @@ private fun RaftAppShellReadyContent(
                 if (!navRailActive) serverTabFocusOnPageReturn = true
                 openComputersPage()
             }
+            RaftServerMenuEntry.Apps -> {
+                // The phone's Apps (web MobileServerTab `openApps`): the page the wide rail's Apps
+                // shows. The app's nav events have no `apps` yet (RaftAppDestination.Apps).
+                if (!navRailActive) serverTabFocusOnPageReturn = true
+                pager.openSettingsMarketplacePage(storeScope)
+            }
             RaftServerMenuEntry.Settings -> {
                 // On the phone Settings is the pushed page under the `more` key; the pinned rail
                 // entry when wide.
@@ -18215,7 +18221,7 @@ internal fun SettingsRouteVisualScreen() {
             // On a phone Settings is a page pushed from the server panel (raft-design #712), so it
             // has Back, as the web's phone Settings does.
             SettingsHomeContent(
-                payload = appShellSettingsHomePayload(session),
+                payload = appShellSettingsHomePayload(session, serverPanelPages = true),
                 onBack = {},
                 onSelect = {},
             )
