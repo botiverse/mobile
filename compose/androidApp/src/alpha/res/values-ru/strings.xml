@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Alpha build: the strings Android shows outside the app (launcher, recents, notifications,
+    notification settings, widget picker, toasts) name the app "Raft Alpha", so an Alpha
+    notification never reads as production's. Each entry is the main string with "Raft" ->
+    "Raft Alpha"; AlphaAppNameResourcesTest keeps every locale list in step with main.
+-->
+<resources>
+    <string name="app_name">Raft Alpha</string>
+    <string name="raft_background_connection_notification_title">Raft Alpha получает сообщения</string>
+    <string name="raft_background_connection_channel_description">Показывается, пока Raft Alpha держит подключение в фоне, чтобы доставлять уведомления о сообщениях без Сервисов Google Play.</string>
+    <string name="settings_notification_test_title">Проверка уведомлений Raft Alpha</string>
+    <string name="notification_unread_general_channel_description">Общие уведомления Raft Alpha о непрочитанных сообщениях.</string>
+    <string name="inbox_notification_channel_description">Непрочитанные обновления активности в Raft Alpha.</string>
+    <string name="slock_activity_widget_name">Активность Raft Alpha</string>
+    <string name="slock_agent_status_widget_name">Активные агенты Raft Alpha</string>
+    <string name="raft_download_notification_tap_retry">Откройте Raft Alpha и попробуйте ещё раз</string>
+    <string name="external_share_import_failed_toast">Не удалось импортировать в Raft Alpha то, чем вы поделились</string>
+    <string name="attachment_save_as_failed_toast">Приложению Raft Alpha не удалось сохранить этот файл. Попробуйте ещё раз.</string>
+</resources>
