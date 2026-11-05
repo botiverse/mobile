@@ -93,7 +93,7 @@ enum class RaftButtonSize {
     /** 32dp: actions in list rows, cards, banners, toolbars and panel headers. */
     Md,
 
-    /** `--control-height`, 44dp (32dp on a desktop): dialog and sheet footers, form submit buttons. */
+    /** `--control-height`, 44dp (34dp on a desktop): dialog and sheet footers, form submit buttons. */
     Lg,
 
     /** `--control-height-cta`, 52dp (40dp on a desktop): only the full-width pink button of a sign-in, sign-up or setup form. */
@@ -124,7 +124,7 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
     Md(32.dp, 18.dp),
 
     /**
-     * `--control-height` with a `--control-icon-size` icon: 44dp / 22dp (32dp / 18dp on a
+     * `--control-height` with a `--control-icon-size` icon: 44dp / 22dp (34dp / 18dp on a
      * mouse or trackpad, [RaftControlMetrics]); a phone top bar, next to an input. [box] and [glyph] are
      * the mobile values; components read [boxIn] / [glyphIn].
      */
@@ -233,7 +233,7 @@ internal fun raftButtonMetrics(
         // On the frame the 32dp button is the 36dp frame item: 10dp each side.
         size == RaftButtonSize.Md && variant == RaftButtonVariant.OnFrame -> RaftButtonMetrics(36.dp, 10.dp, 10.dp, 16.dp)
         size == RaftButtonSize.Md -> RaftButtonMetrics(32.dp, 12.dp, 10.dp, 16.dp)
-        // `h-control`: 44dp, 32dp on a desktop.
+        // `h-control`: 44dp, 34dp on a desktop.
         size == RaftButtonSize.Lg -> RaftButtonMetrics(controls.height, 16.dp, 14.dp, 18.dp)
         // `h-control-cta`: 52dp, 40dp on a desktop. xl centres its content in the full width:
         // no tighter icon side.
@@ -515,7 +515,7 @@ val LocalRaftButtonsStacked = staticCompositionLocalOf { false }
  *   (14dp), 15/20, 18dp icons; `xl` 52dp, 20dp, 16/24, 18dp icons; gap 8dp. Under
  *   [build.raft.designsystem.theme.RaftScale.Wide] `md` text is 14/22 (raft-ui
  *   `text-control`); with a mouse or trackpad in use
- *   ([build.raft.designsystem.theme.RaftPointerInput.Fine]) `lg` is 32dp and `xl` 40dp
+ *   ([build.raft.designsystem.theme.RaftPointerInput.Fine]) `lg` is 34dp and `xl` 40dp
  *   (`h-control`, `h-control-cta`).
  * - Stickers ([RaftButtonVariant.Primary], `Warning`, `Danger`): `sticker-ink` border and
  *   type, plus a 1.5dp `sticker-edge` ring outside (the die-cut edge in dark).

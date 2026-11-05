@@ -123,8 +123,8 @@ fun RaftSelectTrigger(
     val field = LocalRaftFieldState.current
     val base = if (field.inField) RaftTheme.typography.field else RaftTheme.typography.subhead
     val shown = value ?: placeholder
-    // `h-control`: 44dp, 32dp on a desktop. The 6dp above and below the 24dp line leaves room for
-    // a large font scale on a phone; on a desktop the 22dp line keeps 5dp so the trigger stays 32.
+    // `h-control`: 44dp, 34dp on a desktop (sizing v12). The 6dp above and below the 24dp line
+    // leaves room for a large font scale on a phone; on a desktop the 22dp line keeps 6dp too.
     val controlHeight = RaftTheme.controls.height
     val padY = ((controlHeight - 22.dp) / 2).coerceAtMost(6.dp)
     Row(

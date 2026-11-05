@@ -784,7 +784,7 @@ fun RaftComboboxChipsTrigger(
     Row(
         modifier
             .fillMaxWidth()
-            // A minimum (`min-h-control`: 44dp, 32dp on a desktop): more chips wrap onto more
+            // A minimum (`min-h-control`: 44dp, 34dp on a desktop): more chips wrap onto more
             // lines and a large font scale grows it.
             .heightIn(min = RaftTheme.controls.height)
             .raftFocusRing(focused, RaftRadius.Control, colors)

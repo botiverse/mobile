@@ -56,7 +56,7 @@ class RaftPointerInputTest {
     }
 
     /**
-     * A mouse switches the controls to the 32dp metrics as soon as it moves; a finger switches
+     * A mouse switches the controls to the 34dp metrics as soon as it moves; a finger switches
      * them back only when it lifts, so a control never resizes under the finger pressing it.
      */
     @Test
@@ -73,11 +73,11 @@ class RaftPointerInputTest {
             assertEquals(44.dp, height, "touch at rest")
             scene.sendPointerEvent(PointerEventType.Move, at, type = PointerType.Mouse)
             scene.render(16_000_000L)
-            assertEquals(32.dp, height, "a mouse moved")
+            assertEquals(34.dp, height, "a mouse moved")
             assertEquals(RaftPointerInput.Fine, RaftPointerInputState.current)
             scene.sendPointerEvent(PointerEventType.Press, at, type = PointerType.Touch)
             scene.render(32_000_000L)
-            assertEquals(32.dp, height, "a finger is down: nothing resizes under it")
+            assertEquals(34.dp, height, "a finger is down: nothing resizes under it")
             scene.sendPointerEvent(PointerEventType.Release, at, type = PointerType.Touch)
             scene.render(48_000_000L)
             assertEquals(44.dp, height, "the finger lifted")

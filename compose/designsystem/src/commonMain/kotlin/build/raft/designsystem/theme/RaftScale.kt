@@ -55,7 +55,7 @@ enum class RaftPointerInput {
     /** A finger (or nothing seen yet on a touch platform): 44dp controls. */
     Touch,
 
-    /** A mouse or trackpad: the desktop's 32dp controls. */
+    /** A mouse or trackpad: the desktop's 34dp controls (sizing v12). */
     Fine,
     ;
 
@@ -65,8 +65,11 @@ enum class RaftPointerInput {
 }
 
 /**
- * raft-ui foundation.css control metrics, the ones its fine-pointer query switches. CSS px map 1:1
- * to dp.
+ * raft-ui foundation.css control metrics, the ones its fine-pointer query switches, and the
+ * density that goes with them (sizing v12, raft-ui 0.65 desktop density): under a mouse or
+ * trackpad the heads, bars, rows and switches tighten too, while a finger keeps today's sizes.
+ * CSS px map 1:1 to dp. [Mobile] holds the touch values the components always had, so touch
+ * rendering does not change; [Desktop] the pointer ones.
  */
 @Immutable
 data class RaftControlMetrics(
@@ -84,13 +87,120 @@ data class RaftControlMetrics(
     val hitInset: Dp,
     /** `--control-embedded-size`: a chip or a button embedded in a field. */
     val embeddedSize: Dp,
+    /**
+     * The one height medium controls and rows share under a fine pointer (sizing v12, raft-ui
+     * 0.65 desktop density): a Button and an icon button at `md`, a tab, a segmented item, a menu
+     * option and the menu's search row, a sidebar row. It is [height], so a row lines up with the
+     * field beside it. Null with a finger: each keeps its own touch height (32, 36, 40, 44).
+     */
+    val rowHeight: Dp?,
+    /**
+     * A head: a page's top bar, a panel's head, a dialog sheet's head, a folded pane, a drawer's
+     * head (raft-ui `--shell-header-height`). 56 with a finger; 44 under a fine pointer (sizing
+     * v12, raft-ui 0.65 desktop density), where a 56 head wastes a mouse's precision.
+     */
+    val headHeight: Dp,
+    /**
+     * A head's or a bar's icon button (Back, Close, a head's actions): 44 with a finger, the
+     * phone's `icon-lg`; 28 under a fine pointer (sizing v12, raft-ui 0.65 desktop density), the
+     * desktop bar button, which a mouse hits without the finger's 44.
+     */
+    val barButtonSize: Dp,
+    /** The glyph in a [barButtonSize] button: 22 with a finger, 16 under a fine pointer. */
+    val barIconSize: Dp,
+    /**
+     * The corners of a [barButtonSize] button: `radius-control` (8) with a finger; `radius-chip`
+     * (6) for the 28 desktop bar button (sizing v12), as raft-ui rounds its small buttons.
+     */
+    val barButtonRadius: Dp,
+    /**
+     * From a head's leading edge to its first bar button, so the glyph (not the button) lands on
+     * the 16dp content margin: (44 - 22) / 2 = 11 in, 5 out with a finger; (28 - 16) / 2 = 6 in,
+     * 10 out under a fine pointer.
+     */
+    val barEdgeInset: Dp,
+    /**
+     * The wide layout's top bar ([build.raft.designsystem.components.RaftTopBar]), its seam
+     * included: web AppTopBar `h-12` (48) with a finger; 44 under a fine pointer (sizing v12,
+     * raft-ui 0.65 desktop density).
+     */
+    val topBarHeight: Dp,
+    /**
+     * An item on the top bar (the workspace button, the search trigger, an on-frame `md` button):
+     * 36 with a finger, 32 under a fine pointer, so each keeps 6 from the bar's edges.
+     */
+    val topBarItemSize: Dp,
+    /**
+     * Whether the app rail takes its compact size (48 + the seam, 36 items) whatever the window's
+     * height: under a fine pointer (sizing v12, raft-ui 0.65 desktop density). With a finger the
+     * rail goes compact only in a short window.
+     */
+    val railCompact: Boolean,
+    /** [build.raft.designsystem.components.RaftSwitch]'s track width: 50 with a finger, 38 under a fine pointer. */
+    val switchWidth: Dp,
+    /** The switch's track height (and twice its radius): 30 with a finger, 22 under a fine pointer. */
+    val switchHeight: Dp,
+    /** The switch's knob: 22 with a finger, 14 under a fine pointer (sizing v12). */
+    val switchKnobSize: Dp,
+    /**
+     * Inside a settings card (a titled group of settings rows): 16 with a finger; 20 under a fine
+     * pointer (sizing v12, raft-ui 0.65 desktop density), where the cards sit in a wide page.
+     */
+    val settingsCardPadding: Dp,
+    /** Between settings cards: 12 with a finger, 16 under a fine pointer (sizing v12). */
+    val settingsCardGap: Dp,
 ) {
     companion object {
         /** foundation.css `:root`: a finger's 44. */
-        val Mobile = RaftControlMetrics(height = 44.dp, ctaHeight = 52.dp, iconSize = 22.dp, hitInset = 0.dp, embeddedSize = 32.dp)
+        val Mobile =
+            RaftControlMetrics(
+                height = 44.dp,
+                ctaHeight = 52.dp,
+                iconSize = 22.dp,
+                hitInset = 0.dp,
+                embeddedSize = 32.dp,
+                rowHeight = null,
+                headHeight = 56.dp,
+                barButtonSize = 44.dp,
+                barIconSize = 22.dp,
+                barButtonRadius = 8.dp,
+                barEdgeInset = 5.dp,
+                topBarHeight = 48.dp,
+                topBarItemSize = 36.dp,
+                railCompact = false,
+                switchWidth = 50.dp,
+                switchHeight = 30.dp,
+                switchKnobSize = 22.dp,
+                settingsCardPadding = 16.dp,
+                settingsCardGap = 12.dp,
+            )
 
-        /** foundation.css fine-pointer query: Feishu's 32. */
-        val Desktop = RaftControlMetrics(height = 32.dp, ctaHeight = 40.dp, iconSize = 18.dp, hitInset = 6.dp, embeddedSize = 20.dp)
+        /**
+         * foundation.css fine-pointer query at sizing v12 (raft-ui 0.65 desktop density): 34dp
+         * controls (32 before v12), so the hit inset is (44 - 34) / 2.
+         */
+        val Desktop =
+            RaftControlMetrics(
+                height = 34.dp,
+                ctaHeight = 40.dp,
+                iconSize = 18.dp,
+                hitInset = 5.dp,
+                embeddedSize = 20.dp,
+                rowHeight = 34.dp,
+                headHeight = 44.dp,
+                barButtonSize = 28.dp,
+                barIconSize = 16.dp,
+                barButtonRadius = 6.dp,
+                barEdgeInset = 10.dp,
+                topBarHeight = 44.dp,
+                topBarItemSize = 32.dp,
+                railCompact = true,
+                switchWidth = 38.dp,
+                switchHeight = 22.dp,
+                switchKnobSize = 14.dp,
+                settingsCardPadding = 20.dp,
+                settingsCardGap = 16.dp,
+            )
     }
 }
 
