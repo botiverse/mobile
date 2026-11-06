@@ -2408,9 +2408,11 @@ internal fun ThreadComposerContentLeaf(
         )
     }
     val suggestionAnchorRef = remember(state.instanceId) { RaftLiveRootAnchorRef(suggestionPortalOwner) }
+    // Remembered across the stack's push and pop over this page (the node reattaches, this stays):
+    // a lease-bound resolver left the panel unable to place itself until the page was rebuilt.
     val suggestionAnchorResolver =
         remember(state.instanceId, suggestionAnchorRef) {
-            suggestionAnchorRef.resolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
+            suggestionAnchorRef.currentCaptureResolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
         }
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
     // Something sits above the composer frame (see the measured column below).
