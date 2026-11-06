@@ -117,6 +117,8 @@ internal class ThreadSettingsPageSources(
     val onOpenMembers: (add: Boolean) -> Unit,
     /** Leave the conversation once it is back on screen (after Leave, Delete, Disconnect, Archive). */
     val onLeaveConversation: () -> Unit,
+    /** The standalone channel settings page ([CHANNEL_SETTINGS_PAGE]) closed: [channelSettingsCloseLanding] for this conversation. */
+    val onChannelSettingsClosed: (ChannelSettingsCloseLanding, ChannelId) -> Unit = { _, _ -> },
 )
 
 /** One conversation's link to its settings page; the conversation keeps [sources] current. */

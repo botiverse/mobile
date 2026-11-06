@@ -103,11 +103,58 @@ internal data class ChannelSettingsRoute(
     val channelId: ChannelId
 )
 
-internal fun channelSettingsPageData(serverId: ServerId, channelId: ChannelId): JSONObject =
+/** [threadLinkKey]: the [ThreadSettingsPageLinks] entry of the conversation that opened the page. */
+internal fun channelSettingsPageData(
+    serverId: ServerId,
+    channelId: ChannelId,
+    threadLinkKey: String? = null,
+): JSONObject =
     JSONObject().apply {
         put("pageName", CHANNEL_SETTINGS_PAGE)
         put("serverId", serverId.value)
         put("channelId", channelId.value)
+        threadLinkKey?.let { put(THREAD_SETTINGS_LINK_KEY, it) }
+    }
+
+/** Where the conversation goes once the settings page has closed. */
+internal enum class ChannelSettingsCloseLanding {
+    /** Archive and Unarchive: the channel is still readable (web keeps it open). */
+    StayInChannel,
+
+    /** Leaving a public channel: still readable, the composer offers Join (web EditChannelDialog). */
+    StayNotJoined,
+
+    /** Deleted, disconnected, or a private or joint channel left: nothing to read here any more. */
+    LeaveConversation,
+}
+
+/**
+ * Web EditChannelDialog: Delete and Disconnect go elsewhere; Leave stays with membership false. A
+ * private or joint channel left is gone until someone invites you back, so that one goes too. A
+ * Leave without a loaded channel can't show it is public: it goes rather than show a stale page.
+ */
+internal fun channelSettingsCloseLanding(
+    closedBy: ChannelSettingsAction?,
+    channel: HomeChannelRow?,
+): ChannelSettingsCloseLanding =
+    when (closedBy) {
+        ChannelSettingsAction.Delete,
+        ChannelSettingsAction.Disconnect -> ChannelSettingsCloseLanding.LeaveConversation
+        ChannelSettingsAction.Leave ->
+            if (channel == null || channelSettingsIsPrivate(channel)) {
+                ChannelSettingsCloseLanding.LeaveConversation
+            } else {
+                ChannelSettingsCloseLanding.StayNotJoined
+            }
+        else -> ChannelSettingsCloseLanding.StayInChannel
+    }
+
+/** What Home does at once for [this] landing; its Refresh may read a replica that is behind. */
+internal fun ChannelSettingsCloseLanding.homeIntent(channelId: ChannelId): SharedHomeIntent? =
+    when (this) {
+        ChannelSettingsCloseLanding.StayInChannel -> null
+        ChannelSettingsCloseLanding.StayNotJoined -> SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = true)
+        ChannelSettingsCloseLanding.LeaveConversation -> SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false)
     }
 
 internal fun JSONObject.toChannelSettingsRouteOrNull(): ChannelSettingsRoute? {
@@ -335,6 +382,7 @@ private fun ChannelSettingsPageScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
     val route = remember(params.toString()) { params.toChannelSettingsRouteOrNull() }
+    val threadLinkKey = remember(params.toString()) { params.optString(THREAD_SETTINGS_LINK_KEY).takeIf(String::isNotBlank) }
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     if (route == null) {
         ChannelSettingsInvalidRouteScreen(onBack = router::closePage)
@@ -453,7 +501,10 @@ private fun ChannelSettingsPageScreen() {
                 if (settingsState.closedWithAccessLost) {
                     sharedStores.publishChannelAccessLost(storeScope, route.channelId)
                 }
+                val landing = channelSettingsCloseLanding(settingsState.closedBy, settingsState.channel)
+                landing.homeIntent(route.channelId)?.let { intent -> homeStore?.dispatch(intent) }
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
+                threadLinkKey?.let(ThreadSettingsPageLinks::get)?.sources?.onChannelSettingsClosed?.invoke(landing, route.channelId)
                 router.closePage()
             }
             // Web ArchivedNameCollisionBanner: settings close, then the archived channel opens

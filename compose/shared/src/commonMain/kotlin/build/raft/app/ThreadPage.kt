@@ -2792,6 +2792,36 @@ internal fun RaftThreadScreenPayload.joinChannelTargetId(): ChannelId? =
         ?: streamChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
+/**
+ * What Home hears of a join here. The row in case Home doesn't list the channel comes only from
+ * the channel's own page: a reply's title or a task sheet's other channel isn't that channel's name.
+ */
+internal fun channelJoinedHomeIntent(
+    payload: RaftThreadScreenPayload,
+    serverId: String,
+    channelId: ChannelId,
+): SharedHomeIntent.ChannelJoined =
+    SharedHomeIntent.ChannelJoined(
+        serverId = serverId,
+        channelId = channelId,
+        rowIfMissing =
+            payload.takeIf {
+                it.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                    it.joinChannelTargetId() == channelId &&
+                    it.title.isNotBlank()
+            }?.let {
+                HomeChannelRow(
+                    threadId = ThreadId(channelId.value),
+                    channelId = channelId,
+                    channelType = it.channelKind,
+                    kind = parseConversationKindOrNull(it.channelKind) ?: ConversationKind.Channel,
+                    name = it.title.removePrefix("#"),
+                    subtitle = it.subtitle,
+                    joined = true,
+                )
+            },
+    )
+
 internal fun RaftThreadScreenPayload.threadForwardSourceChannelId(): ChannelId? =
     (sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() }
@@ -5192,10 +5222,10 @@ private fun ThreadPageScreen(
                 authenticatedRouteAuthorityRequired = true,
             )
         },
-        onOpenChannelSettings = { serverId, channelId, currentStoreScope ->
+        onOpenChannelSettings = { serverId, channelId, currentStoreScope, linkKey ->
             pager.openRaftPage(
                 pageName = CHANNEL_SETTINGS_PAGE,
-                pageData = channelSettingsPageData(serverId, channelId),
+                pageData = channelSettingsPageData(serverId, channelId, linkKey),
                 storeScopeOverride = currentStoreScope,
                 authenticatedRouteAuthorityRequired = true,
             )
@@ -6725,7 +6755,8 @@ private class SharedThreadRouteContentCallbacks(
     val onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit,
     val onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit,
     val onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit,
-    val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit,
+    /** The last argument is the opening conversation's [ThreadSettingsPageLinks] key. */
+    val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit,
 )
 
 @Composable
@@ -6758,7 +6789,7 @@ internal fun SharedThreadRouteContent(
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
     onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
     onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit = { _, _, _, _, _ -> },
-    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit = { _, _, _ -> }
+    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit = { _, _, _, _ -> }
 ) {
     SharedThreadRouteContentContent(
         data =
@@ -12442,6 +12473,8 @@ private fun SharedThreadRouteContentContent(
                             threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
                             currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
                                 realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                             }
                             realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
                             bridge.toast(joinedChannelLabel)
@@ -13061,6 +13094,21 @@ private fun SharedThreadRouteContentContent(
                     if (serverId != null && channelId != null) onOpenMembersPager(renderedThread, serverId, channelId, storeScope, add)
                 },
                 onLeaveConversation = { leaveAfterSettingsPage = true },
+                // The standalone settings page: delete, disconnect or a private leave goes back as the
+                // drawer's Leave does; a public leave stays here with the composer's Join.
+                onChannelSettingsClosed = { landing, channelId ->
+                    if (landing != ChannelSettingsCloseLanding.StayInChannel) {
+                        currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                            realtimeRoomLeaseRegistry.forgetJoinedByUser(serverId, channelId.value)
+                        }
+                    }
+                    when (landing) {
+                        ChannelSettingsCloseLanding.StayInChannel -> Unit
+                        ChannelSettingsCloseLanding.StayNotJoined ->
+                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelLeft(channelId.value))
+                        ChannelSettingsCloseLanding.LeaveConversation -> leaveAfterSettingsPage = true
+                    }
+                },
             )
         SideEffect { settingsPageLink.sources = settingsPageSources }
         val openSettingsPage: () -> Boolean = {
@@ -13844,7 +13892,14 @@ private fun SharedThreadRouteContentContent(
                     pendingActionCardIds = pendingActionCardIds + itemId
                     coroutineScope.launch {
                         try {
-                            val outcome = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp)
+                            var createdChannel: HomeChannelRow? = null
+                            val outcome =
+                                dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp) { channel ->
+                                    createdChannel = channel
+                                    // As submitCreateChannel: Home lists it now, whatever marking the card answers.
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.ChannelCreated(channel))
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                }
                             // "Verify it's you" closed: the card stays as it was, nothing is shown.
                             val result = (outcome as? SecondFactorStepUpOutcome.Completed)?.result ?: return@launch
                             when (result) {
@@ -13868,6 +13923,22 @@ private fun SharedThreadRouteContentContent(
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                }
+                            }
+                            // Web CreateChannelDialog `finish`: the new channel opens; marking the card doesn't hold it.
+                            createdChannel?.let { channel ->
+                                val next =
+                                    buildAppShellThreadPayload(
+                                        conversation = channel.toThreadLaunchConversationIdentity(),
+                                        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                                        alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                                        compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                                        onWarn = bridge::logWarn,
+                                    )
+                                if (next != null) {
+                                    onOpenThreadPayload(next)
+                                } else {
+                                    bridge.logWarn("action_card_created_channel_open_rejected reason=identity_unresolved")
                                 }
                             }
                         } finally {
@@ -14609,6 +14680,8 @@ private fun SharedThreadRouteContentContent(
                                     // Now a member: closing this page must not leave the room (the
                                     // conversation directory may still list the channel as not joined).
                                     realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                                 }
                                 realtimeEvents.joinChannel(
                                     result.data.channelId.value,
@@ -14652,7 +14725,7 @@ private fun SharedThreadRouteContentContent(
                         )
                         return@ThreadPageContent
                     }
-                    onOpenChannelSettings(serverId, channelId, storeScope)
+                    onOpenChannelSettings(serverId, channelId, storeScope, settingsPageLinkKey)
                 }
                 action == "loadMembers" -> {
                     if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {

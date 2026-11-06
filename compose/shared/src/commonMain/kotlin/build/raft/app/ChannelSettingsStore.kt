@@ -326,6 +326,8 @@ internal data class ChannelSettingsState(
     val effect: ChannelSettingsEffect? = null,
     /** The closing action took the channel away from the user (left, deleted, disconnected; an archived channel stays readable). */
     val closedWithAccessLost: Boolean = false,
+    /** The action behind [ChannelSettingsEffect.Close]: where the person lands after it ([channelSettingsCloseLanding]). */
+    val closedBy: ChannelSettingsAction? = null,
 ) {
     fun permissions(): ChannelSettingsPermissions =
         channel?.let { channelSettingsPermissions(it, canManage) } ?: ChannelSettingsPermissions()
@@ -1185,12 +1187,13 @@ internal class ChannelSettingsStore(
                     current.copy(
                         actionInFlight = null,
                         effect = ChannelSettingsEffect.Close,
-                        closedWithAccessLost = true
+                        closedWithAccessLost = true,
+                        closedBy = action,
                     )
                 // An archived channel is still readable (web keeps it), so its rows stay.
                 ChannelSettingsAction.Archive,
                 ChannelSettingsAction.Unarchive ->
-                    current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close)
+                    current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close, closedBy = action)
             }
         mutableState.value = next
         if (next.effect == ChannelSettingsEffect.Close) {
