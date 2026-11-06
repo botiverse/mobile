@@ -74,7 +74,7 @@ class SharedCreateAgentFormStoreTest {
         assertEquals(true, locked.locked)
         assertEquals(false, locked.picker)
         api.modelsResponse = HomeNetworkResponse(code = 502, bodyText = "{}")
-        assertIs<DataResult.Error>(store.loadHostedRuntimeModels("server-1"))
+        assertTrue(store.loadHostedRuntimeModels("server-1") is DataResult.Error)
     }
 
     @Test
