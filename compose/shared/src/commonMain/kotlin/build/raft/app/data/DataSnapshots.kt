@@ -676,6 +676,21 @@ data class RawMessagePage(
     val historyLimited: Boolean = false,
     /** Phase 2b: the page's embedded reply counts by parent message id; `null` = the page carried none. */
     val replyCountsByParentId: Map<String, Int>? = null,
+    /** Phase 2c: what a `messages/context` response says about itself; `null` on any other page. */
+    val context: RawMessageContextFields? = null,
+)
+
+/**
+ * The top-level fields of a `messages/context` response the durable writer needs. [channelId] is the page's scope key;
+ * [threadParentChannelId] / [threadRootMessageId] are its `canonicalTarget` when that is a reply in [channelId].
+ */
+data class RawMessageContextFields(
+    val channelId: String,
+    val targetMessageId: String?,
+    val hasOlder: Boolean,
+    val hasNewer: Boolean,
+    val threadParentChannelId: String?,
+    val threadRootMessageId: String?,
 )
 
 /**

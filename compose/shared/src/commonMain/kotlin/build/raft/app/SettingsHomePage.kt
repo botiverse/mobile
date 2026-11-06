@@ -5235,7 +5235,11 @@ private fun RaftAppShellReadyContent(
         }
         val servers = readySession?.servers.orEmpty()
         bridge.log("message_link_take id=${taken.id} source=${taken.source} servers=${servers.size}")
-        val resolver = RaftMessageLinkResolver(appShellNetworkClient, diagnosticsLogger = bridge::log)
+        val resolver = RaftMessageLinkResolver(
+            appShellNetworkClient,
+            diagnosticsLogger = bridge::log,
+            contextPageSink = sharedStores.messageContextPageSink(storeScope),
+        )
         appShellCoroutineScope.launch {
             when (val resolution = resolver.resolve(taken.link, servers)) {
                 is RaftMessageLinkResolution.Open -> {

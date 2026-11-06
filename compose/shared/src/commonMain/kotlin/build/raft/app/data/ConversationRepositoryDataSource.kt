@@ -2138,7 +2138,7 @@ private fun buildSharedThreadSnapshot(
  * body that is not an object with a `messages` array yields no witness (nothing will be persisted);
  * the rendered snapshot is unaffected either way.
  */
-private fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMessagePageWitness {
+internal fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMessagePageWitness {
     val root =
         runCatching { rawMessagePageJson.parseToJsonElement(bodyText) as? JsonObject }
             .getOrNull()
@@ -2152,7 +2152,26 @@ private fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMes
             messageWindow = decodeChannelMessageWindow(root["messageWindow"]),
             historyLimited = (root["historyLimited"] as? JsonPrimitive)?.booleanOrNull ?: false,
             replyCountsByParentId = embeddedReplyCountsOrNull(root["threadSummariesByParentMessageId"]),
+            context = rawMessageContextFieldsOrNull(root),
         ),
+    )
+}
+
+/** Phase 2c: a `messages/context` response's own fields; `null` when it names no `channelId` (any other page). */
+private fun rawMessageContextFieldsOrNull(root: JsonObject): RawMessageContextFields? {
+    fun JsonObject.text(key: String): String? =
+        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+    val channelId = root.text("channelId") ?: return null
+    val target = (root["canonicalTarget"] as? JsonObject)?.takeIf { target ->
+        target.text("kind") == "thread" && target.text("threadChannelId") == channelId
+    }
+    return RawMessageContextFields(
+        channelId = channelId,
+        targetMessageId = root.text("targetMessageId"),
+        hasOlder = (root["hasOlder"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        hasNewer = (root["hasNewer"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        threadParentChannelId = target?.text("channelId"),
+        threadRootMessageId = target?.text("threadParentMessageId"),
     )
 }
 

@@ -3877,7 +3877,8 @@ private fun rememberMemberDetailRouteProvider(
     val activityOverviewRepository = remember(networkClient) {
         build.raft.app.data.RealAgentActivityOverviewRepository(
             networkClient = networkClient,
-            logger = { message -> bridge.log("member_detail_$message") }
+            logger = { message -> bridge.log("member_detail_$message") },
+            contextPageSink = sharedStores.messageContextPageSink(storeScope),
         )
     }
     val agentControlsApi = remember(networkClient) { RaftAgentControlsApi(networkClient) }

@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.model.ServerId
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.raftLogInfo
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS
@@ -9,7 +10,6 @@ import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
-import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
@@ -189,6 +189,8 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
             path = "channels/$scopeId",
             serverId = partition.serverId,
         ) ?: return null
+        // A forum channel (`threadSort: activity`, `channel_thread_sort_v0`) is never written from a page of this path.
+        if (detail.stringOrNull("threadSort") == CHANNEL_THREAD_SORT_ACTIVITY) return null
         val channelType = (detail["type"] as? JsonPrimitive)
             ?.takeIf { it.isString }
             ?.content
@@ -921,38 +923,18 @@ internal class CanonicalMessageV2EnteredScopeLoader(
 }
 
 /**
- * Production [ThreadDurablePageExtender] (task #168): persists a paging page into the V2 window the
- * enter snapshot created, only when it is exactly adjacent to that window.
+ * Production [ThreadDurablePageExtender] (task #168; message storage Phase 2c): stores paging and context pages through
+ * the segment model. Every refusal writes nothing and logs one line.
  *
- * Order of gates, each answering "write nothing + one `canonical_v2_adjacent_page` log line":
- * 1. malformed channel id / server flag off / empty page / non-positive limit → before any I/O;
- * 2. the scope kind comes from the store's committed cursors — top-level kinds only, or only
- *    `thread` when the caller passes a reply parent (task #168 step 3): none → `no_window` (only the
- *    enter snapshot creates a window), more than one → ambiguous; a thread window must name the
- *    caller's parent (`parent_mismatch` otherwise, re-checked under the scope writer);
- * 3. (task #168) the canary's scope is written too: see step 8;
- * 4. the page converts as a whole (shared [CanonicalMessageV2RestSnapshotFetcher.convertPage],
- *    reply counts fetched here, outside the scope writer), belongs to this scope, has no duplicate
- *    ids, and lies entirely on the requested side of the anchor;
- * 5. under the scope writer: `stillCurrent()` and flag rechecked; the stored scope is
- *    restored (cursor + facts); the anchor must lie inside the stored window
- *    (`oldestLoadedSeq..newestLoadedSeq`) and its fact must be on disk. Since the window is
- *    contiguous and the page is the server's contiguous block next to the anchor, page ∪ window
- *    is contiguous. The edge (and its `hasLoaded*` flag) moves only when the page extends past it;
- *    a page entirely inside the window is a plain refresh with the cursor unchanged;
- * 6. retention: per-scope pruning keeps the newest [maxFactsPerScope] facts (and, since task #168,
- *    the store itself moves the oldest edge past whatever it prunes). An older page that would push the scope past the cap would be pruned straight back out
- *    while the cursor claimed it, so it is refused (`at_capacity`). A newer page that overflows the
- *    cap prunes the oldest end, so the cursor's oldest edge is moved to the oldest fact that
- *    survives and `hasLoadedOldest` is cleared;
- * 7. `applyIncremental` with the UNION cursor (the engine overwrites the cursor wholesale), bound
- *    to the partition generation captured before the network call;
- * 8. after a commit, still inside the scope writer the realtime canary serializes on: an OLDER page only
- *    moves the oldest edge, so the window keeps its realtime continuity
- *    ([CanonicalMessageV2ProductionCanary.onOlderPageCommitted]); a NEWER page (and the gap catch-up)
- *    moves the newest edge, which nothing proves continuous with the realtime stream, so the window is
- *    display-only for realtime frames until the next enter commit
- *    ([CanonicalMessageV2ProductionCanary.onExternalCommit], #3008).
+ * - The scope key comes from the response: a paging page's `messageWindow.scopeId`, a context page's top-level
+ *   `channelId`. A page with neither proves nothing and is not written.
+ * - A claim only connects to stored coverage by the proofs [adjacentPageCoverage] and [contextPageWrite] use. A page
+ *   that connects to nothing is an island: stored, invisible until Phase 2d (head rule: [CanonicalMessageV2SegmentAlgebra.head]).
+ * - Only a `direction: latest` fetch proves the head; the newest [PAGE_SEAL_GRACE_MS] of a page are never sealed
+ *   ([sealPageClaim]).
+ * - After a commit, still inside the scope writer the realtime canary serializes on: a write that moved the head's
+ *   top (nothing proves it continuous with the realtime stream, #3008) is an external commit; any other keeps
+ *   continuity and any enter baseline in flight ([reportCommitToCanary]).
  */
 internal class CanonicalMessageV2AdjacentPageWriter(
     private val canary: CanonicalMessageV2ProductionCanary,
@@ -960,10 +942,9 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     private val fetcher: CanonicalMessageV2RestSnapshotFetcher,
     private val isEnabledForServer: (serverId: String) -> Boolean,
     private val logger: (String) -> Unit = {},
-    /** Must equal the store's [CanonicalMessageV2RetentionPolicy.maxFactsPerScope]. */
-    private val maxFactsPerScope: Int = CanonicalMessageV2RetentionPolicy().maxFactsPerScope,
     /** Same rule as the enter loader's: unknown = member. */
     private val isKnownNonMember: (serverId: String, channelId: String) -> Boolean = { _, _ -> false },
+    private val nowMs: () -> Long = ::defaultNowMillis,
 ) : ThreadDurablePageExtender {
     override suspend fun beginLatestPageBaseline(
         partition: DurablePartitionKey,
@@ -1003,6 +984,10 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
         requestHeadEpoch: Long?,
+        messageWindow: ChannelMessageWindow?,
+        historyLimited: Boolean,
+        revAtRequest: Long?,
+        replyCountByParentId: Map<String, Int>?,
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -1015,15 +1000,25 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         }
         if (channelId.isBlank() || channelId != channelId.trim()) return log("invalid_channel_id")
         if (!isEnabledForServer(partition.serverId)) return log("flag_off")
+        // An empty page claims nothing. Its window is no range (coveredAfterSeq is the high-water with no row), and it
+        // can only follow a page whose claim could not reach the oldest. `after` says nothing about the head either.
         if (rawMessages.isEmpty()) return log("empty_page")
         if (requestedLimit <= 0) return log("invalid_limit")
+        // The scope key is the response's. No window (an older server, or a page that is not a seq page such as
+        // `by-activity`) names no scope and proves no range, so nothing is written.
+        val window = messageWindow ?: return log("no_message_window")
+        val scopeId = window.scopeId?.takeIf { it.isNotBlank() && it == it.trim() } ?: return log("no_message_window")
+        if (window.serverId != partition.serverId) return log("window_server_mismatch")
+        val routeParent = replyParent?.takeIf { scopeId == channelId }
+        if (replyParent != null && routeParent == null) return log("foreign_scope")
 
         // The scope family is the caller's explicit choice: a top-level window, or (task #168 step 3)
         // a reply thread. Neither ever resolves to the other's kinds.
         val allowedKinds =
             if (replyParent == null) CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS else CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
-        val kinds = generationEngine.baselinedScopeKinds(partition, channelId).filter { it in allowedKinds }
+        val kinds = generationEngine.baselinedScopeKinds(partition, scopeId).filter { it in allowedKinds }
         val scopeKind = when (kinds.size) {
+            // Nothing stored names the kind, and paging rows do not carry it.
             0 -> return log("no_window")
             1 -> kinds.single()
             else -> return log("ambiguous_scope_kind")
@@ -1031,14 +1026,14 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         // Task v2: a task window is written by its enter snapshot and live frames only; paging pages
         // carry no parent context to convert under (TODO(task-v2 P1): extend task windows too).
         if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return log("task_window_extend_unsupported")
-        val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
+        val scope = SyncScopeKey(partition = partition, scopeId = scopeId, scopeKind = scopeKind)
 
         // A reply page is converted under the parent its stored cursor names, and only when that is
-        // the route's parent (re-checked against the restored cursor under the scope writer).
-        val storedParent = if (replyParent == null) {
+        // the route's parent (re-checked against the stored cursor under the scope writer).
+        val storedParent = if (routeParent == null) {
             null
         } else {
-            storedReplyParentOrNull(generationEngine.storedCursor(scope), replyParent)
+            storedReplyParentOrNull(generationEngine.storedCursor(scope), routeParent)
                 ?: return log("parent_mismatch")
         }
 
@@ -1047,22 +1042,24 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
 
         val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
-        val envelopes = when (
-            val converted = fetcher.convertPage(partition, channelId, scopeKind, rawMessages, storedParent)
-        ) {
-            is CanonicalMessageV2PageConversion.Converted -> converted.envelopes
-            is CanonicalMessageV2PageConversion.Refused -> return log(converted.diagnostic)
-        }
+        // Row by row, with the counts the response embeds: a row whose count is unknown is left out and the claim
+        // splits around it. Never a `channels/{id}/threads` request.
+        val rows = fetcher.convertPageRows(
+            partition, scopeId, scopeKind, rawMessages, storedParent, replyCountByParentId = replyCountByParentId.orEmpty(),
+        )
+        val envelopes = rows.envelopes
+        if (envelopes.isEmpty()) return log(rows.firstRefusal ?: "canonical_v2_snapshot_not_full_v6")
+        if (!rows.claimable) return log("left_out_without_seq")
         val foreign = envelopes.any { envelope ->
             val envelopeScopeId = when (val context = envelope.context) {
                 is CanonicalConversationContextV2.TopLevel -> context.scope.scopeId.takeIf { replyParent == null }
                 is CanonicalConversationContextV2.Thread -> context.replyScope.scopeId.takeIf { replyParent != null }
             }
-            envelopeScopeId != channelId
+            envelopeScopeId != scopeId
         }
         if (foreign) return log("foreign_scope")
         if (envelopes.map { it.fact.id }.distinct().size != envelopes.size) return log("duplicate_fact")
-        val pageSeqs = envelopes.map { it.fact.seq }
+        val pageSeqs = envelopes.map { it.fact.seq } + rows.rejectedSeqs
         val onRequestedSide = when (direction) {
             ThreadDurablePageDirection.Older -> pageSeqs.all { it < anchorSeq }
             ThreadDurablePageDirection.Newer -> pageSeqs.all { it > anchorSeq }
@@ -1073,89 +1070,59 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             if (!stillCurrent()) return@withScopeWriter log("identity_changed")
             if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
             try {
-                // `restore` re-reads the committed cursor + facts and (re)marks the scope baselined in
-                // this process, which `applyIncremental` requires. It only republishes what is on disk.
-                val restored = generationEngine.restore(scope)
-                val stored = restored.cursor ?: return@withScopeWriter log("no_window")
-                if (replyParent != null && storedReplyParentOrNull(stored, replyParent) != storedParent) {
+                val stored = generationEngine.storedCursor(scope) ?: return@withScopeWriter log("no_window")
+                if (routeParent != null && storedReplyParentOrNull(stored, routeParent) != storedParent) {
                     return@withScopeWriter log("parent_mismatch")
                 }
-                val storedOldest = stored.oldestLoadedSeq
-                val storedNewest = stored.newestLoadedSeq
-                // The anchor must lie inside the stored window: the window holds every message from
-                // its oldest to its newest edge, and the page is the server's contiguous block right
-                // next to the anchor, so page ∪ window is contiguous.
-                if (storedOldest == null || storedNewest == null || anchorSeq !in storedOldest..storedNewest) {
-                    return@withScopeWriter log("not_adjacent")
+                val before = generationEngine.storedSegments(scope)
+                val claim = adjacentPageCoverage(direction, window, partition.serverId, scopeId, historyLimited, anchorSeq, before)
+                    ?: return@withScopeWriter log("no_claim")
+                // An older page's top is the stored coverage it continues, already claimed: nothing new to seal there.
+                val sealTop = direction == ThreadDurablePageDirection.Newer ||
+                    CanonicalMessageV2SegmentAlgebra.memberOf(before, anchorSeq) == null
+                val write = if (sealTop) {
+                    sealPageClaim(claim, envelopes, rows.rejectedSeqs, before, nowMs())
+                } else {
+                    CanonicalMessageV2PageWrite(envelopes, claim)
                 }
-                // ...and the anchor message itself must be on disk: a cursor range whose facts were
-                // pruned (or never written) is not evidence that the window reaches the anchor.
-                if (restored.envelopes.none { it.fact.seq == anchorSeq }) {
-                    return@withScopeWriter log("anchor_missing")
-                }
-                val storedIds = restored.envelopes.mapTo(mutableSetOf()) { it.fact.id }
-                val addedSeqs = envelopes.filter { it.fact.id !in storedIds }.map { it.fact.seq }
-                val factCountAfter = restored.envelopes.size + addedSeqs.size
-                val reachedEnd = envelopes.size < requestedLimit
-                val cursor = when (direction) {
-                    ThreadDurablePageDirection.Older -> {
-                        if (factCountAfter > maxFactsPerScope) return@withScopeWriter log("at_capacity")
-                        val pageMin = pageSeqs.min()
-                        if (pageMin < storedOldest) {
-                            stored.copy(oldestLoadedSeq = pageMin, hasLoadedOldest = reachedEnd)
-                        } else {
-                            stored // entirely inside the window: a plain refresh of known facts
-                        }
-                    }
-                    ThreadDurablePageDirection.Newer -> {
-                        val pageMax = pageSeqs.max()
-                        val extended = if (pageMax > storedNewest) {
-                            stored.copy(
-                                latestSeq = maxOf(stored.latestSeq ?: pageMax, pageMax),
-                                newestLoadedSeq = pageMax,
-                                hasLoadedNewest = reachedEnd,
-                            )
-                        } else {
-                            stored // entirely inside the window: a plain refresh of known facts
-                        }
-                        if (factCountAfter > maxFactsPerScope) {
-                            // Counted over every stored fact (pinned thread roots included), so the
-                            // edge is conservative: pruning never removes a fact at or above it.
-                            val survivingOldest = (restored.envelopes.map { it.fact.seq } + addedSeqs)
-                                .sortedDescending()
-                                .take(maxFactsPerScope)
-                                .min()
-                            if (survivingOldest > storedOldest) {
-                                extended.copy(oldestLoadedSeq = survivingOldest, hasLoadedOldest = false)
-                            } else {
-                                extended
-                            }
-                        } else {
-                            extended
-                        }
-                    }
-                }
-                val result = generationEngine.applyIncremental(
-                    CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
-                    expectedGeneration,
+                if (write.envelopes.isEmpty()) return@withScopeWriter log("too_recent")
+                val result = generationEngine.applyCoverage(
+                    scope = scope,
+                    envelopes = write.envelopes,
+                    coverage = write.coverage,
+                    revAtRequest = revAtRequest ?: generationEngine.storedLocalRev(partition),
+                    userDriven = true,
+                    expectedPartitionGeneration = expectedGeneration,
+                    threadParent = stored.threadParent(),
+                    excludedSeqs = rows.rejectedSeqs,
                     expectedHeadEpoch = expectedHeadEpoch,
                 )
-                log(result.wireOutcome(envelopes.size))
-                if (result == CanonicalMessageV2CommitResult.Committed) {
-                    when (direction) {
-                        // Task #168: an older page only moves the oldest edge; realtime frames are appended
-                        // at the newest edge, serialized with it by this same scope writer. The window
-                        // stays continuous (the channel the user is viewing keeps its realtime cache).
-                        ThreadDurablePageDirection.Older -> canary.onOlderPageCommitted(scope)
-                        // A newer page moves the newest edge: nothing proves it continuous with the
-                        // realtime stream (#3008).
-                        ThreadDurablePageDirection.Newer -> canary.onExternalCommit(scope)
-                    }
-                }
+                log(result.wireOutcome(write.envelopes.size))
+                if (result == CanonicalMessageV2CommitResult.Committed) reportCommitToCanary(scope, before, write)
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
         }
+    }
+
+    /**
+     * Whether this commit moved the top of what users see: the head's top, or a loose row above it ([sealPageClaim]
+     * keeps those only when connected to the head). Only then does nothing prove the window continuous with the
+     * realtime stream, so only then is an enter baseline in flight voided ([CanonicalMessageV2ProductionCanary.onExternalCommit]).
+     * An older reach, an island or a refresh inside the head leaves both alone.
+     */
+    private suspend fun reportCommitToCanary(
+        scope: SyncScopeKey,
+        before: List<build.raft.app.network.sync.CanonicalMessageV2Segment>,
+        write: CanonicalMessageV2PageWrite,
+    ) {
+        val oldTop = CanonicalMessageV2SegmentAlgebra.head(before)?.highSeq
+        val after = generationEngine.storedSegments(scope)
+        val newTop = CanonicalMessageV2SegmentAlgebra.head(after)?.highSeq
+        val looseAboveHead = oldTop != null && write.envelopes.any { envelope ->
+            envelope.fact.seq > oldTop && CanonicalMessageV2SegmentAlgebra.memberOf(after, envelope.fact.seq) == null
+        }
+        if (newTop != oldTop || looseAboveHead) canary.onExternalCommit(scope) else canary.onOlderPageCommitted(scope)
     }
 
     /**
@@ -1354,21 +1321,9 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     }
 
     /**
-     * Task #14 part C: the anchor context page (see [ThreadDurablePageExtender.persistContextPage]). Gates 1–4 are
-     * [extendWithAdjacentPage]'s (flag, page, scope family / `no_window`, stored parent, whole-page conversion,
-     * foreign scope, duplicate ids) plus: the anchor must be on the page (`anchor_not_on_page`). Under the scope
-     * writer (`stillCurrent()` and flag rechecked, the stored scope restored):
-     * - join FACT: a fact stored inside the window (`oldestLoadedSeq..newestLoadedSeq`, on disk) is one of the
-     *   page's ids — otherwise `not_joined`, nothing written (no islands; see the interface);
-     * - only the page's facts outside the window's range are written, insert-only (`inside_window` when none);
-     * - the edges move only where the page reaches past them, each with the page's own edge fact
-     *   (`hasLoadedOldest = !hasOlder`, `hasLoadedNewest = !hasNewer`);
-     * - retention: an older reach past the cap is refused (`at_capacity`, it would be pruned straight back
-     *   out); a newer reach moves the oldest edge to the oldest fact that survives, like a newer page;
-     * - after a commit the realtime canary is told exactly as for an adjacent page: only the oldest edge
-     *   moved ⇒ continuity kept ([CanonicalMessageV2ProductionCanary.onOlderPageCommitted]); the newest edge
-     *   moved ⇒ display only until the next enter ([CanonicalMessageV2ProductionCanary.onExternalCommit]).
-     * One `canonical_v2_context_page ... outcome=committed|skipped reason=... facts=N` line per call.
+     * Message storage Phase 2c: the anchor context page (see [ThreadDurablePageExtender.persistContextPage]). [channelId]
+     * is the response's top-level `channelId`. A page joins a stored range only through a shared message id; otherwise it
+     * is an island. One `canonical_v2_context_page ... outcome=committed|skipped reason=... facts=N` line per call.
      */
     override suspend fun persistContextPage(
         partition: DurablePartitionKey,
@@ -1379,6 +1334,11 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         hasNewer: Boolean,
         replyParent: ThreadDurableReplyParent?,
         requestHeadEpoch: Long?,
+        historyLimited: Boolean,
+        revAtRequest: Long?,
+        replyCountByParentId: Map<String, Int>?,
+        userDriven: Boolean,
+        channelType: String?,
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -1395,22 +1355,14 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         if (rawMessages.isEmpty()) return skip("empty_page")
         if (replyParent != null && replyParent.parentChannelId == channelId) return skip("parent_mismatch")
 
-        val allowedKinds =
-            if (replyParent == null) CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS else CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
-        val kinds = generationEngine.baselinedScopeKinds(partition, channelId).filter { it in allowedKinds }
-        val scopeKind = when (kinds.size) {
-            0 -> return skip("no_window")
-            1 -> kinds.single()
-            else -> return skip("ambiguous_scope_kind")
-        }
-        // As the sibling writers: a task window is never extended from a page (no task parent to convert under).
-        if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return skip("task_window_extend_unsupported")
-        val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
-        val storedParent = if (replyParent == null) {
-            null
-        } else {
-            storedReplyParentOrNull(generationEngine.storedCursor(scope), replyParent)
-                ?: return skip("parent_mismatch")
+        val scope: SyncScopeKey
+        val parent: CanonicalMessageV2ReplyParentScope?
+        when (val resolved = resolveContextScope(partition, channelId, replyParent, channelType)) {
+            is ContextPageScope.Refused -> return skip(resolved.reason)
+            is ContextPageScope.Resolved -> {
+                scope = resolved.scope
+                parent = resolved.parent
+            }
         }
 
         val expectedGeneration = generationEngine.partitionGeneration(partition)
@@ -1418,16 +1370,16 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
 
         val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
-        val envelopes = when (
-            val converted = fetcher.convertPage(partition, channelId, scopeKind, rawMessages, storedParent)
-        ) {
-            is CanonicalMessageV2PageConversion.Converted -> converted.envelopes
-            is CanonicalMessageV2PageConversion.Refused -> return skip(converted.diagnostic)
-        }
+        val rows = fetcher.convertPageRows(
+            partition, channelId, scope.scopeKind, rawMessages, parent, replyCountByParentId = replyCountByParentId.orEmpty(),
+        )
+        val envelopes = rows.envelopes
+        if (envelopes.isEmpty()) return skip(rows.firstRefusal ?: "canonical_v2_snapshot_not_full_v6")
+        if (!rows.claimable) return skip("left_out_without_seq")
         val foreign = envelopes.any { envelope ->
             val envelopeScopeId = when (val context = envelope.context) {
-                is CanonicalConversationContextV2.TopLevel -> context.scope.scopeId.takeIf { replyParent == null }
-                is CanonicalConversationContextV2.Thread -> context.replyScope.scopeId.takeIf { replyParent != null }
+                is CanonicalConversationContextV2.TopLevel -> context.scope.scopeId.takeIf { parent == null }
+                is CanonicalConversationContextV2.Thread -> context.replyScope.scopeId.takeIf { parent != null }
             }
             envelopeScopeId != channelId
         }
@@ -1439,68 +1391,164 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             if (!stillCurrent()) return@withScopeWriter skip("identity_changed")
             if (!isEnabledForServer(partition.serverId)) return@withScopeWriter skip("flag_revoked")
             try {
-                val restored = generationEngine.restore(scope)
-                val stored = restored.cursor ?: return@withScopeWriter skip("no_window")
-                if (replyParent != null && storedReplyParentOrNull(stored, replyParent) != storedParent) {
-                    return@withScopeWriter skip("parent_mismatch")
+                val threadParent = parent?.let { CanonicalMessageV2ThreadParent(it.parentScopeKind, it.parentScopeId, it.rootMessageId) }
+                clearHeaderOfAnotherParent(scope, threadParent)?.let { rewritten -> log("parent_rewritten", rewritten) }
+                val before = generationEngine.storedSegments(scope)
+                val claim = CanonicalMessageV2Coverage.fromContextPage(
+                    envelopes.map { it.fact.seq } + rows.rejectedSeqs, hasOlder, historyLimited,
+                ) ?: return@withScopeWriter skip("no_claim")
+                // Every stored range the claim would merge with must share a message with the page. A range it only
+                // overlaps or touches by seq is not a join, and a claim left beside it would not be normalized.
+                val joined = claim.excluding(rows.rejectedSeqs).flatMap { piece ->
+                    before.filter { CanonicalMessageV2SegmentAlgebra.joins(it, piece.toSegment(0L)) }
+                }.distinct()
+                val unshared = joined.any { segment ->
+                    envelopes.none { it.fact.seq in segment && generationEngine.storedFactExists(scope, it.fact.id) }
                 }
-                val storedOldest = stored.oldestLoadedSeq ?: return@withScopeWriter skip("not_joined")
-                val storedNewest = stored.newestLoadedSeq ?: return@withScopeWriter skip("not_joined")
-                val pageIds = envelopes.mapTo(mutableSetOf()) { it.fact.id }
-                val joined = restored.envelopes.any { it.fact.id in pageIds && it.fact.seq in storedOldest..storedNewest }
-                if (!joined) return@withScopeWriter skip("not_joined")
-                // Inside the range the window is already the complete record (a missing message there was
-                // deleted); a stored fact outside it (a pinned root) is left as it is too.
-                val storedIds = restored.envelopes.mapTo(mutableSetOf()) { it.fact.id }
-                val added = envelopes.filter { it.fact.seq !in storedOldest..storedNewest && it.fact.id !in storedIds }
-                if (added.isEmpty()) return@withScopeWriter skip("inside_window")
-                val addedSeqs = added.map { it.fact.seq }
-                val addedMin = addedSeqs.min()
-                val addedMax = addedSeqs.max()
-                val extendsOlder = addedMin < storedOldest
-                val extendsNewer = addedMax > storedNewest
-                var cursor = stored
-                if (extendsOlder) cursor = cursor.copy(oldestLoadedSeq = addedMin, hasLoadedOldest = !hasOlder)
-                if (extendsNewer) {
-                    cursor = cursor.copy(
-                        latestSeq = maxOf(stored.latestSeq ?: addedMax, addedMax),
-                        newestLoadedSeq = addedMax,
-                        hasLoadedNewest = !hasNewer,
-                    )
-                }
-                if (restored.envelopes.size + added.size > maxFactsPerScope) {
-                    if (extendsOlder) return@withScopeWriter skip("at_capacity")
-                    // Counted over every stored fact (pinned thread roots included), so the edge is
-                    // conservative: pruning never removes a fact at or above it.
-                    val survivingOldest = (restored.envelopes.map { it.fact.seq } + addedSeqs)
-                        .sortedDescending()
-                        .take(maxFactsPerScope)
-                        .min()
-                    if (survivingOldest > storedOldest) {
-                        cursor = cursor.copy(oldestLoadedSeq = survivingOldest, hasLoadedOldest = false)
-                    }
-                }
-                val result = generationEngine.applyIncremental(
-                    CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = added, cursor = cursor, insertOnly = true),
-                    expectedGeneration,
+                if (unshared) return@withScopeWriter skip("touches_without_shared_ids")
+                val write = sealPageClaim(claim, envelopes, rows.rejectedSeqs, before, nowMs())
+                if (write.envelopes.isEmpty()) return@withScopeWriter skip("too_recent")
+                val result = generationEngine.applyCoverage(
+                    scope = scope,
+                    envelopes = write.envelopes,
+                    coverage = write.coverage,
+                    revAtRequest = revAtRequest ?: generationEngine.storedLocalRev(partition),
+                    userDriven = userDriven,
+                    expectedPartitionGeneration = expectedGeneration,
+                    threadParent = threadParent,
+                    excludedSeqs = rows.rejectedSeqs,
                     expectedHeadEpoch = expectedHeadEpoch,
                 )
-                val reason = when {
-                    extendsOlder && extendsNewer -> "window_extended_both"
-                    extendsOlder -> "window_extended_older"
-                    else -> "window_extended_newer"
-                }
                 if (result == CanonicalMessageV2CommitResult.Committed) {
-                    log("committed", reason, added.size)
-                    if (extendsNewer) canary.onExternalCommit(scope) else canary.onOlderPageCommitted(scope)
+                    val after = generationEngine.storedSegments(scope)
+                    val headChanged = CanonicalMessageV2SegmentAlgebra.head(before) != CanonicalMessageV2SegmentAlgebra.head(after)
+                    log("committed", if (headChanged) "head_extended" else "island_stored", write.envelopes.size)
+                    reportCommitToCanary(scope, before, write)
                 } else {
-                    skip(result.wireOutcome(added.size))
+                    skip(result.wireOutcome(write.envelopes.size))
                 }
             } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
                 skip("poisoned fact=${poisoned.factId.orEmpty()}")
             }
         }
     }
+
+    private sealed interface ContextPageScope {
+        data class Resolved(val scope: SyncScopeKey, val parent: CanonicalMessageV2ReplyParentScope?) : ContextPageScope
+
+        data class Refused(val reason: String) : ContextPageScope
+    }
+
+    /**
+     * The scope of a context page and, for a thread, its parent. The header decides when there is one; a never-stored
+     * scope takes its kind from what the caller already read ([channelType]), else from `channels/{id}`, at most once
+     * per scope since the write then leaves a header. Unknown = deferred, never guessed.
+     */
+    private suspend fun resolveContextScope(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        replyParent: ThreadDurableReplyParent?,
+        channelType: String?,
+    ): ContextPageScope {
+        if (replyParent != null) {
+            val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = REPLY_THREAD_SCOPE_KIND)
+            val stored = generationEngine.storedCursor(scope)
+            storedReplyParentOrNull(stored, replyParent)?.let { return ContextPageScope.Resolved(scope, it) }
+            // A header with a window under another parent is another thread. A windowless one only names what a realtime
+            // frame claimed: the server decides, and the write replaces it ([clearHeaderOfAnotherParent]).
+            if (stored != null && (stored.oldestLoadedSeq != null || stored.hasLoadedOldest)) {
+                return ContextPageScope.Refused("parent_mismatch")
+            }
+            return when (val confirmed = fetcher.confirmReplyParent(partition, channelId, replyParent)) {
+                is CanonicalMessageV2ReplyParentConfirmation.Confirmed -> ContextPageScope.Resolved(scope, confirmed.parent)
+                is CanonicalMessageV2ReplyParentConfirmation.Refused -> ContextPageScope.Refused(confirmed.diagnostic)
+            }
+        }
+        val kinds = generationEngine.baselinedScopeKinds(partition, channelId).filter {
+            it in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS || it in CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
+        }
+        if (kinds.size > 1) return ContextPageScope.Refused("ambiguous_scope_kind")
+        val kind = kinds.singleOrNull()
+            ?: channelType?.takeIf { it in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS }
+            ?: fetcher.topLevelKind(partition, channelId)?.first
+            ?: return ContextPageScope.Refused("scope_kind_unknown")
+        // As the sibling writers: a task window is never extended from a page (no task parent to convert under).
+        if (kind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return ContextPageScope.Refused("task_window_extend_unsupported")
+        val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = kind)
+        if (kind != REPLY_THREAD_SCOPE_KIND) return ContextPageScope.Resolved(scope, null)
+        val stored = generationEngine.storedCursor(scope)
+        val parentKind = stored?.parentScopeKind?.takeIf { it in CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS }
+        val parentId = stored?.parentScopeId
+        val rootId = stored?.rootMessageId
+        if (parentKind == null || parentId == null || rootId == null) return ContextPageScope.Refused("parent_mismatch")
+        return ContextPageScope.Resolved(scope, CanonicalMessageV2ReplyParentScope(parentKind, parentId, rootId))
+    }
+}
+
+/** What a page write stores: [envelopes] under [coverage] (`null` = no claim, facts only). */
+internal class CanonicalMessageV2PageWrite(
+    val envelopes: List<CanonicalMessageEnvelopeV2>,
+    val coverage: CanonicalMessageV2Coverage?,
+)
+
+/** Late commits: a seq is allocated before commit (prepared system messages up to 30 s, agent inbox grace 60 s). */
+internal const val PAGE_SEAL_GRACE_MS: Long = 60_000L
+
+/**
+ * Phase 2c: the claim of a `before` / `after` page from its server [window]. Never the head (only a `latest` fetch proves
+ * that), and the bounds are the server's: the page proves `[coveredAfterSeq + 1, coveredThroughSeq]`, so a newer page
+ * connects exactly when `coveredAfterSeq` is at or below the local covered tail, whatever seqs other channels used.
+ * - Older: `coveredThroughSeq` is the page's last row, not the anchor. `before=anchor` returned the newest rows below
+ *   it, so when the anchor is inside stored coverage the claim runs up to `anchor - 1` and connects.
+ * - Newer: an `after` page does not compute `historyLimited` (a false says nothing), so it never reaches the oldest.
+ * `null`: an unusable or mismatched window.
+ */
+internal fun adjacentPageCoverage(
+    direction: ThreadDurablePageDirection,
+    window: ChannelMessageWindow,
+    serverId: String,
+    scopeId: SyncScopeId,
+    historyLimited: Boolean,
+    anchorSeq: Long,
+    segments: List<build.raft.app.network.sync.CanonicalMessageV2Segment>,
+): CanonicalMessageV2Coverage? = when (direction) {
+    ThreadDurablePageDirection.Older -> {
+        val claim = window.toCoverage(serverId, scopeId, historyLimited, CanonicalMessageV2SegmentSource.Older)?.copy(headAtVerify = false)
+        val anchored = CanonicalMessageV2SegmentAlgebra.memberOf(segments, anchorSeq) != null
+        if (claim != null && anchored && anchorSeq - 1L > claim.highSeq) claim.copy(highSeq = anchorSeq - 1L) else claim
+    }
+    ThreadDurablePageDirection.Newer ->
+        window.toCoverage(serverId, scopeId, historyLimited = true, CanonicalMessageV2SegmentSource.Newer)?.copy(headAtVerify = false)
+}
+
+/**
+ * Phase 2c: never seal the last [PAGE_SEAL_GRACE_MS] of a range: a message that took a lower seq may still commit. The
+ * claim stops below the first row that recent (or with an unreadable time); a catch-up claims those rows later.
+ *
+ * The recent rows themselves are kept only in the part of the page connected to the head, where they are loose facts
+ * above it as a realtime frame would be. Elsewhere they are left out: a loose fact is read offline, and one far from the
+ * head would change what users see before Phase 2d.
+ */
+internal fun sealPageClaim(
+    claim: CanonicalMessageV2Coverage,
+    envelopes: List<CanonicalMessageEnvelopeV2>,
+    excludedSeqs: Set<Long>,
+    segments: List<build.raft.app.network.sync.CanonicalMessageV2Segment>,
+    nowMs: Long,
+): CanonicalMessageV2PageWrite {
+    val sealedBefore = nowMs - PAGE_SEAL_GRACE_MS
+    val firstRecent = envelopes.filter { envelope ->
+        val createdAt = parseRaftTimestampEpochMillisOrNull(envelope.fact.createdAt, localOffsetMinutes = 0)
+        createdAt == null || createdAt > sealedBefore
+    }.minOfOrNull { it.fact.seq } ?: return CanonicalMessageV2PageWrite(envelopes, claim)
+    val head = CanonicalMessageV2SegmentAlgebra.head(segments)
+    val connectedHigh = head?.let { h ->
+        claim.excluding(excludedSeqs).firstOrNull { CanonicalMessageV2SegmentAlgebra.joins(h, it.toSegment(0L)) }?.highSeq
+    }
+    return CanonicalMessageV2PageWrite(
+        envelopes = envelopes.filter { it.fact.seq < firstRecent || (connectedHigh != null && it.fact.seq <= connectedHigh) },
+        coverage = claim.takeIf { firstRecent - 1L >= it.lowSeq }?.copy(highSeq = firstRecent - 1L),
+    )
 }
 
 /**
@@ -1568,6 +1616,9 @@ private fun JsonObject.stringOrNull(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
 private const val REPLY_THREAD_SCOPE_KIND: String = "thread"
+
+/** The channel `threadSort` value of a forum channel (server `channel_thread_sort_v0`). */
+internal const val CHANNEL_THREAD_SORT_ACTIVITY: String = "activity"
 
 private fun JsonObject.threadChannelIdOrNull(): String? =
     (this["threadId"] as? JsonPrimitive)

@@ -11,7 +11,12 @@ import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
 import build.raft.app.network.sync.toCanonicalMessageV2Envelope
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.network.sync.CanonicalMessageV2CommitResult
+import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
+import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra
+import build.raft.app.network.sync.CanonicalMessageV2SegmentSource
+import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
@@ -34,10 +39,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Task #168: an older / newer paging page is written into the stored V2 window only when it joins
- * it without a gap: the anchor is on disk inside the stored window and the page lies past it. Every
- * positive below has a negative twin whose setup differs in exactly one fact, so only the gate
- * under test separates them.
+ * Task #168, Phase 2c: an older / newer paging page is stored with the range its server window proves. One that connects
+ * to the head's coverage grows the window; any other is an island nothing reads until Phase 2d. Every positive below
+ * has a negative twin whose setup differs in exactly one fact, so only the gate under test separates them.
  *
  * Default stored window: facts seq 20, 30, 40 of channel-1; cursor oldest=20, newest=40.
  */
@@ -46,12 +50,12 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     fun adjacentOlderPageIsAppendedAndExtendsTheOldestEdge() = runBlocking {
         val h = harness()
         h.seedWindow()
-        h.extend(ThreadDurablePageDirection.Older, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
+        h.extend(ThreadDurablePageDirection.Older, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3, coveredAfterSeq = 0)
 
         assertEquals(listOf(5L, 10L, 20L, 30L, 40L), h.store.seqs(scope))
         val cursor = h.store.cursors.getValue(scope)
         assertEquals(5L, cursor.oldestLoadedSeq)
-        assertTrue(cursor.hasLoadedOldest, "2 < limit 3 ⇒ the page reached the channel's start")
+        assertTrue(cursor.hasLoadedOldest, "coveredAfterSeq 0 without a cutoff: nothing below the page")
         assertEquals(40L, cursor.newestLoadedSeq, "the newer edge is kept")
         assertEquals(40L, cursor.latestSeq)
         assertTrue(cursor.hasLoadedNewest)
@@ -60,21 +64,32 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun fullOlderPageLeavesHasLoadedOldestFalse() = runBlocking {
+    fun olderPageWithAPredecessorLeavesHasLoadedOldestFalse() = runBlocking {
         val h = harness()
         h.seedWindow()
         h.extend(ThreadDurablePageDirection.Older, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 2)
         val cursor = h.store.cursors.getValue(scope)
         assertEquals(5L, cursor.oldestLoadedSeq)
-        assertEquals(false, cursor.hasLoadedOldest, "a full page says nothing about older history")
+        assertEquals(false, cursor.hasLoadedOldest, "a message exists below the page")
+    }
+
+    @Test
+    fun aPlanCutoffIsNeverTheChannelsStart() = runBlocking {
+        // Twin of the first test: same page, same window, but the plan's cutoff hid what is older.
+        val h = harness()
+        h.seedWindow()
+        h.extend(
+            ThreadDurablePageDirection.Older, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)),
+            limit = 3, coveredAfterSeq = 0, historyLimited = true,
+        )
+        assertEquals(false, h.store.cursors.getValue(scope).hasLoadedOldest)
     }
 
     @Test
     fun olderPageAnchoredOnTheThirtiethNewestStoredMessageGrowsTheWindow() = runBlocking {
-        // The production shape: the enter snapshot stored 40 messages (1000..1390), the screen shows
-        // the newest 30, and its first older page is anchored on the 30th-newest stored message
-        // (1100). The 30-message page before it overlaps the window (1000..1090) and goes past its
-        // oldest edge (800..990), so the window grows to 800 with no hole.
+        // The production shape: the enter stored 40 messages (1000..1390), the screen shows the newest 30, and its first
+        // older page is anchored on the 30th-newest stored message (1100). The 30-message page before it overlaps the
+        // window (1000..1090) and goes past its oldest edge (800..990), so the window grows to 800 with no hole.
         val h = harness()
         val stored = (0 until 40).map { 1000L + it * 10 }
         h.seedWindow(seqs = stored)
@@ -87,41 +102,113 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(60, h.store.seqs(scope).size, "20 new facts + 40 stored; the 10 overlapping are upserts")
         val cursor = h.store.cursors.getValue(scope)
         assertEquals(800L, cursor.oldestLoadedSeq)
-        assertEquals(false, cursor.hasLoadedOldest, "a full page (30 = limit) says nothing about older history")
+        assertEquals(false, cursor.hasLoadedOldest)
         assertEquals(1390L, cursor.newestLoadedSeq)
         assertTrue(h.logs.any { "direction=older outcome=committed facts=30" in it }, h.logs.toString())
     }
 
     @Test
-    fun anchorInsideTheWindowRangeButNotOnDiskWritesNothing() = runBlocking {
-        // Twin of the test above: identical window and page, but the anchor message (1100) is not on
-        // disk although 1100 lies between the stored edges.
-        val h = harness()
-        val stored = (0 until 40).map { 1000L + it * 10 }
-        h.seedWindow(seqs = stored - 1100L)
-        val pageSeqs = (0 until 30).map { 800L + it * 10 }
-        h.extend(ThreadDurablePageDirection.Older, 1100L, adjacentPageOf(*pageSeqs.map { adjacentPageNode("m$it", it) }.toTypedArray()), limit = 30)
-        assertEquals(0, h.store.incrementals.size)
-        assertEquals(1000L, h.store.cursors.getValue(scope).oldestLoadedSeq)
-        assertTrue(h.logs.any { "direction=older outcome=anchor_missing" in it }, h.logs.toString())
+    fun olderPageConnectsAcrossTheSparseSeqsBetweenItsLastRowAndTheAnchor() = runBlocking {
+        // coveredThroughSeq is the page's last row (10), not the anchor (20): other channels used the seqs between.
+        val connected = harness()
+        connected.seedWindow()
+        connected.extend(ThreadDurablePageDirection.Older, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m10", 10)), limit = 3)
+        assertEquals(listOf(10L to 40L), connected.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+
+        // Twin: an anchor outside stored coverage proves no connection; the page is an island below the window.
+        val apart = harness()
+        apart.seedWindow(seqs = listOf(30L, 40L))
+        apart.extend(ThreadDurablePageDirection.Older, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m10", 10)), limit = 3)
+        assertEquals(listOf(10L to 10L, 30L to 40L), apart.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        assertEquals(30L, apart.store.cursors.getValue(scope).oldestLoadedSeq)
     }
 
     @Test
-    fun anchorOutsideTheStoredWindowWritesNothing() = runBlocking {
-        // The anchor is newer than the stored newest edge: the gap (40, 45) is unknown.
-        val older = harness()
-        older.seedWindow()
-        older.extend(ThreadDurablePageDirection.Older, anchorSeq = 45, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
-        assertEquals(listOf(20L, 30L, 40L), older.store.seqs(scope))
-        assertEquals(0, older.store.incrementals.size)
-        assertTrue(older.logs.any { "direction=older outcome=not_adjacent" in it }, older.logs.toString())
+    fun newerPageConnectsOnlyWhenItsPredecessorIsAtOrBelowTheCoveredTail() = runBlocking {
+        val page = adjacentPageOf(adjacentPageNode("m1000", 1000))
+        // Sparse: 960 seqs apart, yet the server says the predecessor is the tail.
+        val connected = harness()
+        connected.seedWindow()
+        connected.extend(ThreadDurablePageDirection.Newer, anchorSeq = 40, page, limit = 3, coveredAfterSeq = 40)
+        assertEquals(listOf(20L to 1000L), connected.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        assertEquals(1000L, connected.store.cursors.getValue(scope).newestLoadedSeq)
 
-        // The anchor is older than the stored oldest edge: the gap (15, 20) is unknown.
-        val newer = harness()
-        newer.seedWindow()
-        newer.extend(ThreadDurablePageDirection.Newer, anchorSeq = 15, adjacentPageOf(adjacentPageNode("m50", 50)), limit = 3)
-        assertEquals(0, newer.store.incrementals.size)
-        assertTrue(newer.logs.any { "direction=newer outcome=not_adjacent" in it }, newer.logs.toString())
+        // Twin: a message exists between the tail and the page. An island above the window: the mirror does not move.
+        val apart = harness()
+        apart.seedWindow()
+        val before = apart.store.cursors.getValue(scope)
+        apart.extend(ThreadDurablePageDirection.Newer, anchorSeq = 40, page, limit = 3, coveredAfterSeq = 41)
+        assertEquals(listOf(20L to 40L, 42L to 1000L), apart.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        assertEquals(before, apart.store.cursors.getValue(scope))
+    }
+
+    @Test
+    fun aNewerPageNeverProvesTheHeadOrTheChannelsStart() = runBlocking {
+        // The page reaches the high-water, the window even says so, and coveredAfterSeq is 0: still no proof of either.
+        val h = harness()
+        val page = adjacentPageOf(adjacentPageNode("m50", 50))
+        h.seedWindow()
+        h.writer.extendWithAdjacentPage(
+            partition, "channel-1", ThreadDurablePageDirection.Newer, 40, page, 3, null, null,
+            channelWindow(coveredAfterSeq = 0, coveredThroughSeq = 50, completeThroughLatest = true).copy(remoteHighWaterSeq = 50),
+        ) { true }
+        val cursor = h.store.cursors.getValue(scope)
+        assertEquals(50L, cursor.newestLoadedSeq)
+        assertEquals(false, cursor.hasLoadedNewest, "only a direction: latest fetch proves the head")
+        assertEquals(false, cursor.hasLoadedOldest)
+    }
+
+    @Test
+    fun thePageWithoutAWindowNamesNoScopeAndIsNotWritten() = runBlocking {
+        // An older server, or a `by-activity` page (a forum channel): no scope key, no range.
+        val h = harness()
+        h.seedWindow()
+        h.writer.extendWithAdjacentPage(
+            partition, "channel-1", ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), 3, null, null,
+        ) { true }
+        assertEquals(listOf(20L, 30L, 40L), h.store.seqs(scope))
+        assertTrue(h.logs.any { "outcome=no_message_window" in it }, h.logs.toString())
+    }
+
+    @Test
+    fun thePageIsWrittenUnderTheScopeItsWindowNames() = runBlocking {
+        val h = harness(channelIds = setOf("channel-1", "channel-2"))
+        val sibling = SyncScopeKey(partition, "channel-2", "channel")
+        h.seedWindow()
+        h.seedWindow(sibling)
+        h.writer.extendWithAdjacentPage(
+            partition, "channel-1", ThreadDurablePageDirection.Older, 20,
+            adjacentPageOf(adjacentPageNode("m5", 5, channelId = "channel-2")), 3, null, null,
+            channelWindow(coveredAfterSeq = 4, coveredThroughSeq = 5, scopeId = "channel-2"),
+        ) { true }
+        assertEquals(listOf(20L, 30L, 40L), h.store.seqs(scope))
+        assertEquals(listOf(5L, 20L, 30L, 40L), h.store.seqs(sibling))
+    }
+
+    @Test
+    fun theLastMinuteOfARangeIsNotSealed() = runBlocking {
+        // adjacentPageNode's createdAt is seq seconds after 2026-07-17T00:00:00Z: seq 50 is 70 s old, seq 100 is 20 s old.
+        val now = checkNotNull(parseRaftTimestampEpochMillisOrNull("2026-07-17T00:02:00.000Z", localOffsetMinutes = 0))
+        val page = adjacentPageOf(adjacentPageNode("m50", 50), adjacentPageNode("m100", 100))
+
+        val connected = harness(nowMs = { now })
+        connected.seedWindow()
+        connected.extend(ThreadDurablePageDirection.Newer, anchorSeq = 40, page, limit = 3)
+        assertEquals(listOf(20L to 99L), connected.store.segments.getValue(scope).map { it.lowSeq to it.highSeq }, "stops below the recent row")
+        assertEquals(listOf(20L, 30L, 40L, 50L, 100L), connected.store.seqs(scope), "connected to the head: kept as a loose fact")
+
+        // Twin: the same page in an island above the window. A loose fact would be read offline, so it is left out.
+        val island = harness(nowMs = { now })
+        island.seedWindow()
+        island.extend(ThreadDurablePageDirection.Newer, anchorSeq = 40, page, limit = 3, coveredAfterSeq = 45)
+        assertEquals(listOf(20L to 40L, 46L to 99L), island.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        assertEquals(listOf(20L, 30L, 40L, 50L), island.store.seqs(scope))
+
+        // Control: a minute later both rows are sealed.
+        val later = harness(nowMs = { now + 60_000L })
+        later.seedWindow()
+        later.extend(ThreadDurablePageDirection.Newer, anchorSeq = 40, page, limit = 3)
+        assertEquals(listOf(20L to 100L), later.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
     }
 
     @Test
@@ -129,18 +216,16 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         val older = harness()
         older.seedWindow()
         val before = older.store.cursors.getValue(scope)
-        // Short page (2 < 3) that does NOT pass the oldest edge: it must not claim the channel start.
         older.extend(ThreadDurablePageDirection.Older, anchorSeq = 40, adjacentPageOf(adjacentPageNode("m20", 20), adjacentPageNode("m30", 30)), limit = 3)
-        assertEquals(1, older.store.incrementals.size, "the known facts are refreshed")
+        assertTrue(older.logs.any { "outcome=committed facts=2" in it }, "the known facts are refreshed")
         assertEquals(before, older.store.cursors.getValue(scope))
         assertEquals(listOf(20L, 30L, 40L), older.store.seqs(scope))
 
         val newer = harness()
         newer.seedWindow()
         val newerBefore = newer.store.cursors.getValue(scope)
-        // Full page (2 = limit) that does NOT pass the newest edge: it must not clear hasLoadedNewest.
+        // A page that does NOT pass the newest edge: it must not clear hasLoadedNewest.
         newer.extend(ThreadDurablePageDirection.Newer, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m30", 30), adjacentPageNode("m40", 40)), limit = 2)
-        assertEquals(1, newer.store.incrementals.size)
         assertEquals(newerBefore, newer.store.cursors.getValue(scope))
     }
 
@@ -154,7 +239,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         val cursor = h.store.cursors.getValue(scope)
         assertEquals(60L, cursor.newestLoadedSeq)
         assertEquals(60L, cursor.latestSeq)
-        assertEquals(false, cursor.hasLoadedNewest, "page filled the limit ⇒ more may follow")
+        assertEquals(false, cursor.hasLoadedNewest)
         assertEquals(20L, cursor.oldestLoadedSeq, "the older edge is kept")
         assertEquals(false, cursor.hasLoadedOldest)
         assertTrue(h.logs.any { "direction=newer outcome=committed facts=2" in it }, h.logs.toString())
@@ -169,7 +254,106 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         val cursor = h.store.cursors.getValue(scope)
         assertEquals(50L, cursor.newestLoadedSeq)
         assertEquals(50L, cursor.latestSeq)
-        assertEquals(true, cursor.hasLoadedNewest, "2 < limit 3 and the page passed the edge ⇒ head reached")
+        assertEquals(false, cursor.hasLoadedNewest, "a short page reaching the top proves nothing")
+    }
+
+    @Test
+    fun aContextIslandIsStoredButIsNotTheHeadAndTheMirrorStays() = runBlocking {
+        val h = harness()
+        h.seedWindow()
+        val before = h.store.cursors.getValue(scope)
+        // Above the window, with no shared message.
+        h.context("m100", adjacentPageOf(adjacentPageNode("m90", 90), adjacentPageNode("m100", 100)), hasOlder = true, hasNewer = false)
+        assertEquals(listOf(20L, 30L, 40L, 90L, 100L), h.store.seqs(scope))
+        val segments = h.store.segments.getValue(scope)
+        assertEquals(listOf(20L to 40L, 90L to 100L), segments.map { it.lowSeq to it.highSeq })
+        assertEquals(20L to 40L, CanonicalMessageV2SegmentAlgebra.head(segments)?.let { it.lowSeq to it.highSeq })
+        assertEquals(before, h.store.cursors.getValue(scope), "no mirror column moves")
+        assertTrue(h.logs.any { "outcome=committed reason=island_stored facts=2" in it }, h.logs.toString())
+
+        val reader = CanonicalMessageV2DurableLastKnownReader(h.store, isEnabledForServer = { true })
+        assertEquals(listOf(20L, 30L, 40L), reader.read(partition, "channel-1")?.envelopes?.map { it.fact.seq }, "users see the same window")
+    }
+
+    @Test
+    fun aContextPageSharingAMessageMergesAndOneThatOnlyTouchesDoesNot() = runBlocking {
+        val shared = harness()
+        shared.seedWindow()
+        shared.context("m50", adjacentPageOf(adjacentPageNode("m40", 40), adjacentPageNode("m50", 50)), hasOlder = true, hasNewer = true)
+        assertEquals(listOf(20L to 50L), shared.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        assertEquals(false, shared.store.cursors.getValue(scope).hasLoadedNewest)
+        assertTrue(shared.logs.any { "reason=head_extended facts=2" in it }, shared.logs.toString())
+
+        // Twin: the page's seqs touch the window (41 is right after 40), but no message is shared.
+        val touching = harness()
+        touching.seedWindow()
+        touching.context("m41", adjacentPageOf(adjacentPageNode("m41", 41), adjacentPageNode("m50", 50)), hasOlder = true, hasNewer = true)
+        assertEquals(listOf(20L, 30L, 40L), touching.store.seqs(scope))
+        assertTrue(touching.logs.any { "reason=touches_without_shared_ids" in it }, touching.logs.toString())
+    }
+
+    @Test
+    fun aContextPageOfANeverOpenedChannelCreatesNoScreen() = runBlocking {
+        val h = harness()
+        h.context("m100", adjacentPageOf(adjacentPageNode("m100", 100)), hasOlder = true, hasNewer = false, userDriven = false, channelType = "channel")
+        assertEquals(listOf(100L), h.store.seqs(scope), "the fact is kept for Phase 2d")
+        val cursor = h.store.cursors.getValue(scope)
+        assertEquals(null, cursor.oldestLoadedSeq)
+        assertEquals(null, cursor.newestLoadedSeq)
+        assertEquals(null, cursor.latestSeq)
+        val reader = CanonicalMessageV2DurableLastKnownReader(h.store, isEnabledForServer = { true })
+        assertEquals(null, reader.read(partition, "channel-1"), "offline stays what it was")
+        assertEquals(emptyList<String>(), h.network.paths, "the caller named the type: no extra request")
+    }
+
+    @Test
+    fun aContextPageIsWrittenUnderItsResponseScopeNeverTheParents() = runBlocking {
+        // The response's channelId is the thread. The parent's window is untouched and shares nothing with it.
+        val h = harness(channelIds = setOf("channel-1"))
+        h.seedWindow()
+        val before = h.store.seqs(scope)
+        h.writer.persistContextPage(
+            partition, "thread-9", "r5", adjacentPageOf(adjacentPageNode("r5", 5, channelId = "thread-9")), true, true,
+            ThreadDurableReplyParent("channel-1", "m20"),
+        ) { true }
+        assertEquals(before, h.store.seqs(scope))
+    }
+
+    @Test
+    fun aContextPageNeverAsksForThreadSummaries() = runBlocking {
+        val h = harness()
+        h.seedWindow()
+        h.context(
+            "m90", adjacentPageOf(adjacentPageNode("m80", 80, threadId = "thread-9"), adjacentPageNode("m90", 90)),
+            hasOlder = true, hasNewer = false, replyCounts = mapOf("m80" to 3),
+        )
+        assertEquals(3, h.store.facts.getValue(scope).getValue("m80").fact.replyCount)
+        assertEquals(emptyList<String>(), h.network.paths)
+    }
+
+    @Test
+    fun onlyAWriteThatMovesTheHeadVoidsTheEnterBaseline() = runBlocking {
+        suspend fun enterAround(write: suspend (Harness) -> Unit): CanonicalMessageV2ScopeContinuity {
+            val h = harness(sameEngineForWriter = true)
+            h.seedWindow()
+            h.canary.noteTransportEpoch(partition, 1L)
+            h.canary.noteRoomsJoined(partition, 1L)
+            val baseline = requireNotNull(h.canary.beginEnterBaseline(partition, "channel-1", nonMember = false))
+            write(h)
+            val frame = CanonicalMessageV2SnapshotFrame(scope, emptyList(), h.store.cursors.getValue(scope))
+            h.writerEngine.withScopeWriter(scope) { h.canary.onEnterCommitted(baseline, frame) }
+            return h.canary.continuityOf(scope)
+        }
+        // An island above the window: the enter still becomes the realtime baseline.
+        assertEquals(
+            CanonicalMessageV2ScopeContinuity.Continuous,
+            enterAround { it.context("m100", adjacentPageOf(adjacentPageNode("m100", 100)), hasOlder = true, hasNewer = false) },
+        )
+        // Twin: a page sharing a message moves the head's top, which nothing proves continuous.
+        assertEquals(
+            CanonicalMessageV2ScopeContinuity.Discontinuous,
+            enterAround { it.context("m50", adjacentPageOf(adjacentPageNode("m40", 40), adjacentPageNode("m50", 50)), hasOlder = true, hasNewer = false) },
+        )
     }
 
     @Test
@@ -227,7 +411,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun noStoredWindowWritesNothingAndNeverCreatesOne() = runBlocking {
+    fun noStoredKindWritesNothingAndNeverCreatesOne() = runBlocking {
         val h = harness()
         // Same page and anchor as the positive older case, but no window was ever committed.
         h.extend(ThreadDurablePageDirection.Older, anchorSeq = 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
@@ -242,10 +426,9 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         val h = harness(channelIds = setOf("channel-1", "channel-2"), sameEngineForWriter = true)
         h.enterWindow(foldInput("channel-1"))
         val canaryScope = SyncScopeKey(partition, "channel-1", "channel")
-        // The realtime window's edge is seq 7 (its enter page); offer an exactly adjacent page. Task #168:
-        // the canary only writes realtime frames, so the page is written here.
+        // The realtime window's edge is seq 7 (its enter page). Task #168: the canary only writes realtime frames, so
+        // the page is written here.
         h.extend(ThreadDurablePageDirection.Older, anchorSeq = 7, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3, channelId = "channel-1")
-        assertEquals(1, h.store.incrementals.size)
         assertEquals(listOf(5L, 7L), h.store.seqs(canaryScope))
         assertEquals(5L, h.store.cursors.getValue(canaryScope).oldestLoadedSeq)
         assertTrue(h.logs.any { "scope=channel-1 direction=older outcome=committed facts=1" in it }, h.logs.toString())
@@ -270,7 +453,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         val changed = harness()
         changed.seedWindow()
         changed.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3, stillCurrent = { false })
-        assertEquals(0, changed.store.incrementals.size)
+        assertEquals(listOf(20L, 30L, 40L), changed.store.seqs(scope))
         assertTrue(changed.logs.any { "outcome=identity_changed" in it }, changed.logs.toString())
 
         var flagOn = true
@@ -278,28 +461,30 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         off.seedWindow()
         flagOn = false
         off.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3)
-        assertEquals(0, off.store.incrementals.size)
+        assertEquals(listOf(20L, 30L, 40L), off.store.seqs(scope))
         assertTrue(off.logs.any { "outcome=flag_off" in it }, off.logs.toString())
 
         // Twin: same seed, current identity, flag on.
         val on = harness()
         on.seedWindow()
         on.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3)
-        assertEquals(1, on.store.incrementals.size)
+        assertEquals(listOf(5L, 20L, 30L, 40L), on.store.seqs(scope))
     }
 
     @Test
-    fun oneNodeWithoutFullV6KeysRefusesTheWholePage() = runBlocking {
+    fun aRowWithoutFullV6KeysIsLeftOutAndTheClaimSplitsAroundIt() = runBlocking {
         val h = harness()
         h.seedWindow()
         h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10, thin = true)), limit = 3)
-        assertEquals(listOf(20L, 30L, 40L), h.store.seqs(scope))
-        assertEquals(0, h.store.incrementals.size)
-        assertTrue(h.logs.any { "outcome=canonical_v2_snapshot_not_full_v6" in it }, h.logs.toString())
+        assertEquals(listOf(5L, 20L, 30L, 40L), h.store.seqs(scope))
+        assertEquals(listOf(5L to 9L, 11L to 40L), h.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        assertEquals(11L, CanonicalMessageV2SegmentAlgebra.head(h.store.segments.getValue(scope))?.lowSeq)
 
         // Twin: the same two nodes, both full.
-        h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
-        assertEquals(listOf(5L, 10L, 20L, 30L, 40L), h.store.seqs(scope))
+        val full = harness()
+        full.seedWindow()
+        full.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
+        assertEquals(listOf(5L to 40L), full.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
     }
 
     @Test
@@ -307,99 +492,55 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         val older = harness()
         older.seedWindow()
         older.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10), adjacentPageNode("m25", 25)), limit = 3)
-        assertEquals(0, older.store.incrementals.size)
+        assertEquals(listOf(20L, 30L, 40L), older.store.seqs(scope))
         assertTrue(older.logs.any { "direction=older outcome=wrong_side_of_anchor" in it }, older.logs.toString())
 
         val newer = harness()
         newer.seedWindow()
         newer.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m35", 35), adjacentPageNode("m50", 50)), limit = 3)
-        assertEquals(0, newer.store.incrementals.size)
+        assertEquals(listOf(20L, 30L, 40L), newer.store.seqs(scope))
         assertTrue(newer.logs.any { "direction=newer outcome=wrong_side_of_anchor" in it }, newer.logs.toString())
 
         // An anchor-equal seq is not "older than the anchor" either.
         val equal = harness()
         equal.seedWindow()
         equal.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m20", 20)), limit = 3)
-        assertEquals(0, equal.store.incrementals.size)
+        assertTrue(equal.logs.any { "outcome=wrong_side_of_anchor" in it }, equal.logs.toString())
     }
 
     @Test
-    fun cursorEdgeWhoseFactIsNotOnDiskIsNotAWindowEdge() = runBlocking {
+    fun threadParentInAPageTakesItsReplyCountFromTheResponseAndNoRequestIsMade() = runBlocking {
         val h = harness()
-        // Cursor claims oldest=20 but fact 20 is gone (e.g. pruned by an earlier writer).
-        h.seedWindow(seqs = listOf(30L, 40L), oldest = 20L)
-        h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3)
-        assertEquals(0, h.store.incrementals.size)
-        assertTrue(h.logs.any { "outcome=anchor_missing" in it }, h.logs.toString())
-    }
-
-    @Test
-    fun olderPageThatWouldExceedTheScopeCapIsRefused() = runBlocking {
-        val full = harness(maxFactsPerScope = 4)
-        full.seedWindow()
-        full.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
-        assertEquals(0, full.store.incrementals.size)
-        assertTrue(full.logs.any { "direction=older outcome=at_capacity" in it }, full.logs.toString())
-
-        // Twin: one fewer message fits exactly at the cap.
-        val fits = harness(maxFactsPerScope = 4)
-        fits.seedWindow()
-        fits.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10)), limit = 3)
-        assertEquals(listOf(10L, 20L, 30L, 40L), fits.store.seqs(scope))
-        assertEquals(10L, fits.store.cursors.getValue(scope).oldestLoadedSeq)
-
-        // Only facts that are actually new count: a refresh of known facts at the cap is written.
-        val atCap = harness(maxFactsPerScope = 3)
-        atCap.seedWindow()
-        atCap.extend(ThreadDurablePageDirection.Older, 40, adjacentPageOf(adjacentPageNode("m20", 20), adjacentPageNode("m30", 30)), limit = 3)
-        assertEquals(1, atCap.store.incrementals.size)
-        assertTrue(atCap.logs.any { "outcome=committed facts=2" in it }, atCap.logs.toString())
-    }
-
-    @Test
-    fun newerPageOverflowingTheCapMovesTheOldestEdgeToWhatSurvivesPruning() = runBlocking {
-        val h = harness(maxFactsPerScope = 4)
-        h.seedWindow(hasLoadedOldest = true)
-        h.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50), adjacentPageNode("m60", 60)), limit = 3)
-        val cursor = h.store.cursors.getValue(scope)
-        assertEquals(60L, cursor.newestLoadedSeq)
-        assertEquals(30L, cursor.oldestLoadedSeq, "newest 4 of {20,30,40,50,60} start at 30")
-        assertEquals(false, cursor.hasLoadedOldest, "the channel's start is pruned away")
-
-        // Twin: no overflow ⇒ the oldest edge and its flag are kept.
-        val roomy = harness(maxFactsPerScope = 5)
-        roomy.seedWindow(hasLoadedOldest = true)
-        roomy.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50), adjacentPageNode("m60", 60)), limit = 3)
-        val kept = roomy.store.cursors.getValue(scope)
-        assertEquals(20L, kept.oldestLoadedSeq)
-        assertEquals(true, kept.hasLoadedOldest)
-        assertEquals(true, kept.hasLoadedNewest, "2 < limit 3 ⇒ reached the head")
-    }
-
-    @Test
-    fun threadParentInAPageGetsItsReplyCountFromTheSummariesEndpoint() = runBlocking {
-        val h = harness(threadSummariesBody = """{"m10":{"threadChannelId":"thread-9","replyCount":3}}""")
         h.seedWindow()
-        h.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10, threadId = "thread-9")), limit = 3)
-        assertEquals(listOf("channels/channel-1/threads"), h.network.paths)
+        h.extend(
+            ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10, threadId = "thread-9")), limit = 3,
+            replyCounts = mapOf("m10" to 3),
+        )
+        assertEquals(emptyList<String>(), h.network.paths)
         assertEquals(3, h.store.facts.getValue(scope).getValue("m10").fact.replyCount)
 
-        // Twin: summaries outage with a thread parent present refuses the page.
-        val outage = harness(threadSummariesBody = null)
-        outage.seedWindow()
-        outage.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10, threadId = "thread-9")), limit = 3)
-        assertEquals(0, outage.store.incrementals.size)
-        assertTrue(outage.logs.any { "outcome=canonical_v2_thread_summaries_unavailable" in it }, outage.logs.toString())
+        // Twin: the response has no count for it. The row is left out, still without a request.
+        val unknown = harness()
+        unknown.seedWindow()
+        unknown.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m10", 10, threadId = "thread-9")), limit = 3)
+        assertEquals(emptyList<String>(), unknown.network.paths)
+        assertEquals(listOf(20L, 30L, 40L), unknown.store.seqs(scope))
     }
 
     @Test
-    fun emptyPageWritesNothing() = runBlocking {
+    fun emptyPageWritesNothingAndClaimsNothing() = runBlocking {
         val h = harness()
         h.seedWindow()
         h.extend(ThreadDurablePageDirection.Older, 20, JsonArray(emptyList()), limit = 3)
-        assertEquals(0, h.store.incrementals.size)
         assertEquals(false, h.store.cursors.getValue(scope).hasLoadedOldest, "an empty page is skipped, not folded")
         assertTrue(h.logs.any { "outcome=empty_page" in it }, h.logs.toString())
+
+        // An empty page's window: coveredAfterSeq is the high-water with no row, which must not read as a range.
+        assertEquals(
+            null,
+            channelWindow(coveredAfterSeq = 900, coveredThroughSeq = 900, completeThroughLatest = false)
+                .toCoverage("server-1", "channel-1", historyLimited = false, CanonicalMessageV2SegmentSource.Older),
+        )
     }
 
     private inner class Harness(
@@ -462,8 +603,32 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             rawMessages: JsonArray,
             limit: Int,
             channelId: SyncScopeId = "channel-1",
+            coveredAfterSeq: Long? = null,
+            historyLimited: Boolean = false,
+            replyCounts: Map<String, Int>? = null,
             stillCurrent: () -> Boolean = { true },
-        ) = writer.extendWithAdjacentPage(partition, channelId, direction, anchorSeq, rawMessages, limit, null, null, stillCurrent)
+        ) = writer.extendWithAdjacentPage(
+            partition, channelId, direction, anchorSeq, rawMessages, limit, null, null,
+            pagingWindowFor(direction, anchorSeq, rawMessages, channelId, coveredAfterSeq),
+            historyLimited,
+            replyCountByParentId = replyCounts,
+            stillCurrent = stillCurrent,
+        )
+
+        suspend fun context(
+            anchor: String,
+            rawMessages: JsonArray,
+            hasOlder: Boolean,
+            hasNewer: Boolean,
+            userDriven: Boolean = true,
+            channelType: String? = null,
+            replyCounts: Map<String, Int>? = null,
+        ) = writer.persistContextPage(
+            partition, "channel-1", anchor, rawMessages, hasOlder, hasNewer, null,
+            replyCountByParentId = replyCounts,
+            userDriven = userDriven,
+            channelType = channelType,
+        ) { true }
 
         suspend fun latest(
             rawMessages: JsonArray,
@@ -483,8 +648,8 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         flag: () -> Boolean = { true },
         channelIds: Set<String> = setOf("channel-1"),
         threadSummariesBody: String? = "{}",
-        maxFactsPerScope: Int = 500,
         sameEngineForWriter: Boolean = false,
+        nowMs: () -> Long = { Long.MAX_VALUE / 2 },
     ): Harness {
         val network = RecordingNetworkClient(
             canonicalV2TestPage(),
@@ -507,7 +672,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
             isEnabledForServer = { flag() },
             logger = logs::add,
-            maxFactsPerScope = maxFactsPerScope,
+            nowMs = nowMs,
         )
         return Harness(network, store, seedEngine, writerEngine, canary, writer, logs)
     }
@@ -569,6 +734,25 @@ internal fun channelWindow(
     coveredThroughSeq = coveredThroughSeq,
     completeThroughLatest = completeThroughLatest,
 )
+
+/**
+ * The server `messageWindow` of a `before` / `after` page of [rawMessages]: the page's last row, and a predecessor that is
+ * the row just below an older page or the anchor of a newer one, unless [coveredAfterSeq] says otherwise.
+ */
+internal fun pagingWindowFor(
+    direction: ThreadDurablePageDirection,
+    anchorSeq: Long,
+    rawMessages: JsonArray,
+    scopeId: String = "channel-1",
+    coveredAfterSeq: Long? = null,
+): ChannelMessageWindow {
+    val seqs = rawMessages.mapNotNull { (it as? kotlinx.serialization.json.JsonObject)?.get("seq")?.toString()?.toLongOrNull() }
+    val after = coveredAfterSeq ?: when (direction) {
+        ThreadDurablePageDirection.Older -> (seqs.minOrNull() ?: anchorSeq) - 1L
+        ThreadDurablePageDirection.Newer -> anchorSeq
+    }
+    return channelWindow(after, seqs.maxOrNull() ?: after, completeThroughLatest = false, scopeId = scopeId)
+}
 
 /** The JSON of [window] for a raw page body. */
 internal fun channelWindowJson(window: ChannelMessageWindow): String =
@@ -681,5 +865,8 @@ internal fun coverageHeader(
     val head = build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.head(segments)
     val inHead = head?.let { h -> facts.map { it.fact.seq }.filter { it in h } }.orEmpty()
     val bounds = if (inHead.isEmpty()) null else inHead.min() to inHead.max()
-    return base.mirroring(head, bounds).copy(latestSeq = (listOfNotNull(base.latestSeq) + envelopes.map { it.fact.seq }).maxOrNull())
+    val movesLatest = envelopes.map { it.fact.seq }.filter { seq ->
+        build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.memberOf(segments, seq).let { it == null || it == head }
+    }
+    return base.mirroring(head, bounds).copy(latestSeq = (listOfNotNull(base.latestSeq) + movesLatest).maxOrNull())
 }

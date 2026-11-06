@@ -2056,6 +2056,20 @@ internal class RaftSharedStoreProvider private constructor(
             }
         }
 
+    /** Message storage Phase 2c: where a message link or the agent overview offers the context pages it read. */
+    internal fun messageContextPageSink(scope: RaftShellStoreScope): RaftMessageContextPageSink =
+        DurableMessageContextPageSink(
+            extender = threadDurablePageExtender,
+            scope = threadSendScope,
+            currentIdentity = {
+                captureThreadReplyCacheIdentity(scope)?.let { identity ->
+                    Triple(identity.environmentId, identity.principalId, identity.serverId)
+                }
+            },
+            currentAccount = ::currentAccountBindingOrNull,
+            logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2ContextPage"),
+        )
+
     /** The computers cache owner for this shell's current session. */
     internal suspend fun computersOwner(scope: RaftShellStoreScope): SharedComputersOwner? =
         authStore(scope).readSession()?.let { session ->
