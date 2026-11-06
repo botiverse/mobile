@@ -147,16 +147,23 @@ class TaskConversationHeadRealTapTest {
     fun inALongConversationScrolledBackAFingerOnTheStatusOpensTheMenu() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 60)
-            // Back through the messages a little (the Back to latest pill shows), the head still in view.
-            val head = chipBounds(TaskHeadStatusTestTag)
+            // Back through the messages a little (the Back to latest pill shows): scrolling puts the
+            // panel back up (artin 2026-11-06: on a phone the head is only the pull-down panel).
             root().performTouchInput {
                 val x = width / 2f
                 swipe(Offset(x, height * 0.55f), Offset(x, height * 0.75f), durationMillis = 300)
             }
             settle()
-            if (onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) {
-                println("task-tap: status chip before ${head} after ${chipBounds(TaskHeadStatusTestTag)}")
-            }
+            assertTrue(
+                onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
+                "scrolling the messages left the panel open",
+            )
+            // The bar pulls it down again, where the reader is: a finger on its chevron end (the
+            // middle of the bar is the task line, whose status chip has a menu of its own).
+            val bar = chipBounds(TaskBarSummaryTestTag)
+            tapAt(TaskBarSummaryTestTag, Rect(bar.right - 24f, bar.center.y - 1f, bar.right - 22f, bar.center.y + 1f))
+            // A finger on Status in the panel opens the menu.
+            settle()
             tapAtCentreOf(TaskHeadStatusTestTag)
             assertOpened("Todo", TaskHeadStatusTestTag)
         }
