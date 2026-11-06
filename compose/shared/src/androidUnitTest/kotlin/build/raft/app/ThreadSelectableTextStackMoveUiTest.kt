@@ -7,10 +7,13 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ComposeUiTest
@@ -49,6 +52,7 @@ class ThreadSelectableTextStackMoveUiTest {
     val activities = RobolectricComposeActivityRule()
 
     private var tick by mutableIntStateOf(0)
+    private var ticking by mutableStateOf(false)
 
     private val tickStyle: TextStyle
         get() = TextStyle(color = if (tick % 2 == 0) Color.Black else Color.DarkGray)
@@ -58,6 +62,11 @@ class ThreadSelectableTextStackMoveUiTest {
         val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
         val stack = RaftPageStack()
         setContent {
+            // Outside the moved page. NavDisplay's scene changes a frame or more after the stack
+            // (SeekableTransitionState.animateTo runs in an effect), so a row changes every frame.
+            LaunchedEffect(ticking) {
+                while (ticking) withFrameNanos { tick++ }
+            }
             RaftMobilePageStackDisplay(stack) { page ->
                 if (page.args.pageName == CHAT) {
                     val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
@@ -88,21 +97,22 @@ class ThreadSelectableTextStackMoveUiTest {
         )
     }
 
-    private fun ComposeUiTest.pushWithRowChange(stack: RaftPageStack) {
-        runOnIdle {
-            tick++
-            stack.open(COVERING_PAGE, JsonObject(emptyMap()), from = stack.pages.last())
-        }
+    /** Runs [change] with the rows changing on every frame around it, through its whole motion. */
+    private fun ComposeUiTest.withRowChangingEveryFrame(change: () -> Unit) {
+        mainClock.autoAdvance = false
+        runOnIdle { ticking = true }
+        repeat(FRAMES_BEFORE) { mainClock.advanceTimeByFrame() }
+        runOnIdle(change)
+        repeat(FRAMES_AFTER) { mainClock.advanceTimeByFrame() }
+        runOnIdle { ticking = false }
+        mainClock.autoAdvance = true
         waitForIdle()
     }
 
-    private fun ComposeUiTest.popWithRowChange(stack: RaftPageStack) {
-        runOnIdle {
-            tick++
-            stack.back()
-        }
-        waitForIdle()
-    }
+    private fun ComposeUiTest.pushWithRowChange(stack: RaftPageStack) =
+        withRowChangingEveryFrame { stack.open(COVERING_PAGE, JsonObject(emptyMap()), from = stack.pages.last()) }
+
+    private fun ComposeUiTest.popWithRowChange(stack: RaftPageStack) = withRowChangingEveryFrame { stack.back() }
 
     @Test
     fun lazyRowStyleChangesInThePushFrame() =
@@ -228,6 +238,8 @@ class ThreadSelectableTextStackMoveUiTest {
         }
 
     private companion object {
+        const val FRAMES_BEFORE = 3
+        const val FRAMES_AFTER = 40
         const val CHAT = "compose_thread"
         const val COVERING_PAGE = "compose_artifact_viewer"
         const val BODY = "A selectable message body"
