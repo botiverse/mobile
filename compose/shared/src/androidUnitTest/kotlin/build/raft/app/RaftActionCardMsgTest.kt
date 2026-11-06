@@ -45,7 +45,7 @@ class RaftActionCardMsgTest {
             )
         assertEquals("View Scout in release-notes", actionCardMsgPlain(msg, known))
         assertEquals("View Scout in #release-notes", actionCardMsgText(msg, known).text)
-        assertEquals("View @scout in #release-notes", actionCardMsgText(msg, RaftCardTreeContext()).text)
+        assertEquals("View scout in #release-notes", actionCardMsgText(msg, RaftCardTreeContext()).text)
     }
 
     @Test
