@@ -2412,7 +2412,7 @@ internal fun ThreadComposerContentLeaf(
     // a lease-bound resolver left the panel unable to place itself until the page was rebuilt.
     val suggestionAnchorResolver =
         remember(state.instanceId, suggestionAnchorRef) {
-            suggestionAnchorRef.resolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
+            suggestionAnchorRef.currentCaptureResolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
         }
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
     // Something sits above the composer frame (see the measured column below).
