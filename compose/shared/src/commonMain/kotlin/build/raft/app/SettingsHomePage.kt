@@ -5679,6 +5679,8 @@ private fun RaftAppShellReadyContent(
                         createChannelDialogOpen = false
                         createChannelError = null
                         bridge.toast(channelCreatedMessage)
+                        // tygg 11-06: land in the new channel, as the archived-name Open and Unarchive do.
+                        openHomeConversation(channel.toThreadLaunchConversationIdentity(), "create_channel")
                     }
                     is DataResult.Empty -> {
                         createChannelError = channelNotCreatedMessage
