@@ -119,6 +119,8 @@ import build.raft.app.components.rememberRaftStorePullRefreshState
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 private const val TasksListMaxBeyondBoundsItemCount = 4
 
@@ -1422,7 +1424,7 @@ internal fun BoardSectionHeader(
         modifier =
             modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .raftClickable(onClick = onClick, tier = RaftHoverTier.Subtle)
                 .height(32.dp)
                 .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

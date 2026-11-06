@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +50,8 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.foundation.layout.widthIn
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 private const val ROUTER_PAGE = "router"
 private const val ROUTE_PAYLOAD_PREVIEW = "with smoke payload"
@@ -336,7 +337,7 @@ private fun DeveloperRouterSuggestionList(
                     Modifier
                         .fillMaxWidth()
                         .background(RaftColor.SurfaceWhite)
-                        .clickable(onClick = { onSuggestionSelected(route) })
+                        .raftClickable(onClick = { onSuggestionSelected(route) }, tier = RaftHoverTier.Subtle)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {

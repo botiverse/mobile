@@ -94,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
 import androidx.compose.foundation.layout.widthIn
 import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.raftClickable
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
 // cap has been removed. The dialog body now fills the viewport via
@@ -1135,7 +1136,7 @@ internal fun CreateAgentSectionLabelWithAction(
             modifier =
                 Modifier
                     .size(22.dp)
-                    .clickable(enabled = actionEnabled) { onAction() },
+                    .raftClickable(onClick = onAction, enabled = actionEnabled, shape = RoundedCornerShape(RaftRadius.Chip)),
             contentAlignment = Alignment.Center
         ) {
             if (loading) {

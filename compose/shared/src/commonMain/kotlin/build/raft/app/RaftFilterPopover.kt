@@ -40,6 +40,7 @@ import build.raft.designsystem.components.RaftComboboxSheet
 import build.raft.designsystem.components.RaftMultiComboboxSheet
 import build.raft.designsystem.components.RaftComboboxPopover
 import build.raft.designsystem.components.RaftMultiComboboxPopover
+import build.raft.designsystem.components.raftClickable
 
 private const val RaftFilterPopoverWidthValue = 220f
 private const val RaftFilterPopoverVerticalOffsetValue = 8f
@@ -217,7 +218,7 @@ private fun RaftLookFilterPopover(
                         modifier = Modifier
                             .height(28.dp)
                             .clip(RoundedCornerShape(RaftAppRadius.Control))
-                            .clickable(onClick = onClear)
+                            .raftClickable(onClick = onClear, shape = RoundedCornerShape(RaftAppRadius.Control))
                             .padding(horizontal = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {

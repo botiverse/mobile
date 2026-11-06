@@ -23,8 +23,6 @@ import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
@@ -157,6 +155,8 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.launch
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
 
@@ -1071,7 +1071,7 @@ private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: ((
         Modifier
             .fillMaxWidth()
             .then(if (line.dimmed) Modifier.alpha(0.6f) else Modifier)
-            .then(if (click != null) Modifier.clickable(role = Role.Button, onClickLabel = line.semantics, onClick = click) else Modifier)
+            .then(if (click != null) Modifier.raftClickable(onClick = click, onClickLabel = line.semantics, tier = RaftHoverTier.Subtle) else Modifier)
             .clearAndSetSemantics { contentDescription = line.semantics },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1861,16 +1861,13 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
  */
 @Composable
 private fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val shape = RoundedCornerShape(RaftRadius.Chip)
     Row(
         modifier =
             Modifier
                 .offset(x = (-6).dp)
                 .clip(shape)
-                .background(if (pressed) RaftTheme.colors.fillMedium else Color.Transparent, shape)
-                .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+                .raftClickable(onClick = onClick, shape = shape, tier = RaftHoverTier.None)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -41,7 +41,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,7 +59,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -77,6 +75,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import build.raft.designsystem.components.raftClickable
 
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
@@ -343,7 +342,7 @@ internal fun RaftForegroundMessageBannerView(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .clickable(role = Role.Button, onClick = onClick),
+                            .raftClickable(onClick = onClick),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RaftForegroundBannerAvatar(

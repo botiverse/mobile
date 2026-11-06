@@ -1,8 +1,6 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,14 +58,12 @@ import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldClearAction
-import build.raft.designsystem.components.raftPointerHover
-import build.raft.designsystem.components.raftStateOverlay
-import build.raft.designsystem.components.rememberRaftStateOverlay
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
+import build.raft.designsystem.components.raftClickable
 
 /**
  * Whose picker choices (skin tone, frequently used emoji) the emoji picker reads and writes: the
@@ -409,15 +405,11 @@ private fun RaftEmojiSkinTone.labelResource(): StringResource =
 /** One emoji of the grid: brand-soft on hover and press, like Web's picker cells. */
 @Composable
 private fun RaftEmojiPickerCell(text: String, label: String, onClick: () -> Unit) {
-    val source = remember { MutableInteractionSource() }
-    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight)
     Box(
         modifier =
             Modifier
                 .size(RaftEmojiPickerCellSize)
-                .raftPointerHover(source)
-                .raftStateOverlay(overlay, RaftRadius.Control)
-                .clickable(interactionSource = source, indication = null, onClick = onClick)
+                .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftRadius.Control), tier = RaftHoverTier.Highlight)
                 .semantics {
                     contentDescription = label
                     role = Role.Button
@@ -438,17 +430,13 @@ private fun RaftEmojiPickerSquare(
     fontSize: Int,
     onClick: () -> Unit,
 ) {
-    val source = remember { MutableInteractionSource() }
-    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, selected = selected)
     val shape = RoundedCornerShape(RaftRadius.Control)
     Box(
         modifier =
             Modifier
                 .size(size)
                 .background(if (selected) RaftTheme.colors.brandSoft else Color.Transparent, shape)
-                .raftPointerHover(source)
-                .raftStateOverlay(overlay, shape)
-                .clickable(interactionSource = source, indication = null, onClick = onClick)
+                .raftClickable(onClick = onClick, shape = shape, selected = selected)
                 .semantics {
                     contentDescription = label
                     role = Role.Button
@@ -469,17 +457,13 @@ private fun RaftEmojiPickerTab(
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
-    val source = remember { MutableInteractionSource() }
-    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, selected = selected)
     val shape = RoundedCornerShape(RaftRadius.Control)
     Box(
         modifier =
             modifier
                 .height(RaftEmojiPickerTabHeight)
                 .background(if (selected) RaftTheme.colors.brandSoft else Color.Transparent, shape)
-                .raftPointerHover(source)
-                .raftStateOverlay(overlay, shape)
-                .clickable(interactionSource = source, indication = null, onClick = onClick)
+                .raftClickable(onClick = onClick, role = Role.Tab, shape = shape, selected = selected)
                 .semantics {
                     contentDescription = label
                     role = Role.Tab

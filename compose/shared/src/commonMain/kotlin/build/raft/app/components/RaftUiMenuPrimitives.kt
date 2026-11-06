@@ -23,7 +23,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +43,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
+import androidx.compose.ui.semantics.Role
 
 internal data class RaftSelectionPopoverOption(
     val id: String,
@@ -207,7 +209,7 @@ private fun RaftSelectionOptionRow(
             Modifier
                 .fillMaxWidth()
                 .height(RaftMetrics.MenuRowHeight)
-                .clickable(enabled = rowEnabled) { onSelect(option) }
+                .raftClickable(onClick = { onSelect(option) }, enabled = rowEnabled, tier = RaftHoverTier.Highlight)
                 .padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -351,7 +353,7 @@ internal fun RaftLookSelectTrigger(
                 .height(height)
                 .background(if (enabled) RaftColor.Card else RaftColor.FillMuted, shape)
                 .border(RaftAppStroke.Control, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
-                .clickable(enabled = enabled) { onClick() }
+                .raftClickable(onClick = onClick, enabled = enabled, role = Role.DropdownList, shape = shape)
                 .padding(start = 14.dp, end = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically

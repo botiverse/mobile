@@ -3,10 +3,8 @@ package build.raft.app
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.key
-import androidx.compose.ui.semantics.Role
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftListRowGroup
 import androidx.compose.foundation.layout.Column
@@ -91,6 +89,8 @@ import build.raft.designsystem.components.RaftSteps
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.delay
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 /**
  * A computer the migration can name or target (from the server's machine list), with what the
@@ -410,7 +410,7 @@ private fun AgentLastMigration(
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
         // One row is the toggle: chevron, label, summary.
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { open = !open },
+            modifier = Modifier.fillMaxWidth().raftClickable(onClick = { open = !open }, tier = RaftHoverTier.Subtle),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             RaftLucideIcon(

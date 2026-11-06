@@ -3,9 +3,6 @@ package build.raft.app
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,6 +50,8 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 // web ForwardComposerMobile (targets step): a phone PanelHeader whose 44dp ghost Back and
 // trailing actions sit 3dp from the screen edges, `main p-3` around the search InputGroup,
@@ -207,8 +206,6 @@ internal fun <T> RaftForwardPickerTargetRow(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val shape = RoundedCornerShape(RaftAppRadius.Control)
     Row(
         modifier =
@@ -216,8 +213,7 @@ internal fun <T> RaftForwardPickerTargetRow(
                 .fillMaxWidth()
                 .padding(horizontal = ForwardPickerBodyPadding)
                 .alpha(if (interactive) 1f else 0.72f)
-                .background(if (pressed) colors.fillMedium else Color.Transparent, shape)
-                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+                .raftClickable(onClick = onClick, shape = shape, tier = RaftHoverTier.Subtle)
                 .heightIn(min = ForwardPickerRowMinHeight)
                 .padding(horizontal = ForwardPickerRowPaddingHorizontal, vertical = ForwardPickerRowPaddingVertical),
         verticalAlignment = Alignment.CenterVertically,

@@ -1,7 +1,6 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +67,8 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 @Composable
 internal fun SettingsNotificationsContent(
@@ -515,7 +516,7 @@ private fun SettingsNotificationPermissionBanner(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = settingsAvailable && !busy, onClick = onSettings),
+                    .raftClickable(onClick = onSettings, enabled = settingsAvailable && !busy, tier = RaftHoverTier.Subtle),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

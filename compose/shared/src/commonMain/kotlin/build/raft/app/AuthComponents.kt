@@ -54,7 +54,6 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -73,6 +72,7 @@ import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.raftClickable
 
 internal enum class AuthButtonTone {
     Pink,
@@ -585,7 +585,7 @@ internal fun AuthActionButton(
             modifier = Modifier
                 .fillMaxSize()
                 .raftControlSurface(fill = buttonBackground, border = borderColor)
-                .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
+                .raftClickable(onClick = onClick, enabled = enabled && !loading, shape = RoundedCornerShape(RaftAppRadius.Control))
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.Center
         ) {
