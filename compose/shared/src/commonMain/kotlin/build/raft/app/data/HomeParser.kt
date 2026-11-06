@@ -318,6 +318,7 @@ fun parseRaftHome(
             serverUnreadSummaryAvailable = payload.serverUnreadSummaryAvailable,
             followedThreadUnread = payload.followedThreadUnread,
             markedUnreadIds = payload.markedUnreadIds,
+            unreadLatestActivitySeqs = payload.unreadLatestActivitySeqs,
             // task #831: carry unread availability through so the Store keeps
             // prior badges instead of clobbering them to zero when the unread
             // endpoints were unavailable.

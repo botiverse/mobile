@@ -3489,7 +3489,8 @@ class SharedActivityStore internal constructor(
         synchronized(realtimeOwnerLock) { retainReadRowLocked(SharedActivityIntent.MarkRead(item), item) }
         val coordinator = readReceiptCoordinator
         if (owner != null && coordinator != null) {
-            applyReadReceiptPrediction(coordinator.markReadAll(owner, targetChannelId))
+            val knownSeq = item.readStateLatestActivitySeq?.toLongOrNull()
+            applyReadReceiptPrediction(coordinator.markReadAll(owner, targetChannelId, knownSeq))
             return
         }
         val key = item.key
@@ -3682,13 +3683,14 @@ class SharedActivityStore internal constructor(
             )
         )
         scope.launch {
+            val readOwner =
+                readReceiptOwnerFactory?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
+            if (readOwner != null) readReceiptCoordinator?.settleReadsBeforeUnread(readOwner, targetChannelId)
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content) {
                 // The read point moved back, or stayed and the conversation was marked unread: the next
                 // open must send its read again (that is what clears it), not reuse an acknowledgement.
-                readReceiptOwnerFactory
-                    ?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
-                    ?.let { readOwner -> readReceiptCoordinator?.forgetAcknowledged(readOwner, targetChannelId) }
+                if (readOwner != null) readReceiptCoordinator?.forgetAcknowledged(readOwner, targetChannelId)
                 applyMarkUnreadOutcome(item, optimisticUnreadCount, targetChannelId, result.data)
             }
             val owner =

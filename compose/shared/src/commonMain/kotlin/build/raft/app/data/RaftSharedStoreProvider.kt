@@ -501,6 +501,8 @@ internal class RaftSharedStoreProvider private constructor(
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
+    /** Reads not yet acknowledged, per (environment, account, server, channel). Kept on sign-out, dropped with the server. */
+    private val readReceiptPendingStore = ReadReceiptPendingStore(sharedPreferenceStore)
     /** Last-known workspace notification preference per (user, server); kept on sign-out, dropped with the server. */
     val settingsServerNotificationLastKnownStore = SettingsServerNotificationLastKnownStore(sharedPreferenceStore)
     private val searchPersonalizationRepository = PersistentSearchPersonalizationRepository(sharedPreferenceStore)
@@ -1431,6 +1433,7 @@ internal class RaftSharedStoreProvider private constructor(
             onServerAccessLost = { grant ->
                 reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
                 threadPayloadStore.dropServer(grant.serverId)
+                readReceiptPendingStore.dropServer(grant.serverId, replyCacheAuthContext.value?.accountId)
                 // Step 3: the server's members (memory in every shell, durable row, avatar refs).
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
                 // Step 4: the server's conversation identities (names, avatars, DM peers) in every shell.
@@ -1471,6 +1474,8 @@ internal class RaftSharedStoreProvider private constructor(
                     serverFeatureFlagChangeRefresher.onReconnected(ServerId(grant.serverId))
                     // Nor are `appearance:updated` ones: a theme changed elsewhere while offline.
                     serverAppearanceCatchUp.onReconnected(ServerId(grant.serverId))
+                    // Reads made offline go out now.
+                    processReadReceiptCoordinator().replayPendingReads()
                 }
             },
             onAccepted = { grant, event ->
@@ -1505,7 +1510,11 @@ internal class RaftSharedStoreProvider private constructor(
             threadSendScope.launch {
                 avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
             }
+            processReadReceiptCoordinator().replayPendingReads()
         }
+        // Reads a previous process could not send. A session not restored yet keeps them for the
+        // first realtime connect.
+        threadSendScope.launch { processReadReceiptCoordinator().replayPendingReads() }
         threadSendScope.launch {
             realtimeAuthorityProvider.registerScope(
                 scopeKey = ProcessRealtimeAuthorityScopeKey,
@@ -2522,6 +2531,15 @@ internal class RaftSharedStoreProvider private constructor(
                     session != null &&
                     session.user.id == owner.accountId &&
                     session.servers.any { server -> server.id == owner.serverId }
+            },
+            pendingStore = readReceiptPendingStore,
+            ownerAccessLost = { owner ->
+                val session = authStore.readSession()
+                apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/') == owner.environmentId &&
+                    session != null &&
+                    session.user.id == owner.accountId &&
+                    session.servers.isNotEmpty() &&
+                    session.servers.none { server -> server.id == owner.serverId }
             },
             onPrediction = { prediction ->
                 // The user read it here: its system notification (Android) goes too.

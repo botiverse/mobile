@@ -148,6 +148,11 @@ data class ChannelUnreadSummary(
      * by channel id value: shown unread with a dot and no number. Never in [unreadCounts]' totals.
      */
     val markedUnreadIds: Set<String> = emptySet(),
+    /**
+     * Newest message per scope (`readState.latestActivity.seq`), by channel id value. Missing when the
+     * scope has no read cursor or no usable frontier, which says nothing about what is unread.
+     */
+    val latestActivitySeqs: Map<String, Long> = emptyMap(),
 )
 
 fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {
@@ -155,12 +160,19 @@ fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {
     val mentioned = LinkedHashSet<ChannelId>()
     val threads = LinkedHashMap<String, HomeFollowedThreadUnread>()
     val marked = LinkedHashSet<String>()
+    val latestActivitySeqs = LinkedHashMap<String, Long>()
     for ((key, entry) in channels) {
         val id = key.trim().takeIf { it.isNotEmpty() }?.let(::ChannelId) ?: continue
         val count = entry.unreadCount.coerceAtLeast(0)
         unreadCounts[id] = count
         if (entry.hasMention) mentioned += id
         if (entry.readState?.isMarkedUnread == true) marked += id.value
+        entry.readState
+            ?.takeIf { it.kind == "present" }
+            ?.latestActivity
+            ?.seq
+            ?.toLongOrNull()
+            ?.let { seq -> latestActivitySeqs[id.value] = seq }
         val parent = entry.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
         if (parent != null && count > 0) {
             threads[id.value] = HomeFollowedThreadUnread(ChannelId(parent), count, entry.hasMention)
@@ -177,6 +189,7 @@ fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {
                 }
                 .toMap(),
         markedUnreadIds = marked,
+        latestActivitySeqs = latestActivitySeqs,
     )
 }
 
