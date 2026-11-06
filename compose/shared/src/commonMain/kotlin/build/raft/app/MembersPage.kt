@@ -7654,7 +7654,7 @@ internal fun MembersDetailHeader(
     val threeDotButtonAnchor =
         remember(member.id.value) { RaftLiveRootAnchorRef(identity = "member:${member.id.value}:management") }
     val threeDotButtonAnchorResolver =
-        remember(threeDotButtonAnchor) { threeDotButtonAnchor.resolver(RaftPopoverLocalPoint.BottomEnd) }
+        remember(threeDotButtonAnchor) { threeDotButtonAnchor.currentCaptureResolver(RaftPopoverLocalPoint.BottomEnd) }
     val currentOnManagementMenuAnchorResolverReady by
         rememberUpdatedState(onManagementMenuAnchorResolverReady)
     val headerMetaLabel =
