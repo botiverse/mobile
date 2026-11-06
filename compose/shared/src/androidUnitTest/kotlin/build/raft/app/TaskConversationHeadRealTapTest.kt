@@ -158,8 +158,11 @@ class TaskConversationHeadRealTapTest {
                 onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
                 "scrolling the messages left the panel open",
             )
-            // The bar pulls it down again, where the reader is; a finger on Status opens the menu.
-            tapAtCentreOf(TaskBarSummaryTestTag)
+            // The bar pulls it down again, where the reader is: a finger on its chevron end (the
+            // middle of the bar is the task line, whose status chip has a menu of its own).
+            val bar = chipBounds(TaskBarSummaryTestTag)
+            tapAt(TaskBarSummaryTestTag, Rect(bar.right - 24f, bar.center.y - 1f, bar.right - 22f, bar.center.y + 1f))
+            // A finger on Status in the panel opens the menu.
             settle()
             tapAtCentreOf(TaskHeadStatusTestTag)
             assertOpened("Todo", TaskHeadStatusTestTag)
