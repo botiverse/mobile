@@ -58,16 +58,21 @@ class ThreadDmHeadNameFirstScreenshotTest {
 
 @Composable
 private fun DmHead(title: String, status: String) {
-    val identity = MemberDetailIdentity(MemberId("agent-$title"), MemberKind.Agent)
+    val identity = remember(title) { MemberDetailIdentity(MemberId("agent-$title"), MemberKind.Agent) }
+    // Remembered, as in ThreadDmAgentActivityHeaderVisualScreen: a new resolver each composition
+    // restarts the header's collection, which recomposes it, forever.
     val state =
-        raftAgentStatusIndicatorState(
-            status = AgentStatus.Working,
-            presence = Presence.Active,
-            statusLabel = status,
-            external = false,
-        )
+        remember(status) {
+            raftAgentStatusIndicatorState(
+                status = AgentStatus.Working,
+                presence = Presence.Active,
+                statusLabel = status,
+                external = false,
+            )
+        }
+    val resolver: RaftAgentStatusResolver = remember(state) { { flowOf(state) } }
     ThreadPageHeader(
-        payload = RaftThreadScreenPayload(instanceId = "dm-$title", surfaceKind = RaftThreadSurfaceKind.DirectMessage, status = "content"),
+        payload = remember(title) { RaftThreadScreenPayload(instanceId = "dm-$title", surfaceKind = RaftThreadSurfaceKind.DirectMessage, status = "content") },
         headerDisplay =
             ThreadHeaderDisplayModel(
                 title = title,
@@ -77,7 +82,7 @@ private fun DmHead(title: String, status: String) {
                 dmPeerAvatarLabel = title.take(2).uppercase(),
                 dmPeerIdentity = identity,
             ),
-        agentStatusResolver = { flowOf(state) },
+        agentStatusResolver = resolver,
         applyTopSafeArea = false,
         onBack = {},
         onOpenInChannel = {},
@@ -85,6 +90,6 @@ private fun DmHead(title: String, status: String) {
         onOpenSearch = {},
         onShowMembers = {},
         onShowSettings = {},
-        sideCardToggles = ThreadHeaderSideCardToggles(tasksAvailable = true, cards = ConversationSideCardsState(), onToggle = {}),
+        sideCardToggles = remember { ThreadHeaderSideCardToggles(tasksAvailable = true, cards = ConversationSideCardsState(), onToggle = {}) },
     )
 }
