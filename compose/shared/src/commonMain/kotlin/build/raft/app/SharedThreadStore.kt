@@ -14,6 +14,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
@@ -3889,10 +3890,12 @@ internal class SharedThreadDataSource(
         }
     }
 
+    /** [onChannelCreated]: a `channel:create` card made its channel (it exists, whether or not the card can be marked). */
     suspend fun commitThreadActionCard(
         payload: RaftThreadScreenPayload,
         messageId: String,
-        card: ThreadActionCard
+        card: ThreadActionCard,
+        onChannelCreated: (HomeChannelRow) -> Unit = {},
     ): DataResult<ThreadActionCard> {
         return when {
             // web ActionCard: a frozen card runs nothing; a reconfirm card's button reconfirms it.
@@ -3906,7 +3909,7 @@ internal class SharedThreadDataSource(
             card.type.equals("agent:create", ignoreCase = true) ->
                 DataResult.Error(ScreenError(code = "action_card_agent_create_dialog_required", retryable = false))
             card.type.equals("channel:create", ignoreCase = true) ->
-                commitChannelCreateActionCard(messageId, card)
+                commitChannelCreateActionCard(messageId, card, onChannelCreated)
             card.type.equals("channel:add_member", ignoreCase = true) ->
                 commitChannelAddMembersActionCard(payload, messageId, card)
             card.type.equals("integration:approve_agent_login", ignoreCase = true) ->
@@ -3932,8 +3935,9 @@ internal class SharedThreadDataSource(
         messageId: String,
         card: ThreadActionCard,
         stepUp: SecondFactorStepUpCoordinator,
+        onChannelCreated: (HomeChannelRow) -> Unit = {},
     ): SecondFactorStepUpOutcome<ThreadActionCard> =
-        stepUp.run { commitThreadActionCard(payload, messageId, card) }
+        stepUp.run { commitThreadActionCard(payload, messageId, card, onChannelCreated) }
 
     /**
      * The Install of an `integration:install_marketplace_app` card's confirmation (web
@@ -4095,7 +4099,8 @@ internal class SharedThreadDataSource(
 
     private suspend fun commitChannelCreateActionCard(
         messageId: String,
-        card: ThreadActionCard
+        card: ThreadActionCard,
+        onChannelCreated: (HomeChannelRow) -> Unit,
     ): DataResult<ThreadActionCard> {
         if (!card.type.equals("channel:create", ignoreCase = true)) {
             return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
@@ -4124,6 +4129,7 @@ internal class SharedThreadDataSource(
         ) {
             is DataResult.Content -> {
                 val channel = created.data.channel
+                onChannelCreated(channel)
                 val createdChannelId = channel.channelId?.value ?: channel.threadId.value
                 val createdChannelName = channel.name.takeIf { it.isNotBlank() } ?: channelName
                 val executedCard = card.withExecutedChannel(id = createdChannelId, name = createdChannelName)
@@ -7546,6 +7552,8 @@ internal sealed interface SharedThreadIntent {
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
     data class ApplyChannelJoined(val channelId: String) : SharedThreadIntent
+    /** Left this public channel from its settings: it stays open, with the composer's Join. */
+    data class ApplyChannelLeft(val channelId: String) : SharedThreadIntent
     data class UpdateChannelProfile(
         val channelId: String,
         val originalName: String,
@@ -7894,6 +7902,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyMessageSaved,
             is SharedThreadIntent.ApplyChannelJoined,
+            is SharedThreadIntent.ApplyChannelLeft,
             is SharedThreadIntent.UpdateChannelProfile,
             SharedThreadIntent.ClearChannelProfileUpdateStatus,
             is SharedThreadIntent.ApplyChannelProfile,
@@ -7986,6 +7995,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyChannelJoined -> applyChannelJoined(intent.channelId)
+            is SharedThreadIntent.ApplyChannelLeft -> applyChannelLeft(intent.channelId)
             is SharedThreadIntent.ApplyParentDirectoryHint -> applyParentDirectoryHint(intent)
             is SharedThreadIntent.UpdateChannelProfile -> updateChannelProfile(intent)
             SharedThreadIntent.ClearChannelProfileUpdateStatus -> clearChannelProfileUpdateStatus()
@@ -12224,6 +12234,10 @@ internal class SharedThreadStore(
         }
     }
 
+    private suspend fun applyChannelLeft(channelId: String) {
+        reducePayloadPatchAndCache(cachePayload = true) { payload -> payload.withChannelLeft(channelId) }
+    }
+
     private suspend fun applyMembersPatch(patch: SharedThreadIntent.ApplyMembersPatch) {
         reducePayloadPatchAndCache(cachePayload = true) { payload ->
             payload.copy(
@@ -15159,6 +15173,18 @@ internal fun RaftThreadScreenPayload.withThreadContentProjectionFrom(
     withResolvedReplyThreadIdentityFrom(patch)
         .withContentSliceFrom(patch)
         .withTaskSliceFrom(patch)
+
+/** The opposite of `applyChannelJoined`: [channelId]'s page shows the composer's Join. */
+internal fun RaftThreadScreenPayload.withChannelLeft(channelId: String): RaftThreadScreenPayload =
+    if (joinChannelTargetId()?.value != channelId) {
+        this
+    } else {
+        copy(
+            joined = false,
+            canSend = false,
+            composer = composer.copy(enabled = false)
+        )
+    }
 
 internal fun RaftThreadScreenPayload.withCanonicalConversationAccessFrom(
     patch: RaftThreadScreenPayload

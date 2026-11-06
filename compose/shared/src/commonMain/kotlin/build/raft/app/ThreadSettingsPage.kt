@@ -117,6 +117,8 @@ internal class ThreadSettingsPageSources(
     val onOpenMembers: (add: Boolean) -> Unit,
     /** Leave the conversation once it is back on screen (after Leave, Delete, Disconnect, Archive). */
     val onLeaveConversation: () -> Unit,
+    /** The standalone channel settings page ([CHANNEL_SETTINGS_PAGE]) closed: [channelSettingsCloseLanding] for this conversation. */
+    val onChannelSettingsClosed: (ChannelSettingsCloseLanding, ChannelId) -> Unit = { _, _ -> },
 )
 
 /** One conversation's link to its settings page; the conversation keeps [sources] current. */
@@ -127,20 +129,24 @@ internal class ThreadSettingsPageLink {
 
 /**
  * The open conversations' settings links, by key (process memory, main thread). A settings page
- * whose conversation is gone (a restored process) finds none and closes.
+ * whose conversation is gone (a restored process) finds none and closes. Two pages of one channel
+ * share a key (channel, reply, "Open in channel"): the newest answers, and when it goes the one under
+ * it answers again.
  */
 internal object ThreadSettingsPageLinks {
-    private val links = mutableMapOf<String, ThreadSettingsPageLink>()
+    private val links = mutableMapOf<String, MutableList<ThreadSettingsPageLink>>()
 
     fun register(key: String, link: ThreadSettingsPageLink) {
-        links[key] = link
+        links.getOrPut(key) { mutableListOf() } += link
     }
 
     fun unregister(key: String, link: ThreadSettingsPageLink) {
-        if (links[key] === link) links.remove(key)
+        val pages = links[key] ?: return
+        pages.removeAll { it === link }
+        if (pages.isEmpty()) links.remove(key)
     }
 
-    fun get(key: String): ThreadSettingsPageLink? = links[key]
+    fun get(key: String): ThreadSettingsPageLink? = links[key]?.lastOrNull()
 }
 
 /**

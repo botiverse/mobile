@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import androidx.compose.ui.unit.dp
@@ -14,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ChannelSettingsPageTest {
@@ -27,6 +29,89 @@ class ChannelSettingsPageTest {
             )
 
         assertEquals("Loading", channelSettingsMemberCountLabel(missing, fallbackCount = null, loadingLabel = "Loading"))
+    }
+
+    @Test
+    fun deleteAndDisconnectAlwaysLeaveTheConversation() {
+        listOf(ChannelSettingsAction.Delete, ChannelSettingsAction.Disconnect).forEach { action ->
+            listOf(landingRow("channel"), landingRow("private"), null).forEach { channel ->
+                assertEquals(
+                    ChannelSettingsCloseLanding.LeaveConversation,
+                    channelSettingsCloseLanding(action, channel),
+                    "$action ${channel?.channelType}",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun leavingAPublicChannelStaysNotJoinedAndAPrivateOrJointOneGoes() {
+        assertEquals(
+            ChannelSettingsCloseLanding.StayNotJoined,
+            channelSettingsCloseLanding(ChannelSettingsAction.Leave, landingRow("channel")),
+        )
+        assertEquals(
+            ChannelSettingsCloseLanding.LeaveConversation,
+            channelSettingsCloseLanding(ChannelSettingsAction.Leave, landingRow("private")),
+        )
+        assertEquals(
+            ChannelSettingsCloseLanding.LeaveConversation,
+            channelSettingsCloseLanding(ChannelSettingsAction.Leave, landingRow("joint")),
+        )
+        assertEquals(
+            ChannelSettingsCloseLanding.LeaveConversation,
+            channelSettingsCloseLanding(ChannelSettingsAction.Leave, landingRow("channel").copy(kind = ConversationKind.Joint)),
+        )
+        // Not known to be public: no stale page.
+        assertEquals(
+            ChannelSettingsCloseLanding.LeaveConversation,
+            channelSettingsCloseLanding(ChannelSettingsAction.Leave, null),
+        )
+    }
+
+    @Test
+    fun archiveAndUnarchiveStayInTheChannel() {
+        listOf(ChannelSettingsAction.Archive, ChannelSettingsAction.Unarchive, null).forEach { action ->
+            assertEquals(
+                ChannelSettingsCloseLanding.StayInChannel,
+                channelSettingsCloseLanding(action, landingRow("private")),
+                "$action",
+            )
+        }
+    }
+
+    @Test
+    fun theLandingTellsHomeWhetherTheRowStays() {
+        val id = ChannelId("channel-9")
+        assertNull(ChannelSettingsCloseLanding.StayInChannel.homeIntent(id))
+        assertEquals(
+            SharedHomeIntent.ChannelMembershipEnded(id, keepListed = true),
+            ChannelSettingsCloseLanding.StayNotJoined.homeIntent(id),
+        )
+        assertEquals(
+            SharedHomeIntent.ChannelMembershipEnded(id, keepListed = false),
+            ChannelSettingsCloseLanding.LeaveConversation.homeIntent(id),
+        )
+    }
+
+    private fun landingRow(channelType: String) =
+        HomeChannelRow(
+            threadId = ThreadId("channel-9"),
+            channelId = ChannelId("channel-9"),
+            channelType = channelType,
+            name = "nine",
+        )
+
+    @Test
+    fun routeCarriesTheOpeningConversationsLinkWhenGiven() {
+        val pageData = channelSettingsPageData(ServerId("server-1"), ChannelId("channel-9"), "thread-settings:a")
+
+        assertEquals("thread-settings:a", pageData.optString(THREAD_SETTINGS_LINK_KEY))
+        assertEquals(
+            ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-9")),
+            pageData.toChannelSettingsRouteOrNull(),
+        )
+        assertEquals("", channelSettingsPageData(ServerId("server-1"), ChannelId("channel-9")).optString(THREAD_SETTINGS_LINK_KEY))
     }
 
     @Test
@@ -238,5 +323,41 @@ class ChannelSettingsPageTest {
         assertEquals("add", add.optString(THREAD_MEMBERS_INITIAL_VIEW_KEY))
         assertEquals(true, add.toThreadMembersPageRouteOrNull()?.openAddMember)
         assertEquals(false, channelSettingsMembersPageData(route).toThreadMembersPageRouteOrNull()?.openAddMember)
+    }
+
+    @Test
+    fun archiveTakesTheChannelOffHomeWhileStayingOnThePage() {
+        val channelId = ChannelId("channel-1")
+        val landing = channelSettingsCloseLanding(ChannelSettingsAction.Archive, null)
+
+        assertEquals(ChannelSettingsCloseLanding.StayInChannel, landing)
+        assertEquals(
+            SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false),
+            channelSettingsCloseHomeIntent(ChannelSettingsAction.Archive, landing, channelId),
+        )
+    }
+
+    @Test
+    fun aProfileEditLeavesHomeAlone() {
+        val landing = channelSettingsCloseLanding(ChannelSettingsAction.Profile, null)
+
+        assertEquals(null, channelSettingsCloseHomeIntent(ChannelSettingsAction.Profile, landing, ChannelId("channel-1")))
+    }
+
+    @Test
+    fun theLinkUnderTheNewestPageAnswersAgainWhenTheNewestGoes() {
+        val key = "thread-settings:link-stack-test"
+        val under = ThreadSettingsPageLink()
+        val over = ThreadSettingsPageLink()
+
+        ThreadSettingsPageLinks.register(key, under)
+        ThreadSettingsPageLinks.register(key, over)
+        assertSame(over, ThreadSettingsPageLinks.get(key))
+
+        ThreadSettingsPageLinks.unregister(key, over)
+        assertSame(under, ThreadSettingsPageLinks.get(key))
+
+        ThreadSettingsPageLinks.unregister(key, under)
+        assertNull(ThreadSettingsPageLinks.get(key))
     }
 }

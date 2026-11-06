@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -115,6 +116,19 @@ class SharedRealtimeRoomLeaseRegistryTest {
         registry.markJoinedByUser("server-a", "public-browsed")
 
         assertTrue(registry.release(page).isEmpty())
+    }
+
+    @Test
+    fun aChannelTheUserLeftAfterJoiningItIsLeftOnPageCloseAgain() {
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, _ -> true }
+        val page = owner("thread-pager-1", generation = 1)
+        registry.acquire(page, listOf("public-browsed"))
+        registry.markJoinedByUser("server-a", "public-browsed")
+
+        registry.forgetJoinedByUser("server-a", "public-browsed")
+
+        assertFalse(registry.isJoinedByUser("server-a", "public-browsed"))
+        assertEquals(listOf(leave("public-browsed")), registry.release(page))
     }
 
     /**
