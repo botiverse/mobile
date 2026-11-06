@@ -238,6 +238,13 @@ internal class SharedHomeStore(
      * reaches the seq or [HOME_REPLICA_LAG_GUARD] passes.
      */
     private val realtimeRowGuards = mutableMapOf<String, HomeRealtimeRowGuard>()
+
+    /**
+     * Channels just created here: the Refresh right after a create reads a replica that may not have
+     * them yet (lag p99 > 20 s), and a fetched list replaces the rows. Kept until a fetch lists them
+     * or [HOME_REPLICA_LAG_GUARD] passes (tygg / artin 11-06).
+     */
+    private val createdChannelGuards = mutableListOf<HomeCreatedChannelGuard>()
     private val realtimeRowGuardLock = SynchronizedObject()
     private var nextHomeLoadToken = 0L
     /** Monotonic fence for non-cooperative loads that outlive an auth/session reset. */
@@ -500,7 +507,10 @@ internal class SharedHomeStore(
     fun reset() {
         homeSessionGeneration.incrementAndGet()
         clearRealtimeUnreadWatches()
-        synchronized(realtimeRowGuardLock) { realtimeRowGuards.clear() }
+        synchronized(realtimeRowGuardLock) {
+            realtimeRowGuards.clear()
+            createdChannelGuards.clear()
+        }
         clear()
         dismissedLocalNotificationIds.clear()
         homeSurfaceVisible = true
@@ -911,7 +921,15 @@ internal class SharedHomeStore(
     private fun SharedHomeState.withCreatedChannel(channel: HomeChannelRow): SharedHomeState {
         val nextContent =
             when (val current = content) {
-                is SharedHomeContentState.Content ->
+                is SharedHomeContentState.Content -> {
+                    synchronized(realtimeRowGuardLock) {
+                        createdChannelGuards +=
+                            HomeCreatedChannelGuard(
+                                current.baseSnapshot.server.id,
+                                channel,
+                                kotlin.time.TimeSource.Monotonic.markNow(),
+                            )
+                    }
                     contentFromDurableSnapshot(
                         snapshot =
                             current.baseSnapshot.copy(
@@ -925,6 +943,7 @@ internal class SharedHomeStore(
                         contentRefreshing = false,
                         previousContent = current
                     )
+                }
                 else -> current
             }
         return copy(
@@ -2903,7 +2922,11 @@ internal class SharedHomeStore(
                     it.session.user.id == session.user.id &&
                     it.snapshot.currentMember.id == snapshot.currentMember.id
             }
-        val strippedSnapshot = snapshot.withoutReadStateV1Hydrates()
+        val strippedSnapshot =
+            synchronized(realtimeRowGuardLock) {
+                createdChannelGuards.removeAll { it.settledBy(snapshot) }
+                snapshot.withCreatedChannelsFrom(createdChannelGuards)
+            }.withoutReadStateV1Hydrates()
         val sidebarOrder = strippedSnapshot.sidebarOrder ?: sidebarOrderByServer[strippedSnapshot.server.id]
             ?: compatiblePreviousContent?.baseSnapshot?.sidebarOrder
         val snapshotWithSidebarOrder =
@@ -6043,6 +6066,27 @@ internal fun SharedHomeStore?.homeStateForPage(): StateFlow<SharedHomeState> =
 
 /** How long a realtime-advanced Home row outranks an older fetched copy (replica lag p99 is > 20 s). */
 internal val HOME_REPLICA_LAG_GUARD: kotlin.time.Duration = kotlin.time.Duration.parse("60s")
+
+/** A channel created here, kept across fetches that don't list it yet. */
+internal data class HomeCreatedChannelGuard(
+    val serverId: ServerId,
+    val channel: HomeChannelRow,
+    val at: kotlin.time.TimeSource.Monotonic.ValueTimeMark,
+) {
+    /** No longer needed: [snapshot] of this server lists the channel, or the lag window passed. */
+    fun settledBy(snapshot: HomeSnapshot): Boolean =
+        at.elapsedNow() >= HOME_REPLICA_LAG_GUARD ||
+            (snapshot.server.id == serverId && snapshot.channels.any { it.channelId == channel.channelId })
+}
+
+/** This snapshot plus the [guards] of its server's channels it doesn't list. */
+internal fun HomeSnapshot.withCreatedChannelsFrom(guards: List<HomeCreatedChannelGuard>): HomeSnapshot {
+    val missing =
+        guards.filter { guard ->
+            guard.serverId == server.id && channels.none { it.channelId == guard.channel.channelId }
+        }
+    return if (missing.isEmpty()) this else copy(channels = channels + missing.map { it.channel })
+}
 
 internal data class HomeRealtimeRowGuard(
     val serverId: ServerId,
