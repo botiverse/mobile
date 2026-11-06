@@ -34,7 +34,7 @@ class RaftActionCardMsgTest {
     @Test
     fun entitiesShowTheStoreNameOrTheFallbackNeverTheId() {
         val known = RaftCardTreeContext(entityName = { if (it.id == agent.id) "@Scout" else null })
-        assertEquals("@Scout", actionCardEntityMention(agent, known))
+        assertEquals("Scout", actionCardEntityMention(agent, known))
         assertEquals("#release-notes", actionCardEntityMention(channel, known))
         assertEquals("Ada's MacBook", actionCardEntityMention(computer, known))
         val msg =
@@ -44,7 +44,7 @@ class RaftActionCardMsgTest {
                 mapOf("agent" to ActionCardSpecMsgParam.Entity(agent), "channel" to ActionCardSpecMsgParam.Entity(channel)),
             )
         assertEquals("View Scout in release-notes", actionCardMsgPlain(msg, known))
-        assertEquals("View @Scout in #release-notes", actionCardMsgText(msg, known).text)
+        assertEquals("View Scout in #release-notes", actionCardMsgText(msg, known).text)
         assertEquals("View @scout in #release-notes", actionCardMsgText(msg, RaftCardTreeContext()).text)
     }
 
