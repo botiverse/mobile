@@ -31,8 +31,8 @@ import build.raft.app.nav.RaftMobilePageStackDisplay
 import build.raft.app.nav.RaftPageStack
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
@@ -170,27 +170,24 @@ class ThreadSelectableTextStackMoveUiTest {
      */
     @Test
     fun aPlainSelectionContainerStillThrowsTheFrameworkCrash() {
-        val crash =
-            assertFailsWith<IllegalStateException> {
-                runRobolectricComposeUiTest {
-                    val stack = showChat {
-                        LazyColumn(Modifier.fillMaxSize()) {
-                            item { SelectionContainer { BasicText(BODY, style = tickStyle) } }
-                        }
+        var crash: Throwable? = null
+        // After the crash the tree is broken: tearing the activity down throws a follow-up error.
+        runCatching {
+            runRobolectricComposeUiTest {
+                val stack = showChat {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        item { SelectionContainer { BasicText(BODY, style = tickStyle) } }
                     }
-                    pushWithRowChange(stack)
                 }
+                crash = runCatching { pushWithRowChange(stack) }.exceptionOrNull()
             }
-        // TEMPORARY diagnostic: Gradle's log has no exception messages; the failure artifact has this.
-        java.io.File("build/reports/home-screenshots/selectable-text-crash-diagnostic.txt").apply {
-            parentFile?.mkdirs()
-            writeText("cwd=${absolutePath}\n" + crash.stackTraceToString())
         }
+        val thrown = assertIs<IllegalStateException>(crash)
         assertEquals(
             "Cannot read CompositionLocal because the Modifier node is not currently attached.",
-            crash.message,
+            thrown.message,
         )
-        val frames = crash.stackTrace.map { "${it.className}.${it.methodName}" }
+        val frames = thrown.stackTrace.map { "${it.className}.${it.methodName}" }
         for (frame in listOf("SelectableTextAnnotatedStringNode.retrievePinnableContainer", "LayoutNode.attach", "CopyNodesToNewAnchorLocation")) {
             assertTrue(frames.any { frame in it }, "$frame in $frames")
         }
