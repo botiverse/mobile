@@ -417,9 +417,10 @@ internal fun TaskPendingConversationWindow(onBack: () -> Unit, sending: Boolean,
 /**
  * A task before its first message (web `TaskConversationDialog` with no conversation yet), drawn as
  * the task conversation page it becomes, so nothing moves when the first send opens it:
- * - the same top bar (the task's ref over "Task #N"; its status and assignee once the head has
- *   scrolled away, [TaskConversationBarTitle]);
- * - the same head ([TaskConversationHeadRoute]): title, description, facts and History, with the
+ * - the same top bar (the task's ref over "Task #N"; on a phone its status and assignee too,
+ *   [TaskConversationBarTitle]);
+ * - the same head ([TaskConversationHeadRoute]): on a phone pulled down from the bar over the
+ *   page, open when the page opens; wider, pinned above it. Title, description, facts and History, with the
  *   Status and Assignee editors under the same gates (guest, read-only task, Done freezes the
  *   assignee; [editable] false while there is no store to write to or it holds the offline
  *   stand-in);
@@ -485,7 +486,8 @@ internal fun TaskPendingConversationPage(
             },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
         )
-        // The same head pulled down from the bar as on the conversation page, once it has scrolled away.
+        // On a phone the head is pulled down from the bar over the page, as on the conversation page
+        // (open on entry); a scroll of the page under it puts it back up.
         Box(Modifier.fillMaxWidth().weight(1f)) {
         Column(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
             TaskConversationHeadRoute(

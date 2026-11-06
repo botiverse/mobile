@@ -12821,8 +12821,8 @@ private fun SharedThreadRouteContentContent(
                 action,
             )
         }
-        // Task v2 on a phone: the head scrolls with the conversation (web mobile); the top bar names
-        // the task's state while it is out of view and pulls the head down over the messages.
+        // Task v2 on a phone: the top bar names the task's state and pulls the head down over the
+        // messages; it is pulled down when the conversation opens (once per conversation).
         val taskHeadScrollState = remember(taskConversationId) { TaskHeadScrollState() }
         // Back (and Escape) puts the pulled-down head back up before it leaves the page.
         RaftBackHandler(enabled = taskHeadScrollState.floatOpen, label = "task_head_float") {
@@ -12848,7 +12848,7 @@ private fun SharedThreadRouteContentContent(
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
             timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
-        // The head in the conversation ([floating] false) and pulled down from the bar (true).
+        // The head pinned in the page off a phone ([floating] false) and pulled down from the bar (true).
         val taskConversationHeadRoute: (@Composable (floating: Boolean) -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
                 { floating ->
@@ -12888,7 +12888,7 @@ private fun SharedThreadRouteContentContent(
                             )
                         },
                         scrollState = taskHeadScrollState,
-                        // Typing on a phone: the head folds away so the conversation keeps its room.
+                        // Typing on a phone: the pulled-down head goes back up.
                         keyboardUp = adaptivePageKeyboardInsetDp > 0f,
                         onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                         // The offline stand-in refuses writes: its status and assignee are plain facts.
@@ -16464,7 +16464,7 @@ private data class ThreadPageContentData(
     val taskConversationBar: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
     val taskConversationChrome: TaskConversationHeaderChrome? = null,
-    /** Task v2 on a phone: the head moves with the conversation's scroll and is pulled down from the bar. */
+    /** Task v2 on a phone: the head pulled down from the bar, open on entry, closed by a scroll or a press outside it. */
     val taskConversationHead: TaskHeadScrollState? = null,
     /** Task v2 on a phone: the head pulled down from the bar over the messages ([TaskHeadFloat]). */
     val taskConversationFloat: (@Composable () -> Unit)? = null,
@@ -18099,18 +18099,16 @@ private fun ThreadPageContentContent(
                     content = renderThreadTabContent
                 )
             } else {
-                // Task v2: the list tells the head how far it may fold ([taskHeadConversationOverflow]).
                 // No tab pager around the list here: dragging it left shows message times
                 // (ThreadMessageTimeReveal.kt). Under the pager that drag pages to Tasks.
                 CompositionLocalProvider(
-                    LocalTaskHeadScrollState provides data.taskConversationHead,
                     LocalThreadTimeRevealAvailable provides true,
                 ) {
                     renderThreadTabContent(
                         // Task v2 cards: the page under them is always the conversation.
                         if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
                         Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
-                            // Task v2 on a phone: the head above moves with the conversation's scroll.
+                            // Task v2 on a phone: scrolling the messages puts the pulled-down head back up.
                             .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
                         true
                     )
@@ -18946,8 +18944,8 @@ internal fun ThreadPageHeader(
         },
         titleContent = {
             if (taskConversationChrome != null) {
-                // Task v2 (web TaskConversationBar): the ref over "Task #7", and the task's state once
-                // the head has scrolled away.
+                // Task v2 (web TaskConversationBar): the ref over "Task #7", and on a phone the task's
+                // state with the chevron that pulls the head down.
                 TaskConversationBarTitle(taskConversationChrome, Modifier.weight(1f))
             } else
             Column(
@@ -24376,11 +24374,6 @@ private fun ThreadMessagesListContent(
                 )
             }
             val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
-            val taskHeadScrollState = LocalTaskHeadScrollState.current
-            val taskHeadOverflowModifier =
-                remember(taskHeadScrollState, listState.raw) {
-                    Modifier.taskHeadConversationOverflow(taskHeadScrollState, listState.raw)
-                }
             // Drag the list toward its start to see message times (ThreadMessageTimeReveal.kt): where
             // no tab pager surrounds the list, and not while messages are being selected.
             val timeRevealState = rememberThreadTimeRevealState(threadInstanceKey)
@@ -24402,9 +24395,6 @@ private fun ThreadMessagesListContent(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
-                    // Task v2: a short conversation stays bottom-anchored with the head in view
-                    // instead of a gap above its oldest row once the head folds (#proj-mobile:#69).
-                    .then(taskHeadOverflowModifier)
                     .then(
                         if (inPlaceSelectionViewportHost?.enabled == true) {
                             // In-place selection bar stays inside the list's visible viewport.

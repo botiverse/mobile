@@ -37,13 +37,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
-import kotlin.math.roundToInt
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -52,18 +48,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.foundation.lazy.LazyListLayoutInfo
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.ui.layout.layout
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
 import build.raft.app.data.TaskConversationDetailsViewModel
@@ -294,68 +281,36 @@ private fun TaskHistoryRow.toHeadRow(members: List<MemberProfile>, timeContext: 
 /** The description folds to three lines (web `DESCRIPTION_COLLAPSE_LINE_LIMIT`). */
 private const val TaskHeadDescriptionCollapsedLines = 3
 
-/** On a phone the head shows at most this much of the page at once (the rest comes as it scrolls). */
-private const val TaskHeadPhoneMaxFraction = 0.6f
-
-/** Narrower than this the head scrolls with the conversation (web `mobile-modal`); wider it stays pinned. */
+/** Narrower than this (a phone) the head is pulled down from the top bar ([TaskHeadScrollState]); wider it stays pinned. */
 internal val TaskHeadPinnedMinWidth = 600.dp
 
 /**
- * Where the head of a phone's task conversation is: web puts the head in the conversation as its
- * first row, so it scrolls away with it (Artea, #wg-task-v2 #7: pinned, it left the replies a
- * sliver). Here the head sits above the conversation and moves with the conversation's scroll
- * ([connection], on an ancestor of the message list): a drag towards newer messages slides it away
- * before the list scrolls; a drag back down brings it back only once the list is at its oldest
- * message, as the first row would. [collapsed]: out of view (the top bar then names the task's
- * state). Off a phone it stays pinned and none of this applies.
+ * Where the head of a phone's task conversation is: never in the page. The top bar always names
+ * the task's state ([collapsed]) and pulls the head down over the messages ([floatOpen], web
+ * `TaskHeadPullDown`, slock #11722). The head used to sit above the messages and scroll away with
+ * them (web's first row, Artea #wg-task-v2 #7), folding only as far as a short conversation could
+ * follow (Kirby, #proj-mobile:#69), with the panel only once it was gone: two heads that looked
+ * and behaved differently. artin (2026-11-06, #proj-mobile:01b96d5b) chose the pull-down for the
+ * first look too, so the panel is open when the conversation opens (once: one state per open
+ * conversation) and after that opens only from the bar ([toggleFloat]).
  *
- * While it is out of view, the top bar pulls it down over the messages ([floatOpen], web
- * `TaskHeadPullDown`, slock #11722): [toggleFloat] on the bar; it closes on the bar again, a tap
- * outside it, a swipe up on it, Back / Escape, focus in the composer ([closeFloat]) and as soon as
- * the reader scrolls the messages ([connection]) or the head comes back in view.
- *
- * The list stays bottom-anchored like any chat, so the head folds only as far as the conversation
- * has messages to show in its place ([foldLimitPx], from [minShownHeightPx]): a short
- * conversation keeps the head in view rather than open a blank gap above its oldest message
- * (Kirby, #proj-mobile:#69), as web's first row scrolls only as far as the list does.
+ * It closes on the bar again, a tap outside it, a swipe up on it, Back / Escape, focus in the
+ * composer or the keyboard coming up ([closeFloat]) and as soon as the reader scrolls the messages
+ * ([connection]). Off a phone the head stays pinned in the page and none of this applies.
  */
 @Stable
 internal class TaskHeadScrollState {
-    var heightPx by mutableFloatStateOf(0f)
-        internal set
-    /** How far the head was moved away, before [foldLimitPx] holds it back. */
-    private var requestedOffsetPx by mutableFloatStateOf(0f)
+    /** On a phone: the head is not in the page and the top bar summarizes the task ([updatePhone]). */
+    var collapsed by mutableStateOf(false)
+        private set
 
-    /** How much of the head is out of view (from its top). */
-    val offsetPx: Float
-        get() = requestedOffsetPx.coerceAtMost(foldLimitPx).coerceAtLeast(0f)
-
-    /**
-     * How much of the head must stay on the page for the conversation below to fill the rest:
-     * the room the two share less the conversation's content, from the list's last layout
-     * ([Modifier.taskHeadConversationOverflow]). Negative infinity while the list has rows out of
-     * view. It does not change as the head folds or grows, only with the content or the room.
-     */
-    internal var minShownHeightPx by mutableFloatStateOf(Float.NEGATIVE_INFINITY)
-
-    /** The height the head took on the page in its last layout (set while measuring, not observed). */
-    internal var shownHeightPx: Float = 0f
-
-    /** How far the head may fold without the conversation leaving a gap above its oldest row. */
-    val foldLimitPx: Float
-        get() = taskHeadFoldLimitPx(heightPx, minShownHeightPx)
-    var scrollsWithConversation by mutableStateOf(false)
-        internal set
-
-    val collapsed: Boolean
-        get() = scrollsWithConversation && heightPx > 0f && offsetPx >= heightPx - 0.5f
-
-    private var floatRequested by mutableStateOf(false)
+    /** Open on entry: the first look at the task is the pulled-down head. */
+    private var floatRequested by mutableStateOf(true)
 
     /** The bottom edge of the pulled-down head in root coordinates (a press below it is outside). */
     internal var floatBottomInRootPx: Float = 0f
 
-    /** The head pulled down from the top bar over the messages: only while it is out of view. */
+    /** The head pulled down from the top bar over the messages: only on a phone. */
     val floatOpen: Boolean
         get() = floatRequested && collapsed
 
@@ -371,123 +326,24 @@ internal class TaskHeadScrollState {
         return wasOpen
     }
 
-    /** Back in view, the head needs no panel (and one must not come back with the next scroll away). */
-    private fun dropFloatIfInView() {
-        if (!collapsed) floatRequested = false
+    /**
+     * [phone]: the page is narrower than [TaskHeadPinnedMinWidth]. Off a phone the head is pinned
+     * in the page, so the panel asked for on entry is dropped (and does not open on a later resize).
+     */
+    internal fun updatePhone(phone: Boolean) {
+        collapsed = phone
+        if (!phone) floatRequested = false
     }
 
-    /** Moves the head by a drag [delta] (negative: up, away); returns the part it took. */
-    fun consume(delta: Float): Float {
-        if (!scrollsWithConversation) return 0f
-        val old = offsetPx
-        val next = (old - delta).coerceIn(0f, foldLimitPx)
-        requestedOffsetPx = next
-        dropFloatIfInView()
-        return old - next
-    }
-
-    /** Out of view: the keyboard came up (the conversation keeps the room above it). */
-    fun collapse() {
-        // Before the head is measured, "all of it": [updateHeight] clamps it to the height.
-        if (scrollsWithConversation) requestedOffsetPx = if (heightPx > 0f) heightPx else Float.POSITIVE_INFINITY
-    }
-
-    /** Back in view. */
-    fun expand() {
-        requestedOffsetPx = 0f
-        floatRequested = false
-    }
-
-    internal fun updateHeight(height: Float) {
-        if (height == heightPx) return
-        val wasCollapsed = scrollsWithConversation && heightPx > 0f && requestedOffsetPx >= heightPx - 0.5f
-        heightPx = height
-        requestedOffsetPx = if (wasCollapsed) height else requestedOffsetPx.coerceIn(0f, height)
-        dropFloatIfInView()
-    }
-
+    /** On an ancestor of the messages: the reader starts scrolling them, so the pulled-down head goes back up (web). */
     val connection: NestedScrollConnection =
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                // The reader starts scrolling the messages: the pulled-down head goes back up (web).
                 if (source == NestedScrollSource.UserInput && available.y != 0f) floatRequested = false
-                return if (available.y < 0f) Offset(0f, consume(available.y)) else Offset.Zero
+                return Offset.Zero
             }
-
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-                if (available.y > 0f) Offset(0f, consume(available.y)) else Offset.Zero
         }
 }
-
-/**
- * How far the head may fold ([TaskHeadScrollState.foldLimitPx]): the conversation's viewport grows
- * by what the head gives up and must not outgrow its content, so at least [minShownPx] of the
- * head stays. Rows out of view (negative infinity): all the way. Never past the head, never below
- * zero. A head taller than its share of the page shows only its top, so folding the hidden rest
- * moves nothing and is allowed.
- */
-internal fun taskHeadFoldLimitPx(heightPx: Float, minShownPx: Float): Float {
-    if (heightPx <= 0f) return 0f
-    return (heightPx - minShownPx).coerceIn(0f, heightPx)
-}
-
-/**
- * [TaskHeadScrollState.minShownHeightPx] from one layout: the head showed [shownPx] and the list's
- * content overflowed its viewport by [overflowPx] (infinite: rows out of view).
- */
-internal fun taskHeadMinShownHeightPx(shownPx: Float, overflowPx: Float): Float =
-    if (overflowPx == Float.POSITIVE_INFINITY) Float.NEGATIVE_INFINITY else shownPx - overflowPx
-
-/**
- * How much taller a bottom-anchored list's content is than its viewport: exact when every row is
- * laid out, infinite while some are out of view (then it overflows by more than any head).
- */
-internal fun taskHeadConversationOverflowPx(
-    totalRows: Int,
-    laidOutRowHeights: List<Int>,
-    rowSpacingPx: Int,
-    paddingPx: Int,
-    viewportPx: Int,
-): Float {
-    if (laidOutRowHeights.size < totalRows) return Float.POSITIVE_INFINITY
-    val content = laidOutRowHeights.sum() + rowSpacingPx * (totalRows - 1).coerceAtLeast(0) + paddingPx
-    return (content - viewportPx).toFloat()
-}
-
-private fun LazyListLayoutInfo.taskHeadConversationOverflowPx(): Float =
-    taskHeadConversationOverflowPx(
-        totalRows = totalItemsCount,
-        laidOutRowHeights = visibleItemsInfo.map { it.size },
-        rowSpacingPx = mainAxisItemSpacing,
-        paddingPx = beforeContentPadding + afterContentPadding,
-        viewportPx = viewportSize.height,
-    )
-
-/** The task head of the page around a conversation list, if it scrolls with it ([taskHeadConversationOverflow]). */
-internal val LocalTaskHeadScrollState = staticCompositionLocalOf<TaskHeadScrollState?> { null }
-
-/**
- * On the conversation's list: after each of its layouts, tells the task head above it how much of
- * it must stay for the content to fill the rest, so the head folds no further than the content can follow
- * ([TaskHeadScrollState.foldLimitPx]). Reads the list's layout only; it never scrolls it.
- */
-internal fun Modifier.taskHeadConversationOverflow(scrollState: TaskHeadScrollState?, listState: LazyListState): Modifier =
-    if (scrollState == null) {
-        this
-    } else {
-        layout { measurable, constraints ->
-            val placeable = measurable.measure(constraints)
-            // The list has just measured, so its layout info is this frame's, and the head above
-            // was measured earlier in the same pass ([shownHeightPx]): read together they give the
-            // room both share. Not observed: they change on every measure and are not its inputs.
-            val minShown =
-                Snapshot.withoutReadObservation {
-                    taskHeadMinShownHeightPx(scrollState.shownHeightPx, listState.layoutInfo.taskHeadConversationOverflowPx())
-                }
-            if (minShown != Snapshot.withoutReadObservation { scrollState.minShownHeightPx }) scrollState.minShownHeightPx = minShown
-            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-        }
-    }
 
 /**
  * Task v2: the head of a task conversation (web `TaskModalHead` in `TaskConversationDialog`). In the
@@ -496,10 +352,11 @@ internal fun Modifier.taskHeadConversationOverflow(scrollState: TaskHeadScrollSt
  * facts: Status and Assignee as the editors they were, Source, Created by, Created at, Earlier
  * discussion), and what happened to it (History, folded, as on web).
  *
- * On a phone (narrower than [TaskHeadPinnedMinWidth]) it scrolls with the conversation
- * ([TaskHeadScrollState]) and folds away while the keyboard is up ([keyboardUp]); wider it stays
- * pinned and never takes more than [maxHeightFraction] of the page: past that it scrolls inside
- * itself (web's pinned head, `max-h-[45%]`).
+ * On a phone (narrower than [TaskHeadPinnedMinWidth]) it takes no room in the page: the head is
+ * pulled down from the top bar instead ([TaskHeadFloat], [TaskHeadScrollState]), and the keyboard
+ * coming up ([keyboardUp]) puts it back up. Wider it stays pinned and never takes more than
+ * [maxHeightFraction] of the page: past that it scrolls inside itself (web's pinned head,
+ * `max-h-[45%]`).
  */
 @Composable
 internal fun TaskConversationHead(
@@ -520,64 +377,36 @@ internal fun TaskConversationHead(
     onRetryHistory: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
-    val content: @Composable () -> Unit = {
-        TaskHeadContent(
-            model = model,
-            onSelectStatus = onSelectStatus,
-            onOpenAssignee = onOpenAssignee,
-            onOpenSource = onOpenSource,
-            onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-            onOpenCreator = onOpenCreator,
-            initiallyHistoryOpen = initiallyHistoryOpen,
-            initiallyDescriptionExpanded = initiallyDescriptionExpanded,
-            onRetryHistory = onRetryHistory,
-        )
-    }
-    val padding = Modifier.raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
     BoxWithConstraints(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         val pageHeight = maxHeight
         val phone = maxWidth < TaskHeadPinnedMinWidth
-        SideEffect { scrollState.scrollsWithConversation = phone }
+        SideEffect { scrollState.updatePhone(phone) }
         LaunchedEffect(phone, keyboardUp) {
-            if (phone && keyboardUp) {
-                scrollState.collapse()
-                // Typing: the composer has focus, so the pulled-down head goes back up.
-                scrollState.closeFloat()
-            }
+            // Typing: the composer has focus, so the pulled-down head goes back up.
+            if (phone && keyboardUp) scrollState.closeFloat()
         }
-        Column(Modifier.fillMaxWidth()) {
-            if (phone) {
-                // The head at its full height, shown from [offsetPx] down: it slides up under the top bar.
-                Layout(
-                    content = {
-                        Column(Modifier.fillMaxWidth().onSizeChanged { scrollState.updateHeight(it.height.toFloat()) }.then(padding)) {
-                            content()
-                        }
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clipToBounds()
-                            .draggable(
-                                orientation = Orientation.Vertical,
-                                state = rememberDraggableState { delta -> scrollState.consume(delta) },
-                            ),
-                ) { measurables, constraints ->
-                    val placeable = measurables.single().measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
-                    val offset = scrollState.offsetPx.roundToInt().coerceIn(0, placeable.height)
-                    // Never more than [TaskHeadPhoneMaxFraction] of the page: the conversation and the
-                    // composer keep the rest; a taller head shows its top, the rest comes with the drag.
-                    val visibleCap =
-                        if (pageHeight.value.isFinite()) (pageHeight * TaskHeadPhoneMaxFraction).roundToPx() else placeable.height
-                    val shown = (placeable.height - offset).coerceAtMost(visibleCap)
-                    scrollState.shownHeightPx = shown.toFloat()
-                    layout(placeable.width, shown) { placeable.place(0, -offset) }
-                }
-                if (!scrollState.collapsed) TaskHeadDivider()
-            } else {
-                val cap = if (pageHeight.value.isFinite()) pageHeight * maxHeightFraction else pageHeight
-                Column(Modifier.fillMaxWidth().heightIn(max = cap).verticalScroll(rememberScrollState()).then(padding)) {
-                    content()
+        if (!phone) {
+            val cap = if (pageHeight.value.isFinite()) pageHeight * maxHeightFraction else pageHeight
+            Column(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = cap)
+                        .verticalScroll(rememberScrollState())
+                        .raftSafeAreaHorizontalPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
+                ) {
+                    TaskHeadContent(
+                        model = model,
+                        onSelectStatus = onSelectStatus,
+                        onOpenAssignee = onOpenAssignee,
+                        onOpenSource = onOpenSource,
+                        onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                        onOpenCreator = onOpenCreator,
+                        initiallyHistoryOpen = initiallyHistoryOpen,
+                        initiallyDescriptionExpanded = initiallyDescriptionExpanded,
+                        onRetryHistory = onRetryHistory,
+                    )
                 }
                 TaskHeadDivider()
             }
@@ -1047,12 +876,12 @@ internal fun TaskConversationHeadRoute(
     /** Null: the creator is a plain fact. */
     onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     scrollState: TaskHeadScrollState,
-    /** The keyboard is up: on a phone the head folds away. */
+    /** The keyboard is up: on a phone the pulled-down head goes back up. */
     keyboardUp: Boolean = false,
     onRetryHistory: (() -> Unit)? = null,
     /** False: status and assignee are plain facts ([taskConversationHeadModel]). */
     editable: Boolean = true,
-    /** The head pulled down from the top bar over the messages ([TaskHeadFloat]), not the one in the conversation. */
+    /** The head pulled down from the top bar over the messages ([TaskHeadFloat]), not the one pinned in the page. */
     floating: Boolean = false,
     /** The task's server: the head's faces read its member directory. */
     serverId: String? = null,
@@ -1199,8 +1028,8 @@ internal fun TaskHeadDateTime.localized(): String {
 
 /**
  * The task conversation's top bar (web `TaskConversationBar`): the task's ref (`#channel:#7`, Space
- * Mono, muted) over "Task #7". While the head is scrolled away ([summarized]) the second line is
- * "Task #7", the status badge, the assignee's face and a chevron (slock #11722): tapping the bar
+ * Mono, muted) over "Task #7". On a phone, where the head is not in the page ([summarized]), the
+ * second line is "Task #7", the status badge, the assignee's face and a chevron (slock #11722): tapping the bar
  * pulls the head down over the messages ([headFloatOpen]) and tapping it again puts it back. The
  * More menu's View in Channel and Follow / Unfollow Task go with it.
  */
@@ -1262,7 +1091,7 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         chrome.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: chrome.ref
     // At large text the bar has room for one line: the task line keeps it.
     val refLine = LocalDensity.current.fontScale <= 1.3f
-    // The whole bar is the toggle while the head is away (web: the summary button; here the bar's
+    // The whole bar is the toggle on a phone (web: the summary button; here the bar's
     // title block, the ref line included, so a tap anywhere on it opens the head).
     val focusManager = LocalFocusManager.current
     val toggle =
@@ -1331,8 +1160,9 @@ private fun TaskBarChevron(open: Boolean) {
 
 /**
  * The head pulled down from the top bar over the messages (web `TaskHeadPullDown`, slock #11722):
- * the same title, description, facts and History as the head in the conversation, editable the
- * same way, without losing the reader's place. Composed at the top of the box over the messages.
+ * on a phone the only head, open when the conversation opens ([TaskHeadScrollState]). The same
+ * title, description, facts and History as the pinned head of a wider page, editable the same
+ * way, without losing the reader's place. Composed at the top of the box over the messages.
  */
 @Composable
 internal fun TaskHeadFloat(

@@ -53,7 +53,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The task head's two editors on a phone, laid out as the task conversation page lays them out
- * (the head above the messages, which scroll it away; the pulled-down head over both) and on the
+ * (the head pulled down from the bar over the messages, down as the page opens) and on the
  * pending task page: tapping the Status chip opens the status menu and a pick dispatches the task
  * channel store's UpdateStatus; tapping the Assignee opens the picker and a pick dispatches
  * AssignTask (web TaskProperties' InlineBadgeEditors, slock staging 2d1156a89). A read-only task
@@ -171,9 +171,10 @@ class TaskConversationHeadEditUiTest {
     }
 
     /**
-     * ThreadPage's task conversation on a phone: the top bar, then the head ([floating] false)
-     * above the messages, whose scroll moves it, and the pulled-down head ([floating] true) over
-     * both; a press outside the pulled-down head anywhere on the page puts it back up.
+     * ThreadPage's task conversation on a phone: the top bar, then the in-page head ([floating]
+     * false, no room on a phone: it only tells the state the page is a phone's) above the messages,
+     * whose scroll puts the pulled-down head back up, and the pulled-down head ([floating] true)
+     * over them, down as the page opens; a press outside it anywhere on the page puts it back up.
      */
     @Composable
     private fun ConversationPage(task: TaskSummary) {
