@@ -922,7 +922,8 @@ private data class UserProfileUpdatedDto(
     val name: String,
     val displayName: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String,
+    // Optional: Gravatar is being retired (#triage:#238); a missing field must not drop the whole event.
+    val gravatarHash: String = "",
 ) {
     fun toDomain(): UserProfileUpdated? {
         val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return null

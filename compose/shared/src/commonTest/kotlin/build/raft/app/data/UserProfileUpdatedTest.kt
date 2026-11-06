@@ -40,6 +40,19 @@ class UserProfileUpdatedTest {
 
     // --- Wire ---------------------------------------------------------------------------------
 
+    /** Gravatar is being retired (#triage:#238): without the field the event still arrives. */
+    @Test
+    fun aMissingGravatarHashKeepsTheEvent() {
+        val mapper = RealtimeEventMapper()
+        assertEquals(
+            event(displayName = null, avatarUrl = null).copy(gravatarHash = ""),
+            mapper.map(
+                RealtimeSocketEvents.UserProfileUpdated,
+                """{"serverId":"$serverA","userId":"$personId","name":"ann","displayName":null,"avatarUrl":null}""",
+            ),
+        )
+    }
+
     @Test
     fun mapperReadsTheUpstreamPayload() {
         assertEquals("user:profile-updated", RealtimeSocketEvents.UserProfileUpdated)
