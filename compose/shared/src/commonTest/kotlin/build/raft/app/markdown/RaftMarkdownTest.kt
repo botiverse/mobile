@@ -2321,6 +2321,9 @@ class RaftMarkdownTest {
                     knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
                 ThreadMarkdownTagKind.UserMention ->
                     tag.label.removePrefix("@").trim().lowercase() in mentionKeys
+                ThreadMarkdownTagKind.Message ->
+                    tag.directMessagePeerName?.let { it.trim().lowercase() in directMessagePeerKeys }
+                        ?: (tag.channelName.orEmpty().trim().lowercase() in channelKeys)
                 ThreadMarkdownTagKind.DirectMessageThread ->
                     tag.directMessagePeerName.orEmpty().trim().lowercase() in directMessagePeerKeys &&
                         !tag.threadShortId.isNullOrBlank()

@@ -128,6 +128,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.parseRaftDirectMessagePeerRef
+import build.raft.app.markdown.RaftMarkdownMessageRef
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MemberProfile
@@ -5248,7 +5249,9 @@ internal class SharedThreadDataSource(
         currentPayload: RaftThreadScreenPayload,
         channelLabel: String,
         threadShortId: String?,
-        requiredParentKind: ConversationKind? = null
+        requiredParentKind: ConversationKind? = null,
+        /** The message to focus in the thread when the caller knows it (a `#channel:short msg=id` ref). */
+        focusedMessageId: String? = null
     ): DataResult<RaftThreadScreenPayload> {
         val shortId =
             threadShortId
@@ -5322,7 +5325,7 @@ internal class SharedThreadDataSource(
                 requiredParentKind = requiredParentKind,
                 knownMemberProfilesById = knownMemberProfilesById,
                 parentMessageId = target.parentMessageId,
-                focusedMessageId = target.focusedMessageId,
+                focusedMessageId = focusedMessageId ?: target.focusedMessageId,
                 threadChannelId = target.threadChannelId
             )
                 ?: return DataResult.Empty(EmptyReason.NoMessages)
@@ -5339,6 +5342,107 @@ internal class SharedThreadDataSource(
         if (!isCurrentReplyCacheProvenance(provenance)) {
             return staleReplyCacheProvenanceResult()
         }
+        return DataResult.Content(payload)
+    }
+
+    /**
+     * Opens what a message ref names (Web `handleOpenMessageRef`): the channel or DM is resolved by
+     * name in the current server, and the id, which may be short, by the message's context. A reply
+     * opens its thread focused on it; a top-level message opens its conversation anchored on it,
+     * unless the ref names a thread, which then opens with the message focused.
+     */
+    suspend fun markdownMessageRefLaunchPayload(
+        provenance: ReplyCacheProvenance,
+        currentPayload: RaftThreadScreenPayload,
+        ref: RaftMarkdownMessageRef
+    ): DataResult<RaftThreadScreenPayload> {
+        val resolutionScope =
+            readReplyResolutionScope()
+                ?: return authSessionRequiredResult()
+        if (resolutionScope.provenance != provenance || !isCurrentReplyCacheProvenance(provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        val home =
+            currentHomeSnapshot(resolutionScope.session)
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val requiredKind = ConversationKind.DirectMessage.takeIf { ref.directMessagePeerName != null }
+        val knownMemberProfilesById = currentKnownMarkdownMemberProfilesById(home)
+        val channel =
+            resolveMarkdownChannelConversation(
+                home = home,
+                channelLabel = ref.conversationLabel,
+                requiredKind = requiredKind,
+                knownMemberProfilesById = knownMemberProfilesById,
+                currentPayload = currentPayload,
+                threadShortId = ref.threadShortId ?: ref.messageId
+            )
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val parentChannelId =
+            channel.resolveThreadRouteIdentity().timelineChannelId
+                ?: channel.messageStreamChannelId().value.takeIf { it.isNotBlank() }
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val localTopLevelTarget =
+            currentPayload.markdownThreadRefTarget(parentChannelId, ref.messageId)?.copy(threadChannelId = null)
+        val target =
+            localTopLevelTarget
+                ?: when (
+                    val result =
+                        fetchThreadSnapshotFromRepository(
+                            fallbackCode = "thread_markdown_message_ref_context_network",
+                            expectedProvenance = provenance,
+                            call = { repository ->
+                                repository.resolveMessageContext(MessageId(ref.messageId), ChannelId(parentChannelId))
+                            }
+                        )
+                ) {
+                    is DataResult.Content -> result.data.markdownThreadRefTarget(parentChannelId, ref.messageId)
+                    is DataResult.Empty -> return result
+                    is DataResult.Error -> return result
+                    is DataResult.NoPermission -> return result
+                }
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+        if (!isCurrentReplyCacheProvenance(provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        if (target.focusedMessageId == null && target.threadChannelId == null) {
+            val messageId = target.parentMessageId
+            ref.threadShortId?.let { threadShortId ->
+                return markdownThreadRefLaunchPayload(
+                    provenance = provenance,
+                    currentPayload = currentPayload,
+                    channelLabel = ref.conversationLabel,
+                    threadShortId = threadShortId,
+                    requiredParentKind = requiredKind,
+                    // The thread's own parent: opening the thread is the jump.
+                    focusedMessageId = messageId.takeUnless { it.startsWith(threadShortId, ignoreCase = true) }
+                )
+            }
+            return buildMarkdownChannelLaunchPayload(
+                currentPayload = currentPayload,
+                home = home,
+                channelLabel = ref.conversationLabel,
+                requiredKind = requiredKind,
+                knownMemberProfilesById = knownMemberProfilesById,
+                anchorMessageId = messageId
+            )?.let { DataResult.Content(it) }
+                ?: DataResult.Empty(EmptyReason.NoMessages)
+        }
+        val payload =
+            buildMarkdownThreadRefLaunchPayload(
+                currentPayload = currentPayload,
+                home = home,
+                channelLabel = ref.conversationLabel,
+                threadShortId = ref.threadShortId ?: ref.messageId,
+                requiredParentKind = requiredKind,
+                knownMemberProfilesById = knownMemberProfilesById,
+                parentMessageId = target.parentMessageId,
+                focusedMessageId = target.focusedMessageId,
+                threadChannelId = target.threadChannelId
+            )
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+        target.threadChannelId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { cacheReplyThreadResolution(provenance, parentChannelId, target.parentMessageId, it) }
         return DataResult.Content(payload)
     }
 
@@ -13070,7 +13174,8 @@ internal fun buildMarkdownChannelLaunchPayload(
     home: HomeSnapshot,
     channelLabel: String,
     requiredKind: ConversationKind? = null,
-    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
+    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap(),
+    anchorMessageId: String? = null
 ): RaftThreadScreenPayload? {
     val channel =
         resolveMarkdownChannelConversation(
@@ -13085,6 +13190,7 @@ internal fun buildMarkdownChannelLaunchPayload(
     return buildStandaloneConversationThreadLaunchPayload(
         conversation = conversation,
         timeContext = currentPayload.toRaftTimeContext(),
+        anchorMessageId = anchorMessageId,
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
         instanceIdOverride = "shared-shell-thread-$streamChannelId"

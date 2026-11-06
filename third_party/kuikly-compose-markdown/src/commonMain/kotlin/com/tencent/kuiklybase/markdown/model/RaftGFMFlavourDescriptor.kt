@@ -635,11 +635,18 @@ private fun List<RaftLexerSegment>.withRaftReferenceTokens(
     val candidates = content.raftMarkdownSyntaxCandidateRanges(start, end)
     if (candidates.isEmpty()) return this
 
-    val eligible = candidates.filter { candidate ->
+    fun claimable(candidate: IntRange): Boolean {
         val overlapping = filter { segment ->
             segment.start < candidate.last + 1 && candidate.first < segment.endExclusive
         }
-        overlapping.isNotEmpty() && overlapping.all { it.type in RaftReferenceSourceTokenTypes }
+        return overlapping.isNotEmpty() && overlapping.all { it.type in RaftReferenceSourceTokenTypes }
+    }
+    // A `#channel msg=id` whose tail Markdown owns (`msg=www.example.com` is an autolink) keeps
+    // its `#channel`, as the plain form of that text.
+    val eligible = candidates.mapNotNull { candidate ->
+        candidate.takeIf(::claimable)
+            ?: content.raftInlineRefRange(candidate.first, end, messageRefs = false)
+                ?.takeIf { it.last < end && claimable(it) }
     }
     if (eligible.isEmpty()) return this
 
@@ -682,6 +689,9 @@ private val RaftReferenceSourceTokenTypes: Set<IElementType> =
         // lexes it as a strikethrough delimiter; inside a complete ref it is
         // part of the ref token, never an independent strikethrough run.
         GFMTokenTypes.TILDE,
+        // Only a message ref holds whitespace, between its target and `msg=`.
+        MarkdownTokenTypes.WHITE_SPACE,
+        MarkdownTokenTypes.EOL,
     )
 
 private class RaftCodeSpanShieldingLexer : GeneratedLexer {
