@@ -240,6 +240,7 @@ enum class ThreadMarkdownTagKind {
     DirectMessage,
     Channel,
     Task,
+    Message,
     UserMention
 }
 
@@ -261,6 +262,7 @@ internal enum class MarkdownInlineTokenKind {
     DirectMessage,
     Channel,
     Task,
+    Message,
     UserMention
 }
 
@@ -516,6 +518,7 @@ private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTok
         ThreadMarkdownTagKind.DirectMessage -> MarkdownInlineTokenKind.DirectMessage
         ThreadMarkdownTagKind.Channel -> MarkdownInlineTokenKind.Channel
         ThreadMarkdownTagKind.Task -> MarkdownInlineTokenKind.Task
+        ThreadMarkdownTagKind.Message -> MarkdownInlineTokenKind.Message
         ThreadMarkdownTagKind.UserMention -> MarkdownInlineTokenKind.UserMention
     }
 
@@ -731,6 +734,17 @@ private fun Set<String>.containsThreadMention(label: String): Boolean {
 }
 
 private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? {
+    // `#channel msg=id` / `dm:@peer:short msg=id`: a message (Web message refs). The label is the
+    // canonical target, which is what the Web's chip shows and what opening it parses.
+    parseRaftMarkdownMessageRefLabel(this)?.let { ref ->
+        return ThreadMarkdownTag(
+            label = ref.label,
+            kind = ThreadMarkdownTagKind.Message,
+            channelName = ref.channelName,
+            threadShortId = ref.threadShortId,
+            directMessagePeerName = ref.directMessagePeerName
+        )
+    }
     // `#channel:#7` / `dm:@peer:#7`: a task of a named conversation (Web task refs). Checked first:
     // the channel / DM forms below would otherwise read `triage:#7` as a channel name.
     parseRaftMarkdownTaskRefLabel(this)?.takeIf { it.qualified }?.let { ref ->
@@ -1309,6 +1323,7 @@ private fun RaftRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
                 RaftRichTextRefKind.DirectMessageThread -> ThreadMarkdownTagKind.DirectMessageThread
                 RaftRichTextRefKind.DirectMessage -> ThreadMarkdownTagKind.DirectMessage
                 RaftRichTextRefKind.Task -> ThreadMarkdownTagKind.Task
+                RaftRichTextRefKind.Message -> ThreadMarkdownTagKind.Message
                 RaftRichTextRefKind.UserMention -> ThreadMarkdownTagKind.UserMention
             },
         channelName = channelName,
@@ -3517,7 +3532,8 @@ private fun String.raftInlineChipWidthSafetySp(kind: ThreadMarkdownTagKind?): Fl
         kind == ThreadMarkdownTagKind.Channel ||
             kind == ThreadMarkdownTagKind.ChannelThread ||
             kind == ThreadMarkdownTagKind.DirectMessageThread ||
-            kind == ThreadMarkdownTagKind.DirectMessage -> 16f
+            kind == ThreadMarkdownTagKind.DirectMessage ||
+            kind == ThreadMarkdownTagKind.Message -> 16f
         startsWith("#") && drop(1).any { !it.isDigit() } -> 16f
         else -> 0f
     }
@@ -3607,10 +3623,10 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
     }
 
 // Reference styling mirrors raft-ui (message-reference.recipe.ts, lib/inline-chip.ts):
-// - a #channel / DM ref is a solid `attention-soft` chip, a thread / message ref an `info-soft`
-//   one: 0.875em semibold ink, 6px at each end, `rounded-sticker`, no underline;
-// - the reader's own @mention is the yellow `bg-brand` sticker with a 1.5px `sticker-ink` inset
-//   ring in the same box;
+// - a #channel / DM ref is a solid `attention-soft` chip, a thread ref an `info-soft` one:
+//   0.875em semibold ink, 6px at each end, `rounded-sticker`, no underline;
+// - the reader's own @mention and a message ref (`#channel msg=id`) are the yellow sticker
+//   (MessageReferenceText variant="primary") with a 1.5px `sticker-ink` inset ring in the same box;
 // - anyone else's @mention is bold ink at the sentence's size, underlined only while pressed.
 // The chip box is a RaftInlineBoxStyle annotation; the 0.875em size is a span inside it
 // ([raftMarkdownRichTextTagFontSizeStyle]) so the box painter measures the chip's own text.
@@ -3684,6 +3700,7 @@ private fun raftRichTextChromeKind(
         kind == ThreadMarkdownTagKind.ChannelThread -> RaftRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.Channel -> RaftRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.Task -> RaftRichTextChromeKind.Task
+        kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         else -> RaftRichTextChromeKind.OrdinaryMention
     }
 

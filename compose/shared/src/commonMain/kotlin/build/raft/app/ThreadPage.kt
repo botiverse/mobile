@@ -181,6 +181,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
 import build.raft.app.data.map
 import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -326,6 +327,7 @@ import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
 import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
+import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
@@ -4001,6 +4003,13 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
                 else -> knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
             }
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
+        // A channel or DM the reader cannot resolve keeps the ref as plain text (Web MessageItem).
+        ThreadMarkdownTagKind.Message ->
+            if (directMessagePeerName != null) {
+                directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
+            } else {
+                channelName.orEmpty().trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
+            }
         ThreadMarkdownTagKind.DirectMessageThread ->
             directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
                 !threadShortId.isNullOrBlank()
@@ -14237,8 +14246,11 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
-                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef") &&
+                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef" || action == "openMarkdownMessageRef") &&
                     !itemId.isNullOrBlank() -> {
+                    val openMessageRef = action == "openMarkdownMessageRef"
+                    val unableToOpenRefLabel =
+                        if (openMessageRef) localizedUnableToOpenTarget(itemId.take(32)) else unableToOpenThreadRefLabel
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
                     // How long the chip waits for its target (a local hit, or messages/context).
@@ -14252,23 +14264,35 @@ private fun SharedThreadRouteContentContent(
                                     .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                             if (provenance == null) {
                                 resolveOutcome = "no_provenance"
-                                bridge.toast(unableToOpenThreadRefLabel)
+                                bridge.toast(unableToOpenRefLabel)
                                 return@launch
                             }
                             when (
                                 val result =
-                                    dataSource.markdownThreadRefLaunchPayload(
-                                        provenance = provenance,
-                                        currentPayload = renderedThread,
-                                        channelLabel = itemId,
-                                        threadShortId = tab,
-                                        requiredParentKind =
-                                            if (action == "openMarkdownDirectMessageThreadRef") {
-                                                ConversationKind.DirectMessage
-                                            } else {
-                                                null
+                                    if (openMessageRef) {
+                                        parseRaftMarkdownMessageRefLabel(itemId)
+                                            ?.let { ref ->
+                                                dataSource.markdownMessageRefLaunchPayload(
+                                                    provenance = provenance,
+                                                    currentPayload = renderedThread,
+                                                    ref = ref
+                                                )
                                             }
-                                    )
+                                            ?: DataResult.Empty(EmptyReason.NoMessages)
+                                    } else {
+                                        dataSource.markdownThreadRefLaunchPayload(
+                                            provenance = provenance,
+                                            currentPayload = renderedThread,
+                                            channelLabel = itemId,
+                                            threadShortId = tab,
+                                            requiredParentKind =
+                                                if (action == "openMarkdownDirectMessageThreadRef") {
+                                                    ConversationKind.DirectMessage
+                                                } else {
+                                                    null
+                                                }
+                                        )
+                                    }
                             ) {
                                 is DataResult.Content -> {
                                     resolveOutcome = "opened"
@@ -14285,10 +14309,18 @@ private fun SharedThreadRouteContentContent(
                                         val targetFocusedMessageId = result.data.focusedMessageId
                                         if (!targetFocusedMessageId.isNullOrBlank()) {
                                             threadViewModel.dispatch(
-                                                SharedThreadIntent.FocusMessage(
-                                                    messageId = targetFocusedMessageId,
-                                                    switchToTab = result.data.selectedTab
-                                                )
+                                                if (openMessageRef) {
+                                                    // The named message may be outside the loaded window.
+                                                    SharedThreadIntent.JumpToMessage(
+                                                        messageId = targetFocusedMessageId,
+                                                        switchToTab = result.data.selectedTab
+                                                    )
+                                                } else {
+                                                    SharedThreadIntent.FocusMessage(
+                                                        messageId = targetFocusedMessageId,
+                                                        switchToTab = result.data.selectedTab
+                                                    )
+                                                }
                                             )
                                         }
                                     } else {
@@ -14297,11 +14329,11 @@ private fun SharedThreadRouteContentContent(
                                 }
                                 is DataResult.Empty -> {
                                     resolveOutcome = "empty"
-                                    bridge.errorToast(unableToOpenThreadRefLabel)
+                                    bridge.errorToast(unableToOpenRefLabel)
                                 }
                                 is DataResult.Error -> {
                                     resolveOutcome = "error"
-                                    bridge.errorToast(unableToOpenThreadRefLabel, result.error)
+                                    bridge.errorToast(unableToOpenRefLabel, result.error)
                                 }
                                 is DataResult.NoPermission -> {
                                     resolveOutcome = "no_permission"
@@ -17542,6 +17574,14 @@ private fun ThreadPageContentContent(
                     "openMarkdownThreadRef",
                     tag.label,
                     tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.Message -> {
+                onThreadEvent(
+                    "openMarkdownMessageRef",
+                    tag.label,
+                    tab = tag.kind.name,
                     markdownActionId = actionId
                 )
             }
