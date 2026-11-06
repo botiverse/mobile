@@ -646,6 +646,7 @@ private data class IntegrationOverviewItemDto(
     val resolvedAt: String? = null,
     val resolvedByUserId: String? = null,
     val revokedAt: String? = null,
+    val grantSource: String? = null,
 )
 
 private fun IntegrationOverviewItemDto.toAgentAppLoginItem(): AgentAppLoginItem? {
@@ -674,7 +675,8 @@ private fun IntegrationOverviewItemDto.toAgentAppLoginItem(): AgentAppLoginItem?
         createdAt = createdAt.nonBlankOrNull(),
         resolvedAt = resolvedAt.nonBlankOrNull(),
         resolvedByUserId = resolvedByUserId.nonBlankOrNull(),
-        revokedAt = revokedAt.nonBlankOrNull()
+        revokedAt = revokedAt.nonBlankOrNull(),
+        grantSource = grantSource.nonBlankOrNull()
     )
 }
 

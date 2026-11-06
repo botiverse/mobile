@@ -3941,4 +3941,8 @@
     <string name="upgrade_dialog_limit_general">%1$s is on the Free plan.</string>
     <string name="upgrade_dialog_limit_seats">All of %1$s's seats are taken.</string>
     <string name="invite_human_view_billing">View billing</string>
+    <string name="member_app_grant_source_person">Granted by a person</string>
+    <string name="member_app_grant_source_agent_login">Granted when the agent signed in</string>
+    <string name="member_app_grant_source_app_request">Granted automatically to the app</string>
+    <string name="member_app_grant_source_legacy_import">Granted when the agent’s reminders moved to this app</string>
 </resources>

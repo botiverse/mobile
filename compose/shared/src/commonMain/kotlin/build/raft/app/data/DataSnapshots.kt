@@ -1057,7 +1057,9 @@ data class AgentAppLoginItem(
     val createdAt: String? = null,
     val resolvedAt: String? = null,
     val resolvedByUserId: String? = null,
-    val revokedAt: String? = null
+    val revokedAt: String? = null,
+    /** How the grant came about (web `grantSource`): person, agent_login, app_request, legacy_import; null when not reported. */
+    val grantSource: String? = null
 )
 
 enum class AgentAppLoginType {
