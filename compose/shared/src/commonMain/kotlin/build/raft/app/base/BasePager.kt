@@ -1,5 +1,6 @@
 package build.raft.app.base
 
+import build.raft.app.ProvideRaftLinkOpening
 import build.raft.app.ProvideRaftPageBaseTimeContext
 import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
@@ -91,7 +92,8 @@ internal abstract class BasePager : ComposeContainer() {
     ) {
         val layer = layers.firstOrNull()
         if (layer == null) {
-            content()
+            // Inside the database gate: the link setting is read through the shared preference store.
+            ProvideRaftLinkOpening(this@BasePager, content)
             return
         }
         val inner: @Composable () -> Unit = { RaftPageLayersContent(layers = layers.drop(1), content = content) }

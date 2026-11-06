@@ -45,7 +45,7 @@ internal data class ThreadAppLinkOpenCard(val url: String, val anchor: RaftPopov
  */
 internal class ThreadAppLinkCards(
     private val messageId: String,
-    private val openLink: (String) -> Unit,
+    val openLink: (String) -> Unit,
 ) {
     private val refs = mutableMapOf<String, RaftLiveRootAnchorRef>()
 
@@ -84,9 +84,8 @@ internal class ThreadAppLinkCards(
 }
 
 @Composable
-internal fun rememberThreadAppLinkCards(messageId: String): ThreadAppLinkCards {
-    val uriHandler = LocalUriHandler.current
-    val openLink by rememberUpdatedState<(String) -> Unit> { uriHandler.openUri(it) }
+internal fun rememberThreadAppLinkCards(messageId: String, onOpenLink: (String) -> Unit): ThreadAppLinkCards {
+    val openLink by rememberUpdatedState(onOpenLink)
     return remember(messageId) { ThreadAppLinkCards(messageId) { openLink(it) } }
 }
 
@@ -171,7 +170,7 @@ internal fun ThreadAppLinkCardPopoverHost(
         if (card == null) cards.close()
     }
     if (card == null) return
-    val uriHandler = LocalUriHandler.current
+    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
     Modal(onWillDismiss = { cards.close() }) {
         RaftDesignSystemTheme {
             ThreadAppLinkCardPopover(
@@ -180,7 +179,8 @@ internal fun ThreadAppLinkCardPopoverHost(
                 onDismiss = cards::close,
                 onOpenLink = {
                     cards.close()
-                    uriHandler.openUri(card.connectUrl ?: card.url)
+                    val address = card.connectUrl ?: card.url
+                    openThreadAppLinkAddress(address, card.connectUrl, cards.openLink, openInSystemBrowser)
                 },
             )
         }

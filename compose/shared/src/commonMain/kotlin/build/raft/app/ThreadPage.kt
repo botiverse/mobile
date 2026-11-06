@@ -29859,6 +29859,7 @@ private fun ThreadMessageCardContent(
                                                               messageId = message.id,
                                                               body = message.body,
                                                               enabled = message.pendingSendContext == null,
+                                                              onOpenLink = onOpenMarkdownUrl,
                                                           ) {
                                                           // A tap on a code block is not the row's tap (web skips `pre, code`).
                                                           CompositionLocalProvider(
