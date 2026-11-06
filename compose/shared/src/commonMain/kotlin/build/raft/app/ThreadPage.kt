@@ -531,7 +531,9 @@ import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.theme.LocalRaftColors
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.app.components.RaftDesignSystemTheme
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -555,6 +557,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -19014,19 +19018,14 @@ internal fun ThreadPageHeader(
                 // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
                 verticalArrangement = Arrangement.Top
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ThreadHeaderDmAgentActivityLeadingGap)
-                ) {
+                ThreadHeaderNameFirstRow(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = localizedHeaderTitle,
                         // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
                         style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                         color = RaftColor.TextBlack,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel) {
                         RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
@@ -19037,7 +19036,9 @@ internal fun ThreadPageHeader(
                     if (dmAppBot != null) {
                         RaftAppBotBadge(identity = dmAppBot, botName = localizedHeaderTitle)
                     } else {
-                        dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
+                        dmAgentActivity?.let {
+                            ThreadDmAgentActivity(state = it, modifier = Modifier.layoutId(ThreadHeaderYieldingSlot))
+                        }
                     }
                 }
                 // Web #10285: a reply thread's channel name does what Open in Channel does (the
@@ -19355,8 +19356,57 @@ internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
         ?.trim()
         ?.takeIf(String::isNotBlank)
 
+private const val ThreadHeaderYieldingSlot = "yielding"
+
+/**
+ * The header's title line: the name, its badges, then the agent's activity, 8dp apart. The name is
+ * measured first (web ChatPanel: `PanelTitle` keeps its width, AgentDMStatus is `flex-1 min-w-0`),
+ * so on a crowded phone head the activity words give way down to the dot and the name stays
+ * readable (artin 2026-11-06: with task v2's three buttons the name had shrunk to "."). The badges
+ * keep their width; the [ThreadHeaderYieldingSlot] child gets what is left after them and the name,
+ * but never less than its dot.
+ */
 @Composable
-private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
+private fun ThreadHeaderNameFirstRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val gap = ThreadHeaderDmAgentActivityLeadingGap.roundToPx()
+        val loose = constraints.copy(minWidth = 0)
+        val name = measurables.first()
+        val yielding = measurables.drop(1).firstOrNull { it.layoutId == ThreadHeaderYieldingSlot }
+        val fixed = measurables.drop(1).filter { it !== yielding }.map { it.measure(loose) }
+        val gaps = gap * (measurables.size - 1)
+        val yieldingMin = if (yielding == null) 0 else ThreadHeaderDmAgentActivityDotSize.roundToPx()
+        val namePlaceable =
+            if (constraints.hasBoundedWidth) {
+                val room = constraints.maxWidth - fixed.sumOf { it.width } - gaps - yieldingMin
+                name.measure(loose.copy(maxWidth = room.coerceAtLeast(0)))
+            } else {
+                name.measure(loose)
+            }
+        val yieldingPlaceable =
+            yielding?.let {
+                if (constraints.hasBoundedWidth) {
+                    val rest = constraints.maxWidth - namePlaceable.width - fixed.sumOf { p -> p.width } - gaps
+                    it.measure(loose.copy(maxWidth = rest.coerceAtLeast(0)))
+                } else {
+                    it.measure(loose)
+                }
+            }
+        val placeables = listOf(namePlaceable) + fixed + listOfNotNull(yieldingPlaceable)
+        val width = constraints.constrainWidth(placeables.sumOf { it.width } + gap * (placeables.size - 1))
+        val height = constraints.constrainHeight(placeables.maxOf { it.height })
+        layout(width, height) {
+            var x = 0
+            placeables.forEach {
+                it.placeRelative(x, (height - it.height) / 2)
+                x += it.width + gap
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState, modifier: Modifier = Modifier) {
     // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
     // warning colour, not as a plain "busy". Otherwise the same localized caption as every
     // other live-status surface (SSOT audit).
@@ -19365,7 +19415,7 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
     val labelColor = if (toolStuck != null) RaftColor.WarningStrong else RaftColor.ForegroundHint
     Row(
         modifier =
-            Modifier
+            modifier
                 .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
                 .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
@@ -19385,7 +19435,9 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
                 ),
             color = labelColor,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            // The dot stays; the words give way (web AgentDMStatus `truncate`).
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }
