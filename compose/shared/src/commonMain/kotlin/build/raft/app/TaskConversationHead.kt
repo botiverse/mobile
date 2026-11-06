@@ -584,6 +584,7 @@ private fun TaskHeadFacts(
 
 internal const val TaskHeadStatusTestTag = "task-head-status"
 internal const val TaskHeadAssigneeTestTag = "task-head-assignee"
+internal const val TaskBarSummaryTestTag = "task-bar-summary"
 internal val TaskHeadStatusMenuMinWidth = 200.dp
 
 /** Screenshots only: the status menu's anchor (the chip's box), so a capture can draw the popup's surface in place. */
@@ -1108,6 +1109,7 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
                 .semantics(mergeDescendants = true) {
                     if (open) collapse { onToggle(); true } else expand { onToggle(); true }
                 }
+                .testTag(TaskBarSummaryTestTag)
         } else {
             Modifier
         }
