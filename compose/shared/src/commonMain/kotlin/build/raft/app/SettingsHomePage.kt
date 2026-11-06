@@ -496,6 +496,7 @@ import kotlin.time.Clock
 import kotlin.time.TimeSource
 import build.raft.app.model.isExternalAgent
 import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.raftClickable
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
@@ -13207,7 +13208,7 @@ private fun SharedHomeSearchHistoryTextAction(
         modifier =
             Modifier
                 .height(44.dp)
-                .clickable(onClick = onClick)
+                .raftClickable(onClick = onClick)
                 .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {

@@ -437,7 +437,6 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -622,6 +621,7 @@ import kotlin.uuid.Uuid
 import kotlin.time.TimeSource
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.atomicfu.locks.SynchronizedObject
+import build.raft.designsystem.components.raftClickable
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
@@ -15502,7 +15502,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                         radius = RaftAppRadius.Container,
                         borderWidth = RaftAppStroke.Thin
                     )
-                    .clickable(onClick = onClick)
+                    .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Container), tier = RaftHoverTier.Subtle, selected = currentChannel)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -30388,7 +30388,7 @@ private fun ThreadNewMessageMenuMoreOverlay(
             Modifier
                 .fillMaxWidth()
                 .height(ThreadNewMessageMenuMoreOverlayHeight)
-                .clickable(enabled = enabled, onClick = onClick)
+                .raftClickable(onClick = onClick, enabled = enabled)
                 .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
@@ -30408,19 +30408,11 @@ private fun ThreadNewMessageMenuToolButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
     Column(
         modifier =
             modifier
                 .height(ThreadNewMessageMenuToolRowHeight)
-                .background(if (pressed && enabled) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
-                .clickable(
-                    enabled = enabled,
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick
-                )
+                .raftClickable(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(RaftAppRadius.Control))
                 .semantics { contentDescription = label }
                 .padding(horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -30558,14 +30550,14 @@ private fun ThreadMessageLocalSendStatus(
                     ),
                     style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                     color = RaftColor.TextMutedGray,
-                    modifier = Modifier.clickable { detailsExpanded = !detailsExpanded }.padding(vertical = 2.dp)
+                    modifier = Modifier.raftClickable(onClick = { detailsExpanded = !detailsExpanded }).padding(vertical = 2.dp)
                 )
                 if (detailsExpanded) {
                     Text(
                         text = stringResource(Res.string.thread_send_failure_copy_details),
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                         color = RaftColor.TextMutedGray,
-                        modifier = Modifier.clickable(onClick = onCopyDetails).padding(vertical = 2.dp)
+                        modifier = Modifier.raftClickable(onClick = onCopyDetails).padding(vertical = 2.dp)
                     )
                 }
             }

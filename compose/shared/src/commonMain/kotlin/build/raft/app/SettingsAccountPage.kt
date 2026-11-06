@@ -102,6 +102,8 @@ import build.raft.app.compat.pager.raftPlatformName
 import kotlin.time.Clock
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
 
@@ -967,7 +969,7 @@ private fun SettingsPasswordDisclosure(
     onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(32.dp).clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier.fillMaxWidth().height(32.dp).raftClickable(onClick = onClick, enabled = enabled, tier = RaftHoverTier.Subtle),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {

@@ -344,6 +344,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import build.raft.app.model.isExternalAgentRuntime
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
+import androidx.compose.ui.semantics.selected
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -8264,7 +8267,8 @@ private fun MembersArchiveWorkspaceOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (enabled) Modifier.clickable(onClick = onSelect) else Modifier)
+            .then(if (enabled) Modifier.raftClickable(onClick = onSelect, role = Role.RadioButton, tier = RaftHoverTier.Subtle) else Modifier)
+            .semantics { this.selected = selected }
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top
@@ -9111,7 +9115,7 @@ internal fun MembersServerRoleEditor(
                 .height(33.dp)
                 // Web InlineBadgeEditor with the roles' `default` soft badge: the fill-muted wash.
                 .raftControlSurface(fill = RaftColor.FillMuted, border = RaftColor.LineField)
-                .clickable(enabled = enabled, onClick = onToggle)
+                .raftClickable(onClick = onToggle, enabled = enabled, shape = RoundedCornerShape(RaftAppRadius.Control))
                 .padding(horizontal = RaftAppSpacing.Sm, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
@@ -9478,7 +9482,7 @@ private fun MembersProfileIconAction(
     Box(
         modifier = Modifier
             .size(18.dp)
-            .clickable(onClick = onClick)
+            .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Chip))
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center
     ) {
@@ -11900,7 +11904,7 @@ private fun MembersAgentSkillRow(skill: AgentSkillSummary) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button) { open = !open }
+            .raftClickable(onClick = { open = !open }, tier = RaftHoverTier.Subtle)
             .semantics { if (open) collapse { open = false; true } else expand { open = true; true } }
             .padding(horizontal = 12.dp, vertical = RaftAppSpacing.Sm)
     ) {
@@ -13598,7 +13602,7 @@ private fun MembersProfilePencilButton(
     Box(
         modifier = modifier
             .size(18.dp)
-            .clickable(onClick = onClick)
+            .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Chip))
             .then(
                 if (contentDescription != null) {
                     Modifier.semantics { this.contentDescription = contentDescription }
@@ -13841,7 +13845,7 @@ private fun MembersListMachineGroupLabel(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = MembersListMachineLabelTop, bottom = MembersListMachineLabelBottom)
-            .clickable(role = Role.Button, onClick = onToggle)
+            .raftClickable(onClick = onToggle, tier = RaftHoverTier.Subtle)
             .semantics { if (expanded) collapse { onToggle(); true } else expand { onToggle(); true } }
             .padding(horizontal = MembersListMachineLabelInset),
         verticalAlignment = Alignment.CenterVertically,

@@ -228,6 +228,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import build.raft.app.components.raftButtonVariantFor
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftPressSurface
 
 const val RAFT_HOME_PAGE = "compose_home"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
@@ -5592,7 +5595,7 @@ private fun HomeAppUpdateBanner(
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.FillMuted)
-                .clickable(onClick = onClick)
+                .raftClickable(onClick = onClick, tier = RaftHoverTier.Subtle)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -5963,8 +5966,13 @@ private fun HomeServerDrawerPanel(
                     modifier = Modifier.weight(1f),
                     maxLines = 1
                 )
+                val createServerLabel = stringResource(Res.string.auth_action_create_server)
                 Box(
-                    modifier = Modifier.size(36.dp).clickable(onClick = onCreateServerClick),
+                    modifier =
+                        Modifier
+                            .size(36.dp)
+                            .raftClickable(onClick = onCreateServerClick, shape = RoundedCornerShape(RaftAppRadius.Control), surface = RaftPressSurface.Frame)
+                            .semantics { contentDescription = createServerLabel },
                     contentAlignment = Alignment.Center
                 ) {
                     RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(18.dp))
@@ -6295,14 +6303,18 @@ private fun HomeServerDrawerServerHeader(
                 Modifier
                     .weight(1f)
                     .heightIn(min = HomeServerSwitcherRowMinHeight)
-                    .clickable(enabled = interactive) {
-                        dispatchHomeServerDrawerHeaderAction(
-                            action = HomeServerDrawerHeaderAction.OpenServerHome,
-                            serverId = section.server.id,
-                            onServerClick = onServerClick,
-                            onSectionToggle = onSectionToggle,
-                        )
-                    }
+                    .raftClickable(
+                        onClick = {
+                            dispatchHomeServerDrawerHeaderAction(
+                                action = HomeServerDrawerHeaderAction.OpenServerHome,
+                                serverId = section.server.id,
+                                onServerClick = onServerClick,
+                                onSectionToggle = onSectionToggle,
+                            )
+                        },
+                        enabled = interactive,
+                        tier = RaftHoverTier.Subtle,
+                    )
                     .padding(start = 12.dp, end = if (interactive) 0.dp else 12.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -6442,7 +6454,7 @@ private fun HomeServerDrawerErrorRow(
             Modifier
                 .fillMaxWidth()
                 .background(if (row.hasCache) RaftColor.FillMuted else RaftColor.Canvas)
-                .clickable(onClick = onRetry)
+                .raftClickable(onClick = onRetry, tier = RaftHoverTier.Subtle)
                 .padding(horizontal = HomeServerDrawerConversationHorizontalPadding, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
@@ -6736,7 +6748,8 @@ private fun ServerSwitcherRow(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    val clickModifier = onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier
+    val clickModifier =
+        onClick?.let { Modifier.raftClickable(onClick = it, shape = RoundedCornerShape(RaftAppRadius.Chip), tier = RaftHoverTier.Highlight, selected = selected) } ?: Modifier
     // web ServerSwitcherMenu `SortableServerRow`: `h-12`, `rounded-chip`, `pl-2.5 pr-1 gap-2.5`;
     // the avatar, the name (callout medium, bold for the current server) over the `/slug`
     // (mono meta, hint ink), then the 16dp check on the current one, the unread count, the grip.
@@ -6965,7 +6978,7 @@ private fun ServerSwitcherActionRow(
                 .fillMaxWidth()
                 .heightIn(min = 36.dp)
                 .clip(RoundedCornerShape(RaftAppRadius.Chip))
-                .clickable(onClick = onClick)
+                .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Chip), tier = RaftHoverTier.Highlight)
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)

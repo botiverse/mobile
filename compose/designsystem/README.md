@@ -410,6 +410,12 @@ Internal modifiers every component draws its states with; none takes layout room
   touch, whatever the platform reports (CSS `@media (hover: hover)`); `raftIsHovered`
   ignores the `HoverInteraction` that `clickable` emits. Every component that hovers
   attaches it on the same source as its `clickable`.
+- `Modifier.raftClickable(onClick, ...)` (`RaftClickable.kt`, public): the three above plus
+  `clickable` on one source, for app parts no component covers yet (a disclosure row, a card
+  that opens, a chip, a small text action). Press and hover by `tier` / `surface` in `shape`,
+  behind the content and over the fill chained before it; `Role.Button` by default (or the role
+  passed, `null` for none) and `onClickLabel`; no ambient indication and no layout room. Not for
+  scrims, tap sinks, drags, message rows or hidden shortcuts that show no press.
 - `Modifier.raftPointerHoverPosition { offset -> }`: where that same kind of pointer hovers
   (local px; null when it leaves), never touch. For parts of one element that hover one at a
   time, such as the links in a markdown paragraph (underlined in full colour under the pointer).

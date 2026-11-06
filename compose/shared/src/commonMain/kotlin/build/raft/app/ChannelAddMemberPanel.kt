@@ -1,8 +1,6 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +29,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -59,13 +56,11 @@ import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftMultiChoiceList
-import build.raft.designsystem.components.raftPointerHover
-import build.raft.designsystem.components.raftStateOverlay
-import build.raft.designsystem.components.rememberRaftStateOverlay
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.components.raftClickable
 
 /**
  * Add Member (web `ChannelMembers` add view, slock staging 61b6bec84): the members page's add
@@ -421,15 +416,11 @@ internal fun ThreadAddMemberCreateAgentRow(
     val active = spec.enabled
     val chipShape = RoundedCornerShape(RaftRadius.Chip)
     val tileInk = if (canCreateAgents) colors.foregroundHint else colors.foregroundDisabled
-    val source = remember { MutableInteractionSource() }
-    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Subtle, enabled = active)
     Row(
         Modifier
             .fillMaxWidth()
             .then(if (spec.promoted) Modifier.background(colors.brandSoft, chipShape) else Modifier)
-            .raftStateOverlay(overlay, chipShape)
-            .raftPointerHover(source, enabled = active)
-            .clickable(interactionSource = source, indication = null, enabled = active, role = Role.Button, onClick = onClick)
+            .raftClickable(onClick = onClick, enabled = active, shape = chipShape, tier = RaftHoverTier.Subtle)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -67,7 +67,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -94,6 +93,8 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 internal const val CHANNEL_SETTINGS_PAGE = "compose_channel_settings"
 
@@ -972,7 +973,7 @@ internal fun ChannelMembersSection(
     val summary = channelSettingsMemberSummary(slice = slice, fallbackCount = fallbackCount)
     RaftSection(
         title = stringResource(Res.string.channel_settings_members),
-        modifier = Modifier.clickable(onClick = onOpen),
+        modifier = Modifier.raftClickable(onClick = onOpen, tier = RaftHoverTier.Subtle),
         separator = separator,
         action = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
