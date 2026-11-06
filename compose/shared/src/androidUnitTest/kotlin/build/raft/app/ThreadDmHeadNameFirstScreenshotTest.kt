@@ -16,7 +16,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
-import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.runner.RunWith
@@ -59,14 +58,15 @@ class ThreadDmHeadNameFirstScreenshotTest {
 @Composable
 private fun DmHead(title: String, status: String) {
     val identity = remember(title) { MemberDetailIdentity(MemberId("agent-$title"), MemberKind.Agent) }
-    // Remembered, as in ThreadDmAgentActivityHeaderVisualScreen: a new resolver each composition
-    // restarts the header's collection, which recomposes it, forever.
+    // Not pulsing: a Working dot animates forever, so the capture never goes idle (as the other
+    // screenshot tests build their state).
     val state =
         remember(status) {
-            raftAgentStatusIndicatorState(
+            RaftAgentStatusIndicatorState(
                 status = AgentStatus.Working,
-                presence = Presence.Active,
-                statusLabel = status,
+                color = RaftColor.AccentLime,
+                pulsing = false,
+                label = status,
                 external = false,
             )
         }
