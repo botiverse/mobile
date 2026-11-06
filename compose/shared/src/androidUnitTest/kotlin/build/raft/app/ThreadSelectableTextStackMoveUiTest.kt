@@ -181,6 +181,11 @@ class ThreadSelectableTextStackMoveUiTest {
                     pushWithRowChange(stack)
                 }
             }
+        // TEMPORARY diagnostic: Gradle's log has no exception messages; the failure artifact has this.
+        java.io.File("build/reports/home-screenshots/selectable-text-crash-diagnostic.txt").apply {
+            parentFile?.mkdirs()
+            writeText("cwd=${absolutePath}\n" + crash.stackTraceToString())
+        }
         assertEquals(
             "Cannot read CompositionLocal because the Modifier node is not currently attached.",
             crash.message,
