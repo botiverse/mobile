@@ -23,7 +23,9 @@ import java.io.File
 import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -54,7 +56,48 @@ class ThreadShareImageScreenshotTest {
     @Config(sdk = [34], qualifiers = "w680dp-h480dp-xxhdpi")
     fun desktop() = capture("thread.share-image.desktop", cardWidthDp = 640)
 
-    private fun capture(name: String, cardWidthDp: Int) {
+    /**
+     * artin's case: one message picked that the timeline draws as a continuation (same author
+     * within the grouping window, no avatar or name). The image regroups the selection only
+     * ([threadShareSelectionSuppressesAuthor], web `shouldShowGroupedMessageHeader`), so its only
+     * message carries the author's avatar, name and time.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
+    fun continuationPickedAlone() {
+        val previous = ShareImageMessage.copy(id = "msg-share-image-run", timestampLabel = "2026-10-21T16:20:00Z")
+        val continuation =
+            ShareImageMessage.copy(
+                id = "msg-share-image-continuation",
+                timestampLabel = "2026-10-21T16:21:00Z",
+                body = "A follow-up picked on its own: the image still names who said it.",
+            )
+        val timelineSuppresses = shouldSuppressCompactThreadAuthor(previous, continuation, localOffsetMinutes = 0)
+        assertTrue(timelineSuppresses, "the timeline draws the picked row as a continuation")
+        val suppress =
+            threadShareSelectionSuppressesAuthor(
+                timelineSuppressesAuthor = timelineSuppresses,
+                selectionActive = true,
+                selected = true,
+                previousSelected = false,
+            )
+        assertFalse(suppress, "the image's first message shows its author")
+        capture(
+            "thread.share-image.continuation",
+            cardWidthDp = 390,
+            message = continuation,
+            suppressRepeatedAuthor = suppress,
+            timestampLabel = "4:21 PM",
+        )
+    }
+
+    private fun capture(
+        name: String,
+        cardWidthDp: Int,
+        message: RaftThreadMessageItem = ShareImageMessage,
+        suppressRepeatedAuthor: Boolean? = null,
+        timestampLabel: String? = null,
+    ) {
         var rowSize = IntSize.Zero
         val rowWidth = cardWidthDp.dp - ThreadShareImageRowInset * 2
         val image =
@@ -76,8 +119,11 @@ class ThreadShareImageScreenshotTest {
                                         .onGloballyPositioned { rowSize = it.size },
                                 ) {
                                     ThreadMessageCard(
-                                        message = ShareImageMessage,
+                                        message = message,
                                         messageBodyTextStyle = raftMessageBodyTextStyle("md"),
+                                        compactConsecutiveMessages = suppressRepeatedAuthor != null,
+                                        suppressRepeatedAuthor = suppressRepeatedAuthor == true,
+                                        timestampLabel = timestampLabel ?: message.timestampLabel,
                                         onShowActions = {},
                                         onOpenMember = {},
                                         onOpenThread = {},

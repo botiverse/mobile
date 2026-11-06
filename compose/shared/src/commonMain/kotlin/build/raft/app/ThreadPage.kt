@@ -24838,6 +24838,16 @@ private fun ThreadMessagesListContent(
                                 localOffsetMinutes = renderConfig.timeContext.localOffsetMinutes
                             )
                     }
+                // Web MessageItem `showSelectedGroupedHeader`: while messages are picked for the share
+                // image, the first selected row of a run shows its author even when the timeline groups
+                // it under an unselected message, so the image (the live rows) never starts headless.
+                val rowSuppressesRepeatedAuthor =
+                    threadShareSelectionSuppressesAuthor(
+                        timelineSuppressesAuthor = suppressRepeatedAuthor,
+                        selectionActive = shareSelectionActive || shareSelectionCaptureActive,
+                        selected = message.id in selectedShareMessageIds,
+                        previousSelected = previousMessage != null && previousMessage.id in selectedShareMessageIds,
+                    )
                 val isRichContentEnabled = contentExtrasVisible
                 val actionCardSignature =
                     if (isRichContentEnabled) {
@@ -25009,7 +25019,7 @@ private fun ThreadMessagesListContent(
                             ThreadTimeRevealRow(
                                 state = timeReveal,
                                 timeLabel = formatThreadTimeRevealLabel(message.timestampLabel, renderConfig.timeContext),
-                                continuation = renderPayload.compactConsecutiveMessages && suppressRepeatedAuthor,
+                                continuation = renderPayload.compactConsecutiveMessages && rowSuppressesRepeatedAuthor,
                             ) {
                                 ThreadMessageCard(
                                     message = displayMessage,
@@ -25063,7 +25073,7 @@ private fun ThreadMessagesListContent(
                                     alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
                                     messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
                                     compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
-                                    suppressRepeatedAuthor = suppressRepeatedAuthor,
+                                    suppressRepeatedAuthor = rowSuppressesRepeatedAuthor,
                                     showReplyAction = renderPayload.showReplyActions,
                                     quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
                                     resolvedTaskAssigneeName = linkedTaskAssigneeName,
@@ -32674,6 +32684,21 @@ internal fun shouldSuppressCompactThreadAuthor(
     localOffsetMinutes: Int
 ): Boolean =
     previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
+
+/**
+ * Whether a row drops its author header (avatar, name, time, model badge) while messages are picked
+ * for the share image. Web messageGrouping.ts `shouldShowGroupedMessageHeader`: a selected
+ * continuation whose timeline predecessor is not selected cannot lean on that predecessor's header,
+ * so it shows its own; a selected continuation right after a selected row of its run stays compact.
+ * Two selected messages with an unselected one between them therefore never group. The share image
+ * captures the live rows, so this is what puts the author on the image's first message.
+ */
+internal fun threadShareSelectionSuppressesAuthor(
+    timelineSuppressesAuthor: Boolean,
+    selectionActive: Boolean,
+    selected: Boolean,
+    previousSelected: Boolean
+): Boolean = timelineSuppressesAuthor && !(selectionActive && selected && !previousSelected)
 
 /** The local day a thread date divider names; rendered from string resources by [localizedLabel]. */
 internal data class ThreadDateDividerDay(
