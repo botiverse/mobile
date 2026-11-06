@@ -5,7 +5,7 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -89,12 +89,12 @@ class SharedHomePendingReadOverlayTest {
         assertEquals(0, store.snapshot().row("channel-1").unreadCount)
 
         coordinator.replayPendingReads()
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf("read:channel-1@40"), reads.calls)
 
         // From here the server's answer is the truth, even one that disagrees.
         store.accept(SharedHomeIntent.Refresh)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(5, store.snapshot().row("channel-1").unreadCount)
     }
 
