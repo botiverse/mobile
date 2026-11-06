@@ -777,6 +777,24 @@ internal fun SharedHomeState.scopedToSearchServer(serverId: String?): SharedHome
     return copy(content = SharedHomeContentState.Loading(loaded.session))
 }
 
+/**
+ * Search's candidates: the app's live Home when it is on Search's server, so a channel created or
+ * changed a moment ago is findable (tygg, artin 11-06; this page's own Home only loads when it opens);
+ * this page's own snapshot otherwise (Home on another server, no shared store).
+ */
+internal fun homeSearchCandidateState(
+    liveHome: SharedHomeState,
+    ownHome: SharedHomeState,
+    serverId: String?,
+): SharedHomeState {
+    val live = liveHome.scopedToSearchServer(serverId)
+    return if (liveHome.content is SharedHomeContentState.Content && live.content is SharedHomeContentState.Content) {
+        live
+    } else {
+        ownHome.scopedToSearchServer(serverId)
+    }
+}
+
 @Composable
 private fun HomeSearchRouterContent(
     environment: HomeSecondaryRouteEnvironment,
@@ -871,7 +889,9 @@ private fun HomeSearchRouterContent(
         }
     }
     val searchHomeState =
-        remember(homeState, searchScopeServerId) { homeState.scopedToSearchServer(searchScopeServerId) }
+        remember(sharedHomeState, homeState, searchScopeServerId) {
+            homeSearchCandidateState(sharedHomeState, homeState, searchScopeServerId)
+        }
     val searchServerId =
         (searchHomeState.content as? SharedHomeContentState.Content)
             ?.snapshot
