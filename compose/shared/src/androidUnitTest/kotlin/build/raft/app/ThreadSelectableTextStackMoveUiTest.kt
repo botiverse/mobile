@@ -30,6 +30,10 @@ import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.nav.RaftMobilePageStackDisplay
 import build.raft.app.nav.RaftPageStack
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -43,6 +47,7 @@ import org.robolectric.annotation.Config
  * content. A message row lives in its lazy list's own composition, so when it recomposes in the
  * frame of the move its modifier update reaches a detached LayoutNode and is applied on re-attach,
  * where SelectableTextAnnotatedStringNode.update reads a CompositionLocal unconditionally.
+ * [ThreadInPlaceSelectableBody] keeps a body selectable only on the active page for that reason.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -115,7 +120,7 @@ class ThreadSelectableTextStackMoveUiTest {
     private fun ComposeUiTest.popWithRowChange(stack: RaftPageStack) = withRowChangingEveryFrame { stack.back() }
 
     @Test
-    fun lazyRowStyleChangesInThePushFrame() =
+    fun aRowStyleChangingDuringThePushDoesNotCrash() =
         runRobolectricComposeUiTest {
             val stack = showChat {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -126,7 +131,7 @@ class ThreadSelectableTextStackMoveUiTest {
         }
 
     @Test
-    fun lazyRowStyleChangesInThePopFrame() =
+    fun aRowStyleChangingDuringThePopDoesNotCrash() =
         runRobolectricComposeUiTest {
             val stack = showChat {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -140,7 +145,7 @@ class ThreadSelectableTextStackMoveUiTest {
 
     /** Control: same change, no lazy list, so the row shares the moved composition. */
     @Test
-    fun controlNoLazyListColumnRowStyleChangesInThePushFrame() =
+    fun controlNoLazyListRowStyleChangingDuringThePush() =
         runRobolectricComposeUiTest {
             val stack = showChat {
                 Column(Modifier.fillMaxSize()) { SelectableBody("m1") { BasicText(BODY, style = tickStyle) } }
@@ -150,7 +155,7 @@ class ThreadSelectableTextStackMoveUiTest {
 
     /** Control: same change, not selectable: a plain text node reads no CompositionLocal in update. */
     @Test
-    fun controlNotSelectableLazyRowStyleChangesInThePushFrame() =
+    fun controlNotSelectableRowStyleChangingDuringThePush() =
         runRobolectricComposeUiTest {
             val stack = showChat {
                 LazyColumn(Modifier.fillMaxSize()) { item { BasicText(BODY, style = tickStyle) } }
@@ -158,21 +163,74 @@ class ThreadSelectableTextStackMoveUiTest {
             pushWithRowChange(stack)
         }
 
-    /** Control: plain SelectionContainer, no app selection code: is it the framework alone? */
+    /**
+     * The framework's own behaviour, with no app selection code: an always selectable text in the
+     * same place. When a Compose upgrade makes this stop throwing, the gate in
+     * [ThreadInPlaceSelectableBody] and this test can go.
+     */
     @Test
-    fun frameworkSelectionContainerLazyRowStyleChangesInThePushFrame() =
-        runRobolectricComposeUiTest {
-            val stack = showChat {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item { SelectionContainer { BasicText(BODY, style = tickStyle) } }
+    fun aPlainSelectionContainerStillThrowsTheFrameworkCrash() {
+        val crash =
+            assertFailsWith<IllegalStateException> {
+                runRobolectricComposeUiTest {
+                    val stack = showChat {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            item { SelectionContainer { BasicText(BODY, style = tickStyle) } }
+                        }
+                    }
+                    pushWithRowChange(stack)
                 }
             }
-            pushWithRowChange(stack)
+        assertEquals(
+            "Cannot read CompositionLocal because the Modifier node is not currently attached.",
+            crash.message,
+        )
+        val frames = crash.stackTrace.map { "${it.className}.${it.methodName}" }
+        for (frame in listOf("SelectableTextAnnotatedStringNode.retrievePinnableContainer", "LayoutNode.attach", "CopyNodesToNewAnchorLocation")) {
+            assertTrue(frames.any { frame in it }, "$frame in $frames")
+        }
+    }
+
+    /** A selection is dropped when the page is covered, and the body selects again once back. */
+    @Test
+    fun aSelectionIsClearedWhenCoveredAndTheBodySelectsAgainAfterThePop() =
+        runRobolectricComposeUiTest {
+            var controller: ThreadInPlaceSelectionController? = null
+            val stack = showChat {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    item {
+                        val inPlace = rememberThreadInPlaceSelectionController(messageId = "m1", enabled = true)
+                        controller = inPlace
+                        ThreadInPlaceSelectableBody(
+                            controller = inPlace,
+                            fullMessageText = BODY,
+                            wholeMessageText = BODY,
+                            messageMenuOpen = false,
+                            diagnosticsLogger = {},
+                        ) {
+                            BasicText(BODY)
+                        }
+                    }
+                }
+            }
+            runOnIdle { controller!!.selectAll() }
+            waitForIdle()
+            assertTrue(controller!!.hasSelection, "selects on the active page")
+
+            runOnIdle { stack.open(COVERING_PAGE, JsonObject(emptyMap()), from = stack.pages.last()) }
+            waitForIdle()
+            assertFalse(controller!!.hasSelection, "covering the page drops the selection")
+
+            runOnIdle { stack.back() }
+            waitForIdle()
+            runOnIdle { controller!!.selectAll() }
+            waitForIdle()
+            assertTrue(controller!!.hasSelection, "selects again after the pop")
         }
 
     /** Control: nothing else changes in the frame of the move. */
     @Test
-    fun controlLazyRowPushAndPopWithNoOtherChange() =
+    fun controlPushAndPopWithNoRowChange() =
         runRobolectricComposeUiTest {
             val stack = showChat {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -190,7 +248,7 @@ class ThreadSelectableTextStackMoveUiTest {
      * callback as ThreadPage's row passes. Does the real Markdown text then update its element?
      */
     @Test
-    fun lazyRowMarkdownOnlyRecomposesInThePushFrame() =
+    fun aMarkdownRowRecomposingDuringThePushDoesNotCrash() =
         runRobolectricComposeUiTest {
             val stack = showChat {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -205,7 +263,7 @@ class ThreadSelectableTextStackMoveUiTest {
 
     /** As above, with a link: rendered through the link-aware text path. */
     @Test
-    fun lazyRowMarkdownWithLinkOnlyRecomposesInThePushFrame() =
+    fun aMarkdownRowWithALinkRecomposingDuringThePushDoesNotCrash() =
         runRobolectricComposeUiTest {
             val stack = showChat {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -220,9 +278,9 @@ class ThreadSelectableTextStackMoveUiTest {
             pushWithRowChange(stack)
         }
 
-    /** The row's text colour-free recomposition with a stable callback: Markdown's own stability. */
+    /** Control: the row recomposes with a stable callback, so the Markdown text keeps its element. */
     @Test
-    fun lazyRowMarkdownStableCallbackRecomposesInThePushFrame() =
+    fun controlMarkdownRowWithAStableCallbackRecomposingDuringThePush() =
         runRobolectricComposeUiTest {
             val onOpenUrl: (String) -> Unit = {}
             val stack = showChat {
