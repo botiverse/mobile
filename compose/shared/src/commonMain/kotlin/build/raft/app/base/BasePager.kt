@@ -80,9 +80,7 @@ internal abstract class BasePager : ComposeContainer() {
                     )
                 }
             ProvideRaftPageBaseTimeContext(pageVisibleTick = raftPageVisibleResumeTick) {
-                ProvideRaftLinkOpening(this@BasePager) {
-                    RaftPageLayersContent(layers = layers, content = content)
-                }
+                RaftPageLayersContent(layers = layers, content = content)
             }
         }
     }
@@ -94,7 +92,8 @@ internal abstract class BasePager : ComposeContainer() {
     ) {
         val layer = layers.firstOrNull()
         if (layer == null) {
-            content()
+            // Inside the database gate: the link setting is read through the shared preference store.
+            ProvideRaftLinkOpening(this@BasePager, content)
             return
         }
         val inner: @Composable () -> Unit = { RaftPageLayersContent(layers = layers.drop(1), content = content) }

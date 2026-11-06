@@ -203,16 +203,19 @@ internal fun rememberRaftLinkNavigator(
     bridge: BridgeModule,
     routeScope: RaftInAppBrowserRouteScope = RaftInAppBrowserRouteScope.InheritShell,
 ): RaftLinkNavigator {
+    // Lazy: every page has a navigator (ProvideRaftLinkOpening), few of them open a link.
     val preferenceRepository =
         remember {
-            PersistentLinkOpenPreferenceRepository(
-                KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
-            )
+            lazy {
+                PersistentLinkOpenPreferenceRepository(
+                    KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
+                )
+            }
         }
     val rejectedMessage = stringResource(Res.string.in_app_browser_unable_to_open_link)
     return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage) {
         RaftLinkNavigator(
-            modeProvider = { effectiveLinkOpenMode(preferenceRepository.getLinkOpenModeSync()) },
+            modeProvider = { effectiveLinkOpenMode(preferenceRepository.value.getLinkOpenModeSync()) },
             openInAppBrowser = { url ->
                 when (routeScope) {
                     RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url)
