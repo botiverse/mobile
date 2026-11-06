@@ -24,6 +24,11 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.PagerManager
+import build.raft.app.compat.pager.IModuleCreator
+import build.raft.app.base.BridgeModule
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import java.io.File
@@ -55,6 +60,18 @@ import org.robolectric.shadows.ShadowDialog
 class ThreadShareImageScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
+
+    // A code block's copy button reaches the page's bridge, so the off-screen cases need a live page.
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "thread-share-image-screenshot"
+            pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
     @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
@@ -179,8 +196,7 @@ class ThreadShareImageScreenshotTest {
 
     @Composable
     private fun ShareImageHost(content: @Composable () -> Unit) {
-        val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
-        CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+        CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
             RaftDesignSystemTheme { content() }
         }
     }
