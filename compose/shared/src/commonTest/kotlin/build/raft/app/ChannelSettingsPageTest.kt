@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ChannelSettingsPageTest {
@@ -322,5 +323,41 @@ class ChannelSettingsPageTest {
         assertEquals("add", add.optString(THREAD_MEMBERS_INITIAL_VIEW_KEY))
         assertEquals(true, add.toThreadMembersPageRouteOrNull()?.openAddMember)
         assertEquals(false, channelSettingsMembersPageData(route).toThreadMembersPageRouteOrNull()?.openAddMember)
+    }
+
+    @Test
+    fun archiveTakesTheChannelOffHomeWhileStayingOnThePage() {
+        val channelId = ChannelId("channel-1")
+        val landing = channelSettingsCloseLanding(ChannelSettingsAction.Archive, null)
+
+        assertEquals(ChannelSettingsCloseLanding.StayInChannel, landing)
+        assertEquals(
+            SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false),
+            channelSettingsCloseHomeIntent(ChannelSettingsAction.Archive, landing, channelId),
+        )
+    }
+
+    @Test
+    fun aProfileEditLeavesHomeAlone() {
+        val landing = channelSettingsCloseLanding(ChannelSettingsAction.Profile, null)
+
+        assertEquals(null, channelSettingsCloseHomeIntent(ChannelSettingsAction.Profile, landing, ChannelId("channel-1")))
+    }
+
+    @Test
+    fun theLinkUnderTheNewestPageAnswersAgainWhenTheNewestGoes() {
+        val key = "thread-settings:link-stack-test"
+        val under = ThreadSettingsPageLink()
+        val over = ThreadSettingsPageLink()
+
+        ThreadSettingsPageLinks.register(key, under)
+        ThreadSettingsPageLinks.register(key, over)
+        assertSame(over, ThreadSettingsPageLinks.get(key))
+
+        ThreadSettingsPageLinks.unregister(key, over)
+        assertSame(under, ThreadSettingsPageLinks.get(key))
+
+        ThreadSettingsPageLinks.unregister(key, under)
+        assertNull(ThreadSettingsPageLinks.get(key))
     }
 }

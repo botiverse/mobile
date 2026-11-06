@@ -5762,7 +5762,7 @@ sealed interface SharedHomeIntent {
         val rowIfMissing: HomeChannelRow? = null,
     ) : SharedHomeIntent
     /**
-     * Left or deleted from the channel's settings (the request is done): [keepListed] keeps a public
+     * Left, deleted or archived from the channel's settings (the request is done): [keepListed] keeps a public
      * channel as not joined (as [LeaveChannel] does); otherwise the row and its selection go.
      */
     data class ChannelMembershipEnded(val channelId: ChannelId, val keepListed: Boolean) : SharedHomeIntent

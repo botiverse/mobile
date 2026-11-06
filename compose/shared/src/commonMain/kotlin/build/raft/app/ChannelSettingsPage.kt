@@ -157,6 +157,21 @@ internal fun ChannelSettingsCloseLanding.homeIntent(channelId: ChannelId): Share
         ChannelSettingsCloseLanding.LeaveConversation -> SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false)
     }
 
+/**
+ * What Home does at once when the page closes. Archive keeps you on the page but the channel leaves
+ * Home (fetches no longer list it), so its guards must not bring it back.
+ */
+internal fun channelSettingsCloseHomeIntent(
+    closedBy: ChannelSettingsAction?,
+    landing: ChannelSettingsCloseLanding,
+    channelId: ChannelId,
+): SharedHomeIntent? =
+    if (closedBy == ChannelSettingsAction.Archive) {
+        SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false)
+    } else {
+        landing.homeIntent(channelId)
+    }
+
 internal fun JSONObject.toChannelSettingsRouteOrNull(): ChannelSettingsRoute? {
     val serverId = optString("serverId").trim().takeIf(String::isNotBlank)?.let(::ServerId) ?: return null
     val channelId = optString("channelId").trim().takeIf(String::isNotBlank)?.let(::ChannelId) ?: return null
@@ -502,7 +517,7 @@ private fun ChannelSettingsPageScreen() {
                     sharedStores.publishChannelAccessLost(storeScope, route.channelId)
                 }
                 val landing = channelSettingsCloseLanding(settingsState.closedBy, settingsState.channel)
-                landing.homeIntent(route.channelId)?.let { intent -> homeStore?.dispatch(intent) }
+                channelSettingsCloseHomeIntent(settingsState.closedBy, landing, route.channelId)?.let { intent -> homeStore?.dispatch(intent) }
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
                 threadLinkKey?.let(ThreadSettingsPageLinks::get)?.sources?.onChannelSettingsClosed?.invoke(landing, route.channelId)
                 router.closePage()
