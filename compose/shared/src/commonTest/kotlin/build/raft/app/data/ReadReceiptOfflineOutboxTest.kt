@@ -429,6 +429,195 @@ class ReadReceiptOfflineOutboxTest {
         process.kill()
     }
 
+    /** This device saw the cursor at 50 (version 5), then read to 60 offline; the app restarts online. */
+    private fun TestScope.replayAgainst(
+        current: Map<ChannelId, ReadReceiptFrontier>?,
+        known: ReadReceiptFrontier? = ReadReceiptFrontier(50L, 5L),
+        dropped: MutableList<ChannelId> = mutableListOf(),
+    ): AppProcess {
+        val first = appProcess()
+        if (known != null) first.coordinator.noteReadFrontier(owner, channel, known)
+        first.coordinator.markReadToSeq(owner, channel, 60L)
+        first.kill()
+        val restarted =
+            appProcess(frontierLoader = { current }, onReplayDropped = { _, channelId -> dropped += channelId })
+        restarted.coordinator.replayPendingReads()
+        return restarted
+    }
+
+    @Test
+    fun anotherDeviceMovingTheCursorBackDropsTheReplay() = runTest {
+        val dropped = mutableListOf<ChannelId>()
+        val restarted = replayAgainst(mapOf(channel to ReadReceiptFrontier(30L, 6L)), dropped = dropped)
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), api.calls, "the read must not raise the cursor back over that Mark as Unread")
+        assertEquals(emptyList(), restarted.store.entries())
+        assertEquals(listOf(channel), dropped, "Home is told, so the count comes back")
+        restarted.kill()
+    }
+
+    @Test
+    fun anotherDeviceMarkingUnreadDropsTheReplay() = runTest {
+        val restarted = replayAgainst(mapOf(channel to ReadReceiptFrontier(50L, 6L, markedUnread = true)))
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), api.calls)
+        assertEquals(emptyList(), restarted.store.entries())
+        restarted.kill()
+    }
+
+    @Test
+    fun readingARowAlreadyMarkedUnreadStillReplays() = runTest {
+        val restarted =
+            replayAgainst(
+                mapOf(channel to ReadReceiptFrontier(50L, 5L, markedUnread = true)),
+                known = ReadReceiptFrontier(50L, 5L, markedUnread = true),
+            )
+        advanceUntilIdle()
+
+        assertEquals(listOf("read:channel-1@60"), api.calls, "the read is what clears that mark")
+        restarted.kill()
+    }
+
+    @Test
+    fun aSummaryLaggingBehindTheBaseDoesNotDropTheReplay() = runTest {
+        val restarted = replayAgainst(mapOf(channel to ReadReceiptFrontier(40L, 4L)))
+        advanceUntilIdle()
+
+        assertEquals(listOf("read:channel-1@60"), api.calls, "an older version says nothing about a rewind")
+        restarted.kill()
+    }
+
+    @Test
+    fun anUnchangedOrRaisedCursorReplays() = runTest {
+        val restarted = replayAgainst(mapOf(channel to ReadReceiptFrontier(55L, 7L)))
+        advanceUntilIdle()
+
+        assertEquals(listOf("read:channel-1@60"), api.calls)
+        restarted.kill()
+    }
+
+    @Test
+    fun withNoBaseTheLastWriteWins() = runTest {
+        val restarted = replayAgainst(mapOf(channel to ReadReceiptFrontier(30L, 6L, markedUnread = true)), known = null)
+        advanceUntilIdle()
+
+        assertEquals(listOf("read:channel-1@60"), api.calls)
+        restarted.kill()
+    }
+
+    @Test
+    fun aScopeTheSummaryDoesNotListReplays() = runTest {
+        val restarted = replayAgainst(emptyMap())
+        advanceUntilIdle()
+
+        assertEquals(listOf("read:channel-1@60"), api.calls, "the summary only lists unread or marked scopes")
+        restarted.kill()
+    }
+
+    @Test
+    fun withNoFreshSummaryTheReadWaitsUnsent() = runTest {
+        val restarted = replayAgainst(current = null)
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), api.calls)
+        assertEquals(mapOf(channel to 60L), restarted.store.seqsFor(owner))
+        restarted.kill()
+    }
+
+    @Test
+    fun aReadMadeAfterSeeingTheRewindReplays() = runTest {
+        val first = appProcess()
+        first.coordinator.noteReadFrontier(owner, channel, ReadReceiptFrontier(50L, 5L))
+        first.coordinator.markReadToSeq(owner, channel, 60L)
+        first.coordinator.noteReadFrontier(owner, channel, ReadReceiptFrontier(30L, 6L))
+        first.coordinator.markReadToSeq(owner, channel, 60L)
+        first.kill()
+
+        val restarted = appProcess(frontierLoader = { mapOf(channel to ReadReceiptFrontier(30L, 6L)) })
+        restarted.coordinator.replayPendingReads()
+        advanceUntilIdle()
+
+        assertEquals(listOf("read:channel-1@60"), api.calls)
+        restarted.kill()
+    }
+
+    @Test
+    fun aLaggingAnswerCannotReplaceANewerBase() = runTest {
+        val process = appProcess()
+        process.coordinator.noteReadFrontier(owner, channel, ReadReceiptFrontier(50L, 5L))
+        process.coordinator.noteReadFrontier(owner, channel, ReadReceiptFrontier(40L, 4L))
+        process.coordinator.markReadToSeq(owner, channel, 60L)
+
+        assertEquals(ReadReceiptFrontier(50L, 5L), process.store.entry(owner, channel)?.base)
+        process.kill()
+    }
+
+    @Test
+    fun thisDevicesOwnMarkUnreadDoesNotDropItsNextRead() = runTest {
+        val first = appProcess()
+        first.coordinator.noteReadFrontier(owner, channel, ReadReceiptFrontier(50L, 5L))
+        first.coordinator.markUnread(owner, channel)
+        first.coordinator.markReadToSeq(owner, channel, 60L)
+        first.kill()
+        api.calls.clear()
+
+        val restarted = appProcess(frontierLoader = { mapOf(channel to ReadReceiptFrontier(30L, 6L)) })
+        restarted.coordinator.replayPendingReads()
+        advanceUntilIdle()
+
+        assertEquals(listOf("read:channel-1@60"), api.calls)
+        restarted.kill()
+    }
+
+    @Test
+    fun theSummaryIsFetchedOnlyWithReadsWaitingAndOncePerPass() = runTest {
+        var fetches = 0
+        val loader: suspend (ReadReceiptOwner) -> Map<ChannelId, ReadReceiptFrontier>? = {
+            fetches += 1
+            emptyMap()
+        }
+        val idle = appProcess(frontierLoader = loader)
+        idle.coordinator.replayPendingReads()
+        advanceUntilIdle()
+        assertEquals(0, fetches, "nothing waiting, nothing fetched")
+        idle.kill()
+
+        val first = appProcess()
+        first.coordinator.markReadToSeq(owner, channel, 10L)
+        first.coordinator.markReadToSeq(owner, otherChannel, 20L)
+        first.kill()
+
+        val restarted = appProcess(frontierLoader = loader)
+        restarted.coordinator.replayPendingReads()
+        advanceUntilIdle()
+        assertEquals(1, fetches)
+        assertEquals(listOf("read:channel-1@10", "read:channel-2@20"), api.calls)
+        restarted.kill()
+    }
+
+    @Test
+    fun theSummaryParserReadsTheCursorAndTheMark() {
+        val body =
+            """{"channels":{""" +
+                """"a":{"unreadCount":2,"hasMention":false,"hasAnyMention":false,"readState":{"kind":"present","readStateVersion":7,"maxReadSeq":"30","latestActivity":null}},""" +
+                """"b":{"unreadCount":0,"hasMention":false,"hasAnyMention":false,"readState":{"kind":"present","readStateVersion":8,"maxReadSeq":"40","latestActivity":null,"markedUnread":true}},""" +
+                """"c":{"unreadCount":1,"hasMention":false,"hasAnyMention":false,"readState":{"kind":"absent"}},""" +
+                """"d":{"unreadCount":1,"hasMention":false,"hasAnyMention":false,"readState":{"kind":"corrupt"}}""" +
+                """},"threadUnread":{}}"""
+
+        assertEquals(
+            mapOf(
+                ChannelId("a") to ReadReceiptFrontier(30L, 7L),
+                ChannelId("b") to ReadReceiptFrontier(40L, 8L, markedUnread = true),
+            ),
+            parseFreshReadFrontiers(body),
+        )
+        assertEquals(null, parseFreshReadFrontiers(body.dropLast(1) + ""","stale":true}"""), "a remembered body says nothing about now")
+        assertEquals(null, parseFreshReadFrontiers("{}"))
+    }
+
     @Test
     fun theRetryDelayGrowsAndIsBounded() {
         assertEquals(5_000L, readReceiptReplayRetryDelayMillis(1))
@@ -444,6 +633,8 @@ class ReadReceiptOfflineOutboxTest {
         onPrediction: (ReadReceiptPrediction) -> Unit = {},
         onFailure: (ReadReceiptRequest, DataResult<ReadReceiptResult>) -> Unit = { _, _ -> },
         retryDelayMillis: (Int) -> Long = { attempt -> readReceiptReplayRetryDelayMillis(attempt) },
+        frontierLoader: suspend (ReadReceiptOwner) -> Map<ChannelId, ReadReceiptFrontier>? = { emptyMap() },
+        onReplayDropped: (ReadReceiptOwner, ChannelId) -> Unit = { _, _ -> },
     ): AppProcess {
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + Job())
         val store = ReadReceiptPendingStore(disk)
@@ -457,6 +648,8 @@ class ReadReceiptOfflineOutboxTest {
                 pendingStore = store,
                 ownerAccessLost = ownerAccessLost,
                 replayRetryDelayMillis = retryDelayMillis,
+                replayFrontierLoader = frontierLoader,
+                onReplayDropped = onReplayDropped,
             )
         return AppProcess(scope, store, coordinator)
     }

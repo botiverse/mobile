@@ -127,6 +127,11 @@ class SharedHomePendingReadOverlayTest {
         store.accept(SharedHomeIntent.MarkRead("channel-1"))
 
         assertEquals(mapOf(channel to 40L), coordinator.pendingReadSeqs(owner))
+        assertEquals(
+            ReadReceiptFrontier(30L, 3L),
+            ReadReceiptPendingStore(disk).entry(owner, channel)?.base,
+            "the summary's cursor is saved as what this read was based on"
+        )
         assertEquals(0, store.snapshot().row("channel-1").unreadCount)
     }
 

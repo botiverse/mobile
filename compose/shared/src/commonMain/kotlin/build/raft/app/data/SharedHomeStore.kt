@@ -1253,6 +1253,19 @@ internal class SharedHomeStore(
                 ?.toReadStateV1ProductionOwner()
                 ?: return
         if (currentOwner != owner) return
+        readReceiptOwnerFactory
+            ?.invoke(content.snapshot.server.id.value, content.snapshot.currentMember.id.value)
+            ?.let { readOwner ->
+                readReceiptCoordinator?.noteReadFrontier(
+                    readOwner,
+                    ChannelId(fact.channelId),
+                    ReadReceiptFrontier(
+                        fact.maxReadSeq,
+                        fact.readStateVersion,
+                        content.snapshot.isConversationMarkedUnread(fact.channelId)
+                    )
+                )
+            }
         val changed = synchronized(readProjectionOwnerLock) {
             applyHomeSnapshotLocally { snapshot ->
                 snapshot.withPerReceiverReadState(
@@ -2007,6 +2020,7 @@ internal class SharedHomeStore(
                 }
                 val sidebarOrder = loadServerDrawerSidebarOrder(serverId)
                 if (!isCurrentServerDrawerRequest(serverId, generation)) return
+                noteReadFrontiers(homeResult.data)
                 val loaded = homeResult.data.withPendingReads(emptyMap())
                 val content =
                     createHomeContent(
@@ -2470,6 +2484,7 @@ internal class SharedHomeStore(
                 it.session.user.id == activeSession.user.id &&
                     it.snapshot.currentMember.id.value == activeSession.user.id
             }
+        (dataResult as? DataResult.Content)?.data?.let(::noteReadFrontiers)
         val preparedHydrates =
             (dataResult as? DataResult.Content)?.data?.let { snapshot ->
                 prepareReadStateV1Hydrates(snapshot)
@@ -3773,6 +3788,29 @@ internal class SharedHomeStore(
         }
     }
 
+    /**
+     * What this network Home says about each scope's read state: the base of a read made from here on.
+     * Without the summary the marks are unknown, so nothing is noted.
+     */
+    private fun noteReadFrontiers(snapshot: HomeSnapshot) {
+        if (!snapshot.unreadEnrichmentAvailable) return
+        val coordinator = readReceiptCoordinator ?: return
+        val owner =
+            readReceiptOwnerFactory?.invoke(snapshot.server.id.value, snapshot.currentMember.id.value) ?: return
+        (snapshot.channels + snapshot.directMessages).forEach { row ->
+            val hydrate = row.readStateV1Hydrate ?: return@forEach
+            val maxReadSeq = hydrate.maxReadSeq ?: return@forEach
+            coordinator.noteReadFrontier(
+                owner,
+                row.messageStreamChannelId(),
+                ReadReceiptFrontier(maxReadSeq, hydrate.readStateVersion, row.isMarkedUnreadIn(snapshot.markedUnreadIds))
+            )
+        }
+        snapshot.unreadReadFrontiers.forEach { (id, frontier) ->
+            coordinator.noteReadFrontier(owner, ChannelId(id), frontier)
+        }
+    }
+
     /** Reads not yet acknowledged stay read in this network snapshot. See [withPendingReadOverlay]. */
     private fun HomeSnapshot.withPendingReads(atRequest: Map<ChannelId, Long>): HomeSnapshot {
         val coordinator = readReceiptCoordinator ?: return this
@@ -3922,6 +3960,7 @@ internal class SharedHomeStore(
         if (readOwner != null) readReceiptCoordinator?.settleReadsBeforeUnread(readOwner, channelId)
         when (val result = markChannelUnread(channelId)) {
             is DataResult.Content -> {
+                if (readOwner != null) readReceiptCoordinator?.noteUnreadAnswer(readOwner, channelId, result.data)
                 // The read point may not have moved (a mark), or moved back: the next open must send its
                 // read again (it is what clears the row on the server), not reuse an earlier acknowledgement.
                 if (readOwner != null) readReceiptCoordinator?.forgetAcknowledged(readOwner, channelId)
@@ -4165,6 +4204,15 @@ internal class SharedHomeStore(
                 incomingVersion = update.version,
                 incomingMaxReadSeq = incomingMaxReadSeq
             )
+        if (factResult == PerReceiverReadStateFactResult.Current || factResult == PerReceiverReadStateFactResult.Accepted) {
+            readReceiptOwnerFactory?.invoke(update.serverId.value, update.memberId.value)?.let { owner ->
+                readReceiptCoordinator?.noteReadFrontier(
+                    owner,
+                    update.channelId,
+                    ReadReceiptFrontier(incomingMaxReadSeq, update.version, update.markedUnread)
+                )
+            }
+        }
         if (factResult == PerReceiverReadStateFactResult.Current) {
             // The fact this store (or Activity, which shares the checkpoints) already holds: only its
             // "marked unread" flag may still be news here (botiverse/slock #11795). No reconcile.
@@ -5229,8 +5277,9 @@ internal fun HomeSnapshot.withConversationUnread(
  * server has not acknowledged does not come back as a badge. Only counts change: the read cursor stays
  * the server's, also with `sync_core_read_state_v1` on, until the ack brings a real version.
  *
- * Messages above the read still count: at most the seq distance to the newest message, as the server
- * measures Mark as Unread. With no newest seq for the row the server's count stands, since hiding a
+ * Messages above the read still count. The seq distance to the newest message is only an upper bound
+ * on them, not a count: seqs have gaps and not every message counts as unread, so the server's count
+ * caps it. With no newest seq for the row the server's count stands, since hiding a
  * message nobody read is worse than a badge that stays until the ack. Mentions stay while anything is
  * left, as the summary does not say which message they are on.
  */

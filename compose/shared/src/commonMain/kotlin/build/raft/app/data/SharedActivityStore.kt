@@ -3690,7 +3690,10 @@ class SharedActivityStore internal constructor(
             if (result is DataResult.Content) {
                 // The read point moved back, or stayed and the conversation was marked unread: the next
                 // open must send its read again (that is what clears it), not reuse an acknowledgement.
-                if (readOwner != null) readReceiptCoordinator?.forgetAcknowledged(readOwner, targetChannelId)
+                if (readOwner != null) {
+                    readReceiptCoordinator?.forgetAcknowledged(readOwner, targetChannelId)
+                    readReceiptCoordinator?.noteUnreadAnswer(readOwner, targetChannelId, result.data)
+                }
                 applyMarkUnreadOutcome(item, optimisticUnreadCount, targetChannelId, result.data)
             }
             val owner =

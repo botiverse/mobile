@@ -16,11 +16,38 @@ private val readReceiptPendingJson = Json {
     encodeDefaults = true
 }
 
+/** The read state of one scope as some answer reported it. */
+data class ReadReceiptFrontier(
+    val maxReadSeq: Long,
+    val readStateVersion: Long? = null,
+    val markedUnread: Boolean = false
+)
+
 data class ReadReceiptPendingEntry(
     val owner: ReadReceiptOwner,
     val channelId: ChannelId,
-    val seq: Long
-)
+    val seq: Long,
+    /** What this device knew of the scope when the person read it. Null: nothing (offline cold start). */
+    val base: ReadReceiptFrontier? = null
+) {
+    /**
+     * True when [current] shows the scope was marked unread after this read's [base], so sending the
+     * read would undo that. The cursor only moves back through Mark as Unread (`row_unread`).
+     *
+     * The summary's `maxReadSeq` comes from a view that can lag the cursor table, so a lower value only
+     * counts at a newer `readStateVersion`: the row's version rises with every change, and a lagging
+     * answer never carries a newer one. `markedUnread` is read from the cursor table itself.
+     */
+    fun isSupersededBy(current: ReadReceiptFrontier?): Boolean {
+        val known = base ?: return false
+        if (current == null) return false
+        if (current.markedUnread && !known.markedUnread) return true
+        if (current.maxReadSeq >= known.maxReadSeq) return false
+        val knownVersion = known.readStateVersion ?: return true
+        val currentVersion = current.readStateVersion ?: return true
+        return currentVersion > knownVersion
+    }
+}
 
 @Serializable
 private data class PersistedReadReceiptPending(
@@ -28,7 +55,10 @@ private data class PersistedReadReceiptPending(
     val accountId: String,
     val serverId: String,
     val channelId: String,
-    val seq: Long
+    val seq: Long,
+    val baseReadSeq: Long? = null,
+    val baseReadStateVersion: Long? = null,
+    val baseMarkedUnread: Boolean = false
 )
 
 @Serializable
@@ -59,19 +89,40 @@ class ReadReceiptPendingStore(
             loadLocked().firstOrNull { it.owner == owner && it.channelId == channelId }?.seq
         }
 
+    fun entry(owner: ReadReceiptOwner, channelId: ChannelId): ReadReceiptPendingEntry? =
+        synchronized(lock) {
+            loadLocked().firstOrNull { it.owner == owner && it.channelId == channelId }
+        }
+
     fun seqsFor(owner: ReadReceiptOwner): Map<ChannelId, Long> =
         synchronized(lock) {
             loadLocked().filter { it.owner == owner }.associate { it.channelId to it.seq }
         }
 
-    /** Stores [seq] unless a higher one is already waiting. [seq] must be positive. */
-    fun record(owner: ReadReceiptOwner, channelId: ChannelId, seq: Long) {
+    /**
+     * The person read through [seq] just now, knowing [base]. Keeps the highest seq, and the newest
+     * [base] when there is one: a read made after seeing a Mark as Unread is not undone by that mark.
+     * [seq] must be positive.
+     */
+    fun record(
+        owner: ReadReceiptOwner,
+        channelId: ChannelId,
+        seq: Long,
+        base: ReadReceiptFrontier? = null
+    ) {
         if (seq <= 0L) return
         synchronized(lock) {
             val current = loadLocked()
             val existing = current.firstOrNull { it.owner == owner && it.channelId == channelId }
-            if (existing != null && existing.seq >= seq) return@synchronized
-            val next = current.filterNot { it === existing } + ReadReceiptPendingEntry(owner, channelId, seq)
+            val updated =
+                ReadReceiptPendingEntry(
+                    owner = owner,
+                    channelId = channelId,
+                    seq = maxOf(seq, existing?.seq ?: 0L),
+                    base = base ?: existing?.base
+                )
+            if (updated == existing) return@synchronized
+            val next = current.filterNot { it === existing } + updated
             saveLocked(next.takeLast(maxEntries.coerceAtLeast(1)))
         }
     }
@@ -124,7 +175,10 @@ class ReadReceiptPendingStore(
                             accountId = entry.owner.accountId,
                             serverId = entry.owner.serverId,
                             channelId = entry.channelId.value,
-                            seq = entry.seq
+                            seq = entry.seq,
+                            baseReadSeq = entry.base?.maxReadSeq,
+                            baseReadStateVersion = entry.base?.readStateVersion,
+                            baseMarkedUnread = entry.base?.markedUnread == true
                         )
                     }
             )
@@ -147,7 +201,11 @@ class ReadReceiptPendingStore(
             ReadReceiptPendingEntry(
                 owner = ReadReceiptOwner(entry.environmentId, entry.accountId, entry.serverId),
                 channelId = ChannelId(entry.channelId),
-                seq = entry.seq
+                seq = entry.seq,
+                base =
+                    entry.baseReadSeq?.let { baseReadSeq ->
+                        ReadReceiptFrontier(baseReadSeq, entry.baseReadStateVersion, entry.baseMarkedUnread)
+                    }
             )
         }
     }

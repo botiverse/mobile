@@ -2533,6 +2533,15 @@ internal class RaftSharedStoreProvider private constructor(
                     session.servers.any { server -> server.id == owner.serverId }
             },
             pendingStore = readReceiptPendingStore,
+            replayFrontierLoader = { owner ->
+                processReadReceiptRepository(owner).loadFreshReadFrontiers(ServerId(owner.serverId))
+            },
+            onReplayDropped = { _, _ ->
+                // Home was showing that read: the server's count comes back now.
+                homeStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeStoreScopes.get(shellScope)) { store.dispatch(SharedHomeIntent.Refresh) }
+                }
+            },
             ownerAccessLost = { owner ->
                 val session = authStore.readSession()
                 apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/') == owner.environmentId &&

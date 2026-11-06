@@ -627,7 +627,10 @@ data class HomeSnapshot(
      * decides whether a realtime message is new.
      */
     @Transient
-    val unreadLatestActivitySeqs: Map<String, Long> = emptyMap()
+    val unreadLatestActivitySeqs: Map<String, Long> = emptyMap(),
+    /** The unread summary's read state per scope, by channel id value. Never persisted. */
+    @Transient
+    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap()
 )
 
 @Serializable

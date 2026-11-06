@@ -64,8 +64,11 @@ data class ReadReceiptPrediction(
  * ack. [replayPendingReads] sends what is left, always as "read to seq". A read kept for a later
  * attempt is not reported as a failure, since nothing has to roll back. The server's read position
  * only moves forward on a read (`GREATEST`, botiverse/slock `applyScopeBoundary`), so sending a read
- * twice or late cannot lower it. A late read does clear a "marked unread" dot, so [markUnread] and
- * [settleReadsBeforeUnread] cancel the saved read first.
+ * twice or late cannot lower it, but it can undo a Mark as Unread: it raises a cursor that mark moved
+ * back, and it clears a "marked unread" dot. So [markUnread] and [settleReadsBeforeUnread] cancel the
+ * saved read first, and a replay drops a read that a fresh read state shows was marked unread from
+ * another device afterwards ([ReadReceiptPendingEntry.isSupersededBy]). A read saved with nothing
+ * known about the scope has nothing to compare with, and the last write wins.
  */
 class ReadReceiptCoordinator(
     private val scope: CoroutineScope,
@@ -87,11 +90,19 @@ class ReadReceiptCoordinator(
      * account or environment) keeps them for when that owner comes back.
      */
     private val ownerAccessLost: suspend (ReadReceiptOwner) -> Boolean = { false },
-    private val replayRetryDelayMillis: (Int) -> Long = { attempt -> readReceiptReplayRetryDelayMillis(attempt) }
+    private val replayRetryDelayMillis: (Int) -> Long = { attempt -> readReceiptReplayRetryDelayMillis(attempt) },
+    /**
+     * A fresh read state per scope for the owner, asked before a replay and only when reads are waiting.
+     * Null when no fresh answer can be had: the reads stay saved and unsent.
+     */
+    private val replayFrontierLoader: suspend (ReadReceiptOwner) -> Map<ChannelId, ReadReceiptFrontier>? = { emptyMap() },
+    /** A saved read was dropped because the conversation was marked unread after it. */
+    private val onReplayDropped: (ReadReceiptOwner, ChannelId) -> Unit = { _, _ -> }
 ) {
     private val lock = SynchronizedObject()
     private val channels = mutableMapOf<ReadReceiptKey, ChannelQueue>()
     private val acknowledgedSeqs = mutableMapOf<ReadReceiptKey, Long>()
+    private val knownFrontiers = mutableMapOf<ReadReceiptKey, ReadReceiptFrontier>()
     private var nextRevision = 0L
     private var generation = 0L
     private var replayAttempt = 0
@@ -148,6 +159,7 @@ class ReadReceiptCoordinator(
                 }
                 channels.clear()
                 acknowledgedSeqs.clear()
+                knownFrontiers.clear()
                 replayAttempt = 0
                 active + listOfNotNull(replayRetryJob, replayPassJob).also {
                     replayRetryJob = null
@@ -201,6 +213,8 @@ class ReadReceiptCoordinator(
     suspend fun settleReadsBeforeUnread(owner: ReadReceiptOwner, channelId: ChannelId) {
         pendingStore?.remove(owner, channelId)
         forgetAcknowledged(owner, channelId)
+        // This device is moving the cursor back: what it knew no longer holds for its next read.
+        synchronized(lock) { knownFrontiers.remove(ReadReceiptKey(owner, channelId)) }
         val behind = synchronized(lock) { channels[ReadReceiptKey(owner, channelId)]?.job }
         behind?.join()
     }
@@ -227,8 +241,31 @@ class ReadReceiptCoordinator(
     suspend fun markUnread(owner: ReadReceiptOwner, channelId: ChannelId): DataResult<ReadReceiptResult> {
         settleReadsBeforeUnread(owner, channelId)
         val result = repository.markChannelUnread(channelId)
-        if (result is DataResult.Content) forgetAcknowledged(owner, channelId)
+        if (result is DataResult.Content) {
+            forgetAcknowledged(owner, channelId)
+            noteUnreadAnswer(owner, channelId, result.data)
+        }
         return result
+    }
+
+    /**
+     * What an answer or a push says about ([owner], [channelId]): the base a read made now is saved
+     * with. The newest `readStateVersion` wins, so a lagging answer cannot replace a newer fact.
+     */
+    fun noteReadFrontier(owner: ReadReceiptOwner, channelId: ChannelId, frontier: ReadReceiptFrontier) {
+        synchronized(lock) {
+            val key = ReadReceiptKey(owner, channelId)
+            val known = knownFrontiers[key]
+            if (known == null || (frontier.readStateVersion ?: -1L) >= (known.readStateVersion ?: -1L)) {
+                knownFrontiers[key] = frontier
+            }
+        }
+    }
+
+    /** Mark as Unread's answer for ([owner], [channelId]). A 202 carries no read state and notes nothing. */
+    fun noteUnreadAnswer(owner: ReadReceiptOwner, channelId: ChannelId, answer: ReadReceiptResult) {
+        val maxReadSeq = answer.maxReadSeq ?: return
+        noteReadFrontier(owner, channelId, ReadReceiptFrontier(maxReadSeq, answer.readStateVersion, answer.markedUnread == true))
     }
 
     /**
@@ -246,6 +283,7 @@ class ReadReceiptCoordinator(
                 }
                 revoked.keys.forEach { key -> channels.remove(key) }
                 acknowledgedSeqs.keys.removeAll { key -> key.owner == owner }
+                knownFrontiers.keys.removeAll { key -> key.owner == owner }
                 revoked.values.mapNotNull(ChannelQueue::job)
             }
         jobs.forEach(Job::cancel)
@@ -294,7 +332,7 @@ class ReadReceiptCoordinator(
                 // or Mark as Unread just cancelled it and it must stay cancelled.
                 if (!replay) {
                     val savedSeq = (target as? ReadReceiptTarget.ToSeq)?.seq ?: knownSeq
-                    if (savedSeq != null) pendingStore?.record(owner, channelId, savedSeq)
+                    if (savedSeq != null) pendingStore?.record(owner, channelId, savedSeq, knownFrontiers[key])
                 }
                 val covering = queue.coveringRequest(target)
                 if (covering != null) {
@@ -434,6 +472,9 @@ class ReadReceiptCoordinator(
             val sentSeq =
                 (inFlight.prediction.target as? ReadReceiptTarget.ToSeq)?.seq ?: inFlight.savedSeqAtSend ?: 0L
             val ack = (result as? DataResult.Content)?.data
+            ack?.maxReadSeq?.let { maxReadSeq ->
+                noteReadFrontier(key.owner, key.channelId, ReadReceiptFrontier(maxReadSeq, ack.readStateVersion))
+            }
             store.clearThrough(key.owner, key.channelId, maxOf(sentSeq, ack?.maxReadSeq ?: 0L, ack?.seq ?: 0L))
             synchronized(lock) { replayAttempt = 0 }
             return false
@@ -461,9 +502,24 @@ class ReadReceiptCoordinator(
     }
 
     private suspend fun replaySavedReads(store: ReadReceiptPendingStore) {
-        for (entry in store.entries()) {
-            if (!ownerValidator(entry.owner)) {
-                if (ownerAccessLost(entry.owner)) store.remove(entry.owner, entry.channelId)
+        val frontiersByOwner = mutableMapOf<ReadReceiptOwner, Map<ChannelId, ReadReceiptFrontier>>()
+        for (listed in store.entries()) {
+            if (!ownerValidator(listed.owner)) {
+                if (ownerAccessLost(listed.owner)) store.remove(listed.owner, listed.channelId)
+                continue
+            }
+            val frontiers =
+                frontiersByOwner[listed.owner]
+                    ?: replayFrontierLoader(listed.owner)?.also { frontiersByOwner[listed.owner] = it }
+            if (frontiers == null) {
+                scheduleReplayRetry()
+                return
+            }
+            // As saved now: this pass may have waited, and a new read or Mark as Unread changes the entry.
+            val entry = store.entry(listed.owner, listed.channelId) ?: continue
+            if (entry.isSupersededBy(frontiers[entry.channelId])) {
+                store.remove(entry.owner, entry.channelId)
+                onReplayDropped(entry.owner, entry.channelId)
                 continue
             }
             val result =
