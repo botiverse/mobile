@@ -2116,6 +2116,9 @@ internal class RaftSharedStoreProvider private constructor(
             SharedCreateAgentFormStore(
                 computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient(scope))),
                 scope = threadSendScope,
+                hostedRuntimeFlag = { serverId ->
+                    serverFeatureFlags.isEnabled(serverId, ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY)
+                },
                 ownerProvider = {
                     shellAuthStore.readSession()?.let { session ->
                         sharedCreateAgentFormOwner(

@@ -2008,6 +2008,13 @@
     <string name="agent_create_action_add_computer">Add Computer</string>
     <string name="agent_create_hint_required_computer">Required computer: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Suggested computer: %1$s</string>
+    <string name="agent_create_hosted_option">Cloud agent, runs in the cloud · Free for a limited time</string>
+    <string name="agent_create_hosted_hint">Raft creates the agent in the cloud and connects it for you. No command line needed.</string>
+    <string name="agent_create_hosted_model_label">Model</string>
+    <string name="agent_create_hosted_model_default">Default (%1$s)</string>
+    <string name="agent_create_hosted_model_default_unnamed">Provider default</string>
+    <string name="agent_create_hosted_model_locked">An administrator has set this agent's model, so it can't be changed here.</string>
+    <string name="agent_create_hosted_model_load_failed">Couldn't load the models, so the agent starts on the provider's default. You can change its model later in its profile.</string>
     <string name="agent_create_state_no_runtimes">No runtimes available</string>
     <string name="agent_create_error_no_machine_runtimes">Selected computer has no runtime data. Refresh computers or choose another computer.</string>
     <string name="agent_create_suffix_coming_soon">&#160;(coming soon)</string>

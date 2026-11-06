@@ -6068,6 +6068,7 @@ internal fun MembersListContent(
         val scope = rememberCoroutineScope()
         SharedCreateAgentDialog(
             external = activeCreateAgentMode == MembersCreateAgentMode.External,
+            offersHosting = true,
             submitting = createAgentSubmitting,
             errorMessage = createAgentError,
             errorFieldKeys = createAgentErrorFields,

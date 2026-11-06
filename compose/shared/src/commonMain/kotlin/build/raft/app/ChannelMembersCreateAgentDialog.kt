@@ -132,6 +132,7 @@ internal fun ChannelMembersCreateAgentDialog(
     } else {
         SharedCreateAgentDialog(
             external = mode == MembersCreateAgentMode.External,
+            offersHosting = true,
             autoJoinChannelName = channelName,
             submitting = submitting, errorMessage = error, initialName = initialName,
             machines = if (mode.requiresComputerSelection()) picker.machines else emptyList(),

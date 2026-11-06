@@ -42,6 +42,42 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
+    fun cloudAgentOfferFollowsTheFlagThenTheProbe() = runPortableCoroutineTest {
+        val api = SequencedFormComputersApi()
+        val off = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
+        assertEquals(false, off.hostedRuntimeFlagOn("server-1"))
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this, hostedRuntimeFlag = { it.value == "server-1" })
+        assertEquals(true, store.hostedRuntimeFlagOn("server-1"))
+        assertEquals(false, store.hostedRuntimeFlagOn("server-2"))
+        assertEquals(false, store.hostedRuntimeFlagOn(""))
+
+        api.providerResponse = HomeNetworkResponse(code = 200, bodyText = """{"kind":"antiproton","available":true,"new":1}""")
+        assertEquals(true, store.loadHostedRuntimeAvailable("server-1"))
+        api.providerResponse = HomeNetworkResponse(code = 200, bodyText = """{"kind":"antiproton","available":false}""")
+        assertEquals(false, store.loadHostedRuntimeAvailable("server-1"))
+        api.providerResponse = HomeNetworkResponse(code = 500, bodyText = "{}")
+        assertEquals(false, store.loadHostedRuntimeAvailable("server-1"), "a failed probe offers nothing")
+    }
+
+    @Test
+    fun cloudAgentModelsParseAndOlderServersMayPick() = runPortableCoroutineTest {
+        val api = SequencedFormComputersApi()
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
+        api.modelsResponse =
+            HomeNetworkResponse(code = 200, bodyText = """{"models":[{"id":"gpt-5.6-luna","label":"GPT-5.6 Luna","provider":"cloudflare"}],"default":"deepseek-flash","defaultLabel":"DeepSeek Flash","locked":false}""")
+        val models = assertIs<DataResult.Content<HostedRuntimeModels>>(store.loadHostedRuntimeModels("server-1")).data
+        assertEquals(listOf(HostedRuntimeModelOption("gpt-5.6-luna", "GPT-5.6 Luna")), models.models)
+        assertEquals("DeepSeek Flash", models.defaultLabel)
+        assertEquals(true, models.picker)
+        api.modelsResponse = HomeNetworkResponse(code = 200, bodyText = """{"models":[],"default":null,"defaultLabel":null,"locked":true,"picker":false}""")
+        val locked = assertIs<DataResult.Content<HostedRuntimeModels>>(store.loadHostedRuntimeModels("server-1")).data
+        assertEquals(true, locked.locked)
+        assertEquals(false, locked.picker)
+        api.modelsResponse = HomeNetworkResponse(code = 502, bodyText = "{}")
+        assertIs<DataResult.Error>(store.loadHostedRuntimeModels("server-1"))
+    }
+
+    @Test
     fun formOwnerIgnoresTokensAndFollowsAccountAndEnvironment() {
         val session = formSession(user = "account-1", accessToken = "access-1")
         val owner = sharedCreateAgentFormOwner(session, "https://api.example.test/", "1")
@@ -99,6 +135,11 @@ class SharedCreateAgentFormStoreTest {
         var runtimeOptionsBody: String = canonicalRuntimeOptionsBody
     ) : RaftComputersApi {
         var runtimeOptionsCallCount = 0
+        var providerResponse: HomeNetworkResponse = HomeNetworkResponse(code = 500, bodyText = "{}")
+        var modelsResponse: HomeNetworkResponse = HomeNetworkResponse(code = 500, bodyText = "{}")
+
+        override suspend fun agentRuntimeProvider(serverId: ServerId, kind: String): HomeNetworkResponse = providerResponse
+        override suspend fun agentRuntimeProviderModels(serverId: ServerId, kind: String): HomeNetworkResponse = modelsResponse
 
         override suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse {
             runtimeOptionsCallCount += 1

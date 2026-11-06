@@ -2002,6 +2002,13 @@
     <string name="agent_create_action_add_computer">Добавить компьютер</string>
     <string name="agent_create_hint_required_computer">Требуется компьютер: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Рекомендуемый компьютер: %1$s</string>
+    <string name="agent_create_hosted_option">Облачный агент, работает в облаке · Временно бесплатно</string>
+    <string name="agent_create_hosted_hint">Raft создаст агента в облаке и подключит его за вас. Командная строка не понадобится.</string>
+    <string name="agent_create_hosted_model_label">Модель</string>
+    <string name="agent_create_hosted_model_default">По умолчанию (%1$s)</string>
+    <string name="agent_create_hosted_model_default_unnamed">Модель провайдера по умолчанию</string>
+    <string name="agent_create_hosted_model_locked">Модель этого агента задана администратором, поэтому изменить её здесь нельзя.</string>
+    <string name="agent_create_hosted_model_load_failed">Не удалось загрузить список моделей, поэтому агент запустится с моделью провайдера по умолчанию. Модель можно сменить позже в профиле агента.</string>
     <string name="agent_create_state_no_runtimes">Нет доступных сред выполнения</string>
     <string name="agent_create_error_no_machine_runtimes">Для выбранного компьютера нет данных о средах выполнения. Обновите список компьютеров или выберите другой.</string>
     <string name="agent_create_suffix_coming_soon">&#160;(скоро)</string>

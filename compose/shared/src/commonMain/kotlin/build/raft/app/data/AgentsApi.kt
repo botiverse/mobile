@@ -1221,7 +1221,10 @@ internal data class CreateAgentBody(
      * Indicates this create call comes from the external-agent flow (no Computer).
      * Mirrors React `CreateAgentDialog` `external` flag.
      */
-    val external: Boolean? = null
+    val external: Boolean? = null,
+    /** Cloud agent: the provider runs it, with [external] true (web `provider`, `hostedModel`). */
+    val provider: String? = null,
+    val hostedModel: String? = null
 )
 
 @Serializable

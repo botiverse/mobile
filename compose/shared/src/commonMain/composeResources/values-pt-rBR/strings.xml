@@ -2005,6 +2005,13 @@
     <string name="agent_create_action_add_computer">Adicionar computador</string>
     <string name="agent_create_hint_required_computer">Computador obrigatório: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Computador sugerido: %1$s</string>
+    <string name="agent_create_hosted_option">Agente na nuvem, executado na nuvem · Gratuito por tempo limitado</string>
+    <string name="agent_create_hosted_hint">O Raft cria o agente na nuvem e faz a conexão para você. Não é preciso usar a linha de comando.</string>
+    <string name="agent_create_hosted_model_label">Modelo</string>
+    <string name="agent_create_hosted_model_default">Padrão (%1$s)</string>
+    <string name="agent_create_hosted_model_default_unnamed">Padrão do provedor</string>
+    <string name="agent_create_hosted_model_locked">Um administrador definiu o modelo deste agente, então não é possível alterá-lo aqui.</string>
+    <string name="agent_create_hosted_model_load_failed">Não foi possível carregar os modelos, então o agente vai começar com o modelo padrão do provedor. Você pode trocar o modelo depois, no perfil do agente.</string>
     <string name="agent_create_state_no_runtimes">Nenhum runtime disponível</string>
     <string name="agent_create_error_no_machine_runtimes">O computador selecionado não tem dados de runtime. Atualize os computadores ou escolha outro.</string>
     <string name="agent_create_suffix_coming_soon">&#160;(em breve)</string>

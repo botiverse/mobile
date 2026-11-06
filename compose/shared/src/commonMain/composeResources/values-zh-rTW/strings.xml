@@ -2005,6 +2005,13 @@
     <string name="agent_create_action_add_computer">新增電腦</string>
     <string name="agent_create_hint_required_computer">必須使用的電腦：%1$s</string>
     <string name="agent_create_hint_suggested_computer">建議使用的電腦：%1$s</string>
+    <string name="agent_create_hosted_option">雲端 Agent，在雲端執行 · 限時免費</string>
+    <string name="agent_create_hosted_hint">Raft 會在雲端建立這個 Agent 並為你完成連接，不需要使用命令列。</string>
+    <string name="agent_create_hosted_model_label">模型</string>
+    <string name="agent_create_hosted_model_default">預設（%1$s）</string>
+    <string name="agent_create_hosted_model_default_unnamed">供應商預設</string>
+    <string name="agent_create_hosted_model_locked">管理員已為這個 Agent 指定模型，因此無法在這裡變更。</string>
+    <string name="agent_create_hosted_model_load_failed">無法載入模型清單，因此 Agent 會先使用供應商的預設模型。之後可以在它的個人檔案中變更模型。</string>
     <string name="agent_create_state_no_runtimes">沒有可用的執行環境</string>
     <string name="agent_create_error_no_machine_runtimes">所選電腦沒有執行環境資料。請重新整理電腦清單，或選擇其他電腦。</string>
     <string name="agent_create_suffix_coming_soon">（即將推出）</string>
