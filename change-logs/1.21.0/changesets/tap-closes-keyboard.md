@@ -5,7 +5,7 @@ platforms:
   - android
   - ios
 rollout: full
-pull_request: TBD
+pull_request: https://github.com/botiverse/mobile/pull/4375
 ---
 
 ## zh-CN
