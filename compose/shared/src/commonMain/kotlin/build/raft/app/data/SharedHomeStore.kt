@@ -4065,6 +4065,7 @@ internal class SharedHomeStore(
         }
         val channelId = target.messageStreamChannelId()
         val previousState = _state.value
+        dropChannelGuards(channelId)
         applyHomeSnapshotLocally { it.withoutHomeConversation(conversationId) }
         if (_state.value.selectedConversationId == conversationId) {
             reduceState(_state.value.copy(selectedConversationId = null))

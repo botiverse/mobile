@@ -270,6 +270,22 @@ class SharedHomeStoreLeaveChannelTest {
     }
 
     @Test
+    fun aJustCreatedChannelArchivedFromTheRowMenuStaysGoneAcrossAFetch() = runTest {
+        var fetches = 0
+        val store = store(onFetch = { fetches += 1 })
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ChannelCreated(row("channel-new", channelType = "private")))
+
+        store.accept(SharedHomeIntent.ArchiveChannel("channel-new"))
+        val fetchesBefore = fetches
+        store.accept(SharedHomeIntent.Refresh)
+        store.awaitRealtimeSettled()
+
+        assertTrue(fetches > fetchesBefore)
+        assertTrue(store.snapshot().channels.none { it.channelId == ChannelId("channel-new") })
+    }
+
+    @Test
     fun endingOneJustCreatedChannelKeepsAnothersGuard() = runTest {
         val store = store()
         store.accept(SharedHomeIntent.Start)
