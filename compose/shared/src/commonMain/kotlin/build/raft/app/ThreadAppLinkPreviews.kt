@@ -232,7 +232,7 @@ internal fun ThreadAppLinkPreviewScope(
         }
     // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the
     // message itself: quotes, forwards, search and Activity have no scope, so they show chips.
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
     val currentOnOpenLink by rememberUpdatedState(onOpenLink)
     val read = batch.read
     val actionHost =
@@ -247,7 +247,7 @@ internal fun ThreadAppLinkPreviewScope(
             }
         }
     val blockHost =
-        remember(view.results, uriHandler, actionHost) {
+        remember(view.results, openInSystemBrowser, actionHost) {
             if (view.results.values.none { it is AppLinkResult.Card && it.block != null }) {
                 null
             } else {
@@ -255,7 +255,7 @@ internal fun ThreadAppLinkPreviewScope(
                     ThreadAppLinkBlockCard(
                         card,
                         openUri = { address ->
-                            openThreadAppLinkAddress(address, card.connectUrl, currentOnOpenLink, uriHandler::openUri)
+                            openThreadAppLinkAddress(address, card.connectUrl, currentOnOpenLink, openInSystemBrowser)
                         },
                         actions = actionHost,
                     )

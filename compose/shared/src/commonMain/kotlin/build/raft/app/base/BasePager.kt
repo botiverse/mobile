@@ -1,5 +1,6 @@
 package build.raft.app.base
 
+import build.raft.app.ProvideRaftLinkOpening
 import build.raft.app.ProvideRaftPageBaseTimeContext
 import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
@@ -79,7 +80,9 @@ internal abstract class BasePager : ComposeContainer() {
                     )
                 }
             ProvideRaftPageBaseTimeContext(pageVisibleTick = raftPageVisibleResumeTick) {
-                RaftPageLayersContent(layers = layers, content = content)
+                ProvideRaftLinkOpening(this@BasePager) {
+                    RaftPageLayersContent(layers = layers, content = content)
+                }
             }
         }
     }

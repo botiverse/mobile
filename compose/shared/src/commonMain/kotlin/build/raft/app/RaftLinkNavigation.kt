@@ -2,8 +2,13 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import build.raft.app.base.BridgeModule
+import build.raft.app.base.Utils
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
@@ -220,6 +225,43 @@ internal fun rememberRaftLinkNavigator(
                 bridge.toast(rejectedMessage)
             },
         )
+    }
+}
+
+internal val LocalRaftLinkNavigator = staticCompositionLocalOf<RaftLinkNavigator?> { null }
+
+/**
+ * The one way a page opens a link (artin, Hands ff72869f): Compose's [LocalUriHandler] default starts its own
+ * VIEW, so anything reading it opened differently from a message link. Every page sits under this (BasePager).
+ */
+@Composable
+internal fun ProvideRaftLinkOpening(pager: Pager, content: @Composable () -> Unit) {
+    val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
+    val navigator = rememberRaftLinkNavigator(pager, bridge)
+    val uriHandler =
+        remember(navigator) {
+            object : UriHandler {
+                override fun openUri(uri: String) {
+                    navigator.open(uri)
+                }
+            }
+        }
+    CompositionLocalProvider(
+        LocalRaftLinkNavigator provides navigator,
+        LocalUriHandler provides uriHandler,
+        content = content,
+    )
+}
+
+/** Opens in the system browser whatever the link setting is: where an account's sign-in lives. */
+@Composable
+internal fun rememberRaftSystemBrowserOpener(): (String) -> Unit {
+    val navigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
+    return remember(navigator, uriHandler) {
+        { url ->
+            if (navigator != null) navigator.open(url, RaftLinkOpenIntent.ForceExternal) else uriHandler.openUri(url)
+        }
     }
 }
 

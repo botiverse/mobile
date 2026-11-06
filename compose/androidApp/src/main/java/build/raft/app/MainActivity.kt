@@ -655,13 +655,6 @@ internal fun selectExternalWebHandlerPackage(
         ?: externalPackages.firstOrNull()
 }
 
-/**
- * Whether an `openUrl` is pinned to a browser package first: only when the caller asked for the
- * browser (`browser: true`, HostLinkCapability.openUrlInBrowser) and it is an untyped http(s) URL.
- */
-internal fun openUrlUsesBrowserPackage(browser: Boolean, mimeType: String?, scheme: String?): Boolean =
-    browser && mimeType == null && scheme?.lowercase() in setOf("http", "https")
-
 private fun String.isRaftAppPackage(): Boolean = this == RAFT_APP_PACKAGE || startsWith("$RAFT_APP_PACKAGE.")
 
 private const val RAFT_APP_PACKAGE = "build.raft.app"
@@ -672,8 +665,11 @@ internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
     val implicit =
         Intent(Intent.ACTION_VIEW, uri)
             .addCategory(Intent.CATEGORY_BROWSABLE)
+    // MATCH_DEFAULT_ONLY lists only apps picked as defaults; a device with no default browser reports none.
     val candidates =
-        packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+        packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY).ifEmpty {
+            packageManager.queryIntentActivities(implicit, PackageManager.MATCH_ALL)
+        }
     val defaultPackage =
         packageManager
             .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)

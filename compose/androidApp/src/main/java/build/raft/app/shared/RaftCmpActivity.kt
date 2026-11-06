@@ -5190,9 +5190,7 @@ internal class RaftBridgeModule(
                             )
                     )
                     val intent =
-                            Intent(Intent.ACTION_VIEW, Uri.parse(startResult.data.authorizationUrl)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
+                            externalUrlIntent(Uri.parse(startResult.data.authorizationUrl), mimeType = null)
                     runCatching {
                                 appContext.startActivity(intent)
                             }
@@ -7148,19 +7146,6 @@ internal class RaftBridgeModule(
         val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
-        // HostLinkCapability.openUrlInBrowser: VIEW pinned to a browser package, so App Links can't
-        // bring a Raft link back into Raft; with no browser found, the ordinary path below.
-        if (openUrlUsesBrowserPackage(request.optBoolean("browser", false), mimeType, uri.scheme)) {
-            val browser = browserPackage()
-            val opened =
-                    browser != null &&
-                            runCatching { appContext.startActivity(browserViewIntent(uri, browser)) }
-                                    .onFailure { throwable ->
-                                        RaftAppLog.record("SlockOpenUrl", "browserPackage=failed type=${throwable::class.java.simpleName}")
-                                    }
-                                    .isSuccess
-            if (opened) return null
-        }
         val viewIntent = externalUrlIntent(uri, mimeType)
         runCatching {
             appContext.startActivity(viewIntent)
@@ -7199,32 +7184,8 @@ internal class RaftBridgeModule(
     }
 
     /**
-     * The browser to pin a VIEW to: an app that takes `https` with no host (a browser, not an app
-     * whose App Links name hosts), the default one first, never a Raft app
-     * ([selectExternalWebHandlerPackage]). The manifest's `<queries>` lists this probe. Not the
-     * CATEGORY_APP_BROWSER selector: some browsers' launcher activity drops the URL.
-     */
-    private fun browserPackage(): String? {
-        val packageManager = appContext.packageManager
-        val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://")).addCategory(Intent.CATEGORY_BROWSABLE)
-        val candidates = packageManager.queryIntentActivities(probe, PackageManager.MATCH_ALL).map { it.activityInfo.packageName }
-        val defaultPackage = packageManager.resolveActivity(probe, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
-        return selectExternalWebHandlerPackage(
-                ownPackage = appContext.packageName,
-                defaultPackage = defaultPackage,
-                candidatePackages = candidates
-        )
-    }
-
-    private fun browserViewIntent(uri: Uri, browserPackage: String): Intent =
-            Intent(Intent.ACTION_VIEW, uri)
-                    .addCategory(Intent.CATEGORY_BROWSABLE)
-                    .setPackage(browserPackage)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-    /**
-     * HTTP(S) links must leave Raft even when Android App Links resolve the same URL back to this
-     * application. Other schemes retain the platform's ordinary implicit-handler behavior.
+     * HTTP(S) links open as the web login does ([androidExternalBrowserIntent]): every open goes to the
+     * same app, and never back into Raft. Other schemes retain the platform's ordinary implicit handler.
      */
     private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent {
         val isWebUrl = mimeType == null && uri.scheme?.lowercase() in setOf("http", "https")
@@ -7243,33 +7204,7 @@ internal class RaftBridgeModule(
         if (!isWebUrl) {
             return implicit
         }
-        // MATCH_DEFAULT_ONLY only lists apps the user picked as defaults; devices without a
-        // default browser (or that never show the disambiguation sheet) report an empty list.
-        // Retry without the flag before giving up on a target package.
-        var candidates =
-                appContext.packageManager.queryIntentActivities(
-                        implicit,
-                        PackageManager.MATCH_DEFAULT_ONLY
-                )
-        if (candidates.isEmpty()) {
-            candidates =
-                    appContext.packageManager.queryIntentActivities(
-                            implicit,
-                            PackageManager.MATCH_ALL
-                    )
-        }
-        val defaultPackage =
-                appContext.packageManager
-                        .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
-                        ?.activityInfo
-                        ?.packageName
-        val selectedPackage =
-                selectExternalWebHandlerPackage(
-                        ownPackage = appContext.packageName,
-                        defaultPackage = defaultPackage,
-                        candidatePackages = candidates.map { it.activityInfo.packageName }
-                ) ?: return implicit
-        return implicit.setPackage(selectedPackage)
+        return androidExternalBrowserIntent(appContext, uri)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: implicit
     }
 
     private fun openAttachment(params: String?, callback: RaftBridgeCallback?) {

@@ -9,12 +9,12 @@ rollout: full
 
 ## zh-CN
 
-链接卡片里的打开按钮，现在和对话里的链接一样，按「打开网页链接」的设置打开。连接账号的按钮仍然用系统浏览器。
+所有网页链接现在用同一种方式打开：对话里的链接、卡片按钮、连接账号和登录都打开同一个应用，并遵循「打开网页链接」的设置（连接账号和登录始终用系统浏览器）。
 
 ## en
 
-The open button on link cards now follows your "Open web links" setting, the same as links in a conversation. Connecting an account still uses the system browser.
+Web links now all open the same way: links in a conversation, card buttons, account connections and sign-in go to the same app and follow your "Open web links" setting (account connections and sign-in always use the system browser).
 
 ## ja
 
-リンクカードの開くボタンは、会話内のリンクと同じく「Web リンクの開き方」の設定に従うようになりました。アカウント連携は引き続きシステムブラウザで開きます。
+Web リンクの開き方を統一しました。会話内のリンク、カードのボタン、アカウント連携、サインインは同じアプリで開き、「Web リンクの開き方」の設定に従います（アカウント連携とサインインは常にシステムブラウザで開きます）。

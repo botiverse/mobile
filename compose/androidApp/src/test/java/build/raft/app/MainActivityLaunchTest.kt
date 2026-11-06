@@ -390,17 +390,6 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun onlyABrowserRequestForAnUntypedWebUrlIsPinnedToABrowser() {
-        assertTrue(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "https"))
-        assertTrue(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "HTTP"))
-        // An ordinary openUrl keeps the external-handler path; typed or non-web URLs never take a browser.
-        assertFalse(openUrlUsesBrowserPackage(browser = false, mimeType = null, scheme = "https"))
-        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = "application/pdf", scheme = "https"))
-        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "mailto"))
-        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = null))
-    }
-
-    @Test
     fun theBrowserForOpenInWebIsTheDefaultOneAndNeverARaftApp() {
         // Candidates of the no-host https probe: browsers (and any Raft build that takes https).
         val browsers = listOf("build.raft.app", "build.raft.app.debug", "org.mozilla.firefox", "com.android.chrome")

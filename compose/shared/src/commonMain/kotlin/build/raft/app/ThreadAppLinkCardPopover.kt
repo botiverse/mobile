@@ -170,7 +170,7 @@ internal fun ThreadAppLinkCardPopoverHost(
         if (card == null) cards.close()
     }
     if (card == null) return
-    val uriHandler = LocalUriHandler.current
+    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
     Modal(onWillDismiss = { cards.close() }) {
         RaftDesignSystemTheme {
             ThreadAppLinkCardPopover(
@@ -180,7 +180,7 @@ internal fun ThreadAppLinkCardPopoverHost(
                 onOpenLink = {
                     cards.close()
                     val address = card.connectUrl ?: card.url
-                    openThreadAppLinkAddress(address, card.connectUrl, cards.openLink, uriHandler::openUri)
+                    openThreadAppLinkAddress(address, card.connectUrl, cards.openLink, openInSystemBrowser)
                 },
             )
         }
