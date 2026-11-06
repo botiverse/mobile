@@ -12673,8 +12673,17 @@ private fun MembersAgentAppLoginCard(
                     RaftText(
                         text = stringResource(
                             Res.string.member_label_connected_since,
-                            it.membersActivityDisplayTime(timeContext)
+                            // A clock alone read as today for a grant from any day (artin 11-06).
+                            it.membersReminderShortDateTime(timeContext)
                         ),
+                        style = RaftTheme.typography.caption,
+                        color = RaftTheme.colors.foregroundHint
+                    )
+                }
+                // Web `GRANT_SOURCE_LABEL`: two grants of one App otherwise read as the same row.
+                item.grantSource?.let(::membersAgentAppGrantSourceLabel)?.let { label ->
+                    RaftText(
+                        text = stringResource(label),
                         style = RaftTheme.typography.caption,
                         color = RaftTheme.colors.foregroundHint
                     )
@@ -14453,6 +14462,16 @@ private fun String.toMemberDetailDiagnosticsLine(): String =
         .filter { it.isNotBlank() }
         .joinToString(" | ")
         .take(1200)
+
+/** Web `GRANT_SOURCE_LABEL`; an unknown source shows no line. */
+internal fun membersAgentAppGrantSourceLabel(source: String): StringResource? =
+    when (source) {
+        "person" -> Res.string.member_app_grant_source_person
+        "agent_login" -> Res.string.member_app_grant_source_agent_login
+        "app_request" -> Res.string.member_app_grant_source_app_request
+        "legacy_import" -> Res.string.member_app_grant_source_legacy_import
+        else -> null
+    }
 
 private fun String?.membersActivityDisplayTime(timeContext: RaftTimeContext): String =
     formatRaftTimestampClockWithSeconds(this, timeContext)

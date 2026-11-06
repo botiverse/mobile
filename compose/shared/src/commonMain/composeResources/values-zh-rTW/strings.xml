@@ -3847,4 +3847,8 @@
     <string name="thread_link_preview_connect_title">連結你的 %1$s 帳號</string>
     <string name="thread_link_preview_connect_body">在 %1$s 連結帳號後，這裡會顯示這個連結的內容。</string>
     <string name="thread_link_preview_connect_action">連結帳號</string>
+    <string name="member_app_grant_source_person">由真人授權</string>
+    <string name="member_app_grant_source_agent_login">Agent 登入時授權</string>
+    <string name="member_app_grant_source_app_request">自動授權給應用程式</string>
+    <string name="member_app_grant_source_legacy_import">Agent 的提醒移轉到這個應用程式時授權</string>
 </resources>
