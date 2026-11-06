@@ -122,7 +122,7 @@ internal enum class ThreadDurablePageDirection(val wireName: String) {
  * stored but not shown until Phase 2d. The extender re-reads `stillCurrent` after its network round trip and before the
  * write. Every non-positive case writes nothing and logs one line.
  */
-internal fun interface ThreadDurablePageExtender {
+internal interface ThreadDurablePageExtender {
     /**
      * [replyParent] selects the scope family explicitly: `null` = a top-level channel / DM window;
      * non-null = the reply thread [channelId] whose stored cursor must name exactly that parent

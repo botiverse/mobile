@@ -663,7 +663,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                 if (!stillCurrent()) return@withScopeWriter log("identity_changed")
                 if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
                 try {
-                    clearHeaderOfAnotherParent(scope, cursorParent)?.let(::log)
+                    generationEngine.clearHeaderOfAnotherParent(scope, cursorParent)?.let(::log)
                     // Phase 2a (P1): the page is added, never a rebaseline — older stored pages stay.
                     val commit = generationEngine.applyCoverageReportingBaseline(
                         scope = scope,
@@ -744,21 +744,6 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         }
         // Unknown (an empty page of a scope never stored) or a task without its parent: ask the server.
         return fetcher.topLevelKind(partition, scopeId)
-    }
-
-    /**
-     * Message storage Phase 3a/2a: a realtime reply may have created the thread's header naming the parent its
-     * frame claimed. The server-confirmed [parent] of an enter / prewarm wins: a header naming another parent
-     * channel or root is another thread's, so the scope is cleared before the page is written (the design's
-     * "a mismatch triggers a clear and rewrite"). Returns the log outcome when it cleared, else `null`. Must run
-     * inside the scope writer.
-     */
-    private suspend fun clearHeaderOfAnotherParent(scope: SyncScopeKey, parent: CanonicalMessageV2ThreadParent?): String? {
-        parent ?: return null
-        val stored = generationEngine.storedCursor(scope)?.threadParent() ?: return null
-        if (stored.parentScopeId == parent.parentScopeId && stored.rootMessageId == parent.rootMessageId) return null
-        generationEngine.clearScope(scope)
-        return "parent_rewritten old=${stored.parentScopeId}/${stored.rootMessageId}"
     }
 
     private fun log(partition: DurablePartitionKey, scopeId: SyncScopeId, replyThread: Boolean, outcome: String) {
@@ -889,7 +874,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                     // Phase 2a (P1): the page's range is added to the stored ones; nothing stored is dropped.
                     // Phase 2b: revAtRequest was read by the caller before its fetch. The commit-generation check above
                     // does not see realtime loose writes (countsAsScopeCommit = false); their revision does.
-                    if (current == null) clearHeaderOfAnotherParent(scope, frame.cursor.threadParent())?.let { skipped ->
+                    if (current == null) generationEngine.clearHeaderOfAnotherParent(scope, frame.cursor.threadParent())?.let { skipped ->
                         log("parent_rewritten", skipped)
                     }
                     val before = generationEngine.storedSegments(scope)
@@ -1392,7 +1377,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             if (!isEnabledForServer(partition.serverId)) return@withScopeWriter skip("flag_revoked")
             try {
                 val threadParent = parent?.let { CanonicalMessageV2ThreadParent(it.parentScopeKind, it.parentScopeId, it.rootMessageId) }
-                clearHeaderOfAnotherParent(scope, threadParent)?.let { rewritten -> log("parent_rewritten", rewritten) }
+                generationEngine.clearHeaderOfAnotherParent(scope, threadParent)?.let { rewritten -> log("parent_rewritten", rewritten) }
                 val before = generationEngine.storedSegments(scope)
                 val claim = CanonicalMessageV2Coverage.fromContextPage(
                     envelopes.map { it.fact.seq } + rows.rejectedSeqs, hasOlder, historyLimited,
@@ -1455,7 +1440,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             val stored = generationEngine.storedCursor(scope)
             storedReplyParentOrNull(stored, replyParent)?.let { return ContextPageScope.Resolved(scope, it) }
             // A header with a window under another parent is another thread. A windowless one only names what a realtime
-            // frame claimed: the server decides, and the write replaces it ([clearHeaderOfAnotherParent]).
+            // frame claimed: the server decides, and the write replaces it (`clearHeaderOfAnotherParent`).
             if (stored != null && (stored.oldestLoadedSeq != null || stored.hasLoadedOldest)) {
                 return ContextPageScope.Refused("parent_mismatch")
             }
@@ -1483,6 +1468,23 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         if (parentKind == null || parentId == null || rootId == null) return ContextPageScope.Refused("parent_mismatch")
         return ContextPageScope.Resolved(scope, CanonicalMessageV2ReplyParentScope(parentKind, parentId, rootId))
     }
+}
+
+/**
+ * Message storage Phase 3a/2a: a realtime reply may have created the thread's header naming the parent its frame claimed.
+ * The server-confirmed [parent] of a page wins: a header naming another parent channel or root is another thread's, so the
+ * scope is cleared before the page is written (the design's "a mismatch triggers a clear and rewrite"). Returns the log
+ * outcome when it cleared, else `null`. Must run inside the scope writer.
+ */
+private suspend fun CanonicalMessageV2GenerationEngine.clearHeaderOfAnotherParent(
+    scope: SyncScopeKey,
+    parent: CanonicalMessageV2ThreadParent?,
+): String? {
+    parent ?: return null
+    val stored = storedCursor(scope)?.threadParent() ?: return null
+    if (stored.parentScopeId == parent.parentScopeId && stored.rootMessageId == parent.rootMessageId) return null
+    clearScope(scope)
+    return "parent_rewritten old=${stored.parentScopeId}/${stored.rootMessageId}"
 }
 
 /** What a page write stores: [envelopes] under [coverage] (`null` = no claim, facts only). */
