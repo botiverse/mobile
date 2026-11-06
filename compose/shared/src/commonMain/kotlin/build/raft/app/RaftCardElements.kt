@@ -508,11 +508,14 @@ internal fun rememberActionCardDisplayLocale(): String {
 internal fun actionCardEntityName(ref: ActionCardSpecEntityRef, context: RaftCardTreeContext): String =
     context.entityName(ref)?.trim()?.removePrefix("@")?.removePrefix("#")?.takeIf { it.isNotBlank() } ?: ref.fallback
 
-/** An entity as a mention: `@name` for people and agents, `#name` for channels, a computer's name. */
+/**
+ * An entity as a card shows it: the name for people and agents (raft-design #1027, web #13310: a card
+ * uses the display name, no `@`), `#name` for channels, a computer's name.
+ */
 internal fun actionCardEntityMention(ref: ActionCardSpecEntityRef, context: RaftCardTreeContext): String {
     val name = actionCardEntityName(ref, context)
     return when (ref.kind) {
-        ActionCardSpecEntityKind.User, ActionCardSpecEntityKind.Agent -> "@$name"
+        ActionCardSpecEntityKind.User, ActionCardSpecEntityKind.Agent -> name
         ActionCardSpecEntityKind.Channel -> "#$name"
         ActionCardSpecEntityKind.Computer -> name
     }
