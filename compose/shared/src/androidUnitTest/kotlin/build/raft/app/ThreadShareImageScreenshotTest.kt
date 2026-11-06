@@ -32,6 +32,7 @@ import kotlin.test.BeforeTest
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -154,7 +155,9 @@ class ThreadShareImageScreenshotTest {
             RaftRobolectricScreenshot.render(
                 appearance = RaftAppAppearance.Light,
                 activities = activities,
-                content = {
+                interact = { drawActivityWindow() },
+                content = { activity ->
+                    hostActivity = activity
                     ShareImageHost {
                         ShareImageRenderer(cardWidthDp) { rendered = it }
                     }
@@ -172,7 +175,9 @@ class ThreadShareImageScreenshotTest {
             reportDir = "build/reports/thread-screenshots",
             activities = activities,
             root = { activity -> dialogFittedToItsWindow() ?: activity.window.decorView },
-        ) {
+            interact = { drawActivityWindow() },
+        ) { activity ->
+            hostActivity = activity
             ShareImageHost {
                 var image by remember { mutableStateOf<ImageBitmap?>(null) }
                 ShareImageRenderer(choice.widthDp) { image = it }
@@ -197,7 +202,8 @@ class ThreadShareImageScreenshotTest {
     @Composable
     private fun ShareImageHost(content: @Composable () -> Unit) {
         CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
-            RaftDesignSystemTheme { content() }
+            // The window's size, as a page: a 0x0 root is never drawn, so its rows never recorded.
+            RaftDesignSystemTheme { Box(Modifier.fillMaxSize()) { content() } }
         }
     }
 
@@ -210,8 +216,14 @@ class ThreadShareImageScreenshotTest {
             background = RaftColor.Canvas,
             onRendering = {},
             onRendered = onRendered,
-            // Frames only: Robolectric's clock moves with the looper, a coroutine delay does not.
-            settle = { repeat(4) { withFrameNanos {} } },
+            // Frames, then the activity window drawn once (drawActivityWindow): on a device the
+            // window draws every frame and records the rows; Robolectric draws only on request.
+            // No coroutine delay: Robolectric's clock moves with the looper, a delay does not.
+            settle = {
+                repeat(4) { withFrameNanos {} }
+                rowsRecorded.await()
+                repeat(2) { withFrameNanos {} }
+            },
         ) {
             ThreadShareImageMessageRow(
                 message = ThreadShareImageWideTableVisualMessage,
@@ -220,6 +232,20 @@ class ThreadShareImageScreenshotTest {
                 suppressRepeatedAuthor = false,
             )
         }
+    }
+
+    private var hostActivity: androidx.activity.ComponentActivity? = null
+    private val rowsRecorded = CompletableDeferred<Unit>()
+
+    /** Draws the activity's compose root once (records the off-screen rows' layers), then lets the renderer go on. */
+    private fun drawActivityWindow() {
+        val root = hostActivity?.window?.decorView?.let(::findCompose)
+        if (root != null && root.width > 0 && root.height > 0) {
+            val scratch = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+            root.draw(android.graphics.Canvas(scratch))
+            scratch.recycle()
+        }
+        rowsRecorded.complete(Unit)
     }
 
     /** As [AnnouncementModalScreenshotTest]: the dialog window, its content measured to the window. */
