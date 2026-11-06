@@ -3233,6 +3233,7 @@
     <string name="member_activity_overview_problem_exit_nonzero">%1$s 指令結束代碼 %2$s</string>
     <string name="member_activity_overview_problem_call_failed">%1$s 工具呼叫失敗</string>
     <string name="member_activity_overview_problem_more">還有 %1$d 步</string>
+    <string name="member_activity_overview_output_label">Agent 的輸出（未傳送）</string>
     <string name="member_activity_overview_reply_label">最後回覆</string>
     <string name="member_activity_overview_reply_label_at">最後回覆 · %1$s</string>
     <string name="member_activity_overview_reply_count">· 這一輪共傳送了 %1$d 則</string>

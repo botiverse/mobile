@@ -118,6 +118,8 @@ internal data class ActivityTurnSummaryWire(
     val hiddenSentCount: Int? = null,
     val appEvents: List<ActivityTurnAppEventWire>? = null,
     val appEventCount: Int? = null,
+    /** The last text the runtime output in the turn, sent to no one; the server drops it for viewers it should not reach. */
+    val lastText: String? = null,
 )
 
 /** slock `ACTIVITY_TURN_OUTCOMES`. */
@@ -257,6 +259,8 @@ data class AgentActivityTurn(
     val appEventCount: Int? = null,
     /** The turn still running (the first page's `current`). */
     val running: Boolean = false,
+    /** The last text the runtime output in the turn, sent to no one. */
+    val lastText: String? = null,
 ) {
     /** Stable list key: the row id, or the time span for an older server; the running turn has its own. */
     val key: String
@@ -348,6 +352,7 @@ private fun ActivityTurnSummaryWire.toDomain(running: Boolean): AgentActivityTur
             )
         },
         appEventCount = appEventCount,
+        lastText = lastText?.takeIf { it.isNotBlank() },
         running = running,
     )
 

@@ -300,6 +300,18 @@ class AgentActivityOverviewParserTest {
         assertEquals(AgentActivityTurnReply.Failed, repository.loadReply(DataRequestPriority.Visible, MessageId("offline")))
     }
 
+    @Test
+    fun lastTextIsReadAndABlankOrMissingOneIsNone() {
+        val row = { extra: String ->
+            """{"startedAt":1,"endedAt":2,"outcome":"completed","actions":[],"toolCalls":0,"problems":[],"problemCount":0,"messagesSent":0$extra}"""
+        }
+        val withText = row(""","lastText":"line one\nline two"""")
+        val blank = row(""","lastText":"  """")
+        val body = """{"summaries":[$withText,$blank,${row("")}]}"""
+        val page = assertIsNotNull(parseSharedAgentActivityTurnPage(body))
+        assertEquals(listOf("line one\nline two", null, null), page.turns.map { it.lastText })
+    }
+
     private fun <T : Any> assertIsNotNull(value: T?): T {
         kotlin.test.assertNotNull(value)
         return value

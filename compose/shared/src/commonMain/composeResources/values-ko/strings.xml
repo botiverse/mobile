@@ -3233,6 +3233,7 @@
     <string name="member_activity_overview_problem_exit_nonzero">%1$s 명령이 종료 코드 %2$s(으)로 끝남</string>
     <string name="member_activity_overview_problem_call_failed">%1$s 도구 호출 실패</string>
     <string name="member_activity_overview_problem_more">외 %1$d개</string>
+    <string name="member_activity_overview_output_label">에이전트 출력 (보내지 않음)</string>
     <string name="member_activity_overview_reply_label">마지막 답장</string>
     <string name="member_activity_overview_reply_label_at">마지막 답장 · %1$s</string>
     <string name="member_activity_overview_reply_count">· 이번 턴에 메시지 %1$d개 전송</string>
