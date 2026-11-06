@@ -12,7 +12,13 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,15 +63,20 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Task v2: a task conversation page on a 360x800dp phone (web `TaskConversationDialog`,
- * `mobile-modal`) as it opens, light and dark: the top bar (the task's ref over "Task #7" with the
- * status badge, the assignee's face and the chevron, its Agent followers, the More menu), the head
- * pulled down from it over three messages (title, description folded with Show More, the inline
- * facts, History unfolded) and the composer. On a phone the head is only ever this panel (artin
- * 2026-11-06, #proj-mobile:01b96d5b). Then the same page while typing (the keyboard, stood in for
- * by the `fill-strong` block, puts the head back up), and at 2x text. Verify / record as
- * [RaftRobolectricScreenshot].
+ * `mobile-modal`) as it opens, light and dark. On a phone the head is the conversation's first row
+ * (artin 2026-11-06, #proj-mobile:ec53b56a): a short conversation opens with it above the messages
+ * (title, description folded with Show More, the inline facts, History), "Beginning of
+ * conversation" under it, the messages bottom-anchored on the composer; the top bar is the task's
+ * ref over "Task #7". Then the same page while typing (the keyboard, stood in for by the
+ * `fill-strong` block: the list keeps its newest message on the composer, the head goes up with
+ * the rest), at 2x text, and with two short replies. Verify / record as [RaftRobolectricScreenshot].
  *
- * [TaskConversationHeadFloatScreenshotTest]: a longer conversation with the head down and back up.
+ * `task.conversation.head.scroll.1..4`: an eight-message conversation from its newest message
+ * (1) back to its top (4) in thirds, the head coming down with the messages and the bar
+ * summarizing the task until the head is back in view: a frame strip of the scroll.
+ *
+ * [TaskConversationHeadFloatScreenshotTest]: a conversation longer than the page, its head out of
+ * view, and pulled down from the bar.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -86,34 +97,42 @@ class TaskConversationHeadScreenshotTest {
     @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
-    fun pageLight() = capture("task.conversation.head", RaftAppAppearance.Light) { TaskPage(keyboardUp = false) }
+    fun pageLight() = capture("task.conversation.head", RaftAppAppearance.Light) { TaskPhonePage(ThreeMessages) }
 
     @Test
-    fun pageDark() = capture("task.conversation.head.dark", RaftAppAppearance.Dark) { TaskPage(keyboardUp = false) }
+    fun pageDark() = capture("task.conversation.head.dark", RaftAppAppearance.Dark) { TaskPhonePage(ThreeMessages) }
 
     @Test
-    fun keyboardUp() = capture("task.conversation.head.keyboard", RaftAppAppearance.Light) { TaskPage(keyboardUp = true) }
+    fun keyboardUp() =
+        capture("task.conversation.head.keyboard", RaftAppAppearance.Light) { TaskPhonePage(ThreeMessages, keyboardUp = true) }
 
     @Test
     fun largeText() =
         capture("task.conversation.head.font-2x", RaftAppAppearance.Light) {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
-                TaskPage(keyboardUp = false, historyOpen = false)
+                TaskPhonePage(ThreeMessages)
             }
         }
 
-    /**
-     * A conversation with two short replies as it opens: the head pulled down from the bar covers
-     * them (it hangs over the messages, nothing under it moves); then the same page once it is put
-     * back up, the replies bottom-anchored on the composer under "Beginning of conversation".
-     */
+    /** Two short replies: the head, "Beginning of conversation" and the replies, all in view. */
     @Test
-    fun shortConversation() = capture("task.conversation.head.short", RaftAppAppearance.Light) { ShortTaskPage(closed = false) }
+    fun shortConversation() = capture("task.conversation.head.short", RaftAppAppearance.Light) { TaskPhonePage(ShortMessages) }
+
+    /** Eight messages, from the newest one back to the head on top, in thirds (a frame strip of the scroll). */
+    @Test
+    fun scroll1() = capture("task.conversation.head.scroll.1", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 0f) }
 
     @Test
-    fun shortConversationClosed() =
-        capture("task.conversation.head.short.closed", RaftAppAppearance.Light) { ShortTaskPage(closed = true) }
+    fun scroll2() =
+        capture("task.conversation.head.scroll.2", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 1f / 3f) }
+
+    @Test
+    fun scroll3() =
+        capture("task.conversation.head.scroll.3", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 2f / 3f) }
+
+    @Test
+    fun scroll4() = capture("task.conversation.head.scroll.4", RaftAppAppearance.Light) { TaskPhonePage(EightMessages, scrolledTowardsTop = 1f) }
 
     /**
      * Source and Created by draw their faces through RaftMemberAvatar: an agent's pixel avatar (no
@@ -139,13 +158,16 @@ class TaskConversationHeadScreenshotTest {
             var menuAt by remember { mutableStateOf<IntOffset?>(null) }
             val gap = with(LocalDensity.current) { 6.dp.roundToPx() }
             // RaftDropdownMenu's place: under the chip's box, start-aligned, 6dp down.
-            val anchor: (LayoutCoordinates) -> Unit = { box ->
-                val at = box.positionInRoot()
-                menuAt = IntOffset(at.x.roundToInt(), at.y.roundToInt() + box.size.height + gap)
-            }
+            val anchor: (LayoutCoordinates) -> Unit =
+                remember(gap) {
+                    { box ->
+                        val at = box.positionInRoot()
+                        menuAt = IntOffset(at.x.roundToInt(), at.y.roundToInt() + box.size.height + gap)
+                    }
+                }
             Box(Modifier.fillMaxSize()) {
                 CompositionLocalProvider(LocalTaskHeadStatusMenuAnchor provides anchor) {
-                    TaskPage(keyboardUp = false, historyOpen = false)
+                    TaskPhonePage(ThreeMessages)
                 }
                 menuAt?.let { at ->
                     RaftMenuSurface(Modifier.offset { at }, minWidth = TaskHeadStatusMenuMinWidth) {
@@ -166,59 +188,60 @@ class TaskConversationHeadScreenshotTest {
         }
 }
 
-/** A task with two short replies, the head down as the page opens or [closed] by the reader. */
-@Composable
-private fun ShortTaskPage(closed: Boolean) {
-    TaskPanelPage(closed = closed) {
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-        androidx.compose.foundation.lazy.LazyColumn(
-            Modifier.weight(1f).fillMaxWidth(),
-            state = listState,
-            reverseLayout = true,
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom,
-        ) {
-            ShortMessages.reversed().forEach { item -> item(key = item.id) { MessageCard(item) } }
-            item(key = "beginning") {
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                    build.raft.designsystem.text.RaftText(
-                        stringResource(Res.string.thread_state_beginning_conversation),
-                        style = RaftTheme.typography.caption,
-                        color = RaftTheme.colors.foregroundMuted,
-                    )
-                }
-            }
-        }
-    }
-}
-
-private val ShortMessages =
-    listOf(
-        message("m-s1", 1, "user-artin", "artin", MemberKind.Human, "Can you check the status line?"),
-        message("m-s2", 2, "agent-lagoon", "Lagoon", MemberKind.Agent, "On it."),
-    )
-
-@Composable
-private fun TaskPage(keyboardUp: Boolean, historyOpen: Boolean = true) {
-    TaskPanelPage(keyboardUp = keyboardUp, historyOpen = historyOpen) { Messages() }
-}
+private const val HeadRowKey = "task-head-row"
 
 /**
- * A task conversation page on a phone as ThreadPage lays it out: the top bar, the [messages] in a
- * box the pulled-down head hangs in (down as the page opens), the composer. [closed]: the reader
- * put it back up (a scroll, a tap outside); [keyboardUp]: typing, which puts it back up too.
+ * A task conversation page on a phone as ThreadPage lays it out: the top bar; the head above the
+ * messages ([TaskConversationHead], no room on a phone: it tells the state the page is a phone's,
+ * and the keyboard puts the panel up); the [messages] newest at the bottom with the head as their
+ * first row, over "Beginning of conversation" (ThreadMessagesListContent's history boundary row),
+ * the bar summarizing the task while that row is out of view; the head pulled down from the bar
+ * over them; the composer. [scrolledTowardsTop]: how far back towards the head the reader has
+ * scrolled (0: the newest message, as it opens; 1: the top). [pulledDown]: the reader pulled the
+ * head down from the bar once it was out of view. [keyboardUp]: typing.
  */
 @Composable
-private fun TaskPanelPage(
-    closed: Boolean = false,
+private fun TaskPhonePage(
+    messages: List<RaftThreadMessageItem>,
     keyboardUp: Boolean = false,
     historyOpen: Boolean = false,
-    messages: @Composable ColumnScope.() -> Unit,
+    pulledDown: Boolean = false,
+    scrolledTowardsTop: Float = 0f,
 ) {
     val scrollState = remember { TaskHeadScrollState() }
-    // Put back up by the reader once the page has opened with it down.
-    androidx.compose.runtime.LaunchedEffect(scrollState.floatOpen) {
-        if (closed && scrollState.floatOpen) scrollState.closeFloat()
+    val listState = rememberLazyListState()
+    // As ThreadMessagesListContent: whether any of the head in its row is on screen.
+    LaunchedEffect(listState, scrollState) {
+        val viewport = ThreadListViewport(listState, reverse = true)
+        snapshotFlow {
+            val info = viewport.layoutInfo
+            val row = info.visibleItemsInfo.firstOrNull { it.key == HeadRowKey }
+            taskHeadRowInView(
+                rowOffsetPx = row?.offset,
+                rowSizePx = row?.size ?: 0,
+                headHeightPx = scrollState.rowHeadHeightPx,
+                viewportStartPx = info.viewportStartOffset,
+                viewportEndPx = info.viewportEndOffset,
+            )
+        }.collect { inView -> scrollState.updateHeadInView(inView) }
     }
+    LaunchedEffect(listState, scrolledTowardsTop) {
+        if (scrolledTowardsTop <= 0f) return@LaunchedEffect
+        withFrameNanos {}
+        // Reversed: a positive scroll goes back towards the top. All the way, then the rest back down.
+        val range = listState.scrollBy(1_000_000f)
+        if (scrolledTowardsTop < 1f) listState.scrollBy(-range * (1f - scrolledTowardsTop))
+    }
+    // The reader taps the bar once the head is out of view.
+    LaunchedEffect(scrollState.collapsed, pulledDown) {
+        if (pulledDown && scrollState.collapsed && !scrollState.floatOpen) scrollState.toggleFloat()
+    }
+    val headRow =
+        rememberTaskConversationHeadRow(scrollState) {
+            TaskHeadFrame {
+                TaskHeadContent(model = HeadModel, onOpenSource = {}, onOpenEarlierDiscussion = {}, initiallyHistoryOpen = historyOpen)
+            }
+        }
     val chrome =
         TaskConversationHeaderChrome(
             ref = "#raft-mobile:#7",
@@ -237,7 +260,6 @@ private fun TaskPanelPage(
         TaskHeader(chrome)
         Box(Modifier.weight(1f).fillMaxWidth().taskHeadFloatOutsidePress(scrollState)) {
             Column(Modifier.fillMaxSize().nestedScroll(scrollState.connection)) {
-                // No room on a phone: it tells the state the page is a phone's, and the keyboard puts the panel up.
                 TaskConversationHead(
                     model = HeadModel,
                     onSelectStatus = {},
@@ -247,7 +269,21 @@ private fun TaskPanelPage(
                     scrollState = scrollState,
                     keyboardUp = keyboardUp,
                 )
-                messages()
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    state = listState,
+                    reverseLayout = true,
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    messages.reversed().forEach { item -> item(key = item.id) { MessageCard(item) } }
+                    // Reversed: the last row is the top one, where the conversation begins.
+                    item(key = HeadRowKey) {
+                        Column(Modifier.fillMaxWidth()) {
+                            TaskConversationHeadRowContent(headRow)
+                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(canLoadMoreBefore = false))
+                        }
+                    }
+                }
             }
             TaskHeadFloat(scrollState = scrollState, label = "Task #7", reducedMotion = true) {
                 TaskHeadContent(model = HeadModel, onOpenSource = {}, onOpenEarlierDiscussion = {}, initiallyHistoryOpen = historyOpen)
@@ -259,23 +295,33 @@ private fun TaskPanelPage(
     }
 }
 
-@Composable
-private fun ColumnScope.Messages(earlier: Boolean = false) {
-    // As the page's list: newest at the bottom, older ones cut at the top when they do not fit.
-    androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true) {
-        (
-            if (earlier) EarlierMessages else emptyList()
-        ).plus(
-            listOf(
-                message("m-1", 1, "agent-lagoon", "Lagoon", MemberKind.Agent, "Pushed the head: on a phone it comes down from the bar."),
-                message("m-2", 2, "user-artin", "artin", MemberKind.Human, "Looks right on my phone. Ship it."),
-                message("m-3", 3, "agent-stamp", "Stamp", MemberKind.Agent, "PR #3873 is approved."),
-            )
-        ).reversed().forEach { item ->
-            item(key = item.id) { MessageCard(item) }
-        }
-    }
-}
+private val ShortMessages =
+    listOf(
+        message("m-s1", 1, "user-artin", "artin", MemberKind.Human, "Can you check the status line?"),
+        message("m-s2", 2, "agent-lagoon", "Lagoon", MemberKind.Agent, "On it."),
+    )
+
+private val ThreeMessages =
+    listOf(
+        message("m-1", 1, "agent-lagoon", "Lagoon", MemberKind.Agent, "Pushed the head: on a phone it is the conversation's first row."),
+        message("m-2", 2, "user-artin", "artin", MemberKind.Human, "Looks right on my phone. Ship it."),
+        message("m-3", 3, "agent-stamp", "Stamp", MemberKind.Agent, "PR #3873 is approved."),
+    )
+
+/** Eight messages: a little longer than the page, for the scroll strip. */
+private val EightMessages
+    get() = EarlierMessages.takeLast(5) + ThreeMessages
+
+/** A conversation well past the page: its head far out of view at the newest message. */
+private val LongMessages
+    get() =
+        (1..12).map { index ->
+            if (index % 2 == 1) {
+                message("m-l$index", -20L + index, "user-artin", "artin", MemberKind.Human, "Earlier question $index about the task head.")
+            } else {
+                message("m-l$index", -20L + index, "agent-lagoon", "Lagoon", MemberKind.Agent, "Earlier answer $index: it is the first row.")
+            }
+        } + EarlierMessages + ThreeMessages
 
 @Composable
 private fun MessageCard(item: RaftThreadMessageItem) {
@@ -496,11 +542,11 @@ private object QuietEventBus : build.raft.app.data.RaftEventBus {
 
 /**
  * Task v2 on a phone, a conversation longer than the page (slock #11722, Kirby's web
- * `TaskHeadPullDown`): the head put back up, the top bar's compact line ("Task #7", the status
- * badge, the assignee's face, a chevron) over the messages; then the head pulled down from it over
- * them, as the page opens (`layer-canvas`, `shadow-float`, the `line-seam` hairline at its bottom;
- * no scrim, the messages stay put). 360dp and 412dp, light and dark. Verify / record as
- * [RaftRobolectricScreenshot].
+ * `TaskHeadPullDown`): it opens at its newest message, the head's row far out of view above, so the
+ * top bar summarizes the task ("Task #7", the status badge, the assignee's face, a chevron) and
+ * nothing is pulled down; then the head pulled down from the bar over the messages by the reader
+ * (`layer-canvas`, `shadow-float`, the `line-seam` hairline at its bottom; no scrim, the messages
+ * stay put). 360dp and 412dp, light and dark. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -551,8 +597,8 @@ class TaskConversationHeadFloatScreenshotTest {
         }
 }
 
-/** A conversation longer than the page, the head down as it opens or put back up ([open] false). */
+/** A conversation longer than the page as it opens ([open] false), and with the head pulled down from the bar. */
 @Composable
 private fun TaskFloatPage(open: Boolean) {
-    TaskPanelPage(closed = !open) { Messages(earlier = true) }
+    TaskPhonePage(LongMessages, historyOpen = true, pulledDown = open)
 }
