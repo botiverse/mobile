@@ -2084,7 +2084,8 @@ internal class SharedHomeStore(
                             },
                         session = session,
                         contentRefreshing = false,
-                        previousContent = contentByServer[serverId]
+                        previousContent = contentByServer[serverId],
+                        fromFetch = true,
                     )
                 publishServerDrawerContent(serverId, generation, content)
             }
@@ -2644,7 +2645,8 @@ internal class SharedHomeStore(
                         snapshot = requireNotNull(freshSnapshotWithSidebar),
                         session = activeSession,
                         contentRefreshing = false,
-                        previousContent = previousContent
+                        previousContent = previousContent,
+                        fromFetch = true,
                     ).keepingLastKnownRowHintsFrom(
                         previous = previousContent,
                         unreadFrozen = rawSnapshot?.unreadEnrichmentAvailable == false
@@ -2879,7 +2881,8 @@ internal class SharedHomeStore(
                 snapshot = snapshot,
                 session = session,
                 contentRefreshing = contentRefreshing,
-                previousContent = previousContent
+                previousContent = previousContent,
+                fromFetch = false,
             )
         commitDurableContent(content)
         return content
@@ -2962,7 +2965,8 @@ internal class SharedHomeStore(
         snapshot: HomeSnapshot,
         session: StoredAuthSession,
         contentRefreshing: Boolean,
-        previousContent: SharedHomeContentState.Content?
+        previousContent: SharedHomeContentState.Content?,
+        fromFetch: Boolean,
     ): SharedHomeContentState.Content {
         val compatiblePreviousContent =
             previousContent?.takeIf {
@@ -2970,13 +2974,18 @@ internal class SharedHomeStore(
                     it.session.user.id == session.user.id &&
                     it.snapshot.currentMember.id == snapshot.currentMember.id
             }
-        val strippedSnapshot =
-            synchronized(realtimeRowGuardLock) {
-                createdChannelGuards.removeAll { it.settledBy(snapshot) }
-                snapshot.withCreatedChannelsFrom(createdChannelGuards)
-                joinedChannelGuards.removeAll { it.settledBy(snapshot) }
-                snapshot.withJoinedChannelsFrom(joinedChannelGuards)
-            }.withoutReadStateV1Hydrates()
+        // Only a fetch can settle a guard: a local snapshot lists the guarded row because this store put it there.
+        val guardedSnapshot =
+            if (fromFetch) {
+                synchronized(realtimeRowGuardLock) {
+                    createdChannelGuards.removeAll { it.settledBy(snapshot) }
+                    joinedChannelGuards.removeAll { it.settledBy(snapshot) }
+                    snapshot.withCreatedChannelsFrom(createdChannelGuards).withJoinedChannelsFrom(joinedChannelGuards)
+                }
+            } else {
+                snapshot
+            }
+        val strippedSnapshot = guardedSnapshot.withoutReadStateV1Hydrates()
         val sidebarOrder = strippedSnapshot.sidebarOrder ?: sidebarOrderByServer[strippedSnapshot.server.id]
             ?: compatiblePreviousContent?.baseSnapshot?.sidebarOrder
         val snapshotWithSidebarOrder =

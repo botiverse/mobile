@@ -285,6 +285,34 @@ class SharedHomeStoreLeaveChannelTest {
     }
 
     @Test
+    fun aJustCreatedChannelSurvivesAFetchThatDoesNotListIt() = runTest {
+        val store = store()
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ChannelCreated(row("channel-new", channelType = "private")))
+
+        store.accept(SharedHomeIntent.Refresh)
+        store.awaitRealtimeSettled()
+
+        assertTrue(store.snapshot().channels.any { it.channelId == ChannelId("channel-new") })
+    }
+
+    // A local change rebuilds the content from a snapshot that lists the guarded row; that is not a fetch agreeing.
+    @Test
+    fun aLocalChangeDoesNotSettleEitherGuard() = runTest {
+        val store = store(home = sampleHome(notJoined = "channel-public"))
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ChannelCreated(row("channel-new", channelType = "private")))
+        store.accept(SharedHomeIntent.ChannelJoined("server-1", ChannelId("channel-public")))
+
+        store.accept(SharedHomeIntent.ChannelProfileUpdated(ChannelId("channel-new"), "renamed", null))
+        store.accept(SharedHomeIntent.Refresh)
+        store.awaitRealtimeSettled()
+
+        assertTrue(store.snapshot().channels.any { it.channelId == ChannelId("channel-new") })
+        assertTrue(store.row("channel-public").joined)
+    }
+
+    @Test
     fun aGuardAppliesToItsServerAndSettlesOnceAFetchAgrees() {
         val mark = kotlin.time.TimeSource.Monotonic.markNow()
         val guard = HomeJoinedChannelGuard(ServerId("server-1"), ChannelId("channel-public"), null, mark)
