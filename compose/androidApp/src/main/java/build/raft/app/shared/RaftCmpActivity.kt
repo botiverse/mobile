@@ -122,7 +122,6 @@ import build.raft.app.FeedbackDiagnosticsReference
 import build.raft.app.RaftHostStrings
 import build.raft.app.releaseRaftShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
-import build.raft.app.openUrlUsesBrowserPackage
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidApiServerEnvironment
