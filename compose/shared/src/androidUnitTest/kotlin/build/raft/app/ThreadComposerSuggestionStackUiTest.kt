@@ -1,7 +1,11 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
@@ -39,23 +43,26 @@ class ThreadComposerSuggestionStackUiTest {
                 RaftMobilePageStackDisplay(stack) { page ->
                     if (page.args.pageName == CHAT) {
                         val portal = remember { ThreadComposerSuggestionPortalState() }
-                        CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides portal) {
-                            ThreadComposerContent(
-                                surface = ThreadComposerSurface(channelId = "c1"),
-                                state =
-                                    ThreadComposerUiState(
-                                        instanceId = "mention-panel",
-                                        seedText = "cc @",
-                                        suggestionsOpen = true,
-                                        memberSuggestions = listOf(RaftComposerMemberItem(MEMBER, "ada")),
-                                        memberSuggestionsStatus = SharedMembersLoadStatus.Loaded,
-                                    ),
-                                onEvent = { _, _, _, _ -> },
-                                onKeyboardHeightChange = {},
-                                contentPaddingTop = 0.dp,
-                                contentPaddingBottom = 0.dp,
-                                attachmentPreviewEnabled = true,
-                            )
+                        // At the window's bottom as in a conversation: a root (0, 0) anchor counts as unplaced.
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                            CompositionLocalProvider(LocalThreadComposerSuggestionPortal provides portal) {
+                                ThreadComposerContent(
+                                    surface = ThreadComposerSurface(channelId = "c1"),
+                                    state =
+                                        ThreadComposerUiState(
+                                            instanceId = "mention-panel",
+                                            seedText = "cc @",
+                                            suggestionsOpen = true,
+                                            memberSuggestions = listOf(RaftComposerMemberItem(MEMBER, "ada")),
+                                            memberSuggestionsStatus = SharedMembersLoadStatus.Loaded,
+                                        ),
+                                    onEvent = { _, _, _, _ -> },
+                                    onKeyboardHeightChange = {},
+                                    contentPaddingTop = 0.dp,
+                                    contentPaddingBottom = 0.dp,
+                                    attachmentPreviewEnabled = true,
+                                )
+                            }
                         }
                         ThreadComposerSuggestionPortalHost(portal)
                     }
