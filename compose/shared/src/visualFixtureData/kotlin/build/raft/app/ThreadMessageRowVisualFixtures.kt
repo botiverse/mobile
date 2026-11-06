@@ -2726,7 +2726,7 @@ internal val ThreadShareImageWideTableVisualMessage =
         authorDescription = "Keeps visual testing release notes aligned.",
         authorKind = "agent",
         avatarLabel = "CI",
-        timestampLabel = "11/06 09:30",
+        timestampLabel = "2026-10-30T01:30:00Z",
         messageType = "Chat",
         body =
             "Release checklist for 1.21:\n\n" +
