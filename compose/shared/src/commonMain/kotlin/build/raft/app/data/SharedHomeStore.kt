@@ -975,8 +975,16 @@ internal class SharedHomeStore(
         applyHomeSnapshotLocally { it.withJoinedChannel(intent.channelId, intent.rowIfMissing) }
     }
 
+    /** The person left or deleted [channelId]: no guard may bring back or re-mark its row on the next fetch. */
+    private fun dropChannelGuards(channelId: ChannelId) {
+        synchronized(realtimeRowGuardLock) {
+            joinedChannelGuards.removeAll { it.channelId == channelId }
+            createdChannelGuards.removeAll { it.channel.channelId == channelId }
+        }
+    }
+
     private fun applyChannelMembershipEnded(intent: SharedHomeIntent.ChannelMembershipEnded) {
-        synchronized(realtimeRowGuardLock) { joinedChannelGuards.removeAll { it.channelId == intent.channelId } }
+        dropChannelGuards(intent.channelId)
         val conversationId = intent.channelId.value
         val selected =
             (_state.value.content as? SharedHomeContentState.Content)
@@ -4079,7 +4087,7 @@ internal class SharedHomeStore(
         val channelId = target.messageStreamChannelId()
         val previousState = _state.value
         val keepsListed = !target.leaveRevokesAccess()
-        synchronized(realtimeRowGuardLock) { joinedChannelGuards.removeAll { it.channelId == channelId } }
+        dropChannelGuards(channelId)
         applyHomeSnapshotLocally {
             if (keepsListed) it.withHomeChannelLeft(conversationId) else it.withoutHomeConversation(conversationId)
         }

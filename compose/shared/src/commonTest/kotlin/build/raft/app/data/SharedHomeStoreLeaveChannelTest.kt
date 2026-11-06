@@ -228,6 +228,62 @@ class SharedHomeStoreLeaveChannelTest {
         assertEquals("channel-public", store.state.value.selectedConversationId)
     }
 
+    // HomeCreatedChannelGuard re-lists a created channel a fetch doesn't have yet; once it is left or
+    // deleted, that fetch is right and the row must stay gone rather than return for 60 s.
+    @Test
+    fun aJustCreatedChannelThatEndsStaysGoneAcrossAFetchThatDoesNotListIt() = runTest {
+        var fetches = 0
+        val store = store(onFetch = { fetches += 1 })
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ChannelCreated(row("channel-new", channelType = "private")))
+        // The guard is live: a fetch without the channel keeps it.
+        store.accept(SharedHomeIntent.Refresh)
+        store.awaitRealtimeSettled()
+        assertTrue(store.snapshot().channels.any { it.channelId == ChannelId("channel-new") })
+
+        store.accept(SharedHomeIntent.ChannelMembershipEnded(ChannelId("channel-new"), keepListed = false))
+        assertTrue(store.snapshot().channels.none { it.channelId == ChannelId("channel-new") })
+        assertNull(store.state.value.selectedConversationId)
+        val fetchesBefore = fetches
+
+        store.accept(SharedHomeIntent.Refresh)
+        store.awaitRealtimeSettled()
+
+        assertTrue(fetches > fetchesBefore)
+        assertTrue(store.snapshot().channels.none { it.channelId == ChannelId("channel-new") })
+    }
+
+    @Test
+    fun aJustCreatedChannelLeftFromTheRowMenuStaysGoneAcrossAFetch() = runTest {
+        var fetches = 0
+        val store = store(onFetch = { fetches += 1 })
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ChannelCreated(row("channel-new", channelType = "private")))
+
+        store.accept(SharedHomeIntent.LeaveChannel("channel-new"))
+        val fetchesBefore = fetches
+        store.accept(SharedHomeIntent.Refresh)
+        store.awaitRealtimeSettled()
+
+        assertTrue(fetches > fetchesBefore)
+        assertTrue(store.snapshot().channels.none { it.channelId == ChannelId("channel-new") })
+    }
+
+    @Test
+    fun endingOneJustCreatedChannelKeepsAnothersGuard() = runTest {
+        val store = store()
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ChannelCreated(row("channel-new", channelType = "private")))
+        store.accept(SharedHomeIntent.ChannelCreated(row("channel-other", channelType = "private")))
+
+        store.accept(SharedHomeIntent.ChannelMembershipEnded(ChannelId("channel-new"), keepListed = false))
+        store.accept(SharedHomeIntent.Refresh)
+        store.awaitRealtimeSettled()
+
+        assertTrue(store.snapshot().channels.none { it.channelId == ChannelId("channel-new") })
+        assertTrue(store.snapshot().channels.any { it.channelId == ChannelId("channel-other") })
+    }
+
     @Test
     fun aGuardAppliesToItsServerAndSettlesOnceAFetchAgrees() {
         val mark = kotlin.time.TimeSource.Monotonic.markNow()
