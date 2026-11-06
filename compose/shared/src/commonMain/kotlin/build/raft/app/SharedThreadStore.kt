@@ -3836,6 +3836,9 @@ internal class SharedThreadDataSource(
         messageId: String,
         card: ThreadActionCard
     ): DataResult<ThreadActionCard> {
+        if (threadActionCardCommitBlockedByEnd(card, defaultNowMillis())) {
+            return DataResult.Error(ScreenError(code = ActionCardEndedErrorCode, retryable = false))
+        }
         return commitAgentCreateActionCardInternal(messageId, card)
     }
 
@@ -3894,6 +3897,9 @@ internal class SharedThreadDataSource(
             // web ActionCard: a frozen card runs nothing; a reconfirm card's button reconfirms it.
             card.isFrozen ->
                 DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+            // Expired (state, or past `expiresAt` on this clock) or withdrawn: nothing is created.
+            threadActionCardCommitBlockedByEnd(card, defaultNowMillis()) ->
+                DataResult.Error(ScreenError(code = ActionCardEndedErrorCode, retryable = false))
             card.needsReconfirmation ->
                 reconfirmThreadActionCard(messageId, card)
             card.type.equals("agent:create", ignoreCase = true) ->

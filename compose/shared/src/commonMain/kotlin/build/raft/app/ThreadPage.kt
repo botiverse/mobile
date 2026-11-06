@@ -269,6 +269,9 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiredAsOf
+import build.raft.app.data.isActionCardExpiredRefusal
+import build.raft.app.data.markedExpired
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -13742,6 +13745,9 @@ private fun SharedThreadRouteContentContent(
                     }
                     // web ActionCard: a frozen card's button is disabled; nothing runs.
                     if (actionCard.isFrozen) return@ThreadPageContent
+                    // Expired (by state, or past `expiresAt` on this clock) or withdrawn: no run, and no
+                    // create-agent / create-channel / add-members dialog (they create, then mark it executed).
+                    if (threadActionCardCommitBlockedByEnd(actionCard, defaultNowMillis())) return@ThreadPageContent
                     // A reconfirm card's button reconfirms it (back to prepared), whatever its type.
                     if (actionCard.needsReconfirmation) {
                         pendingActionCardIds = pendingActionCardIds + itemId
@@ -13750,8 +13756,14 @@ private fun SharedThreadRouteContentContent(
                                 when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
                                     is DataResult.Content ->
                                         threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, result.data))
-                                    is DataResult.Empty,
-                                    is DataResult.Error -> bridge.toast(actionCardReconfirmFailedLabel)
+                                    is DataResult.Empty -> bridge.toast(actionCardReconfirmFailedLabel)
+                                    is DataResult.Error ->
+                                        if (result.error.isActionCardExpiredRefusal()) {
+                                            // The server refused it as expired (409): the card says so itself.
+                                            threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
+                                        } else {
+                                            bridge.toast(actionCardReconfirmFailedLabel)
+                                        }
                                     is DataResult.NoPermission -> {
                                         if (routeAuthRequired(result)) return@launch
                                         bridge.toast(actionCardReconfirmFailedLabel)
@@ -13816,9 +13828,16 @@ private fun SharedThreadRouteContentContent(
                                     )
                                     bridge.toast(actionCardSuccessLabels[actionCard.type] ?: genericActionCardSuccessLabel)
                                 }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
+                                is DataResult.Empty -> {
                                     bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                }
+                                is DataResult.Error -> {
+                                    if (result.error.isActionCardExpiredRefusal()) {
+                                        // The server refused it as expired (409): the card says so itself.
+                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
+                                    } else {
+                                        bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                    }
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
@@ -29471,39 +29490,43 @@ private fun ThreadMessageCardContent(
                         // RFC 082: a card message's card (message_cards on), else its text below.
                         val messageCard = if (richContentEnabled && actionCard == null) rememberThreadMessageCard(message.metadata) else null
                         if (richContentEnabled && actionCard != null) {
+                            // A prepared card past its `expiresAt` by the live clock draws as expired: no button,
+                            // no dialog (the server's 409 stays final).
+                            val actionCardNowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+                            val shownActionCard = actionCard.expiredAsOf(actionCardNowMillis)
                             // A4: the spec card when `action_card_spec` is on for the card's
                             // server; otherwise (and for every card without a spec) the typed card.
                             val specHost = LocalThreadActionCardSpecHost.current
                             val viewerServerId = LocalThreadViewerServerId.current
-                            val specFlagServerId = actionCard.actionCardSpecFlagServerId(viewerServerId)
+                            val specFlagServerId = shownActionCard.actionCardSpecFlagServerId(viewerServerId)
                             val specEnabled = specHost.specEnabled(specFlagServerId)
                             val feedbackTicketVisible =
-                                actionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
+                                shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
                             val specCard =
-                                remember(actionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
-                                    actionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
+                                remember(shownActionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
+                                    shownActionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
                                 }
-                            if (actionCard.presentationCardJson != null && specFlagServerId != null) {
+                            if (shownActionCard.presentationCardJson != null && specFlagServerId != null) {
                                 LaunchedEffect(specFlagServerId) { specHost.ensureFlags(specFlagServerId) }
                             }
                             if (specCard != null) {
                                 ThreadActionCardSpecView(
                                     messageId = message.id,
-                                    card = actionCard,
+                                    card = shownActionCard,
                                     spec = specCard,
                                     commitEnabled = writeActionsEnabled,
                                     typedPending = message.id in pendingActionCardIds,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
                                     modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                     onAction = { elementId ->
-                                        when (val press = threadActionCardSpecPress(actionCard, specCard, elementId, viewerServerId)) {
+                                        when (val press = threadActionCardSpecPress(shownActionCard, specCard, elementId, viewerServerId)) {
                                             ThreadActionCardSpecPress.Ignore -> Unit
                                             ThreadActionCardSpecPress.Typed -> {
                                                 specHost.onIntent(ThreadActionCardSpecIntent.TypedPress(message.id, elementId))
                                                 onCommitActionCard(message.id)
                                             }
                                             ThreadActionCardSpecPress.Store ->
-                                                specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, actionCard, specCard))
+                                                specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, shownActionCard, specCard))
                                             ThreadActionCardSpecPress.OpenInWeb -> specHost.openInWeb(message.id)
                                             ThreadActionCardSpecPress.ViewPlan -> specHost.openPlan()
                                             is ThreadActionCardSpecPress.OpenFeedbackTicket -> specHost.openFeedbackTicket(press.ticketId)
@@ -29511,7 +29534,7 @@ private fun ThreadMessageCardContent(
                                             is ThreadActionCardSpecPress.Navigate ->
                                                 openActionCardSpecTarget(
                                                     target = press.target,
-                                                    cardSourceServerId = actionCard.sourceServerId,
+                                                    cardSourceServerId = shownActionCard.sourceServerId,
                                                     viewerServerId = viewerServerId,
                                                     serverSlug = currentServerSlug,
                                                     isDirectMessageChannel = specHost.isDirectMessageChannel,
@@ -29525,7 +29548,7 @@ private fun ThreadMessageCardContent(
                                 )
                             } else {
                                 ThreadActionCardView(
-                                    card = actionCard,
+                                    card = shownActionCard,
                                     pending = message.id in pendingActionCardIds,
                                     commitEnabled = writeActionsEnabled,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
@@ -30534,18 +30557,21 @@ internal fun ThreadActionCardView(
     val doneLine = if (card.isExecuted) card.localizedActionCardDoneLine(executedTimeLabel).takeIf { it.isNotBlank() } else null
     // web `isActionCardReadOnlyInServer`: a card prepared on another server runs only there.
     val viewerServerId = LocalThreadViewerServerId.current
+    // Expired (wire state, or past `expiresAt` as the caller drew it) or withdrawn: ended, folded, no button.
+    val ended = card.hasEnded
+    val endedLine = card.actionCardEndedLine()
     val blockedReason =
         when {
-            card.isExecuted -> null
+            card.isExecuted || ended -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
                 card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
-    val viewOnly = !card.isExecuted && (!commitEnabled || blockedReason != null)
-    // Web: a done card, and a view-only one that says why, fold by default; a frozen or
+    val viewOnly = !card.isExecuted && !ended && (!commitEnabled || blockedReason != null)
+    // Web: a done card, an ended one, and a view-only one that says why, fold by default; a frozen or
     // reconfirm card stays open (it waits on the reader). The fold then belongs to the reader.
-    val foldsByDefault = card.isExecuted || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
+    val foldsByDefault = card.isExecuted || ended || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
     var expanded by remember(foldsByDefault) { mutableStateOf(!foldsByDefault) }
     val feedbackEntryEnabled = LocalThreadFeedbackCardEntryEnabled.current
     RaftDesignSystemTheme {
@@ -30563,10 +30589,13 @@ internal fun ThreadActionCardView(
             },
             description =
                 doneLine?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
+                    ?: endedLine?.takeIf { ended }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     ?: blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } },
             status =
                 when {
                     card.isExecuted -> stringResource(Res.string.common_done)
+                    card.isExpired -> stringResource(Res.string.thread_action_card_status_expired)
+                    card.isWithdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
                     card.needsReconfirmation -> stringResource(Res.string.thread_action_card_status_reconfirm)
                     viewOnly -> stringResource(Res.string.thread_action_card_view_only)
@@ -30581,7 +30610,7 @@ internal fun ThreadActionCardView(
                 },
             expanded = expanded,
             onExpandedChange =
-                if (card.isExecuted || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
+                if (card.isExecuted || ended || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
             toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
         ) {
             card.actionCardNotice()?.let { notice -> RaftMessageActionCardNotice(notice) }
@@ -30615,7 +30644,7 @@ internal fun ThreadActionCardView(
             }
             // Web shows the button disabled beside the reason; with no reason to give (the
             // thread is read-only here) the card shows no button.
-            if (!card.isExecuted && commitEnabled) {
+            if (!card.isExecuted && !ended && commitEnabled) {
                 RaftMessageActionCardActions(note = blockedReason?.takeUnless { foldsByDefault }) {
                     RaftButton(
                         text =

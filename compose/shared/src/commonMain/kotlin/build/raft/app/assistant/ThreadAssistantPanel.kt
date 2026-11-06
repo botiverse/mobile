@@ -52,6 +52,8 @@ import build.raft.app.RaftThreadMessageItem
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.resources.*
 import build.raft.app.threadActionCard
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiredAsOf
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -85,11 +87,16 @@ private val WaitingActionCardStates = setOf("prepared", "reconfirm_required")
 /**
  * Whether the assistant's own action card in these messages still waits for its owner (web
  * assistantOtterState.ts `hasWaitingActionCard`): a card sent by [agentId] in `prepared` or
- * `reconfirm_required`.
+ * `reconfirm_required`, and not past its `expiresAt`.
  */
-internal fun hasWaitingAssistantActionCard(messages: List<RaftThreadMessageItem>, agentId: String): Boolean =
+internal fun hasWaitingAssistantActionCard(
+    messages: List<RaftThreadMessageItem>,
+    agentId: String,
+    nowMillis: Long = defaultNowMillis(),
+): Boolean =
     messages.any { message ->
-        message.authorId == agentId && message.threadActionCard()?.state in WaitingActionCardStates
+        // A card past its `expiresAt` waits on nobody any more.
+        message.authorId == agentId && message.threadActionCard()?.expiredAsOf(nowMillis)?.state in WaitingActionCardStates
     }
 
 /**

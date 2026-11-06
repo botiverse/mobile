@@ -870,6 +870,12 @@
     <string name="thread_action_card_label_type">类型</string>
     <string name="thread_action_card_frozen">已冻结</string>
     <string name="thread_action_card_status_reconfirm">需重新确认</string>
+    <string name="thread_action_card_status_expired">已过期</string>
+    <string name="thread_action_card_status_withdrawn">已撤回</string>
+    <string name="thread_action_card_expired_line">已于 %1$s 过期。请让 Agent 重新发送请求。</string>
+    <string name="thread_action_card_expired_line_own">已于 %1$s 过期。请重新发送请求。</string>
+    <string name="thread_action_card_expired_line_from_person">已于 %1$s 过期。请让 %2$s 重新发送请求。</string>
+    <string name="thread_action_card_seats_expired_line">7 天内没有所有者处理，什么都没有改变。</string>
     <string name="thread_action_card_reconfirm">重新确认</string>
     <string name="thread_action_card_reconfirm_failed">重新确认失败</string>
     <string name="thread_action_card_blocked_target_server">这个操作会在 %1$s 上执行，请切换到 %1$s 后再执行。</string>
