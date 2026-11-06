@@ -1113,6 +1113,12 @@
     <string name="thread_share_copy_markdown">複製 Markdown</string>
     <string name="thread_share_generate_image">產生圖片</string>
     <string name="thread_share_download">下載</string>
+    <string name="thread_share_width_label">圖片寬度</string>
+    <string name="thread_share_width_phone">手機</string>
+    <string name="thread_share_width_tablet">平板</string>
+    <string name="thread_share_width_wide">寬</string>
+    <string name="thread_share_width_custom">自訂</string>
+    <string name="thread_share_rendering">正在排版圖片…</string>
     <string name="thread_task_candidate_current">目前</string>
     <string name="thread_task_candidate_untitled">未命名的任務</string>
     <string name="thread_task_candidate_unknown_channel">未知頻道</string>

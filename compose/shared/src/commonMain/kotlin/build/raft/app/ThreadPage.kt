@@ -4060,7 +4060,7 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
         }
     }
 
-private fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
+internal fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
     tag.kind == ThreadMarkdownTagKind.Task
 
 internal fun RaftThreadScreenPayload.resolveTaskAssigneeDisplayName(
@@ -17147,6 +17147,21 @@ private fun ThreadPageContentContent(
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
+    // Android / desktop: the share image laid out off screen at the picked width (threadShareImageRendersOffscreen).
+    var shareImageWidthChoice by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageWidthChoice()) }
+    var shareImageRenderWidthDp by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageDefaultWidthDp) }
+    var shareImageBitmap by remember(threadInstanceKey) { mutableStateOf<ImageBitmap?>(null) }
+    var shareImageRendering by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareImageSaving by remember(threadInstanceKey) { mutableStateOf(false) }
+    val sharePngWriter = rememberRaftPngFileWriter()
+    LaunchedEffect(shareImageWidthChoice) {
+        val widthDp = shareImageWidthChoice.widthDp
+        if (widthDp != shareImageRenderWidthDp) {
+            // A drag of the custom slider lays the image out again once it pauses.
+            if (shareImageWidthChoice.preset == ThreadShareImageWidth.Custom) delay(ThreadShareImageWidthDebounceMs)
+            shareImageRenderWidthDp = widthDp
+        }
+    }
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var shareCaptureAnchorBeforeTarget by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -17393,6 +17408,8 @@ private fun ThreadPageContentContent(
         selectedShareBounds.clear()
         sharePreviewImage = null
         sharePreviewLoading = false
+        shareImageBitmap = null
+        shareImageRendering = false
         shareCaptureMode = false
         shareCaptureTargetMessageId = null
         shareCaptureAnchorBeforeTarget = false
@@ -18364,7 +18381,18 @@ private fun ThreadPageContentContent(
                             }
                         },
                         onExportImage = {
-                            if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
+                            if (threadShareImageRendersOffscreen && selectedShareMessages.isNotEmpty()) {
+                                // Laid out again off screen at the picked width (the renderer in `overlays`).
+                                diagnosticsLogger(
+                                    "thread_share_export_click selected=${selectedShareMessages.size} " +
+                                        "offscreen=true width=${shareImageWidthChoice.widthDp}"
+                                )
+                                sharePreviewImage = null
+                                shareImageBitmap = null
+                                shareImageRendering = true
+                                shareImageRenderWidthDp = shareImageWidthChoice.widthDp
+                                activeModal = "sharePreview"
+                            } else if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 diagnosticsLogger(
                                     "thread_share_export_click selected=${selectedShareMessages.size} " +
                                         "scopeActive=${shareExportScope.coroutineContext[Job]?.isActive == true}"
@@ -18481,6 +18509,81 @@ private fun ThreadPageContentContent(
             },
             overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
+        if (threadShareImageRendersOffscreen && activeModal == "sharePreview" && selectedShareMessages.isNotEmpty()) {
+            val shareImageAuthorSuppression =
+                remember(selectedShareMessages, timelineSlice.messages, timelineSlice.compactConsecutiveMessages, timelineRenderConfig) {
+                    threadShareImageSuppressesAuthor(
+                        timeline = timelineSlice.messages,
+                        selected = selectedShareMessages,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        localOffsetMinutes = timelineRenderConfig.timeContext.localOffsetMinutes,
+                    )
+                }
+            ThreadShareImageOffscreenRenderer(
+                cardWidthDp = shareImageRenderWidthDp,
+                rowCount = selectedShareMessages.size,
+                renderKey = selectedShareMessages,
+                background = RaftColor.Canvas,
+                onRendering = { shareImageRendering = true },
+                onRendered = { image ->
+                    shareImageBitmap = image
+                    shareImageRendering = false
+                    diagnosticsLogger(
+                        "thread_share_offscreen_rendered width=$shareImageRenderWidthDp " +
+                            "ok=${image != null} px=${image?.width ?: 0}x${image?.height ?: 0}"
+                    )
+                },
+            ) { index ->
+                val message = selectedShareMessages[index]
+                val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
+                val replyInThread =
+                    threadMessageIsReplyInThread(timelineSlice.replyThreadSurface, timelineSlice.originMessage?.id, message.id)
+                val sourceTasks =
+                    remember(message.id, linkedTasksProjection, replyInThread) {
+                        if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
+                    }
+                val displayMessage =
+                    remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
+                        message.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
+                    }
+                val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                val actionCard = if (contentExtrasVisible) remember(message.id, message.metadata) { message.threadActionCard() } else null
+                if (isSystemMessage && actionCard == null) {
+                    ThreadSystemMessageRow(message = displayMessage, timestampValue = message.timestampLabel)
+                } else {
+                    ThreadShareImageMessageRow(
+                        message = displayMessage,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        suppressRepeatedAuthor = shareImageAuthorSuppression.getOrElse(index) { false },
+                        timestampLabel = message.timestampLabel,
+                        compactTimestampLabel = timelineRenderConfig.formatCompactTimestampLabel(message),
+                        replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
+                        sourceTasks = sourceTasks,
+                        actionCard = actionCard,
+                        actionCardExecutedTimeLabel =
+                            timelineRenderConfig.formatActionCardExecutedTimeLabel(
+                                actionCard?.executedAt,
+                                currentRaftTimeContextProvider?.todayEpochDay
+                            ),
+                        resolvedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName(),
+                        highlightedMentions = highlightedMentions,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
+                        inlineReplyParticipantsById = inlineReplyParticipantsById,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        alignOwnMessageRight = timelineSlice.alignOwnMessagesRight && message.isOwn,
+                        messageAlignmentModeEnabled = timelineSlice.alignOwnMessagesRight,
+                        currentServerSlug = currentServerSlug,
+                        richContentEnabled = contentExtrasVisible,
+                    )
+                }
+            }
+        }
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
         val forwardPickerBottomSafeArea = raftBottomSafeAreaPadding()
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
@@ -18786,7 +18889,50 @@ private fun ThreadPageContentContent(
                             onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
                         }
                     },
+                    offscreen =
+                        if (threadShareImageRendersOffscreen) {
+                            ThreadSharePreviewOffscreen(
+                                image = shareImageBitmap,
+                                rendering = shareImageRendering || shareImageSaving,
+                                choice = shareImageWidthChoice,
+                                onChoiceChange = { shareImageWidthChoice = it },
+                            )
+                        } else {
+                            null
+                        },
                     onDownloadImage = {
+                        val offscreenImage = shareImageBitmap
+                        if (threadShareImageRendersOffscreen) {
+                            if (offscreenImage != null && !shareImageSaving) {
+                                shareImageSaving = true
+                                shareExportScope.launch {
+                                    val result =
+                                        try {
+                                            val fileRef =
+                                                withContext(Dispatchers.Default) {
+                                                    runCatching { sharePngWriter.writePng(offscreenImage, ThreadShareImageFilePrefix) }.getOrNull()
+                                                }
+                                            val path = fileRef?.let(::threadShareImageFilePath)
+                                            if (path.isNullOrBlank()) null else runCatching { onSaveShareImage(path) }.getOrNull()
+                                        } finally {
+                                            shareImageSaving = false
+                                        }
+                                    val status = result?.optString("status")
+                                    if (status == "cancelled") return@launch
+                                    val saved = status == "ok"
+                                    if (saved) {
+                                        activeModal = null
+                                    }
+                                    onThreadEvent(
+                                        if (saved) "shareSelectionImageSaved" else "shareSelectionExportFailed",
+                                        result?.optString("message")?.takeIf { it.isNotBlank() },
+                                        null,
+                                        null
+                                    )
+                                }
+                            }
+                            return@ThreadSharePreviewModal
+                        }
                         val imagePath = sharePreviewImage?.path
                         if (!imagePath.isNullOrBlank()) {
                             shareExportScope.launch {
@@ -38393,13 +38539,27 @@ private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName, size: Dp) {
     RaftLucideIcon(icon, modifier = Modifier.size(size), color = raftArgbHex(ink))
 }
 
+/**
+ * Share preview's off-screen image (Android, desktop; see [ThreadShareImageOffscreenRenderer]):
+ * the image laid out at [choice]'s width ([image] null until the first one is ready, or when it
+ * failed), whether a new layout is [rendering], and the width picker's change.
+ */
+internal data class ThreadSharePreviewOffscreen(
+    val image: ImageBitmap?,
+    val rendering: Boolean,
+    val choice: ThreadShareImageWidthChoice,
+    val onChoiceChange: (ThreadShareImageWidthChoice) -> Unit,
+)
+
 @Composable
 internal fun ThreadSharePreviewModal(
     messages: List<RaftThreadMessageItem>,
     image: ThreadSharePreviewImage?,
     onDismiss: () -> Unit,
     onCopyMarkdown: () -> Unit,
-    onDownloadImage: () -> Unit
+    onDownloadImage: () -> Unit,
+    /** Non-null: the image is laid out off screen at a width the user picks (iOS: null, the native export). */
+    offscreen: ThreadSharePreviewOffscreen? = null,
 ) {
     RaftUnifiedDialog(
         title = stringResource(Res.string.thread_share_preview_title),
@@ -38411,6 +38571,32 @@ internal fun ThreadSharePreviewModal(
         contentSpacing = 12.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (offscreen != null) {
+                ThreadShareImageWidthPicker(choice = offscreen.choice, onChoiceChange = offscreen.onChoiceChange)
+                if (offscreen.image == null && !offscreen.rendering) {
+                    ThreadModalEmptyState(
+                        title = stringResource(Res.string.thread_share_export_failed),
+                        detail = stringResource(Res.string.thread_share_export_failed_detail)
+                    )
+                } else {
+                    ThreadShareImagePreview(image = offscreen.image, rendering = offscreen.rendering)
+                }
+                RaftDialogFooter {
+                    RaftModalActionButton(
+                        label = stringResource(Res.string.thread_share_copy_markdown),
+                        icon = RaftLucideIconName.Copy,
+                        onClick = onCopyMarkdown,
+                        enabled = messages.isNotEmpty()
+                    )
+                    RaftModalActionButton(
+                        label = stringResource(Res.string.thread_share_download),
+                        icon = RaftLucideIconName.Download,
+                        onClick = onDownloadImage,
+                        enabled = offscreen.image != null && !offscreen.rendering
+                    )
+                }
+                return@Column
+            }
             if (image?.uri.isNullOrBlank()) {
                 ThreadModalEmptyState(
                     title = stringResource(Res.string.thread_share_export_failed),

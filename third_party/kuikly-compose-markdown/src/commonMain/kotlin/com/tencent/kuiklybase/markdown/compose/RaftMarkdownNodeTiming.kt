@@ -320,6 +320,14 @@ val LocalRaftMarkdownTableCellPadding = compositionLocalOf<PaddingValues?> { nul
 val LocalRaftMarkdownTableClosedGrid = compositionLocalOf { false }
 
 /**
+ * Raft (share image): wide content fits the width it is given instead of scrolling sideways, as
+ * the web's share capture forces it (slock `selectScreenshot.ts` `constrainWideContentForScreenshot`:
+ * a table takes 100% of the width and its cells wrap, header cells included). False keeps the
+ * conversation's behaviour: a table too wide for the message scrolls.
+ */
+val LocalRaftMarkdownFitWidth = compositionLocalOf { false }
+
+/**
  * Single decision point for AnnotatedString memoization, shared by
  * MarkdownParagraph and MarkdownText and locked by contract teeth:
  * null = memo DISABLED (legacy rebuild-every-recomposition semantics);

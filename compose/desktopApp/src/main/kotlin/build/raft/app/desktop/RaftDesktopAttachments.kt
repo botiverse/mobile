@@ -106,6 +106,37 @@ class RaftDesktopAttachments(
 
     fun cancelCompressThreadImage(params: JsonObject) = RaftDesktopThreadImageCompressor.cancel(params.string("requestId"))
 
+    /**
+     * `saveThreadShareImage`: the share image (a PNG the page wrote to the app cache, `path`) copied
+     * where the user picks in the system save panel. Answers `ok`, `cancelled` (panel closed) or
+     * `failed`, as the Android host does.
+     */
+    fun saveThreadShareImage(params: JsonObject, callback: ((String?) -> Unit)?) {
+        val source = File(params.string("path"))
+        if (!source.isFile || source.length() <= 0L) {
+            callback?.invoke(status("failed", "Image file unavailable"))
+            return
+        }
+        scope.launch {
+            val answer =
+                try {
+                    val target = dialogs.saveFile("raft-message-share-${System.currentTimeMillis()}.png")
+                    if (target == null) {
+                        status("cancelled")
+                    } else {
+                        source.copyTo(target, overwrite = true)
+                        status("ok", "Image saved")
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    log("share image save failed: ${error::class.simpleName}")
+                    status("failed", "Unable to save image")
+                }
+            callback?.invoke(answer)
+        }
+    }
+
     fun saveAttachment(params: JsonObject, callback: ((String?) -> Unit)?) {
         val url = params.string("url")
         val downloadId = params.string("downloadId").ifBlank { "desktop-save-${System.nanoTime()}" }

@@ -1116,6 +1116,12 @@
     <string name="thread_share_copy_markdown">复制 Markdown</string>
     <string name="thread_share_generate_image">生成图片</string>
     <string name="thread_share_download">下载</string>
+    <string name="thread_share_width_label">图片宽度</string>
+    <string name="thread_share_width_phone">手机</string>
+    <string name="thread_share_width_tablet">平板</string>
+    <string name="thread_share_width_wide">宽</string>
+    <string name="thread_share_width_custom">自定义</string>
+    <string name="thread_share_rendering">正在排版图片…</string>
     <string name="thread_task_candidate_current">当前</string>
     <string name="thread_task_candidate_untitled">未命名任务</string>
     <string name="thread_task_candidate_unknown_channel">未知频道</string>
