@@ -410,6 +410,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.derivedStateOf
@@ -6967,6 +6968,16 @@ private fun SharedThreadRouteContentContent(
     val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
     val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
     var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    val threadKeyboardTapDismissal =
+        remember(adaptiveFocusManager, adaptiveKeyboardController) {
+            ThreadKeyboardTapDismissal(
+                keyboardInsetDp = { adaptivePageKeyboardInsetDp },
+                hideKeyboard = {
+                    adaptiveFocusManager.clearFocus(force = true)
+                    adaptiveKeyboardController?.hide()
+                },
+            )
+        }
     var pendingAdaptiveParentFocus by remember { mutableStateOf<AdaptiveParentFocusRequest?>(null) }
     DisposableEffect(eventBus, adaptiveCloseRequest, threadViewModel) {
         val page = adaptiveCloseRequest
@@ -12764,6 +12775,7 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
                 LocalThreadActionCardNames provides actionCardNames,
                 LocalThreadActionCardSpecHost provides actionCardSpecHost,
+                LocalThreadKeyboardTapDismissal provides threadKeyboardTapDismissal,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -29113,20 +29125,25 @@ private fun ThreadMessageCardContent(
         }
     // A tap whose gesture started while a selection was showing (here or on another row) only
     // dismisses it. The flag is captured at DOWN because the selection is already gone by onTap.
+    val keyboardTapDismissal = LocalThreadKeyboardTapDismissal.current
     val consumeSelectionDismissalTap: (() -> Boolean)? =
-        if (inPlaceSelection == null || (rowTapAction == null && rowDoubleTapAction == null)) {
+        if (rowTapAction == null && rowDoubleTapAction == null) {
             null
         } else {
             {
-                val selectionShowingAtDown = inPlaceSelection.dismissalGestureInFlight
-                inPlaceSelection.dismissalGestureInFlight = false
+                val selectionShowingAtDown = inPlaceSelection?.dismissalGestureInFlight == true
+                inPlaceSelection?.dismissalGestureInFlight = false
                 when (threadInPlaceSelectionTapDecision(selectionShowingAtDown)) {
                     ThreadInPlaceSelectionTapDecision.DismissSelectionOnly -> {
                         diagnosticsLogger("thread_in_place_selection_tap_clear messageId=${message.id}")
-                        inPlaceSelection.clear()
+                        inPlaceSelection?.clear()
                         true
                     }
-                    ThreadInPlaceSelectionTapDecision.RunRowAction -> false
+                    ThreadInPlaceSelectionTapDecision.RunRowAction -> {
+                        val keyboardClosed = keyboardTapDismissal?.dismissIfUp() == true
+                        if (keyboardClosed) diagnosticsLogger("thread_message_row_tap_keyboard_only messageId=${message.id}")
+                        keyboardClosed
+                    }
                 }
             }
         }
@@ -31498,6 +31515,26 @@ internal fun decideThreadMessageLongPressDispatch(
  * setting). Not inside a reply thread (no reply action there), not while sharing, not on a local
  * send that is still sending or failed.
  */
+/**
+ * artin 11-06: with the keyboard up, a tap on a message row is the reader closing the keyboard, not
+ * asking for the thread: since a single tap opens the thread (stdrc 10-29) it opened one by accident.
+ * Only the row's own whole-row actions (open thread, the double tap's reaction bar) yield; a link,
+ * mention, avatar, reaction or replies chip is something the reader aimed at and still acts.
+ */
+internal class ThreadKeyboardTapDismissal(
+    private val keyboardInsetDp: () -> Float,
+    private val hideKeyboard: () -> Unit,
+) {
+    /** True when the keyboard was up: it is closed and this tap does nothing else. */
+    fun dismissIfUp(): Boolean {
+        if (keyboardInsetDp() <= 0f) return false
+        hideKeyboard()
+        return true
+    }
+}
+
+internal val LocalThreadKeyboardTapDismissal = staticCompositionLocalOf<ThreadKeyboardTapDismissal?> { null }
+
 internal fun threadMessageTapOpensThread(
     showReplyAction: Boolean,
     shareSelectionActive: Boolean,
