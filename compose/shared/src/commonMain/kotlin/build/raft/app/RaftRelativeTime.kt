@@ -263,7 +263,7 @@ internal fun nextRaftTimestampDisplayMode(
 }
 
 @Composable
-private fun currentRaftTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? =
+internal fun currentRaftTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? =
     timeContext?.takeIf { it.nowEpochMillis != null }
         ?: currentRaftTimeContextProvider?.current
 

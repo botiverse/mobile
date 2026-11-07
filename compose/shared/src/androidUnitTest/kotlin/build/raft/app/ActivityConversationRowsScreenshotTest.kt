@@ -71,6 +71,17 @@ class ActivityConversationRowsScreenshotTest {
     fun activityRowsDark() = capture("screens.activity.rows.dark", RaftAppAppearance.Dark)
 
     /**
+     * web slock #13030: the rows by day under Today / Yesterday / weekday-and-date headings (the year
+     * only for an earlier year), today's times short ("3m", "2h"), an earlier day's clock hidden at rest
+     * and no hairline over a day's first row.
+     */
+    @Test
+    fun activityRowsDayGroupsLight() =
+        capture("screens.activity.rows.day-groups", RaftAppAppearance.Light) {
+            ActivityRowsVisualContent(RaftAppAppearance.Light, groupedByDay = true)
+        }
+
+    /**
      * raft-design #785, rows left open on their buttons: a followed thread (Done, Unfollow), a joined
      * channel (Done, Mute) and a DM thread (Done only), between rows at rest.
      */
@@ -174,7 +185,7 @@ class ActivityConversationRowsScreenshotTest {
 
 /** Fixed rows and a fixed clock, so the capture is deterministic. */
 @Composable
-private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
+private fun ActivityRowsVisualContent(appearance: RaftAppAppearance, groupedByDay: Boolean = false) {
     val timeContext =
         RaftTimeContext(
             localOffsetMinutes = 8 * 60,
@@ -272,6 +283,26 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                 latestActivityAt = "2026-10-21T15:12:00Z",
             ),
         )
+    // Spread over the days for the grouped capture (now is 2026-10-22 10:10 at UTC+8): two rows today,
+    // one yesterday, two on Monday the 19th and one last year.
+    val dayTimes =
+        mapOf(
+            "channel:long-press" to "2026-10-22T02:07:00Z",
+            "channel:joint-hands" to "2026-10-21T23:26:00Z",
+            "channel:release" to "2026-10-21T08:17:00Z",
+            "thread:channel" to "2026-10-19T07:40:00Z",
+            "thread:private" to "2026-10-19T03:30:00Z",
+            "thread:dm" to "2025-12-30T07:12:00Z",
+        )
+    val shownRows =
+        if (!groupedByDay) {
+            rows
+        } else {
+            rows.map { item ->
+                val at = dayTimes.getValue(item.key)
+                if (item.latestActivityAt != null) item.copy(latestActivityAt = at) else item.copy(lastMessageAt = at)
+            }
+        }
     // The Home DM row of the thread's parent DM (an agent peer that is online), and the Home channel
     // rows' glyphs (homeChannelSymbol): `launch-room` is private, `joint-hands` is joint.
     val context =
@@ -293,11 +324,22 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
         // Scrollable like the real LazyColumn: a row past the viewport keeps its own height.
         Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState())) {
-            rows.forEachIndexed { index, item ->
+            val entries =
+                if (groupedByDay) {
+                    activityConversationListEntries(shownRows, timeContext)
+                } else {
+                    shownRows.mapIndexed { index, item -> ActivityConversationListEntry.Row(item, divider = index > 0) }
+                }
+            entries.forEach { entry ->
+                if (entry is ActivityConversationListEntry.DayHeading) {
+                    ActivityDayHeading(entry.label, first = entry.first, background = RaftTheme.colors.layerCanvas)
+                    return@forEach
+                }
+                val item = (entry as ActivityConversationListEntry.Row).item
                 ActivityConversationListRow(
                     item = item,
                     model = item.activityConversationRowModel(context, InboxFilter.All),
-                    divider = index > 0,
+                    divider = entry.divider,
                     selected = false,
                     timeContext = timeContext,
                     agentStatusResolver = EmptyRaftAgentStatusResolver,
