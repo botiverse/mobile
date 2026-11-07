@@ -8522,6 +8522,27 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadTasksJoinStartsForChannelWithNoMessages() {
+        // 1.21.0: a channel with no messages loads as "empty"; its Tasks tab sent no request and
+        // stayed on Loading.
+        val taskChannelId = ChannelId("channel-1")
+        val emptyChannel =
+            RaftThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "empty",
+                selectedTab = "tasks",
+                showTaskStatusActions = true
+            )
+
+        assertTrue(shouldStartThreadTasksLoad(emptyChannel, taskChannelId = taskChannelId))
+        assertTrue(shouldStartThreadTasksJoin(emptyChannel, startedThreadId = null, taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(emptyChannel, startedThreadId = "channel-1", taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(emptyChannel.copy(status = "error"), startedThreadId = null, taskChannelId = taskChannelId))
+    }
+
+    @Test
     fun resolvedAuxiliaryThreadIdUsesCurrentPayloadIdentityAfterLoading() {
         val launchPayload =
             RaftThreadScreenPayload(

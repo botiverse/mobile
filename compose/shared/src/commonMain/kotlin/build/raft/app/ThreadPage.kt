@@ -4378,7 +4378,8 @@ internal fun shouldStartThreadTasksLoad(
     taskChannelId: ChannelId?
 ): Boolean =
     taskChannelId != null &&
-        payload.status == "content" &&
+        // A channel with no messages loads as "empty" and still has a Tasks tab to fill.
+        (payload.status == "content" || payload.status == "empty") &&
         payload.supportsChannelTasks() &&
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
 
