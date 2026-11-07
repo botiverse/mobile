@@ -539,6 +539,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -26087,6 +26091,9 @@ internal fun ThreadComposerDock(
     edgePadding: Dp = RaftAppSpacing.Sm,
     composer: @Composable () -> Unit,
 ) {
+    val ime = WindowInsets.ime
+    val hostIme = LocalRaftHostImeInsets.current
+    val density = LocalDensity.current
     Column(
         modifier =
             Modifier
@@ -26106,7 +26113,10 @@ internal fun ThreadComposerDock(
                     .padding(start = edgePadding, top = 12.dp, end = edgePadding)
                     .then(composerModifier)
                     // raft-ui: on a conversation page the window's toasts sit just above the composer.
-                    .raftToastAvoid(enabled = LocalRaftPageActive.current)
+                    .raftToastAvoid(
+                        enabled = LocalRaftPageActive.current,
+                        keyboardPx = { raftImeBottomPx(ime, hostIme, density).toFloat() },
+                    )
         ) { composer() }
     }
 }
