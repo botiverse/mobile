@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
@@ -99,10 +98,10 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
     val phone = RaftTheme.scale != RaftScale.Wide
     // While a stack shows, the page's height only rises: pages change under a toast (composer, tab
     // bar, none while one loads) and it must not jump down with them (artin 2026-11-07), but something
-    // taller that appears must not end up covered (Kirby). A composer rides on the keyboard, so its
-    // height is held without the keyboard, or a toast would hang there after the keyboard closes.
+    // taller that appears must not end up covered (Kirby). What the keyboard adds is not held, or a
+    // toast would hang there after the keyboard closes (Jasper).
     val liveAvoidedPx = if (phone && !hostBottomPx.isNaN()) state.avoidedHeightPx(hostBottomPx) else 0f
-    val pageAvoidedPx = raftToastPageAvoidedPx(liveAvoidedPx, WindowInsets.ime.getBottom(density).toFloat())
+    val pageAvoidedPx = if (phone && !hostBottomPx.isNaN()) state.pageAvoidedHeightPx(hostBottomPx) else 0f
     val heldPagePx = remember(state, toasts.isEmpty(), hostBottomPx) { mutableFloatStateOf(pageAvoidedPx) }
     SideEffect { if (pageAvoidedPx > heldPagePx.floatValue) heldPagePx.floatValue = pageAvoidedPx }
     val avoidedPx = maxOf(heldPagePx.floatValue, liveAvoidedPx)
@@ -130,10 +129,6 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
         }
     }
 }
-
-/** What holds the bottom of the page, without the keyboard under it. */
-internal fun raftToastPageAvoidedPx(avoidedPx: Float, imeBottomPx: Float): Float =
-    (avoidedPx - imeBottomPx).coerceAtLeast(0f)
 
 /** Hover (a mouse over the stack) or a press on it pauses every timer (raft-ui / Base UI). */
 private fun Modifier.raftToastPausesTimers(state: RaftToastHostState): Modifier =
@@ -213,9 +208,11 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
  * Marks what holds the bottom of the page (raft-ui `--toast-viewport-bottom`: the composer, the
  * tab bar): on a phone, the window's toasts sit 16dp above this element's top edge while it is
  * laid out and [enabled]. Pass `enabled = false` from a page that is composed but not shown
- * (a page under the top one in a stack). A no-op outside a [LocalRaftToastHostState].
+ * (a page under the top one in a stack). [keyboardPx]: the keyboard under an element that rides on it
+ * (a composer), read when it is laid out, so a toast does not stay up after the keyboard closes.
+ * A no-op outside a [LocalRaftToastHostState].
  */
-fun Modifier.raftToastAvoid(enabled: Boolean = true): Modifier =
+fun Modifier.raftToastAvoid(enabled: Boolean = true, keyboardPx: () -> Float = { 0f }): Modifier =
     composed {
         val state = LocalRaftToastHostState.current
         val key = remember { Any() }
@@ -226,7 +223,9 @@ fun Modifier.raftToastAvoid(enabled: Boolean = true): Modifier =
         if (state == null || !enabled) {
             Modifier
         } else {
-            Modifier.onGloballyPositioned { state.putAvoidance(key, RaftToastAvoidance.TopEdge(it.boundsInRoot().top)) }
+            Modifier.onGloballyPositioned {
+                state.putAvoidance(key, RaftToastAvoidance.TopEdge(it.boundsInRoot().top, keyboardPx()))
+            }
         }
     }
 

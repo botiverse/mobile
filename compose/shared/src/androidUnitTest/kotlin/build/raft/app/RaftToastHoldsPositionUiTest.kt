@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getBoundsInRoot
@@ -57,14 +58,18 @@ class RaftToastHoldsPositionUiTest {
         }
     }
 
-    private fun ComposeUiTest.host(state: RaftToastHostState, barHeight: () -> Dp) {
+    private fun ComposeUiTest.host(state: RaftToastHostState, keyboard: () -> Dp = { 0.dp }, barHeight: () -> Dp) {
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
                 CompositionLocalProvider(LocalRaftToastHostState provides state) {
                     Box(Modifier.fillMaxSize()) {
                         val height = barHeight()
                         if (height > 0.dp) {
-                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(height).raftToastAvoid())
+                            val density = LocalDensity.current
+                            Box(
+                                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(height)
+                                    .raftToastAvoid(keyboardPx = { with(density) { keyboard().toPx() } })
+                            )
                         }
                         RaftToastHost(state)
                     }
@@ -113,5 +118,22 @@ class RaftToastHoldsPositionUiTest {
         bar = 0.dp
         settle()
         assertEquals(above, bottomOf("First"), "and it does not drop again")
+    }
+
+    /** A toast shown while typing: above the composer on the keyboard, then back down with it. */
+    @Test
+    fun aToastComesBackDownWhenTheKeyboardCloses() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        var keyboard by mutableStateOf(200.dp)
+        mainClock.autoAdvance = false
+        host(state, keyboard = { keyboard }) { 120.dp + keyboard }
+        state.show("Typing")
+        settle()
+        val onKeyboard = bottomOf("Typing")
+
+        keyboard = 0.dp
+        settle()
+        val closed = bottomOf("Typing")
+        assertEquals(onKeyboard + 200.dp, closed, "down by the keyboard's height, still above the composer")
     }
 }

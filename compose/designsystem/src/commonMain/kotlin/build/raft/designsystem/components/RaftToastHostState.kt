@@ -206,6 +206,10 @@ class RaftToastHostState(
     /** px from the host's bottom edge ([hostBottomPx], in root coordinates) to the highest thing to avoid. */
     internal fun avoidedHeightPx(hostBottomPx: Float): Float =
         avoidances.values.maxOfOrNull { it.heightAbove(hostBottomPx) }?.coerceAtLeast(0f) ?: 0f
+
+    /** [avoidedHeightPx] with what the keyboard adds left out: the height a toast may hold on to. */
+    internal fun pageAvoidedHeightPx(hostBottomPx: Float): Float =
+        avoidances.values.maxOfOrNull { it.heightAbove(hostBottomPx) - it.keyboardPx }?.coerceAtLeast(0f) ?: 0f
 }
 
 /** Something a toast must stay above (a tab bar, a composer, a host-drawn bar). */
@@ -213,8 +217,11 @@ class RaftToastHostState(
 internal sealed interface RaftToastAvoidance {
     fun heightAbove(hostBottomPx: Float): Float
 
-    /** An element whose top edge is at [topPx] in root coordinates. */
-    data class TopEdge(val topPx: Float) : RaftToastAvoidance {
+    /** How much of that height is the keyboard under it (a composer rides on the keyboard). */
+    val keyboardPx: Float get() = 0f
+
+    /** An element whose top edge is at [topPx] in root coordinates, [keyboardPx] of it from the keyboard. */
+    data class TopEdge(val topPx: Float, override val keyboardPx: Float = 0f) : RaftToastAvoidance {
         override fun heightAbove(hostBottomPx: Float): Float = hostBottomPx - topPx
     }
 
