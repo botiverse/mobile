@@ -6,6 +6,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 internal enum class SharedReferenceKind {
     Thread,
@@ -62,7 +63,7 @@ internal sealed interface SharedReferenceOutcome<out T : Any> {
     ) : SharedReferenceOutcome<Nothing>
 }
 
-/** The fetch in flight; [actionId] is the chip it was started from (null: no chip). */
+/** One fetch in flight; [actionId] is the chip it was started from (null: no chip). */
 internal data class SharedReferenceFetch(
     val actionId: String?,
     val generation: Long
@@ -81,7 +82,7 @@ internal fun DataResult<Nothing>.sharedReferenceFailure(): SharedReferenceFailur
 
 /**
  * Opens references local first (artin 11-07): a reference the device already knows opens at once
- * with no loading state; only a local miss fetches, and only that fetch is [fetching]. Thread,
+ * with no loading state; only a local miss fetches, and only that fetch is in [inFlight]. Thread,
  * message and task references all go through this one resolver, so the chip spinner is one state
  * bound to the single fetch phase rather than drawn per chip. A fetched resolution is kept, so the
  * next tap on the same reference is local.
@@ -92,16 +93,23 @@ internal class SharedReferenceResolver(
     private val lock = SynchronizedObject()
     private val resolved = LinkedHashMap<SharedReferenceKey, Any>()
     private val generations = atomic(0L)
-    private val mutableFetching = MutableStateFlow<SharedReferenceFetch?>(null)
+    private val mutableInFlight = MutableStateFlow<Map<Long, SharedReferenceFetch>>(emptyMap())
 
-    /** Non-null exactly while a reference fetch runs. */
-    val fetching: StateFlow<SharedReferenceFetch?> = mutableFetching.asStateFlow()
+    /**
+     * Every reference fetch running now, by generation. Pages fetch concurrently, so this is a set,
+     * not one slot: a chip is busy iff its own action is in it ([isFetching]).
+     */
+    val inFlight: StateFlow<Map<Long, SharedReferenceFetch>> = mutableInFlight.asStateFlow()
+
+    fun isFetching(actionId: String?): Boolean = inFlight.value.isFetching(actionId)
 
     suspend fun <T : Any> resolve(
         key: SharedReferenceKey?,
         actionId: String?,
         local: suspend () -> T?,
-        fetch: suspend () -> DataResult<T>
+        fetch: suspend () -> DataResult<T>,
+        /** Whether a fetched target may answer later taps (an incomplete one must not). */
+        cacheable: (T) -> Boolean = { true }
     ): SharedReferenceOutcome<T> {
         local()?.let { return SharedReferenceOutcome.Open(it, SharedReferenceSource.Local) }
         key?.let(::cached)?.let { cachedTarget ->
@@ -110,7 +118,7 @@ internal class SharedReferenceResolver(
         }
         return when (val result = fetchPhase(actionId) { fetch() }) {
             is DataResult.Content -> {
-                key?.let { remember(it, result.data) }
+                if (key != null && cacheable(result.data)) remember(key, result.data)
                 SharedReferenceOutcome.Open(result.data, SharedReferenceSource.Network)
             }
             is DataResult.Empty -> SharedReferenceOutcome.Failed(result.sharedReferenceFailure(), result)
@@ -119,14 +127,14 @@ internal class SharedReferenceResolver(
         }
     }
 
-    /** Runs [block] as the reference fetch phase: [fetching] holds for exactly its duration. */
+    /** Runs [block] as a reference fetch phase: it is in [inFlight] for exactly its duration. */
     suspend fun <R> fetchPhase(actionId: String?, block: suspend () -> R): R {
         val fetch = SharedReferenceFetch(actionId?.trim()?.takeIf { it.isNotBlank() }, generations.incrementAndGet())
-        mutableFetching.value = fetch
+        mutableInFlight.update { it + (fetch.generation to fetch) }
         try {
             return block()
         } finally {
-            mutableFetching.compareAndSet(fetch, null)
+            mutableInFlight.update { it - fetch.generation }
         }
     }
 
@@ -147,9 +155,22 @@ internal class SharedReferenceResolver(
         synchronized(lock) { resolved.remove(key) }
     }
 
+    /** Forgets every kept resolution whose target matches [predicate] (its target is gone or refused). */
+    fun forgetTargets(predicate: (SharedReferenceKey, Any) -> Boolean): Int =
+        synchronized(lock) {
+            val stale = resolved.entries.filter { (key, target) -> predicate(key, target) }.map { it.key }
+            stale.forEach(resolved::remove)
+            stale.size
+        }
+
     fun clear() {
         synchronized(lock) { resolved.clear() }
     }
+}
+
+internal fun Map<Long, SharedReferenceFetch>.isFetching(actionId: String?): Boolean {
+    val normalized = actionId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    return values.any { it.actionId == normalized }
 }
 
 internal const val SharedReferenceResolverCapacity = 256

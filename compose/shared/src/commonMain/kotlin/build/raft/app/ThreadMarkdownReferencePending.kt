@@ -17,7 +17,7 @@ internal data class ThreadMarkdownReferencePendingToken(
 /**
  * One reference-chip open at a time per message list. [active] is the single-flight guard: it
  * holds from the tap until the open settles. The busy chip is not drawn from here: it is the
- * reference resolver's fetch phase (`SharedReferenceResolver.fetching`), so a reference opened from
+ * reference resolver's fetch phase (`SharedReferenceResolver.inFlight`), so a reference opened from
  * local data never shows a spinner and one that fetches shows it for exactly the fetch.
  */
 internal data class ThreadMarkdownReferencePendingState(
@@ -39,9 +39,9 @@ internal data class ThreadMarkdownReferencePendingState(
     fun finish(token: ThreadMarkdownReferencePendingToken): ThreadMarkdownReferencePendingState =
         if (active == token) copy(active = null) else this
 
-    /** The chip drawn busy: this list's open, while the resolver fetches for it. */
-    fun busyActionId(fetchingActionId: String?): String? =
-        active?.actionId?.takeIf { fetchingActionId != null && it == fetchingActionId }
+    /** The chip drawn busy: this list's open, while one of the resolver's fetches is for it. */
+    fun busyActionId(isFetching: (String) -> Boolean): String? =
+        active?.actionId?.takeIf(isFetching)
 }
 
 internal data class ThreadMarkdownReferencePendingStart(

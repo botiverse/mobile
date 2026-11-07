@@ -43,18 +43,18 @@ class ThreadMarkdownRefOpenStoreTest {
     @Test
     fun theChipIsBusyOnlyWhileTheResolverFetchesForThisListsOpen() = runTest {
         val store = store()
-        assertNull(store.state.value.busyActionId(fetchingActionId = "message-a:thread"), "no open, no busy chip")
+        assertNull(store.state.value.busyActionId { it == "message-a:thread" }, "no open, no busy chip")
 
         val token = assertNotNull(store.begin("message-a:thread"))
-        assertNull(store.state.value.busyActionId(fetchingActionId = null), "a local hit (no fetch) shows no spinner")
-        assertEquals("message-a:thread", store.state.value.busyActionId(fetchingActionId = "message-a:thread"))
+        assertNull(store.state.value.busyActionId { false }, "a local hit (no fetch) shows no spinner")
+        assertEquals("message-a:thread", store.state.value.busyActionId { it == "message-a:thread" })
         assertNull(
-            store.state.value.busyActionId(fetchingActionId = "message-z:thread"),
+            store.state.value.busyActionId { it == "message-z:thread" },
             "another list's fetch never marks this list's chip"
         )
 
         store.finish(token)
-        assertNull(store.state.value.busyActionId(fetchingActionId = null), "the fetch ended: the chip is restored")
+        assertNull(store.state.value.busyActionId { false }, "the fetch ended: the chip is restored")
     }
 
     @Test

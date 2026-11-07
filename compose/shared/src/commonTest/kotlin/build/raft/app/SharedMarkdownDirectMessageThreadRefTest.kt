@@ -149,6 +149,136 @@ class SharedMarkdownDirectMessageThreadRefTest {
         }
 
         assertEquals(1, repository.parentRequests.size, "only the first tap may fetch messages/context")
+
+        // The hits came from the resolver's kept resolution, not another local source: the parent
+        // id does not start with the short id, so no prefix scan can match it, and once that
+        // resolution is cleared the same tap fetches again.
+        assertTrue(!ParentMessageId.startsWith(ShortId))
+        payloadStore.referenceResolver.clear()
+        val provenance = requireNotNull(secondPage.captureReplyCacheProducerContext()).provenance
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(
+            secondPage.markdownThreadRefLaunchPayload(
+                provenance = provenance,
+                currentPayload = currentPayload,
+                channelLabel = "artin",
+                threadShortId = ShortId,
+                requiredParentKind = ConversationKind.DirectMessage
+            )
+        )
+        assertEquals(2, repository.parentRequests.size, "without the kept resolution the tap fetches")
+    }
+
+    @Test
+    fun aShortIdMatchingTwoDifferentLoadedMessagesAcrossSourcesFetchesInsteadOfGuessing() = runBlocking {
+        // The page shows one parent starting with the short id; the message store holds another.
+        // Each source alone has a single match, but the prefix is ambiguous overall.
+        val messageStore = SharedThreadMessageStore()
+        val (dataSource, repository) = threadRefDataSource(messageStore = messageStore)
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        messageStore.upsertScoped(
+            scopeId = requireNotNull(provenance.messageStoreScopeId),
+            channelId = ChannelId(DmChannelId),
+            message =
+                build.raft.app.model.Message(
+                    id = MessageId("$ShortId-0000-other-parent"),
+                    threadId = ThreadId(DmChannelId),
+                    channelId = ChannelId(DmChannelId),
+                    threadChannelId = ChannelId("other-thread-id"),
+                    author = dmPeer(),
+                    timestampLabel = "",
+                    body = "other parent"
+                )
+        )
+        val currentPayload =
+            RaftThreadScreenPayload(
+                status = "content",
+                canSend = false,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                sourceThreadId = DmChannelId,
+                streamChannelId = DmChannelId,
+                messages =
+                    listOf(
+                        RaftThreadMessageItem(
+                            id = TopLevelMessageId,
+                            authorId = "peer-artin",
+                            authorName = "Artin",
+                            timestampLabel = "",
+                            body = "page parent",
+                            threadChannelId = ThreadChannelId
+                        )
+                    )
+            )
+
+        val payload =
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
+                dataSource.markdownThreadRefLaunchPayload(
+                    provenance = provenance,
+                    currentPayload = currentPayload,
+                    channelLabel = "artin",
+                    threadShortId = ShortId,
+                    requiredParentKind = ConversationKind.DirectMessage
+                )
+            ).data
+
+        assertEquals(1, repository.parentRequests.size, "an ambiguous prefix must be resolved by the server")
+        assertEquals(ParentMessageId, payload.parentMessageId)
+    }
+
+    @Test
+    fun aKeptResolutionWhoseThreadPageFailsIsForgottenAndTheNextTapFetches() = runBlocking {
+        val (dataSource, repository) = threadRefDataSource()
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        val currentPayload = RaftThreadScreenPayload(status = "content", canSend = false)
+        suspend fun tap() =
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
+                dataSource.markdownThreadRefLaunchPayload(
+                    provenance = provenance,
+                    currentPayload = currentPayload,
+                    channelLabel = "artin",
+                    threadShortId = ShortId,
+                    requiredParentKind = ConversationKind.DirectMessage
+                )
+            ).data
+        val opened = tap()
+        tap()
+        assertEquals(1, repository.parentRequests.size)
+
+        // The opened thread was deleted: its page lands on Error / NoPermission and forgets it.
+        assertEquals(1, dataSource.forgetReferenceTargetsOf(opened))
+        tap()
+
+        assertEquals(2, repository.parentRequests.size, "a forgotten resolution must be fetched again")
+    }
+
+    @Test
+    fun aFetchedMessageWithoutAThreadIsNotKeptForThreadRefs() = runBlocking {
+        val noThreadYet =
+            replyThreadAccessSnapshot().copy(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId(DmChannelId),
+                        channelId = ChannelId(DmChannelId),
+                        kind = ConversationKind.DirectMessage,
+                        name = "Artin"
+                    ),
+                messages = emptyList(),
+                parentMessage = null,
+                highlightedMessageId = MessageId(TopLevelMessageId)
+            )
+        val (dataSource, repository) = threadRefDataSource(parentResult = DataResult.Content(noThreadYet))
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        repeat(2) {
+            dataSource.markdownThreadRefLaunchPayload(
+                provenance = provenance,
+                currentPayload = RaftThreadScreenPayload(status = "content", canSend = false),
+                channelLabel = "artin",
+                threadShortId = ShortId,
+                requiredParentKind = ConversationKind.DirectMessage
+            )
+        }
+
+        assertEquals(2, repository.parentRequests.size, "a thread started later must still be found")
     }
 
     @Test
@@ -187,7 +317,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals(0, repository.parentRequests.size, "a local hit must not call messages/context")
         assertEquals(TopLevelMessageId, payload.parentMessageId)
         assertEquals(ThreadChannelId, payload.streamChannelId)
-        assertEquals(null, dataSource.referenceResolver.fetching.value)
+        assertTrue(dataSource.referenceResolver.inFlight.value.isEmpty())
     }
 
     @Test
@@ -212,13 +342,13 @@ class SharedMarkdownDirectMessageThreadRefTest {
                 )
             }
         repository.parentStarted.await()
-        assertEquals("message-a:thread", dataSource.referenceResolver.fetching.value?.actionId)
+        assertTrue(dataSource.referenceResolver.isFetching("message-a:thread"))
 
         release.complete(Unit)
         val failed = assertIs<DataResult.NoPermission>(pending.await())
 
         assertEquals(build.raft.app.data.SharedReferenceFailure.NoAccess, failed.sharedReferenceFailure())
-        assertEquals(null, dataSource.referenceResolver.fetching.value, "loading must end with the failed fetch")
+        assertTrue(dataSource.referenceResolver.inFlight.value.isEmpty(), "loading must end with the failed fetch")
         assertEquals(1, repository.parentRequests.size)
     }
 

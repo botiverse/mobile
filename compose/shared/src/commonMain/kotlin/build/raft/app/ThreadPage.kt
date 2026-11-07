@@ -250,6 +250,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedReferenceFailure
 import build.raft.app.data.SharedReferenceResolver
 import build.raft.app.data.sharedReferenceFailure
+import build.raft.app.data.isFetching
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
@@ -4272,18 +4273,31 @@ internal suspend fun openMarkdownTaskNumberPayload(
             if (resolution.task.taskOpenSurface(taskV2Enabled) != null) {
                 return MarkdownTaskNumberOpenResult.OpensInPlace(resolution.task)
             }
+            val resolveConversation: suspend () -> ChannelId? = {
+                resolveTaskOpenConversationChannelId(
+                    task = resolution.task,
+                    serverId = serverId.value,
+                    tasksDataSource = tasksDataSource,
+                    taskV2Enabled = taskV2Enabled,
+                )
+            }
+            // A joint task's local conversation is a `POST /tasks/:id/conversation`: part of the
+            // open's fetch, so the shared spinner covers it; every other target is local.
+            val resolvedConversationChannelId =
+                if (
+                    referenceResolver != null &&
+                    resolution.task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation
+                ) {
+                    referenceResolver.fetchPhase(actionId) { resolveConversation() }
+                } else {
+                    resolveConversation()
+                }
             val payload =
                 currentPayload.taskThreadLaunchPayload(
                     task = resolution.task,
                     serverId = serverId,
                     conversationIdentityProvider = conversationIdentityProvider,
-                    resolvedConversationChannelId =
-                        resolveTaskOpenConversationChannelId(
-                            task = resolution.task,
-                            serverId = serverId.value,
-                            tasksDataSource = tasksDataSource,
-                            taskV2Enabled = taskV2Enabled,
-                        ),
+                    resolvedConversationChannelId = resolvedConversationChannelId,
                 ) ?: return MarkdownTaskNumberOpenResult.Failed
             MarkdownTaskNumberOpenResult.Found(
                 task = resolution.task,
@@ -8029,7 +8043,7 @@ private fun SharedThreadRouteContentContent(
     // the reference resolver's fetch phase: a local hit never shows it, a fetch shows it throughout.
     val markdownRefOpenStore = remember(threadInstanceKey) { ThreadMarkdownRefOpenStore(coroutineScope) }
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
-    val markdownReferenceFetch by dataSource.referenceResolver.fetching.collectAsState()
+    val markdownReferenceFetches by dataSource.referenceResolver.inFlight.collectAsState()
     fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? =
         markdownRefOpenStore.begin(actionId)
     fun finishMarkdownReferencePending(token: ThreadMarkdownReferencePendingToken?) {
@@ -13299,7 +13313,7 @@ private fun SharedThreadRouteContentContent(
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             markdownReferencePendingActionId =
-                markdownReferencePending.busyActionId(markdownReferenceFetch?.actionId),
+                markdownReferencePending.busyActionId(markdownReferenceFetches::isFetching),
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
@@ -14149,6 +14163,7 @@ private fun SharedThreadRouteContentContent(
                                     taskChannelId
                                 } else {
                                     dataSource.markdownTaskRefChannelId(
+                                        actionId = markdownActionId,
                                         currentPayload = renderedThread,
                                         conversationLabel =
                                             qualifiedTaskRef.channelName ?: qualifiedTaskRef.directMessagePeerName.orEmpty(),
