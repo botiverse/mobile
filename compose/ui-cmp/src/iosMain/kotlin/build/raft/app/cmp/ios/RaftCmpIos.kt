@@ -17,6 +17,7 @@ import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
+import build.raft.designsystem.components.RaftPageCoverSignal
 import build.raft.designsystem.components.RaftSystemBarsAppearance
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import kotlin.experimental.ExperimentalObjCName
@@ -97,6 +98,7 @@ interface RaftIosPageListener {
 class RaftIosPage internal constructor(
     private val events: RaftHostEvents,
     private val backSwipeRegions: RaftBackSwipeRegions,
+    private val coverSignal: RaftPageCoverSignal,
     content: (RaftIosPage) -> UIViewController,
 ) {
     private val sticky = LinkedHashMap<String, JsonObject>()
@@ -119,6 +121,21 @@ class RaftIosPage internal constructor(
      */
     fun keepsEdgeTouches(x: Double, y: Double): Boolean =
         backSwipeRegions.keepsEdgeTouchesAtPoint(x, y)
+
+    /**
+     * The page is about to be covered (its container's `viewWillDisappear`): closes the page's
+     * dialogs, menus and popovers ([RaftPageCoverSignal]) while it still composes. The page's own
+     * `openPage` already did that for every push made from Kotlin; this backstops pushes and
+     * presentations the native side makes itself (HRBridgeModule, notification routing). Safe from
+     * any thread: it always runs on the main thread.
+     */
+    fun pageWillBeCovered() {
+        if (NSThread.isMainThread) {
+            coverSignal.fire()
+        } else {
+            dispatch_async(dispatch_get_main_queue()) { coverSignal.fire() }
+        }
+    }
 
     /**
      * Delivers [event] with [dataJson] (a JSON object as text; blank or malformed -> `{}`) to the
@@ -190,7 +207,10 @@ object RaftCmpIos {
         val onSystemBarsResolved: ((RaftSystemBarsAppearance) -> Unit)? =
             listener?.let { target -> { bars -> target.onDarkThemeResolved(!bars.lightStatusBars) } }
         val backSwipeRegions = RaftBackSwipeRegions()
-        return RaftIosPage(events, backSwipeRegions) { page ->
+        // One per page, shared by the page's navigator (RaftCmpRoot) and its container's
+        // viewWillDisappear (RaftIosPage.pageWillBeCovered).
+        val coverSignal = RaftPageCoverSignal()
+        return RaftIosPage(events, backSwipeRegions, coverSignal) { page ->
             ComposeUIViewController(
                 configure = {
                     // Not opaque: an opaque CMP view clears its canvas, and fills its view, with
@@ -226,6 +246,7 @@ object RaftCmpIos {
                         onSystemBarsResolved = onSystemBarsResolved,
                         onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
                         backSwipeRegions = backSwipeRegions,
+                        coverSignal = coverSignal,
                     )
                 }
                 // Runs after the first composition is applied, i.e. after RaftPagerHost subscribed.

@@ -259,6 +259,8 @@ fun RaftTooltip(
         val transition = rememberTransition(state.transition, label = "RaftTooltip")
         Box {
             if (state.isVisible) {
+                // A page pushed over this one takes the bubble down first.
+                RaftDismissOnPageCover { state.dismiss() }
                 Popup(
                     popupPositionProvider = sideProvider ?: framed,
                     onDismissRequest = { if (state.isVisible) scope.launch { state.dismiss() } },

@@ -330,6 +330,12 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    // Overlays (CMP popups and dialogs, layers of this window) close while the page still
+    // composes: once covered it stops, and an overlay left open sits over the next page.
+    void (^coverHook)(void) = self.raftPageWillBeCoveredHook;
+    if (coverHook != nil) {
+        coverHook();
+    }
     _raftAdaptivePanePublishingActive = NO;
     [self raftInvalidateAdaptiveNavigation];
 }

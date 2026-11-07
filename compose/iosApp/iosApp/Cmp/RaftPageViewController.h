@@ -66,6 +66,14 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property (nonatomic, copy, nullable) BOOL (^raftBackSwipeContentProbe)(CGPoint pointInContent);
 
+/**
+ * Host -> page: the page is about to be covered or go (called from -viewWillDisappear:), so the
+ * page closes its dialogs, menus and popovers while it still composes (Kotlin
+ * `RaftIosPage.pageWillBeCovered`). Backstops pushes the native side makes itself; pushes from
+ * Kotlin already close them as they open the page. Set by `RaftPageControllerFactory`.
+ */
+@property (nonatomic, copy, nullable) void (^raftPageWillBeCoveredHook)(void);
+
 /** Full-page back swipe probe: [locationInView] is in this controller's view. */
 - (BOOL)raftContentConsumesBackSwipeAtPoint:(CGPoint)locationInView;
 
