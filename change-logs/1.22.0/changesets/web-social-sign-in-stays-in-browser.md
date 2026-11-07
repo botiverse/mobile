@@ -3,7 +3,7 @@ type: fixed
 area: auth
 platforms:
   - android
-pull_request: https://github.com/botiverse/mobile/pull/0
+pull_request: https://github.com/botiverse/mobile/pull/4400
 rollout: full
 ---
 
