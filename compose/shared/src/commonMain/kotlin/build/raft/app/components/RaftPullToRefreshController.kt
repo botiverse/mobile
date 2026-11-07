@@ -11,6 +11,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.Velocity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -100,6 +102,29 @@ internal fun raftPullProgress(offset: Float, trigger: Float): Float =
     if (trigger > 0f) (offset / trigger).coerceIn(0f, 1f) else 0f
 
 /**
+ * Whether the scroll in progress comes from a wheel or trackpad rather than a finger, after one
+ * more pointer event of [eventType] from a pointer of [pointerType] ([previous]: before it). A
+ * scroll event or any mouse event is a pointer; a finger (or pencil) going down is a finger; any
+ * other event keeps the previous answer. Decided per gesture, not per device, so on an iPad with a
+ * trackpad a finger still pulls to refresh.
+ *
+ * INFERRED, not checked on a device: CMP 1.12.2 on iPadOS delivers two-finger trackpad and wheel
+ * scrolls as [PointerEventType.Scroll] (UIKit has no touches for them, only a pan recognizer's
+ * scroll types). A mouse click-drag still arrives as a touch (no `UIApplicationSupportsIndirectInputEvents`),
+ * so it pulls like a finger, which is a drag, not a scroll.
+ */
+internal fun raftPullToRefreshPointerScrolling(
+    previous: Boolean,
+    eventType: PointerEventType,
+    pointerType: PointerType,
+): Boolean =
+    when {
+        eventType == PointerEventType.Scroll || pointerType == PointerType.Mouse -> true
+        eventType == PointerEventType.Press -> false
+        else -> previous
+    }
+
+/**
  * The pull → refresh → settle state machine behind [RaftPullToRefreshBox]. Drags arrive through
  * [nestedScrollConnection] (user input only: programmatic scrolls and flings never move it), the
  * refresh signal arrives from the caller's store through [onStoreRefreshingChanged]; nothing here
@@ -130,6 +155,13 @@ internal class RaftPullToRefreshController(
      * store never reported the requested refresh, so the indicator gave up.
      */
     var onPullIgnored: (reason: String) -> Unit = {}
+
+    /**
+     * The scroll in progress comes from a wheel or trackpad ([raftPullToRefreshPointerScrolling]):
+     * it never pulls, and the part it cannot scroll at the top is spent here, so the list does not
+     * over-scroll either (desktop has neither).
+     */
+    var pointerScrolling: Boolean = false
 
     var phase: RaftPullToRefreshPhase by mutableStateOf(RaftPullToRefreshPhase.Idle)
         private set
@@ -184,7 +216,7 @@ internal class RaftPullToRefreshController(
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
                 if (source == NestedScrollSource.UserInput && available.y > 0f) {
-                    Offset(0f, onPullDown(available.y))
+                    Offset(0f, if (pointerScrolling) available.y else onPullDown(available.y))
                 } else {
                     Offset.Zero
                 }
