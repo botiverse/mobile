@@ -14,7 +14,7 @@ import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
 // Read once: an app's process never moves between an iPad and a Mac.
-private val isiOSAppOnMac: Boolean = NSProcessInfo.processInfo.iOSAppOnMac
+private val isiOSAppOnMac: Boolean = NSProcessInfo.processInfo.isiOSAppOnMac
 
 internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = isiOSAppOnMac
 
