@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-07 22:01:31 UTC
+Generated: 2026-11-07 22:46:26 UTC
 Latest run: 40815d3e-20261107215920
 Latest commit: 40815d3e-20261107215920
 Commit subject: feat(activity): group Activity by day with Today / Yesterday / date headings
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 106, same 0, pass 1, basic-pass 8, different 76, missing 21
-AI analysis: ready 31 / total 106, pending 75
+AI analysis: ready 37 / total 106, pending 69
 Visual coverage matrix: active 115 / total 135, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

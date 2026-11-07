@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T22:01:31.593Z",
+  "generatedAt": "2026-11-07T22:46:26.102Z",
   "runId": "40815d3e-20261107215920",
   "commit": "40815d3e-20261107215920",
   "commitSubject": "feat(activity): group Activity by day with Today / Yesterday / date headings",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 106,
-        "ready": 31,
-        "pending": 75
+        "ready": 37,
+        "pending": 69
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 106,
-        "ready": 9,
-        "pending": 97
+        "ready": 11,
+        "pending": 95
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 106,
-        "ready": 6,
-        "pending": 100
+        "ready": 9,
+        "pending": 97
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 106,
-    "ready": 31,
-    "pending": 75
+    "ready": 37,
+    "pending": 69
   },
   "componentMatrixSummary": {
     "total": 135,
