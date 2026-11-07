@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-11-05T22:57:01.397Z",
-  "runId": "1e916283-20261105220131",
-  "commit": "1e916283-20261105220131",
-  "commitSubject": "feat(cards): RFC 082 v2.0 header, Markdown, Fields, Divider (#4367)",
+  "generatedAt": "2026-11-07T22:01:31.593Z",
+  "runId": "40815d3e-20261107215920",
+  "commit": "40815d3e-20261107215920",
+  "commitSubject": "feat(activity): group Activity by day with Today / Yesterday / date headings",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -18,17 +18,17 @@
       "comparison": "react__android",
       "detailHref": "index.html",
       "summary": {
-        "total": 92,
+        "total": 106,
         "same": 0,
         "pass": 1,
         "basic-pass": 8,
         "different": 76,
-        "missing": 7
+        "missing": 21
       },
       "analysisSummary": {
-        "total": 92,
-        "ready": 33,
-        "pending": 59
+        "total": 106,
+        "ready": 31,
+        "pending": 75
       }
     },
     {
@@ -42,17 +42,17 @@
       "comparison": "react__ios",
       "detailHref": "react__ios.html",
       "summary": {
-        "total": 92,
+        "total": 106,
         "same": 0,
         "pass": 9,
         "basic-pass": 15,
         "different": 46,
-        "missing": 22
+        "missing": 36
       },
       "analysisSummary": {
-        "total": 92,
-        "ready": 10,
-        "pending": 82
+        "total": 106,
+        "ready": 9,
+        "pending": 97
       }
     },
     {
@@ -66,42 +66,42 @@
       "comparison": "android__ios",
       "detailHref": "android__ios.html",
       "summary": {
-        "total": 92,
+        "total": 106,
         "same": 0,
         "pass": 12,
         "basic-pass": 25,
         "different": 33,
-        "missing": 22
+        "missing": 36
       },
       "analysisSummary": {
-        "total": 92,
+        "total": 106,
         "ready": 6,
-        "pending": 86
+        "pending": 100
       }
     }
   ],
   "summary": {
-    "total": 92,
+    "total": 106,
     "same": 0,
     "pass": 1,
     "basic-pass": 8,
     "different": 76,
-    "missing": 7
+    "missing": 21
   },
   "analysisSummary": {
-    "total": 92,
-    "ready": 33,
-    "pending": 59
+    "total": 106,
+    "ready": 31,
+    "pending": 75
   },
   "componentMatrixSummary": {
-    "total": 121,
-    "active": 101,
+    "total": 135,
+    "active": 115,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 88,
-        "active": 83,
+        "total": 102,
+        "active": 97,
         "pending": 3,
         "skipped": 2
       },
@@ -114,10 +114,10 @@
     },
     "providers": {
       "react": {
-        "active": 91,
+        "active": 105,
         "pending": 13,
         "unsupported": 0,
-        "total": 104
+        "total": 118
       },
       "android": {
         "active": 79,
@@ -140,6 +140,198 @@
     }
   },
   "componentMatrix": [
+    {
+      "id": "components.agent-context-view.count-matched",
+      "title": "View Context: count matched (desktop side column)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-context-view",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agentContextView/AgentContextViewBody"
+          ],
+          "fixture": "packages/web/visual-testing/AgentContextViewCases.tsx#viewBody",
+          "path": "packages/web/visual-testing/AgentContextViewCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "#wg-ax:#9 (Kirby): a Kimi restore whose message count matched but which can't be checked exactly. The neutral info note above the context names the runtime; no Verified tag. react-only: the panel is web-only.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent-context-view.messages",
+      "title": "View Context Messages (desktop side column)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-context-view",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agentContextView/AgentContextViewBody"
+          ],
+          "fixture": "packages/web/visual-testing/AgentContextViewCases.tsx#CONTEXT",
+          "path": "packages/web/visual-testing/AgentContextViewCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "View Context's messages on a context like qizhi-wang's screenshot (#wg-ax, Kirby): a system update in Markdown with long paths, a user message, hidden thinking and an Agent call with a description, its result, a nested Edit call, the ringed send call. react-only: the panel is web-only. Desktop: the 440px side column.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent-context-view.messages.dark",
+      "title": "View Context Messages (desktop side column, dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-context-view",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agentContextView/AgentContextViewBody"
+          ],
+          "fixture": "packages/web/visual-testing/AgentContextViewCases.tsx#CONTEXT",
+          "path": "packages/web/visual-testing/AgentContextViewCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "View Context's messages on a context like qizhi-wang's screenshot (#wg-ax, Kirby): a system update in Markdown with long paths, a user message, hidden thinking and an Agent call with a description, its result, a nested Edit call, the ringed send call. react-only: the panel is web-only. Desktop, dark: the code surface against the canvas.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent-context-view.messages.phone",
+      "title": "View Context Messages (phone page)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-context-view",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agentContextView/AgentContextViewBody"
+          ],
+          "fixture": "packages/web/visual-testing/AgentContextViewCases.tsx#CONTEXT",
+          "path": "packages/web/visual-testing/AgentContextViewCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "View Context's messages on a context like qizhi-wang's screenshot (#wg-ax, Kirby): a system update in Markdown with long paths, a user message, hidden thinking and an Agent call with a description, its result, a nested Edit call, the ringed send call. react-only: the panel is web-only. Phone: the page over the app at 390px.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent-context-view.newer-session-format",
+      "title": "View Context: newer session format (desktop side column)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-context-view",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agentContextView/AgentContextViewBody"
+          ],
+          "fixture": "packages/web/visual-testing/AgentContextViewCases.tsx#viewBody",
+          "path": "packages/web/visual-testing/AgentContextViewCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "#wg-ax:#9 (Kirby): a session saved by a newer runtime than the Computer's Raft reads. The orange banner, no Retry, and Open computer for a viewer who can open that Computer. react-only: the panel is web-only.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent-context-view.verified",
+      "title": "View Context: verified (desktop side column)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-context-view",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agentContextView/AgentContextViewBody"
+          ],
+          "fixture": "packages/web/visual-testing/AgentContextViewCases.tsx#viewBody",
+          "path": "packages/web/visual-testing/AgentContextViewCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "#wg-ax:#9 (Kirby): a restore checked against what the model received. The Verified tag on the head's title (PanelStatus, as ChannelSideCard places it); its tooltip says what was checked. react-only: the panel is web-only.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
     {
       "id": "screens.home.choose-server",
       "title": "Home Choose Server Screen",
@@ -167,6 +359,39 @@
       "comparison": null
     },
     {
+      "id": "components.action-card.agent-create",
+      "title": "Action card, create agent (prepared)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/actions/ActionCard",
+            "components/actions/ActionCardSpecCard"
+          ],
+          "path": "packages/web/visual-testing/ActionCardCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-apps:#41 (Kirby 1265e067): an agent:create card waiting for a person. The title names the agent to be without an @: it has no record yet, and the name is what it will be called. React-only: the mobile App draws the same spec.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "components.action-card.expired-agent",
       "title": "Action card, expired after 30 days (agent card, opened)",
       "captureType": "component-fixture",
@@ -188,6 +413,39 @@
         }
       },
       "notes": "#proj-apps:#40 (Kirby 7579a290): an agent's channel:create card no one completed within 30 days, as the server serves it (state expired, expiresAt). Opened: Expired in Withdrawn's grey, \"Expired on {date}. Ask the agent to send a new request.\" under the title, the card's facts and reason, no buttons. React-only: the mobile App draws the card from state and expiresAt.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.action-card.mcp-connect",
+      "title": "Action card, MCP connect (prepared, server manager)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/actions/ActionCard",
+            "components/actions/ActionCardSpecCard"
+          ],
+          "path": "packages/web/visual-testing/ActionCardCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-apps:#41 (Kirby 6c3920b9, 9f8835f9, 1265e067): an integration:connect_mcp card waiting for a grant. Title names the App and the agent by display name, no grey notice, the picker with Grant access in the ink border (no pink). React-only: the mobile App keeps its typed card for this type.",
       "comparison": {
         "baseline": "react",
         "current": "android",
@@ -349,7 +607,7 @@
         "rawStatus": "different",
         "acceptance": "",
         "rgbSimilarity": 0.9690255855158285,
-        "pixelPerfectSimilarity": 0.9139425608619921,
+        "pixelPerfectSimilarity": 0.9139428984215714,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.comment-anchor.side-by-side.png"
       }
     },
@@ -725,8 +983,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9714339791267035,
-        "pixelPerfectSimilarity": 0.9191460417763735,
+        "rgbSimilarity": 0.9714339592702577,
+        "pixelPerfectSimilarity": 0.9191463793359528,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
       }
     },
@@ -945,8 +1203,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8777090891635576,
-        "pixelPerfectSimilarity": 0.7962249193592477,
+        "rgbSimilarity": 0.8777095441654759,
+        "pixelPerfectSimilarity": 0.7962240081643067,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-clarify.side-by-side.png"
       }
     },
@@ -1000,8 +1258,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9879260127647773,
-        "pixelPerfectSimilarity": 0.9266344634828048,
+        "rgbSimilarity": 0.9879260432113276,
+        "pixelPerfectSimilarity": 0.9266339571434358,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-slice1.side-by-side.png"
       }
     },
@@ -1522,8 +1780,8 @@
         "status": "basic-pass",
         "rawStatus": "different",
         "acceptance": "basic pass: pixel perfect 96.66% > 96%",
-        "rgbSimilarity": 0.9899876628147479,
-        "pixelPerfectSimilarity": 0.9666253175025105,
+        "rgbSimilarity": 0.989987672466747,
+        "pixelPerfectSimilarity": 0.9666277787622817,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.checkbox.states.side-by-side.png"
       }
     },
@@ -1946,6 +2204,204 @@
       }
     },
     {
+      "id": "components.members.agent-detail.status.credential-held-sign-in",
+      "title": "Agent Profile Status: Invalid Credential, Held for another agent's sign-in",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-raft-computer:#48 (reconciler step 4b). An agent held for another agent's rejected sign-in on the same machine-shared sign-in (idle status with credentialHold user_reauth): the status chip names the reason (error light) instead of Online, with the Retry TextLink beside it. Owner view. react-only: Android has no reconciler status yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.credential-held-sign-in.dark",
+      "title": "Agent Profile Status: Invalid Credential, Held for another agent's sign-in (Dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-raft-computer:#48 (reconciler step 4b). An agent held for another agent's rejected sign-in on the same machine-shared sign-in (idle status with credentialHold user_reauth): the status chip names the reason (error light) instead of Online, with the Retry TextLink beside it. Owner view. react-only: Android has no reconciler status yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.credential-member-view",
+      "title": "Agent Profile Status: Invalid Credential, Member view",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-raft-computer:#48 (reconciler step 4b). The held agent seen by a member who did not create it: may restart it (controlAgentRuntime) but not see its details, so the chip is a plain Error with Retry beside it. react-only: Android has no reconciler status yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.credential-member-view.dark",
+      "title": "Agent Profile Status: Invalid Credential, Member view (Dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-raft-computer:#48 (reconciler step 4b). The held agent seen by a member who did not create it: may restart it (controlAgentRuntime) but not see its details, so the chip is a plain Error with Retry beside it. react-only: Android has no reconciler status yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.credential-own-billing",
+      "title": "Agent Profile Status: Invalid Credential, Own billing error",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-raft-computer:#48 (reconciler step 4b). An agent whose own runtime error is BillingError (stored lastRuntimeError, live error activity): the status chip says the provider balance is exhausted, with Retry; the runtime-error notice stays above. react-only: Android has no reconciler status yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.credential-own-billing.dark",
+      "title": "Agent Profile Status: Invalid Credential, Own billing error (Dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#proj-raft-computer:#48 (reconciler step 4b). An agent whose own runtime error is BillingError (stored lastRuntimeError, live error activity): the status chip says the provider balance is exhausted, with Retry; the runtime-error notice stays above. react-only: Android has no reconciler status yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "components.members.create-agent.builtin-provider-dialog",
       "title": "Members Create Agent Dialog - built-in provider",
       "captureType": "component-fixture",
@@ -2136,8 +2592,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9114564172654787,
-        "pixelPerfectSimilarity": 0.8489700672258103,
+        "rgbSimilarity": 0.9114564111329492,
+        "pixelPerfectSimilarity": 0.8489702409808122,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-missing.side-by-side.png"
       }
     },
@@ -2158,8 +2614,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8506454304684333,
-        "pixelPerfectSimilarity": 0.7711851119774032,
+        "rgbSimilarity": 0.8506454406361809,
+        "pixelPerfectSimilarity": 0.7711849594611907,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-offline.side-by-side.png"
       }
     },
@@ -2478,8 +2934,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.944268957873944,
-        "pixelPerfectSimilarity": 0.9062522561547902,
+        "rgbSimilarity": 0.944267770320573,
+        "pixelPerfectSimilarity": 0.9062462397420162,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.empty.side-by-side.png"
       }
     },
@@ -2810,7 +3266,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9865629718881428,
+        "rgbSimilarity": 0.9865629512067273,
         "pixelPerfectSimilarity": 0.9474838886603593,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
@@ -2957,8 +3413,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9361613558617072,
-        "pixelPerfectSimilarity": 0.8828418465859225,
+        "rgbSimilarity": 0.9361395808419459,
+        "pixelPerfectSimilarity": 0.8875150214012774,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.settings.panel.side-by-side.png"
       }
     },
@@ -3661,8 +4117,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8758235619943592,
-        "pixelPerfectSimilarity": 0.7999428184220404,
+        "rgbSimilarity": 0.8758235656164683,
+        "pixelPerfectSimilarity": 0.7999433222244894,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.page.side-by-side.png"
       }
     },
@@ -4121,8 +4577,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9105764486011396,
-        "pixelPerfectSimilarity": 0.7074665333479436,
+        "rgbSimilarity": 0.9074714396289685,
+        "pixelPerfectSimilarity": 0.7071121716232126,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.notifications.page.side-by-side.png"
       }
     },
@@ -4190,8 +4646,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9322406585454768,
-        "pixelPerfectSimilarity": 0.9184548109413941,
+        "rgbSimilarity": 0.9523609259223672,
+        "pixelPerfectSimilarity": 0.9354595074892105,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.root.page.side-by-side.png"
       }
     },
@@ -4361,8 +4817,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9876806679753596,
-        "pixelPerfectSimilarity": 0.8673764182536112,
+        "rgbSimilarity": 0.9866698648936928,
+        "pixelPerfectSimilarity": 0.8662043284850303,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.status-menu.side-by-side.png"
       }
     },
@@ -4810,8 +5266,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9840084604344498,
-        "pixelPerfectSimilarity": 0.9409625173843184,
+        "rgbSimilarity": 0.9840083651235098,
+        "pixelPerfectSimilarity": 0.9409868216740255,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -4966,7 +5422,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9096299614462859,
+        "rgbSimilarity": 0.90962995514597,
         "pixelPerfectSimilarity": 0.8604435768909453,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png"
       }

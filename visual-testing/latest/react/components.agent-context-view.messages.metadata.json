@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.agent-context-view.messages",
+  "image": "visual-testing-results/react/components.agent-context-view.messages.png",
+  "viewport": {
+    "width": 1280,
+    "height": 1800,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 1800,
+    "density": 1
+  },
+  "selector": "[data-visual-case='components.agent-context-view.messages']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 840,
+      "y": 0,
+      "width": 440,
+      "height": 1800
+    },
+    "targetRect": {
+      "x": 840,
+      "y": 0,
+      "width": 440,
+      "height": 1800
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-07T21:39:24.378Z"
+}

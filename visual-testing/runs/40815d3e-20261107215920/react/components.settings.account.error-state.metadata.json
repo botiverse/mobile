@@ -1,0 +1,46 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.settings.account.error-state",
+  "image": "visual-testing-results/react/components.settings.account.error-state.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 1179,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.settings.account.error-state']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1179
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1179
+    },
+    "outset": null
+  },
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 1179,
+    "initialOverflowPx": 335,
+    "residualOverflowPx": 0,
+    "iterations": 1,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": "div"
+  },
+  "capturedAt": "2026-11-07T21:37:41.852Z"
+}

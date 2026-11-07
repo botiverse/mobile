@@ -1,27 +1,27 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-05T22:57:01.397Z",
-  "latestRunId": "1e916283-20261105220131",
+  "generatedAt": "2026-11-07T22:01:31.593Z",
+  "latestRunId": "40815d3e-20261107215920",
   "latest": {
-    "runId": "1e916283-20261105220131",
-    "commit": "1e916283-20261105220131",
-    "commitSubject": "feat(cards): RFC 082 v2.0 header, Markdown, Fields, Divider (#4367)",
-    "generatedAt": "2026-11-05T22:57:01.397Z",
+    "runId": "40815d3e-20261107215920",
+    "commit": "40815d3e-20261107215920",
+    "commitSubject": "feat(activity): group Activity by day with Today / Yesterday / date headings",
+    "generatedAt": "2026-11-07T22:01:31.593Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 92,
+      "total": 106,
       "same": 0,
       "pass": 1,
       "basic-pass": 8,
       "different": 76,
-      "missing": 7
+      "missing": 21
     },
     "analysisSummary": {
-      "total": 92,
-      "ready": 33,
-      "pending": 59
+      "total": 106,
+      "ready": 31,
+      "pending": 75
     },
     "comparisons": [
       "react__android",
@@ -29,14 +29,14 @@
       "android__ios"
     ],
     "componentMatrixSummary": {
-      "total": 121,
-      "active": 101,
+      "total": 135,
+      "active": 115,
       "pending": 17,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 88,
-          "active": 83,
+          "total": 102,
+          "active": 97,
           "pending": 3,
           "skipped": 2
         },
@@ -49,10 +49,10 @@
       },
       "providers": {
         "react": {
-          "active": 91,
+          "active": 105,
           "pending": 13,
           "unsupported": 0,
-          "total": 104
+          "total": 118
         },
         "android": {
           "active": 79,
@@ -74,19 +74,19 @@
         }
       }
     },
-    "href": "runs/1e916283-20261105220131/",
-    "componentMatrix": "runs/1e916283-20261105220131/component-matrix.json",
-    "llms": "runs/1e916283-20261105220131/metadata.json"
+    "href": "runs/40815d3e-20261107215920/",
+    "componentMatrix": "runs/40815d3e-20261107215920/component-matrix.json",
+    "llms": "runs/40815d3e-20261107215920/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 121,
-    "active": 101,
+    "total": 135,
+    "active": 115,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 88,
-        "active": 83,
+        "total": 102,
+        "active": 97,
         "pending": 3,
         "skipped": 2
       },
@@ -99,10 +99,10 @@
     },
     "providers": {
       "react": {
-        "active": 91,
+        "active": 105,
         "pending": 13,
         "unsupported": 0,
-        "total": 104
+        "total": 118
       },
       "android": {
         "active": 79,
@@ -125,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "40815d3e-20261107215920",
+      "commit": "40815d3e-20261107215920",
+      "commitSubject": "feat(activity): group Activity by day with Today / Yesterday / date headings",
+      "generatedAt": "2026-11-07T22:01:31.593Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 106,
+        "same": 0,
+        "pass": 1,
+        "basic-pass": 8,
+        "different": 76,
+        "missing": 21
+      },
+      "analysisSummary": {
+        "total": 106,
+        "ready": 31,
+        "pending": 75
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 135,
+        "active": 115,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 102,
+            "active": 97,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 105,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 118
+          },
+          "android": {
+            "active": 79,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 97
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 80,
+            "unsupported": 0,
+            "total": 80
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/40815d3e-20261107215920/",
+      "componentMatrix": "runs/40815d3e-20261107215920/component-matrix.json",
+      "llms": "runs/40815d3e-20261107215920/metadata.json"
+    },
     {
       "runId": "1e916283-20261105220131",
       "commit": "1e916283-20261105220131",
