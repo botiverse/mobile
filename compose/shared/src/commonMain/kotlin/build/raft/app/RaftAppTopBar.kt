@@ -222,7 +222,7 @@ private val RaftAppShellTopBarHistoryGlyph = 20.dp
  */
 @Composable
 internal fun raftAppShellTopBarMenuTopInset(topSafeArea: Dp): Dp =
-    RaftTopBarDefaults.rowTopInset(topSafeArea) + RaftTopBarDefaults.Height - RaftTopBarDefaults.ItemInset
+    RaftTopBarDefaults.rowTopInset(topSafeArea) + RaftTopBarDefaults.height - RaftTopBarDefaults.ItemInset
 
 /**
  * The wide layout's top bar, as the pages under it see it (artin task #8, follow-up to #3550). Its

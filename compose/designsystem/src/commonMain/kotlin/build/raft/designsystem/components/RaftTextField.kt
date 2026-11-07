@@ -60,7 +60,7 @@ import build.raft.designsystem.tokens.RaftUiThemeColors
 object RaftTextFieldDefaults {
     /**
      * `h-control`: an input (and an input group) is 44dp tall for a finger. With a mouse or
-     * trackpad in use ([build.raft.designsystem.theme.RaftPointerInput.Fine]) it is 32dp: the
+     * trackpad in use ([build.raft.designsystem.theme.RaftPointerInput.Fine]) it is 34dp: the
      * field reads [RaftTheme.controls]`.height`; this is the touch value.
      */
     val Height: Dp = 44.dp

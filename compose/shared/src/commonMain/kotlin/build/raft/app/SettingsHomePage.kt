@@ -13451,7 +13451,8 @@ private fun SharedHomeSearchControlsRow(
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
                 .padding(top = topSafeAreaPadding)
-                .height(56.dp)
+                // A head: 56 with a finger, 44 under a mouse or trackpad (sizing v12).
+                .height(RaftTheme.controls.headHeight)
                 .raftSafeAreaHorizontalPadding()
                 .padding(start = startPadding, end = SearchHeadHorizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

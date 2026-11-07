@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.LocalRaftBarButtons
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
@@ -7720,88 +7722,93 @@ internal fun MembersDetailHeader(
             .background(colors.layerCanvas)
             .padding(top = topSafeArea)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(RaftAppSize.PageHeaderHeight - RaftStroke.Hairline)
-                .padding(horizontal = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-        ) {
-            RaftPaneAwareBackButton(onClick = onBack)
-            // The web's panel head shows the avatar only; it is changed from the profile hero.
-            MembersRaftAvatar(
-                member = member,
-                size = RaftAvatarSize.Md,
-                memberAvatarResolver = memberAvatarResolver
-            )
-            Column(
-                modifier = Modifier.weight(1f)
+        // The head's icon-lg buttons are bar buttons: 28dp under a mouse or trackpad (sizing v12).
+        CompositionLocalProvider(LocalRaftBarButtons provides true) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+                    .height(RaftTheme.controls.headHeight - RaftStroke.Hairline)
+                    // 3dp for a finger's 44dp buttons; 8dp for the 28dp bar buttons (sizing v12).
+                    .padding(horizontal = RaftBackButtonDefaults.EdgeInset - 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
-                RaftText(
-                    text = member.displayName,
-                    style = typography.headline,
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                RaftPaneAwareBackButton(onClick = onBack)
+                // The web's panel head shows the avatar only; it is changed from the profile hero.
+                MembersRaftAvatar(
+                    member = member,
+                    size = RaftAvatarSize.Md,
+                    memberAvatarResolver = memberAvatarResolver
                 )
-                if (!headerMetaLabel.isNullOrBlank()) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
                     RaftText(
-                        text = headerMetaLabel,
-                        style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
-                        color = if (deleted) colors.dangerStrong else colors.foregroundHint,
+                        text = member.displayName,
+                        style = typography.headline,
+                        color = colors.foreground,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (
-                    directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
-                    membersHeaderMessageUsesIconOnly(member.kind)
-                ) {
-                    RaftIconButton(
-                        onClick = onOpenDirectMessage,
-                        tooltip = stringResource(Res.string.member_label_message),
-                        variant = RaftButtonVariant.Ghost,
-                        size = RaftIconButtonSize.Lg,
-                        loading = directMessageOpening
-                    ) {
-                        // raft-ui `DirectMessageIcon`, as the web head draws it.
-                        RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = 22.dp)
+                    if (!headerMetaLabel.isNullOrBlank()) {
+                        RaftText(
+                            text = headerMetaLabel,
+                            style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
+                            color = if (deleted) colors.dangerStrong else colors.foregroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
-                    // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
-                    RaftButton(
-                        text = stringResource(Res.string.member_label_message),
-                        onClick = onOpenDirectMessage,
-                        modifier = Modifier.padding(end = 7.dp),
-                        loading = directMessageOpening,
-                        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
-                    )
                 }
-                // The More menu holds only Start/Stop and Restart / Reset: nothing to show without
-                // manage rights or once the agent is archived.
-                if (member.kind == MemberKind.Agent && canManage && !deleted) {
-                    RaftIconButton(
-                        onClick = {
-                            onRequestManagementMenu(
-                                threeDotButtonAnchorResolver.resolve()
-                            )
-                        },
-                        tooltip = stringResource(Res.string.tab_more),
-                        variant = RaftButtonVariant.Ghost,
-                        size = RaftIconButtonSize.Lg,
-                        modifier =
-                            Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
-                                currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
-                            }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (
+                        directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
+                        membersHeaderMessageUsesIconOnly(member.kind)
                     ) {
-                        // Web AgentProfileOverflowMenu: EllipsisVertical.
-                        RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = 22.dp)
+                        RaftIconButton(
+                            onClick = onOpenDirectMessage,
+                            tooltip = stringResource(Res.string.member_label_message),
+                            variant = RaftButtonVariant.Ghost,
+                            size = RaftIconButtonSize.Lg,
+                            loading = directMessageOpening
+                        ) {
+                            // raft-ui `DirectMessageIcon`, as the web head draws it.
+                            RaftContentLucideIcon(RaftLucideIconName.DirectMessage, size = 22.dp)
+                        }
+                    } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
+                        // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
+                        RaftButton(
+                            text = stringResource(Res.string.member_label_message),
+                            onClick = onOpenDirectMessage,
+                            modifier = Modifier.padding(end = 7.dp),
+                            loading = directMessageOpening,
+                            leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
+                        )
+                    }
+                    // The More menu holds only Start/Stop and Restart / Reset: nothing to show without
+                    // manage rights or once the agent is archived.
+                    if (member.kind == MemberKind.Agent && canManage && !deleted) {
+                        RaftIconButton(
+                            onClick = {
+                                onRequestManagementMenu(
+                                    threeDotButtonAnchorResolver.resolve()
+                                )
+                            },
+                            tooltip = stringResource(Res.string.tab_more),
+                            variant = RaftButtonVariant.Ghost,
+                            size = RaftIconButtonSize.Lg,
+                            modifier =
+                                Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                                    currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
+                                }
+                        ) {
+                            // Web AgentProfileOverflowMenu: EllipsisVertical.
+                            RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = 22.dp)
+                        }
                     }
                 }
             }

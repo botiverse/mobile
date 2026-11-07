@@ -1,5 +1,7 @@
 package build.raft.designsystem.components
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -109,8 +111,10 @@ fun RaftSideDrawerSurface(
                     )
                     titleTrailing?.invoke(this)
                 }
-                // The 32dp ghost × pulled out by its icon inset, so its glyph sits on the edge.
-                Box(Modifier.raftBleed(end = 7.dp)) {
+                // The 32dp ghost × (34 under a fine pointer) pulled out by its icon inset, so its
+                // glyph sits on the edge.
+                val closeBox = RaftTheme.controls.rowHeight ?: RaftIconButtonSize.Md.box
+                Box(Modifier.raftBleed(end = (closeBox - 18.dp) / 2)) {
                     RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost, enabled = closeEnabled) {
                         RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
                     }
@@ -138,8 +142,13 @@ object RaftSideDrawerDefaults {
     /** The widest it gets (raft-ui Drawer x axis `max-w-[420px]`); a phone gets all of its width. */
     val MaxWidth = 420.dp
 
-    /** The head: the shell header's 56dp. */
-    val HeadHeight = 56.dp
+    /**
+     * The head: the shell header's 56dp with a finger, 44 under a fine pointer (sizing v12,
+     * raft-ui 0.65 desktop density, [build.raft.designsystem.theme.RaftControlMetrics.headHeight]).
+     */
+    val HeadHeight: Dp
+        @Composable @ReadOnlyComposable
+        get() = RaftTheme.controls.headHeight
 
     /** The head's edges on a phone (raft-ui head edges: 16px on a phone). */
     val HeadEdge = 16.dp

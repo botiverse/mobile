@@ -1,5 +1,7 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.theme.RaftControlMetrics
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,10 +48,33 @@ import build.raft.designsystem.tokens.RaftStroke
 
 /** Metrics of [RaftTopBar] (web AppTopBar `BAR_FRAME`). */
 object RaftTopBarDefaults {
-    /** The bar, its `line-seam` included (`h-12 border-b`). */
+    /**
+     * The bar with a finger, its `line-seam` included (`h-12 border-b`). The bar itself reads
+     * [height], which follows the input in use.
+     */
     val Height: Dp = 48.dp
 
-    /** From the bar's top and bottom edges to its 36dp frame items. */
+    /**
+     * The bar under a fine pointer, its seam included: 44 (sizing v12, raft-ui 0.65 desktop
+     * density). The macOS desktop app's title bar, which only a mouse or trackpad drives, is
+     * this tall.
+     */
+    val FineHeight: Dp = RaftControlMetrics.Desktop.topBarHeight
+
+    /** The bar for the input in use: [Height] with a finger, [FineHeight] under a fine pointer. */
+    val height: Dp
+        @Composable @ReadOnlyComposable
+        get() = RaftTheme.controls.topBarHeight
+
+    /**
+     * An item on the bar (the workspace button, the search trigger, an on-frame `md` button): 36
+     * with a finger, 32 under a fine pointer (sizing v12).
+     */
+    val itemSize: Dp
+        @Composable @ReadOnlyComposable
+        get() = RaftTheme.controls.topBarItemSize
+
+    /** From the bar's top and bottom edges to its frame items ([itemSize]): 6 at either size. */
     val ItemInset: Dp = 6.dp
 
     /** The leading region's padding: 9dp on the outside (so the workspace avatar sits 20dp
@@ -131,7 +156,7 @@ private fun RaftTopBarTrailing(
 }
 
 /**
- * The web top bar: a [RaftTopBarDefaults.Height] row on `layer-frame` (the brand yellow in light
+ * The web top bar: a [RaftTopBarDefaults.height] row (48, or 44 under a fine pointer) on `layer-frame` (the brand yellow in light
  * mode, the dark frame in dark) with a 1dp `line-seam` underneath, content in
  * `foreground-on-frame`. [topInset] (the status bar) is added above the row, on the frame.
  * Under a window title bar laid over the row ([LocalRaftWindowTitleBar], the macOS Compose 版
@@ -199,7 +224,7 @@ fun RaftTopBar(
                         .padding(top = rowTopInset)
                         // The frame runs edge to edge; its items stay out of the horizontal safe area.
                         .raftSafeAreaHorizontalPadding()
-                        .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
+                        .height(RaftTopBarDefaults.height - RaftStroke.Hairline)
                         // The theme's pixel art on the bar's end, over the frame, under the items.
                         .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth, decorEnd)
                         // The items stay out of the window controls; the frame and the decor's offset don't.
@@ -220,7 +245,7 @@ fun RaftTopBar(
                         .padding(top = rowTopInset)
                         // The frame runs edge to edge; its items stay out of the horizontal safe area.
                         .raftSafeAreaHorizontalPadding()
-                        .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
+                        .height(RaftTopBarDefaults.height - RaftStroke.Hairline)
                         .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth, decorEnd)
                         .padding(end = inset)
                         // The traffic lights are on the left edge, whatever the language.

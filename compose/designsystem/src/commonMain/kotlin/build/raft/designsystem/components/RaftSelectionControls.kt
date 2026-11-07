@@ -304,6 +304,10 @@ internal fun RaftRadioBox(selected: Boolean, enabled: Boolean, focused: Boolean,
  * dark) with the knob slid 20dp to the end (220ms, `ease-slide`). Disabled is grey in
  * both positions. Keyboard focus rings the track.
  *
+ * Under a fine pointer it is 38 x 22dp with a 14dp knob that slides 16dp (sizing v12, raft-ui
+ * 0.65 desktop density: [build.raft.designsystem.theme.RaftControlMetrics.switchWidth]); the
+ * 4dp round the knob stays.
+ *
  * In a settings list put it in the row's trailing slot ([RaftListRow]) and pass the row's
  * title as [label], which names it for screen readers (inside a [RaftField] the field's
  * label is the default). [onCheckedChange] = null makes it only the indicator.
@@ -323,7 +327,12 @@ fun RaftSwitch(
     val isFocused = raftIsFocused(source)
     val focused = onCheckedChange != null && enabled && isFocused
     RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
-    val knobOffset by animateDpAsState(if (checked) 20.dp else 0.dp, tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide))
+    val controls = RaftTheme.controls
+    // `p-[2.5px]` inside the 1.5dp edge, on both sides of the knob.
+    val pad = RaftStroke.Control + 2.5.dp
+    // 50 - 22 - 2 x 4 = 20 with a finger; 38 - 14 - 2 x 4 = 16 under a fine pointer.
+    val travel = controls.switchWidth - controls.switchKnobSize - pad * 2
+    val knobOffset by animateDpAsState(if (checked) travel else 0.dp, tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide))
     val toggle =
         if (onCheckedChange != null) {
             Modifier.triStateToggleable(
@@ -337,25 +346,24 @@ fun RaftSwitch(
         } else {
             Modifier
         }
-    val radius = 15.dp
+    val radius = controls.switchHeight / 2
     Box(
         modifier
             .then(toggle)
             .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
-            .size(50.dp, 30.dp)
+            .size(controls.switchWidth, controls.switchHeight)
             .raftFocusRing(focused, radius, colors)
             .raftDieCutEdge(look.dieCut, radius)
             .background(look.track, CircleShape)
             .border(RaftStroke.Control, look.trackEdge, CircleShape)
-            // `p-[2.5px]` inside the 1.5dp edge.
-            .padding(RaftStroke.Control + 2.5.dp),
+            .padding(pad),
         contentAlignment = Alignment.CenterStart,
     ) {
         Box(
             Modifier
                 .offset(x = knobOffset)
-                .size(22.dp)
-                .raftOuterRing(look.thumbRing, RaftStroke.Control, 11.dp)
+                .size(controls.switchKnobSize)
+                .raftOuterRing(look.thumbRing, RaftStroke.Control, controls.switchKnobSize / 2)
                 .background(look.thumb, CircleShape),
         )
     }
