@@ -73,8 +73,9 @@ internal val RaftToastSwipeThreshold: Dp = 40.dp
  *
  * - Bottom centre, at most 384dp wide and 16dp from the sides, inside the horizontal safe area.
  * - Compact window ([RaftScale.Compact]): the bottom edge sits 16dp above whatever holds the bottom of the
- *   page ([raftToastAvoid], [RaftToastAvoidBottom]: the tab bar, the composer), and never lower
- *   than 16dp above the system bars and the keyboard (`WindowInsets.safeDrawing`).
+ *   page when the toast appears ([raftToastAvoid], [RaftToastAvoidBottom]: the tab bar, the composer)
+ *   and stays there while it shows, even if the page changes; never lower than 16dp above the system
+ *   bars and the keyboard (`WindowInsets.safeDrawing`), which it still follows.
  *   Wide window ([RaftScale.Wide]): the bottom of the window (stdrc 2026-10-23), above the safe
  *   area and the keyboard only.
  * - Several toasts ([RaftToastHostState.limit] > 1) stack newest at the bottom, [RaftToastGap]
@@ -94,7 +95,12 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val density = LocalDensity.current
     val phone = RaftTheme.scale != RaftScale.Wide
-    val avoidedPx = if (phone && !hostBottomPx.isNaN()) state.avoidedHeightPx(hostBottomPx) else 0f
+    // Held from the moment a stack appears until it is gone: pages change under a toast (composer,
+    // tab bar, none while one loads), and it must not jump with them (artin 2026-11-07).
+    val liveAvoidedPx = if (phone && !hostBottomPx.isNaN()) state.avoidedHeightPx(hostBottomPx) else 0f
+    val heldAvoidedPx = remember(state, toasts.isEmpty(), hostBottomPx) { liveAvoidedPx }
+    // A stack handed over from another window predates this host's measurements: nothing to hold yet.
+    val avoidedPx = if (toasts.all { it.id in presentAtStart }) liveAvoidedPx else heldAvoidedPx
     val safeBottomPx = WindowInsets.safeDrawing.getBottom(density).toFloat()
     val bottom = with(density) { maxOf(avoidedPx, safeBottomPx).toDp() } + RaftToastViewportOffset
     Box(
