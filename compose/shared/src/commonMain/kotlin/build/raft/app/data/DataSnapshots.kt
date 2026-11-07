@@ -619,7 +619,18 @@ data class HomeSnapshot(
     val unreadStale: Boolean = false,
     /** Task #164: the server's `Retry-After` on that stale or overloaded read. Never persisted. */
     @Transient
-    val unreadRetryAfterMillis: Long? = null
+    val unreadRetryAfterMillis: Long? = null,
+    /**
+     * The unread summary's newest message per scope, by channel id value
+     * ([ChannelUnreadSummary.latestActivitySeqs]): how far past a saved read a row's count can reach.
+     * Never persisted, and kept apart from the rows' [HomeConversationRow.lastMessageSeq], which
+     * decides whether a realtime message is new.
+     */
+    @Transient
+    val unreadLatestActivitySeqs: Map<String, Long> = emptyMap(),
+    /** The unread summary's read state per scope, by channel id value. Never persisted. */
+    @Transient
+    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap()
 )
 
 @Serializable

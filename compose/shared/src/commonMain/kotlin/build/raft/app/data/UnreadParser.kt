@@ -148,19 +148,41 @@ data class ChannelUnreadSummary(
      * by channel id value: shown unread with a dot and no number. Never in [unreadCounts]' totals.
      */
     val markedUnreadIds: Set<String> = emptySet(),
+    /**
+     * Newest message per scope (`readState.latestActivity.seq`), by channel id value. Missing when the
+     * scope has no read cursor or no usable frontier, which says nothing about what is unread.
+     */
+    val latestActivitySeqs: Map<String, Long> = emptyMap(),
+    /** Each scope's read state with a cursor (`readState.kind == "present"`), by channel id value. */
+    val readFrontiers: Map<String, ReadReceiptFrontier> = emptyMap(),
 )
+
+private fun ChannelUnreadSummaryReadStateWireDto?.toReadReceiptFrontier(): ReadReceiptFrontier? {
+    if (this == null || kind != "present") return null
+    val readSeq = maxReadSeq?.toLongOrNull() ?: return null
+    return ReadReceiptFrontier(readSeq, readStateVersion, isMarkedUnread)
+}
 
 fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {
     val unreadCounts = LinkedHashMap<ChannelId, Int>()
     val mentioned = LinkedHashSet<ChannelId>()
     val threads = LinkedHashMap<String, HomeFollowedThreadUnread>()
     val marked = LinkedHashSet<String>()
+    val latestActivitySeqs = LinkedHashMap<String, Long>()
+    val readFrontiers = LinkedHashMap<String, ReadReceiptFrontier>()
     for ((key, entry) in channels) {
         val id = key.trim().takeIf { it.isNotEmpty() }?.let(::ChannelId) ?: continue
         val count = entry.unreadCount.coerceAtLeast(0)
         unreadCounts[id] = count
         if (entry.hasMention) mentioned += id
         if (entry.readState?.isMarkedUnread == true) marked += id.value
+        entry.readState
+            ?.takeIf { it.kind == "present" }
+            ?.latestActivity
+            ?.seq
+            ?.toLongOrNull()
+            ?.let { seq -> latestActivitySeqs[id.value] = seq }
+        entry.readState.toReadReceiptFrontier()?.let { frontier -> readFrontiers[id.value] = frontier }
         val parent = entry.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
         if (parent != null && count > 0) {
             threads[id.value] = HomeFollowedThreadUnread(ChannelId(parent), count, entry.hasMention)
@@ -177,6 +199,8 @@ fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {
                 }
                 .toMap(),
         markedUnreadIds = marked,
+        latestActivitySeqs = latestActivitySeqs,
+        readFrontiers = readFrontiers,
     )
 }
 
@@ -203,6 +227,17 @@ fun Map<String, HomeFollowedThreadUnread>.foldThreadUnreadByParent(): Map<Channe
 fun parseChannelUnreadSummary(bodyText: String): ChannelUnreadSummary? = runCatching {
     unreadJson.decodeFromString(ChannelUnreadSummaryWireDto.serializer(), bodyText).toChannelUnreadSummary()
 }.getOrNull()
+
+/**
+ * The read state per scope from `/api/channels/unread?summary=1`, for deciding a replay. Null when the
+ * body is a remembered one (`stale`) or does not match the contract: neither says what is true now.
+ */
+internal fun parseFreshReadFrontiers(bodyText: String): Map<ChannelId, ReadReceiptFrontier>? =
+    runCatching {
+        val summary = unreadJson.decodeFromString(ChannelUnreadSummaryWireDto.serializer(), bodyText)
+        if (summary.stale) return@runCatching null
+        summary.toChannelUnreadSummary().readFrontiers.mapKeys { (id, _) -> ChannelId(id) }
+    }.getOrNull()
 
 /**
  * Parse `/api/channels/unread?summary=1` into the per-scope counts. Returns null on contract mismatch so
