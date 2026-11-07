@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.CHANNEL_THREAD_SORT_ACTIVITY
+import build.raft.app.data.RaftMessageContextPageSink
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.isRaftMessageContextHistoryLimited
@@ -56,6 +58,8 @@ internal sealed interface RaftMessageLinkResolution {
 internal class RaftMessageLinkResolver(
     private val networkClient: RaftNetworkClient,
     private val diagnosticsLogger: (String) -> Unit = {},
+    /** Message storage Phase 2c: where a resolved link's context page is offered; it never delays or changes the result. */
+    private val contextPageSink: RaftMessageContextPageSink? = null,
 ) {
     suspend fun resolve(link: RaftMessageLink, servers: List<StoredAuthServer>): RaftMessageLinkResolution {
         val server =
@@ -66,6 +70,8 @@ internal class RaftMessageLinkResolver(
                 }
         val serverId = ServerId(server.id)
         val focusMessageId = link.focusMessageId
+        // Before the requests: the page's revision and head epoch must predate its fetch.
+        val pendingContextPage = focusMessageId?.let { contextPageSink?.beginRequest(server.id) }
         val (channelResponse, contextResponse) =
             coroutineScope {
                 val channel = async { request(serverId, path = "channels/${link.channelId}") }
@@ -97,7 +103,7 @@ internal class RaftMessageLinkResolver(
             }
         if (focusMessageId == null) return open(server.id, link, conversationKind, threadChannelId = null)
 
-        return when (contextResponse.linkOutcome()) {
+        val resolution = when (contextResponse.linkOutcome()) {
             RaftLinkProbeOutcome.Found -> {
                 val context = parseSharedMessageContext(contextResponse?.bodyText.orEmpty(), ThreadId(link.channelId))
                 val target = context.canonicalTarget?.takeIf { it.kind == "thread" }
@@ -140,6 +146,18 @@ internal class RaftMessageLinkResolver(
                 }
             RaftLinkProbeOutcome.Unavailable -> open(server.id, link, conversationKind, threadChannelId = null)
         }
+        if (resolution is RaftMessageLinkResolution.Open && contextResponse.linkOutcome() == RaftLinkProbeOutcome.Found) {
+            val probe = parseRaftMessageLinkChannelProbe(channelResponse?.bodyText)
+            // A forum channel never writes segments.
+            if (probe?.threadSort != CHANNEL_THREAD_SORT_ACTIVITY) {
+                contextResponse?.bodyText?.let { body ->
+                    // The probe names the link's channel. The page's scope is the response's, so the type only helps
+                    // when they are the same conversation; the sink checks.
+                    pendingContextPage?.offer(body, channelId = link.channelId, channelType = probe?.type)
+                }
+            }
+        }
+        return resolution
     }
 
     private suspend fun request(

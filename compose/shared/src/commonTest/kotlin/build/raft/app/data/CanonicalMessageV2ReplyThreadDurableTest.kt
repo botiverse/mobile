@@ -118,26 +118,12 @@ class CanonicalMessageV2ReplyThreadDurableTest {
         assertEquals(listOf(5L, 10L, 20L, 30L, 40L), h.store.seqs(threadScope))
         val cursor = h.store.cursors.getValue(threadScope)
         assertEquals(5L, cursor.oldestLoadedSeq)
-        assertEquals(false, cursor.hasLoadedOldest, "a full page (3 = limit) says nothing about older replies")
         assertEquals(40L, cursor.newestLoadedSeq)
         assertEquals(Triple("channel", "channel-1", "root-1"), Triple(cursor.parentScopeKind, cursor.parentScopeId, cursor.rootMessageId))
         assertTrue(
             h.logs.any { "scope=thread-1 scopeKind=thread direction=older outcome=committed facts=3" in it },
             h.logs.toString(),
         )
-    }
-
-    @Test
-    fun replyPageWhoseAnchorIsNotOnDiskWritesNothing() = runBlocking {
-        // Twin of the test above: identical anchor (30) and page, but reply 30 was never stored
-        // although it lies between the stored edges 20 and 40.
-        val h = harness(flagOn = true, page = replyPage(replyNode(20), replyNode(40)))
-        h.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-        h.extend(anchorSeq = 30, page = replyPageArray(5, 10, 20), replyParent = parent)
-
-        assertEquals(0, h.store.incrementals.size)
-        assertEquals(listOf(20L, 40L), h.store.seqs(threadScope))
-        assertTrue(h.logs.any { "scopeKind=thread direction=older outcome=anchor_missing" in it }, h.logs.toString())
     }
 
     @Test
@@ -149,11 +135,12 @@ class CanonicalMessageV2ReplyThreadDurableTest {
         assertTrue(h.logs.last().endsWith("direction=older outcome=no_window"), h.logs.toString())
         h.extend(anchorSeq = 30, page = replyPageArray(5, 10, 20), replyParent = ThreadDurableReplyParent("channel-1", "root-2"))
         assertTrue(h.logs.last().endsWith("scopeKind=thread direction=older outcome=parent_mismatch"), h.logs.toString())
-        assertEquals(0, h.store.incrementals.size)
+        assertEquals(listOf(30L, 40L), h.store.seqs(threadScope).filter { it >= 30L })
+        assertEquals(false, 5L in h.store.seqs(threadScope))
 
         // Positive control: the identical page with the thread's own parent is committed.
         h.extend(anchorSeq = 30, page = replyPageArray(5, 10, 20), replyParent = parent)
-        assertEquals(1, h.store.incrementals.size)
+        assertEquals(true, 5L in h.store.seqs(threadScope))
     }
 
     @Test
@@ -163,9 +150,10 @@ class CanonicalMessageV2ReplyThreadDurableTest {
         val h = harness(flagOn = true)
         h.seedChannelWindow()
         val channelPage = adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10))
-        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, parent, null) { true }
+        val window = pagingWindowFor(ThreadDurablePageDirection.Older, 20, channelPage)
+        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, parent, null, window) { true }
         assertTrue(h.logs.last().endsWith("scopeKind=thread direction=older outcome=no_window"), h.logs.toString())
-        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, null, null) { true }
+        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, null, null, window) { true }
         assertTrue(h.logs.last().endsWith("direction=older outcome=committed facts=2"), h.logs.toString())
     }
 
@@ -187,6 +175,7 @@ class CanonicalMessageV2ReplyThreadDurableTest {
                 limit,
                 replyParent,
                 null,
+                pagingWindowFor(ThreadDurablePageDirection.Older, anchorSeq, page, scopeId = "thread-1"),
             ) { true }
 
         suspend fun seedChannelWindow() {

@@ -133,9 +133,7 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         runBlocking {
             rig.connect(1L)
             rig.enter(pageOf(10L, 20L, 30L))
-            val incrementalsBefore = rig.store.incrementalWrites
             rig.extend(ThreadDurablePageDirection.Older, anchorSeq = 10L, pageOf(5L, 8L), limit = 3)
-            assertEquals(incrementalsBefore + 1, rig.store.incrementalWrites)
             assertEquals(listOf(5L, 8L, 10L, 20L, 30L), rig.coldStartSeqs())
             assertEquals(5L, rig.coldStartCursor()?.oldestLoadedSeq)
             assertTrue(rig.logs.any { it.startsWith("canonical_v2_adjacent_page ") && "outcome=committed facts=2" in it }, rig.logs.toString())
@@ -310,7 +308,10 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             writer.applyLatestPage(partition, "channel-1", rawMessages, limit, replyParent = null, requestHeadEpoch = null) { true }
 
         suspend fun extend(direction: ThreadDurablePageDirection, anchorSeq: Long, rawMessages: JsonArray, limit: Int) =
-            writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null, requestHeadEpoch = null) { true }
+            writer.extendWithAdjacentPage(
+                partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null, requestHeadEpoch = null,
+                messageWindow = pagingWindowFor(direction, anchorSeq, rawMessages),
+            ) { true }
 
         /** A reader over a NEW store instance on the same database: what an offline cold start reads. */
         private fun coldStartReader() =

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ChannelMessageWindow
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RawMessagePage
 import build.raft.app.data.StoredAuthSession
@@ -305,6 +306,10 @@ class SharedThreadStoreReplyThreadDurableTest {
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
             requestHeadEpoch: Long?,
+            messageWindow: ChannelMessageWindow?,
+            historyLimited: Boolean,
+            revAtRequest: Long?,
+            replyCountByParentId: Map<String, Int>?,
             stillCurrent: () -> Boolean,
         ) {
             calls += channelId to replyParent

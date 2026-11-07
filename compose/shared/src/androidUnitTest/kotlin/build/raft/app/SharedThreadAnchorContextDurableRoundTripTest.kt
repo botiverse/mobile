@@ -71,7 +71,7 @@ class SharedThreadAnchorContextDurableRoundTripTest {
             assertTrue(
                 online.logs.any {
                     it == "canonical_v2_context_page server=server-1 scope=channel-1 anchor=m30 outcome=committed " +
-                        "reason=window_extended_older facts=3"
+                        "reason=head_extended facts=4"
                 },
                 online.logs.toString(),
             )
@@ -278,7 +278,13 @@ class SharedThreadAnchorContextDurableRoundTripTest {
                 },
                 canLoadMoreBefore = true,
                 canLoadMoreAfter = true,
-                rawMessagePage = RawMessagePageWitness(RawMessagePage(page(*seqs.toLongArray()), requestedLimit = 0)),
+                rawMessagePage = RawMessagePageWitness(
+                    RawMessagePage(
+                        page(*seqs.toLongArray()),
+                        requestedLimit = 0,
+                        context = build.raft.app.data.RawMessageContextFields("channel-1", "m30", true, true, null, null),
+                    ),
+                ),
             )
         }
     }

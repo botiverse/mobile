@@ -15,6 +15,14 @@ enum class CanonicalMessageV2SegmentSource(val wire: String) {
     Legacy("legacy"),
     ;
 
+    /**
+     * Phase 2c: whether a range from this source can be (or grow into) the head, the window users see. A `latest`
+     * fetch, the realtime run and the legacy / migrated windows can. A context, older or newer page proves its range
+     * and nothing about where it sits, so alone it is an island: it stays one until it merges with such a range.
+     */
+    val rootsHead: Boolean
+        get() = this == Latest || this == Live || this == Migrated || this == Legacy
+
     companion object {
         fun fromWire(wire: String): CanonicalMessageV2SegmentSource? = entries.firstOrNull { it.wire == wire }
     }
@@ -119,13 +127,14 @@ data class CanonicalMessageV2Coverage(
         }
 
         /**
-         * A `messages/context` page has no `messageWindow`; its `hasOlder` / `hasNewer` are data-derived,
-         * so it proves `[hasOlder ? min : open-oldest, max]`, at the head iff `!hasNewer`. Empty = nothing.
+         * A `messages/context` page has no `messageWindow`; its `hasOlder` is data-derived, so it proves
+         * `[hasOlder ? min : open-oldest, max]`; `!hasOlder` with [historyLimited] is the plan's cutoff, not the
+         * channel's start. Never a head proof: seqs are allocated before commit, so `hasNewer == false` does not say
+         * the top is complete; only a `direction: latest` fetch does. Empty = nothing.
          */
         fun fromContextPage(
             seqs: List<Long>,
             hasOlder: Boolean,
-            hasNewer: Boolean,
             historyLimited: Boolean,
         ): CanonicalMessageV2Coverage? {
             val min = seqs.minOrNull() ?: return null
@@ -134,7 +143,7 @@ data class CanonicalMessageV2Coverage(
                 lowSeq = min,
                 highSeq = max,
                 reachesOldest = !hasOlder && !historyLimited,
-                headAtVerify = !hasNewer,
+                headAtVerify = false,
                 source = CanonicalMessageV2SegmentSource.Context,
             )
         }
@@ -181,7 +190,9 @@ object CanonicalMessageV2SegmentAlgebra {
         require(joins(a, b)) { "segments [${a.lowSeq}, ${a.highSeq}] and [${b.lowSeq}, ${b.highSeq}] do not join" }
         val high = maxOf(a.highSeq, b.highSeq)
         val atHigh = listOf(a, b).filter { it.highSeq == high }
-        val newest = listOf(a, b).maxWith(compareBy<CanonicalMessageV2Segment> { it.verifiedAtMs }.thenBy { it.highSeq })
+        // Phase 2c: a merge with a head-rooted range stays rooted, whoever was verified last; two islands stay an island.
+        val candidates = listOf(a, b).filter { it.source.rootsHead }.ifEmpty { listOf(a, b) }
+        val newest = candidates.maxWith(compareBy<CanonicalMessageV2Segment> { it.verifiedAtMs }.thenBy { it.highSeq })
         return CanonicalMessageV2Segment(
             lowSeq = minOf(a.lowSeq, b.lowSeq),
             highSeq = high,
@@ -192,8 +203,13 @@ object CanonicalMessageV2SegmentAlgebra {
         )
     }
 
-    /** The head segment: the one reaching the highest seq (the legacy window mirrors it). */
-    fun head(segments: List<CanonicalMessageV2Segment>): CanonicalMessageV2Segment? = segments.maxByOrNull { it.highSeq }
+    /**
+     * The head segment: the head-rooted one reaching the highest seq (the legacy window mirrors it). Phase 2c: an island
+     * ([CanonicalMessageV2SegmentSource.rootsHead] false) is never the head, even above the window users see, so
+     * the reader, the mirror columns and retention keep that window. `null` = no window (island-only or no range).
+     */
+    fun head(segments: List<CanonicalMessageV2Segment>): CanonicalMessageV2Segment? =
+        segments.filter { it.source.rootsHead }.maxByOrNull { it.highSeq }
 
     /** The segment [seq] belongs to (I4), or `null` = a loose fact. */
     fun memberOf(segments: List<CanonicalMessageV2Segment>, seq: Long): CanonicalMessageV2Segment? =

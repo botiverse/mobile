@@ -127,6 +127,10 @@ internal object SharedThreadStoreTestFakes {
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
             requestHeadEpoch: Long?,
+            messageWindow: ChannelMessageWindow?,
+            historyLimited: Boolean,
+            revAtRequest: Long?,
+            replyCountByParentId: Map<String, Int>?,
             stillCurrent: () -> Boolean
         ) {
             replyParents += replyParent

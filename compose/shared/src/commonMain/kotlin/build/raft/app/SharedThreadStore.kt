@@ -1835,6 +1835,8 @@ internal data class SharedThreadDurablePage(
     val rawPage: RawMessagePage,
     /** Phase 3b: the durable partition's head epoch read before this page was requested (`null` = none). */
     val headEpochAtRequest: Long? = null,
+    /** Phase 2c: the durable write revision read before this page was requested (`null` = none). */
+    val revAtRequest: Long? = null,
 )
 
 private val processAttachmentUploadCapabilitiesCache =
@@ -1856,6 +1858,8 @@ internal data class SharedThreadDurableContextPage(
     val hasNewer: Boolean,
     /** Phase 3b: the durable partition's head epoch read before this page was requested (`null` = none). */
     val headEpochAtRequest: Long? = null,
+    /** Phase 2c: the durable write revision read before this page was requested (`null` = none). */
+    val revAtRequest: Long? = null,
 )
 
 internal class SharedThreadDataSource(
@@ -2133,6 +2137,12 @@ internal class SharedThreadDataSource(
     private fun durableHeadEpochOrNull(provenance: ReplyCacheProvenance): Long? {
         val partition = provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) ?: return null
         return durablePageExtender?.headEpoch(partition) ?: enteredScopeSnapshotLoader?.headEpoch(partition)
+    }
+
+    /** Phase 2c: the durable write revision of [provenance]'s partition, read BEFORE a page fetch (`revAtRequest`). */
+    private suspend fun durableLocalRevOrNull(provenance: ReplyCacheProvenance): Long? {
+        val partition = provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) ?: return null
+        return durablePageExtender?.currentLocalRev(partition)
     }
 
     internal fun pendingSendJournalOrNull(): ThreadPendingSendJournal? = pendingSendJournal
@@ -2774,6 +2784,7 @@ internal class SharedThreadDataSource(
         rawPage: RawMessagePage,
         replyParent: ThreadDurableReplyParent? = null,
         headEpochAtRequest: Long? = null,
+        revAtRequest: Long? = null,
     ): Boolean {
         val extender = durablePageExtender ?: return false
         if (!routeIdentity.canRenderTimelineCandidates) return false
@@ -2792,6 +2803,10 @@ internal class SharedThreadDataSource(
             requestedLimit = rawPage.requestedLimit,
             replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
             requestHeadEpoch = headEpochAtRequest,
+            messageWindow = rawPage.messageWindow,
+            historyLimited = rawPage.historyLimited,
+            revAtRequest = revAtRequest,
+            replyCountByParentId = rawPage.replyCountsByParentId,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
     }
@@ -2824,15 +2839,24 @@ internal class SharedThreadDataSource(
             page.context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return skip("no_partition")
         if (!isCurrentReplyCacheProvenance(page.context.provenance)) return skip("identity_changed")
+        // The scope key is the response's, which may be a thread of this route's channel; never the route's by default.
+        val response = page.rawPage.context ?: return skip("no_response_channel")
+        val routeParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent
+        val targetParent = response.threadParentChannelId?.let { parentChannelId ->
+            response.threadRootMessageId?.let { root -> ThreadDurableReplyParent(parentChannelId, root) }
+        }
         extender.persistContextPage(
             partition = partition,
-            channelId = channelId,
-            anchorMessageId = page.anchorMessageId,
+            channelId = response.channelId,
+            anchorMessageId = response.targetMessageId ?: page.anchorMessageId,
             rawMessages = page.rawPage.messages,
             hasOlder = page.hasOlder,
             hasNewer = page.hasNewer,
-            replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
+            replyParent = targetParent ?: routeParent?.takeIf { response.channelId == channelId },
             requestHeadEpoch = page.headEpochAtRequest,
+            historyLimited = page.rawPage.historyLimited,
+            revAtRequest = page.revAtRequest,
+            replyCountByParentId = page.rawPage.replyCountsByParentId,
         ) { isCurrentReplyCacheProvenance(page.context.provenance) }
         return true
     }
@@ -6281,6 +6305,7 @@ internal class SharedThreadDataSource(
         var rawPage = RawMessagePageWitness.None
         // Phase 3b: read before the request (with the identity): a horizonReset during it voids the page's head claim.
         val headEpochAtRequest = durableHeadEpochOrNull(resolutionScope.provenance)
+        val revAtRequest = durableLocalRevOrNull(resolutionScope.provenance)
         val result =
             if (conversationRepository != null) {
                 fetchThreadPayloadFromRepository(
@@ -6330,6 +6355,7 @@ internal class SharedThreadDataSource(
                                     context = ReplyCacheProducerContext(session, resolutionScope.provenance),
                                     rawPage = page,
                                     headEpochAtRequest = headEpochAtRequest,
+                                    revAtRequest = revAtRequest,
                                 )
                             }
                     )
@@ -6460,6 +6486,7 @@ internal class SharedThreadDataSource(
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
         // Phase 3b: read before the request: a horizonReset during it voids the page's head claim.
         val headEpochAtRequest = durableHeadEpochOrNull(replyResolutionScope.provenance)
+        val revAtRequest = durableLocalRevOrNull(replyResolutionScope.provenance)
         val contextResult =
             fetchThreadSnapshotFromRepository(
                 fallbackCode = "thread_focused_context",
@@ -6491,6 +6518,7 @@ internal class SharedThreadDataSource(
                         hasOlder = context.canLoadMoreBefore,
                         hasNewer = context.canLoadMoreAfter,
                         headEpochAtRequest = headEpochAtRequest,
+                        revAtRequest = revAtRequest,
                     )
                 )
             }
@@ -7760,7 +7788,6 @@ internal class SharedThreadStore(
     private val foregroundLoadLeaseLock = SynchronizedObject()
     private var foregroundLoadLease: SharedForegroundLoadGate.Lease? = null
     /** Message storage Phase 2b: the durable write of the last refresh's own page (a context page write waits for it). */
-    private var enteredPagePersistJob: Job? = null
     private var threadJoinCatchUpJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
     private var focusedOriginHydrationJob: Job? = null
@@ -10830,8 +10857,7 @@ internal class SharedThreadStore(
         context: ReplyCacheProducerContext,
     ) {
         if (ticket == null && page == null) return
-        enteredPagePersistJob =
-            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
                     if (page == null) {
                         ticket?.let { withContext(NonCancellable) { dataSource.abandonEnteredPage(it) } }
@@ -10872,10 +10898,10 @@ internal class SharedThreadStore(
     }
 
     private fun launchDurableContextPagePersist(page: SharedThreadDurableContextPage) {
-        val enterJob = enteredPagePersistJob
+        // Phase 2c: no wait for the enter page. A page that does not move the head leaves its baseline alone
+        // ([CanonicalMessageV2AdjacentPageWriter]), and each write's revAtRequest was read before its own fetch.
         scope.launch {
             try {
-                enterJob?.join()
                 dataSource.persistDurableContextPageIfCurrent(page)
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -10912,6 +10938,7 @@ internal class SharedThreadStore(
                     rawPage = durablePage.rawPage,
                     replyParent = replyParent,
                     headEpochAtRequest = durablePage.headEpochAtRequest,
+                    revAtRequest = durablePage.revAtRequest,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation

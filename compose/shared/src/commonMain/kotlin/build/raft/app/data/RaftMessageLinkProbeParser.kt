@@ -15,11 +15,13 @@ import kotlinx.serialization.json.JsonObject
 private data class RaftMessageLinkChannelProbeWire(
     val id: String = "",
     val type: String = "",
+    val threadSort: String? = null,
 )
 
 internal data class RaftMessageLinkChannelProbe(
     val id: String,
     val type: String,
+    val threadSort: String? = null,
 )
 
 private val messageLinkProbeJson = Json { ignoreUnknownKeys = true }
@@ -30,7 +32,7 @@ internal fun parseRaftMessageLinkChannelProbe(bodyText: String?): RaftMessageLin
         runCatching { messageLinkProbeJson.decodeFromString(RaftMessageLinkChannelProbeWire.serializer(), text) }
             .getOrNull() ?: return null
     if (wire.id.isBlank() || wire.type.isBlank()) return null
-    return RaftMessageLinkChannelProbe(id = wire.id, type = wire.type.lowercase())
+    return RaftMessageLinkChannelProbe(id = wire.id, type = wire.type.lowercase(), threadSort = wire.threadSort)
 }
 
 /**

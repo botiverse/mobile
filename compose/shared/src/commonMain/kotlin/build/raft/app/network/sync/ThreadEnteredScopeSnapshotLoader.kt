@@ -117,18 +117,12 @@ internal enum class ThreadDurablePageDirection(val wireName: String) {
 
 /**
  * Second write entry of the offline cache (task #168): a channel / DM page the user fetched by
- * paging older (`before=anchorSeq`) or newer (`after=anchorSeq`) is persisted into the same V2
- * window [ThreadEnteredScopeSnapshotLoader] created — but only when the page joins the stored
- * window without a gap, so the one contiguous window per scope never gets a hole.
- *
- * Joining is decided by anchor membership (the paging anchor is a message that is on disk inside
- * the stored window; the page is the server's contiguous block right next to it), never by seq
- * arithmetic: seqs are server-global and not dense per channel. The extender never creates a
- * window (no stored window ⇒ nothing), never touches a scope the canary owns, and — like the
- * enter loader — re-reads `stillCurrent` after its network round trip and before the write.
- * Every non-positive case writes nothing and logs one line.
+ * paging older (`before=anchorSeq`) or newer (`after=anchorSeq`) is stored with the seq range its server window proves,
+ * unioned into the scope's segments (Phase 2c). A page that reaches the head's coverage grows it; any other is an island,
+ * stored but not shown until Phase 2d. The extender re-reads `stillCurrent` after its network round trip and before the
+ * write. Every non-positive case writes nothing and logs one line.
  */
-internal fun interface ThreadDurablePageExtender {
+internal interface ThreadDurablePageExtender {
     /**
      * [replyParent] selects the scope family explicitly: `null` = a top-level channel / DM window;
      * non-null = the reply thread [channelId] whose stored cursor must name exactly that parent
@@ -148,6 +142,13 @@ internal fun interface ThreadDurablePageExtender {
          * `null` = not captured: the writer reads it now.
          */
         requestHeadEpoch: Long?,
+        /** Phase 2c: the page's server window (scope key and range; `null` = nothing is written) and history flag. */
+        messageWindow: ChannelMessageWindow? = null,
+        historyLimited: Boolean = false,
+        /** Phase 2c: [currentLocalRev] read before the page's fetch (`null` = read at write time). */
+        revAtRequest: Long? = null,
+        /** Phase 2c: the counts the response embeds; a thread parent without one is left out. Never fetched. */
+        replyCountByParentId: Map<String, Int>? = null,
         stillCurrent: () -> Boolean,
     )
 
@@ -235,16 +236,12 @@ internal fun interface ThreadDurablePageExtender {
     )
 
     /**
-     * Task #14 part C: [rawMessages] is the `messages/context/{anchor}` page an anchored open (Activity row,
-     * `JumpToMessage`) fetched — the server's contiguous block around [anchorMessageId], with its own edge
-     * facts [hasOlder] / [hasNewer]. The store keeps ONE contiguous window per scope (no islands), so the
-     * page is persisted only when it provably joins the stored window: a fact stored inside the window is
-     * on the page (both blocks contiguous ⇒ their union is). Only facts OUTSIDE the stored window's range are
-     * added (insert-only): inside the range the window already is the complete record, so a message missing
-     * there was deleted, and a stored fact is never overwritten by this page. A page that does not join is
-     * not written (`not_joined`): replacing the window would drop newer facts, and marking the gap
-     * continuous would be a claim nothing proves. Never creates a window. Same admission as
-     * [extendWithAdjacentPage]. Implementations that do not persist pages write nothing.
+     * Phase 2c: [rawMessages] is a `messages/context/{anchor}` page, the server's contiguous block around
+     * [anchorMessageId], with its own edge fact [hasOlder]. [channelId] is the RESPONSE's top-level `channelId`, which may
+     * be a thread and need not be the route's: the page is written under that scope, never mixed into a parent's.
+     * The page merges with a stored range only when they share a message id; otherwise it is an island, which is
+     * stored but is neither the head nor read until Phase 2d. [hasNewer] proves nothing: only a `direction: latest` fetch
+     * proves the head. Implementations that do not persist pages write nothing.
      */
     suspend fun persistContextPage(
         partition: DurablePartitionKey,
@@ -260,6 +257,16 @@ internal fun interface ThreadDurablePageExtender {
          * `null` = not captured: the writer reads it now.
          */
         requestHeadEpoch: Long? = null,
+        /** `!hasOlder && historyLimited` is the plan's cutoff, not the channel's start. */
+        historyLimited: Boolean = false,
+        /** [currentLocalRev] read before the page's fetch (`null` = read at write time). */
+        revAtRequest: Long? = null,
+        /** The counts the response embeds; a thread parent without one is left out. Never fetched. */
+        replyCountByParentId: Map<String, Int>? = null,
+        /** `false` for a link or overview write: it stores facts but is no use of the scope for retention. */
+        userDriven: Boolean = true,
+        /** The scope's channel type if the caller already read it (a never-stored scope needs one). */
+        channelType: String? = null,
         stillCurrent: () -> Boolean,
     ) = Unit
 }
