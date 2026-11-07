@@ -519,9 +519,6 @@
     <string name="browser_unavailable_toast">沒有可開啟此連結的瀏覽器</string>
     <string name="email_verified_toast">電子郵件已驗證</string>
     <string name="email_verified_sign_in_toast">電子郵件已驗證。請登入以繼續。</string>
-    <string name="provider_unavailable_toast">這個登入方式尚未支援 Android</string>
-    <string name="google_sign_in_no_code_toast">Google 登入未傳回授權碼</string>
-    <string name="google_sign_in_failed_toast">Google 登入失敗，請再試一次。</string>
     <string name="oauth_request_expired_toast">登入要求已過期，請再試一次。</string>
     <string name="provider_no_handoff_code_toast">%1$s 未傳回交接碼</string>
     <string name="provider_linked_toast">已連結 %1$s 帳號。</string>

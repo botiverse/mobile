@@ -519,9 +519,6 @@
     <string name="browser_unavailable_toast">No hay ningún navegador disponible para abrir este enlace</string>
     <string name="email_verified_toast">Correo electrónico verificado</string>
     <string name="email_verified_sign_in_toast">Correo verificado. Inicia sesión para continuar.</string>
-    <string name="provider_unavailable_toast">Este método de inicio de sesión aún no está disponible en Android</string>
-    <string name="google_sign_in_no_code_toast">El inicio de sesión con Google no devolvió un código de autorización</string>
-    <string name="google_sign_in_failed_toast">No se pudo iniciar sesión con Google. Inténtalo de nuevo.</string>
     <string name="oauth_request_expired_toast">La solicitud de inicio de sesión expiró. Inténtalo de nuevo.</string>
     <string name="provider_no_handoff_code_toast">%1$s no devolvió un código de traspaso</string>
     <string name="provider_linked_toast">Cuenta de %1$s vinculada.</string>

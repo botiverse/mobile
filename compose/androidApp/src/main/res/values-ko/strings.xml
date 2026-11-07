@@ -519,9 +519,6 @@
     <string name="browser_unavailable_toast">이 링크를 열 수 있는 브라우저가 없어요</string>
     <string name="email_verified_toast">이메일 인증 완료</string>
     <string name="email_verified_sign_in_toast">이메일을 인증했어요. 계속하려면 로그인하세요.</string>
-    <string name="provider_unavailable_toast">이 로그인 방법은 아직 Android에서 사용할 수 없어요</string>
-    <string name="google_sign_in_no_code_toast">Google 로그인에서 인증 코드를 받지 못했어요</string>
-    <string name="google_sign_in_failed_toast">Google 로그인에 실패했어요. 다시 시도해 주세요.</string>
     <string name="oauth_request_expired_toast">로그인 요청이 만료됐어요. 다시 시도해 주세요.</string>
     <string name="provider_no_handoff_code_toast">%1$s에서 핸드오프 코드를 받지 못했어요</string>
     <string name="provider_linked_toast">%1$s 계정을 연결했어요.</string>

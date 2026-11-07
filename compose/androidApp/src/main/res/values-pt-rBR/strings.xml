@@ -519,9 +519,6 @@
     <string name="browser_unavailable_toast">Nenhum navegador disponível para abrir este link</string>
     <string name="email_verified_toast">E-mail verificado</string>
     <string name="email_verified_sign_in_toast">E-mail verificado. Entre para continuar.</string>
-    <string name="provider_unavailable_toast">Este método de login ainda não está disponível no Android</string>
-    <string name="google_sign_in_no_code_toast">O login com Google não retornou um código de autorização</string>
-    <string name="google_sign_in_failed_toast">Não foi possível entrar com o Google. Tente novamente.</string>
     <string name="oauth_request_expired_toast">A solicitação de login expirou. Tente novamente.</string>
     <string name="provider_no_handoff_code_toast">%1$s não retornou um código de transferência</string>
     <string name="provider_linked_toast">Conta do %1$s vinculada.</string>
