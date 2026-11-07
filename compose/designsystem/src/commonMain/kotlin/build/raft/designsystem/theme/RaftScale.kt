@@ -115,19 +115,32 @@ object RaftPointerInputState {
     var current: RaftPointerInput by mutableStateOf(raftPlatformInitialPointerInput())
         private set
 
+    private var touchScreen = true
+
     /** Records one pointer event of [eventType] from a pointer of [type]. */
     fun report(type: PointerType, eventType: PointerEventType) {
         val next =
             when {
                 type == PointerType.Mouse -> RaftPointerInput.Fine
-                type == PointerType.Touch && eventType == PointerEventType.Release -> RaftPointerInput.Touch
+                type == PointerType.Touch && eventType == PointerEventType.Release && touchScreen -> RaftPointerInput.Touch
                 else -> return
             }
         if (current != next) current = next
     }
 
+    /**
+     * The device has no touch screen: the iPad app on a Mac, where a click still arrives as a
+     * touch. The input is [RaftPointerInput.Fine] from now on, and a touch release no longer makes
+     * it Touch. The host calls this once at startup, before the first page.
+     */
+    fun assumeNoTouchScreen() {
+        touchScreen = false
+        current = RaftPointerInput.Fine
+    }
+
     /** Back to the platform's starting input (tests that drove a pointer). */
     fun reset() {
+        touchScreen = true
         current = raftPlatformInitialPointerInput()
     }
 }

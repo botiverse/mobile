@@ -7,6 +7,8 @@ import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
+internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = false
+
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
     RaftPullToRefreshStyle.Material
 

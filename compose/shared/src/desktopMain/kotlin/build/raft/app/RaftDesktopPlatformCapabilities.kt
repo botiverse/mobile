@@ -7,6 +7,8 @@ import build.raft.app.data.RaftDesktopClipboardAttachments
 import java.text.BreakIterator
 import java.util.Locale
 
+internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = false
+
 // Desktop draws with Skia like iOS but has no system bars, haptics or native media hosts.
 // No pull gesture on desktop: wheel / trackpad overscroll must not drag a pull indicator in.
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle = RaftPullToRefreshStyle.None

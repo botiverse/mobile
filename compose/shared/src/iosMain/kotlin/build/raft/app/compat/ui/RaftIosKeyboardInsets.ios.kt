@@ -13,6 +13,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.uikit.LocalUIViewController
+import build.raft.app.raftIosAppOnMacDensity
+import build.raft.app.raftIosAppOnMacImeInsets
+import build.raft.app.raftPlatformIsiOSAppOnMac
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -170,6 +173,25 @@ private class RaftKeyboardSlideTracker(private val view: UIView) {
 
 @Composable
 internal actual fun ProvideRaftPlatformImeInsets(content: @Composable () -> Unit) {
+    if (raftPlatformIsiOSAppOnMac()) ProvideRaftIosAppOnMacPage(content) else ProvideRaftIosKeyboardInsets(content)
+}
+
+/**
+ * The iPad app on a Mac (see RaftIosAppOnMac.kt): no software keyboard, so a 0 keyboard inset, and
+ * the desktop's text size, by laying the page out in Mac points.
+ */
+@Composable
+private fun ProvideRaftIosAppOnMacPage(content: @Composable () -> Unit) {
+    val insets = remember { raftIosAppOnMacImeInsets() }
+    CompositionLocalProvider(
+        LocalDensity provides raftIosAppOnMacDensity(LocalDensity.current, onMac = true),
+        LocalRaftHostImeInsets provides insets,
+        content = content,
+    )
+}
+
+@Composable
+private fun ProvideRaftIosKeyboardInsets(content: @Composable () -> Unit) {
     val view = LocalUIViewController.current.view
     val ime = WindowInsets.ime
     val density = LocalDensity.current
