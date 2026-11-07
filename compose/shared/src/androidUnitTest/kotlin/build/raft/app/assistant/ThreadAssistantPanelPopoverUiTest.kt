@@ -1,5 +1,6 @@
 package build.raft.app.assistant
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.toSize
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.ThreadComposerContent
+import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -34,6 +36,7 @@ import build.raft.app.runRobolectricComposeUiTest
 import build.raft.designsystem.text.RaftText
 import kotlin.math.abs
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -54,6 +57,8 @@ import org.robolectric.annotation.Config
 class ThreadAssistantPanelPopoverUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
+
+    private val navigator = ThreadAssistantPanelTestNavigator()
 
     private val hosts = RaftAssistantOtterHosts()
     private val rest = ThreadAssistantOtterRest()
@@ -101,7 +106,8 @@ class ThreadAssistantPanelPopoverUiTest {
         setContent {
             pageDensity = LocalDensity.current
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            val host = remember { threadAssistantPanelTestHost(navigator) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftHost provides host) {
                 RaftDesignSystemTheme { content() }
             }
         }
@@ -145,8 +151,48 @@ class ThreadAssistantPanelPopoverUiTest {
             onNode(hasTestTag(PANEL_DM)).assertDoesNotExist()
         }
 
+    /**
+     * Lead's report (iPad, 1.20.0): a thread ref in the panel's DM opened a thread page over the
+     * conversation, and that page took no taps. The page under the popover stops composing once the
+     * pushed page covers it, so the popover goes as the page is opened, not on `pageActive` later.
+     */
+    @Test
+    fun aPageOpenedFromThePanelClosesThePopoverAsItOpens() =
+        runRobolectricComposeUiTest {
+            var open by mutableStateOf(false)
+            setContent {
+                val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+                val host = remember { threadAssistantPanelTestHost(navigator) }
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftHost provides host) {
+                    RaftDesignSystemTheme {
+                        ThreadAssistantPanelSheet(otter(open) { open = it }) {
+                            // The DM's thread ref: its page opens through the page host's navigator.
+                            val navigatorInPanel = LocalRaftHost.current.navigator
+                            RaftText(
+                                "#wg-mobile-feedback:5f82cfe9",
+                                Modifier.testTag(PANEL_DM).clickable { navigatorInPanel.openPage(THREAD_PAGE_NAME) },
+                            )
+                        }
+                    }
+                }
+            }
+            runOnIdle { open = true }
+            onNode(hasTestTag(ThreadAssistantPanelPopoverTestTag)).assertExists()
+            mainClock.autoAdvance = false
+            onNode(hasTestTag(PANEL_DM)).performClick()
+            // Closed in the same turn as the page is opened, and gone two frames later (as collapse).
+            assertEquals(listOf(THREAD_PAGE_NAME), navigator.opened)
+            assertFalse(open, "the panel closed as the page opened")
+            repeat(2) {
+                mainClock.advanceTimeByFrame()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            }
+            onNode(hasTestTag(ThreadAssistantPanelPopoverTestTag)).assertDoesNotExist()
+        }
+
     private companion object {
         const val CHANNEL = "channel"
         const val PANEL_DM = "panel-dm"
+        const val THREAD_PAGE_NAME = "compose_thread"
     }
 }

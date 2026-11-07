@@ -26,6 +26,7 @@ import build.raft.app.RaftPendingMentionActionItem
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.ThreadComposerContent
+import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -59,6 +60,8 @@ import build.raft.designsystem.text.RaftText
 class ThreadAssistantOtterUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
+
+    private val navigator = ThreadAssistantPanelTestNavigator()
 
     private fun otter(hosts: RaftAssistantOtterHosts, hostId: String, onOpen: () -> Unit = {}) =
         ThreadAssistantOtter(
@@ -105,7 +108,8 @@ class ThreadAssistantOtterUiTest {
     private fun ComposeUiTest.show(content: @Composable () -> Unit) =
         setContent {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            val host = remember { threadAssistantPanelTestHost(navigator) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftHost provides host) {
                 RaftDesignSystemTheme { Column(Modifier.fillMaxSize()) { content() } }
             }
         }

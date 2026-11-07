@@ -168,8 +168,9 @@ internal fun assistantOtterDmOpenRequest(
  * - [wide]: a conversation in a wide window's detail pane (web desktop): a channel or DM composer
  *   takes the full-size otter; a reply thread keeps 80% (web ThreadPanel `scale={0.8}`), both
  *   over the send button's side.
- * - [pageActive]: false once another page covers this one (a page the panel's conversation
- *   opened): the panel closes, so it never sits over a page it was not opened on.
+ * - [pageActive]: false once another page covers this one: the panel closes, so it never sits over
+ *   a page it was not opened on. A page the panel's own conversation opens closes it earlier, as it
+ *   opens (ThreadAssistantPanelSheet): this page may stop composing once covered.
  */
 @Composable
 internal fun rememberThreadAssistantOtter(

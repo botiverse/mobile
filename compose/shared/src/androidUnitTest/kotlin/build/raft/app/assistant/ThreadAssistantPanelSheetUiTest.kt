@@ -1,5 +1,6 @@
 package build.raft.app.assistant
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.HomeMessageOpenRequest
@@ -30,6 +32,7 @@ import build.raft.app.RaftForegroundMessageBannerIconKind
 import build.raft.app.RaftForegroundMessageBannerView
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.ThreadLaunchConversationIdentity
+import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -62,6 +65,8 @@ import org.robolectric.annotation.Config
 class ThreadAssistantPanelSheetUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
+
+    private val navigator = ThreadAssistantPanelTestNavigator()
 
     private fun otter(open: Boolean, onOpenChange: (Boolean) -> Unit) =
         ThreadAssistantOtter(
@@ -149,7 +154,8 @@ class ThreadAssistantPanelSheetUiTest {
     private fun ComposeUiTest.show(content: @Composable () -> Unit) =
         setContent {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            val host = remember { threadAssistantPanelTestHost(navigator) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftHost provides host) {
                 RaftDesignSystemTheme { content() }
             }
         }
@@ -237,6 +243,39 @@ class ThreadAssistantPanelSheetUiTest {
             )
             mainClock.advanceTimeBy(300)
             onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+        }
+
+    /**
+     * A page opened from the panel's DM (a thread ref) takes the drawer down at once, without its
+     * slide: the page under it stops composing once the pushed page covers it, so a drawer still
+     * sliding down (or closed on `pageActive` later) stayed over the new page, taking its taps.
+     */
+    @Test
+    fun aPageOpenedFromThePanelTakesTheDrawerAtOnce() =
+        runRobolectricComposeUiTest {
+            var open by mutableStateOf(false)
+            show {
+                ThreadAssistantPanelSheet(otter(open) { open = it }) {
+                    val navigatorInPanel = LocalRaftHost.current.navigator
+                    RaftText(
+                        "#wg-mobile-feedback:5f82cfe9",
+                        Modifier.testTag(PANEL_DM).clickable { navigatorInPanel.openPage("compose_thread") },
+                    )
+                }
+            }
+            runOnIdle { open = true }
+            mainClock.advanceTimeBy(600)
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertExists()
+            mainClock.autoAdvance = false
+            onNode(hasTestTag(PANEL_DM)).performClick()
+            assertEquals(listOf("compose_thread"), navigator.opened)
+            assertFalse(open, "the panel closed as the page opened")
+            repeat(2) {
+                mainClock.advanceTimeByFrame()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            }
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+            onNode(hasTestTag(PANEL_DM)).assertDoesNotExist()
         }
 
     private companion object {

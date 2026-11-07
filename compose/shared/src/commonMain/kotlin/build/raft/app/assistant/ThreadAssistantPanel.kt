@@ -49,6 +49,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftThreadMessageItem
+import build.raft.app.cmp.host.LocalRaftHost
+import build.raft.app.cmp.host.RaftCmpHost
+import build.raft.app.cmp.host.RaftCmpNavigator
+import kotlinx.serialization.json.JsonObject
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.resources.*
 import build.raft.app.threadActionCard
@@ -259,8 +263,18 @@ internal fun ThreadAssistantPanelSheet(
     SideEffect { coversPageChange(coversPage) }
     if (if (wide) !otter.panelOpen else !drawerShown) return
     val close by rememberUpdatedState { otter.onPanelOpenChange(false) }
+    // A page the panel's conversation opens (a thread ref, a profile) closes the panel at once, no
+    // slide, before it is pushed: the page under the panel stops composing once covered (iOS: the
+    // pushed controller), so closing on its `pageActive` came too late and the popover or drawer
+    // stayed over the new page, taking its taps.
+    val leave by rememberUpdatedState {
+        drawerShown = false
+        otter.onPanelOpenChange(false)
+    }
     val panel: @Composable () -> Unit = {
-        CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
+        val parentHost = LocalRaftHost.current
+        val host = remember(parentHost) { threadAssistantPanelHost(parentHost) { leave() } }
+        CompositionLocalProvider(LocalRaftHostImeInsets provides null, LocalRaftHost provides host) {
             ThreadAssistantPanel(
                 name = otter.assistantName,
                 mood = otter.mood,
@@ -294,6 +308,28 @@ internal fun ThreadAssistantPanelSheet(
         }
     }
 }
+
+/**
+ * The host for the panel's conversation: [parent] with a navigator that calls [leave] before it
+ * opens a page (web: a link in the assistant panel navigates and the panel closes). Closing the
+ * conversation's page and everything else are [parent]'s.
+ */
+internal fun threadAssistantPanelHost(parent: RaftCmpHost, leave: () -> Unit): RaftCmpHost =
+    RaftCmpHost(
+        capabilities = parent.capabilities,
+        navigator =
+            object : RaftCmpNavigator {
+                override fun openPage(pageName: String, pageData: JsonObject) {
+                    leave()
+                    parent.navigator.openPage(pageName, pageData)
+                }
+
+                override fun closePage() = parent.navigator.closePage()
+            },
+        bridgeTransport = parent.bridgeTransport,
+        events = parent.events,
+        childPageLoads = parent.childPageLoads,
+    )
 
 /** Web `PHONE_MEDIA_QUERY` `(max-width: 767px)`: from 768dp the panel is a popover. */
 internal val ThreadAssistantPanelWideMinWidth = 768.dp
