@@ -3,8 +3,10 @@ type: fixed
 area: auth
 platforms:
   - android
+  - ios
+  - desktop
 rollout: full
-pull_request: https://github.com/botiverse/mobile/pull/0
+pull_request: https://github.com/botiverse/mobile/pull/4402
 ---
 
 ## zh-CN
