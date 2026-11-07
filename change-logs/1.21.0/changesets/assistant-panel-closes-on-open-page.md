@@ -3,7 +3,7 @@ type: fixed
 area: assistant
 platforms:
   - ios
-pull_request: https://github.com/botiverse/mobile/pull/0
+pull_request: https://github.com/botiverse/mobile/pull/4405
 rollout: full
 ---
 
