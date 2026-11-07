@@ -1605,6 +1605,22 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m9 11 2 2 4-4"),
                     ),
                 )
+            RaftLucideIconName.MessageSquareDashed ->
+                RaftLucideIconSpec(
+                    "message-square-dashed",
+                    listOf(
+                        RaftLucidePathSpec("M14 3h2"),
+                        RaftLucidePathSpec("M16 19h-2"),
+                        RaftLucidePathSpec("M2 12v-2"),
+                        RaftLucidePathSpec("M2 16v5.286a.71.71 0 0 0 1.212.502l1.149-1.149"),
+                        RaftLucidePathSpec("M20 19a2 2 0 0 0 2-2v-1"),
+                        RaftLucidePathSpec("M22 10v2"),
+                        RaftLucidePathSpec("M22 6V5a2 2 0 0 0-2-2"),
+                        RaftLucidePathSpec("M4 3a2 2 0 0 0-2 2v1"),
+                        RaftLucidePathSpec("M8 19h2"),
+                        RaftLucidePathSpec("M8 3h2"),
+                    ),
+                )
             RaftLucideIconName.MessageSquareDot ->
                 RaftLucideIconSpec(
                     "message-square-dot",

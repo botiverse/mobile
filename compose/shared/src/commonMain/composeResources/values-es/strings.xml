@@ -3233,6 +3233,7 @@
     <string name="member_activity_overview_problem_exit_nonzero">%1$s un comando terminó con el código %2$s</string>
     <string name="member_activity_overview_problem_call_failed">%1$s falló una llamada a una herramienta</string>
     <string name="member_activity_overview_problem_more">y %1$d más</string>
+    <string name="member_activity_overview_output_label">Salida del agente (no enviada)</string>
     <string name="member_activity_overview_reply_label">Última respuesta</string>
     <string name="member_activity_overview_reply_label_at">Última respuesta · %1$s</string>
     <string name="member_activity_overview_reply_count">· %1$d mensajes enviados en este turno</string>

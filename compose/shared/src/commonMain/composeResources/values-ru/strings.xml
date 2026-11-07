@@ -3230,6 +3230,7 @@
     <string name="member_activity_overview_problem_exit_nonzero">%1$s — команда завершилась с кодом %2$s</string>
     <string name="member_activity_overview_problem_call_failed">%1$s — сбой вызова инструмента</string>
     <string name="member_activity_overview_problem_more">и ещё %1$d</string>
+    <string name="member_activity_overview_output_label">Вывод агента (не отправлен)</string>
     <string name="member_activity_overview_reply_label">Последний ответ</string>
     <string name="member_activity_overview_reply_label_at">Последний ответ · %1$s</string>
     <string name="member_activity_overview_reply_count">· отправлено сообщений за этот ход: %1$d</string>

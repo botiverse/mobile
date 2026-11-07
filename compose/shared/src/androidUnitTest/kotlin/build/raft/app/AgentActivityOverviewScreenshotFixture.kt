@@ -52,6 +52,7 @@ internal fun agentActivityOverviewScreenshotState(): AgentActivityOverviewState 
                 sentMessageIds = listOf(MessageId("sent-1"), MessageId("reply-1")),
                 sentMessageCount = 2,
                 hiddenSentCount = 1,
+                lastText = "Reviewed the patch and pushed the fix. The flaky test still fails on retry, so I left the task open and noted the cause in the thread for the next run to pick up.",
             ),
             AgentActivityTurn(
                 id = "00000000-0000-4000-8000-000000000002",

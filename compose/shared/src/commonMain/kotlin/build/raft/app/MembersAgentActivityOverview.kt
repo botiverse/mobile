@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -542,6 +543,7 @@ private fun MembersAgentActivityTurnSection(
                 color = colors.foregroundHint,
             )
         }
+        turn.lastText?.let { MembersAgentActivityTurnOutput(it) }
         // What the turn received, then what it sent: two lists, each in time order (web).
         if (turn.appEvents.isNotEmpty()) {
             MembersAgentActivityAppEvents(turn.appEvents, turn.appEventCount ?: turn.appEvents.size, timeContext)
@@ -569,6 +571,41 @@ private fun MembersAgentActivityTurnSection(
                 )
             }
         }
+    }
+}
+
+/**
+ * The agent's own account of the turn, which went to no one (web TurnOutput). It must never read as
+ * a message: no card, a dashed message icon, muted text, two lines until tapped. Plain text, not
+ * Markdown. No visible label; screen readers still hear that it was not sent.
+ */
+@Composable
+private fun MembersAgentActivityTurnOutput(text: String) {
+    val colors = RaftTheme.colors
+    val label = stringResource(Res.string.member_activity_overview_output_label)
+    var expanded by remember(text) { mutableStateOf(false) }
+    var cut by remember(text) { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = "$label: $text" }
+            .then(if (cut && !expanded) Modifier.clickable { expanded = true } else Modifier),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        RaftLucideIcon(
+            RaftLucideIconName.MessageSquareDashed,
+            modifier = Modifier.padding(top = 3.dp).size(14.dp),
+            color = raftArgbHex(colors.foregroundHint),
+        )
+        RaftText(
+            text = text,
+            style = RaftTheme.typography.callout,
+            color = colors.foregroundMuted,
+            maxLines = if (expanded) Int.MAX_VALUE else 2,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { cut = it.hasVisualOverflow },
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
