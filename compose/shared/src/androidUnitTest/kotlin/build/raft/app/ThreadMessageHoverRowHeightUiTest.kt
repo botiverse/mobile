@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.unit.IntRect
@@ -47,6 +50,7 @@ class ThreadMessageHoverRowHeightUiTest {
 
     private class ToolbarState {
         var shown = false
+        var forwards = 0
     }
 
     @Test
@@ -63,6 +67,23 @@ class ThreadMessageHoverRowHeightUiTest {
             val toolbar = ToolbarState()
             showRow(toolbar, continuation = false)
             assertRowKeepsItsHeightUnderTheMouse(toolbar)
+        }
+
+    @Test
+    fun aMouseClickOnTheToolbarStillReachesItsButton() =
+        runRobolectricComposeUiTest {
+            val toolbar = ToolbarState()
+            showRow(toolbar, continuation = true)
+            onNodeWithTag(ROW).performMouseInput { moveTo(center) }
+            waitForIdle()
+            assertTrue(toolbar.shown, "the mouse over the row shows its hover toolbar")
+            // A real pointer click in the button's lower part, which hangs below the row's top edge
+            // (the part the toolbar reports no height for).
+            onNodeWithContentDescription("Forward").performMouseInput {
+                click(Offset(centerX, height * 0.85f))
+            }
+            waitForIdle()
+            assertEquals(1, toolbar.forwards, "a click on Forward runs it")
         }
 
     private fun ComposeUiTest.assertRowKeepsItsHeightUnderTheMouse(toolbar: ToolbarState) {
@@ -131,7 +152,7 @@ class ThreadMessageHoverRowHeightUiTest {
                                     saved = false,
                                     more = true,
                                     onShowReactions = {},
-                                    onForward = {},
+                                    onForward = { toolbar.forwards++ },
                                     onToggleSave = {},
                                     onShownChange = { toolbar.shown = it },
                                 ),
