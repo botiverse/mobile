@@ -82,9 +82,9 @@ val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
     )
 
 /**
- * [RAFT_APP_ACTION_CARD_CAPABILITIES] for one viewer: without `intent.feedback_form` where the
- * Feedback page a feedback card opens is off for the viewing server (`product_feedback_multi_app`),
- * so that button is "Open in web" rather than a button that only says it can't.
+ * [RAFT_APP_ACTION_CARD_CAPABILITIES] for one viewer: without `intent.feedback_form` while the
+ * Feedback page a feedback card opens is unavailable (the viewing server is not known yet), so that
+ * button is "Open in web" rather than a button that only says it can't.
  */
 fun raftAppActionCardCapabilities(feedbackFormAvailable: Boolean): List<String> =
     if (feedbackFormAvailable) RAFT_APP_ACTION_CARD_CAPABILITIES else RAFT_APP_ACTION_CARD_CAPABILITIES - ActionCardSpecIntent.FeedbackForm.capability

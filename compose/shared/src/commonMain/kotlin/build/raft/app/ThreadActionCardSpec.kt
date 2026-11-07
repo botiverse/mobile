@@ -97,8 +97,8 @@ internal fun ThreadActionCard.actionCardSpecToRender(
  * the viewer ([viewerUserId]) is the one who sent it (`executedByUserId`), and the ticket was
  * filed into this App's own Hands app (`result.source` == [clientOs], `android` / `ios`:
  * `featureFlagClientOs`). A ticket is read only through its own app. [feedbackPageAvailable]: the
- * App's Settings › Feedback is the page that lists this App's tickets (`product_feedback_multi_app`
- * on for the viewing server); without it the page could not show the ticket.
+ * App's Settings › Feedback page, which lists this App's tickets, can be opened (always, once the
+ * viewing server is known; no server flag since 1.22).
  */
 internal fun ThreadActionCard.showsFeedbackTicket(viewerUserId: String?, clientOs: String, feedbackPageAvailable: Boolean): Boolean {
     if (!feedbackPageAvailable || !isExecuted || !isFeedbackSubmitAction()) return false

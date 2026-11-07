@@ -65,42 +65,43 @@ class RaftFeedbackCardEntryTest {
         )
 
     @Test
-    fun feedbackCardIsNeverAnInlineCommitButOpensTheFormOnlyWhileTheFlagIsOn() {
+    fun preparedFeedbackCardOpensTheFeedbackWebPageWithNoServerFlag() {
+        // artin (1.22): no flag. A prepared feedback card opens the ticket web page wherever the
+        // viewing server is known, with the card's entry in the URL.
         val card = preparedFeedbackCard()
-
-        assertFalse(card.isSupportedCommitAction())
-        assertTrue(card.opensFeedbackCardEntry(productFeedbackMultiAppEnabled = true))
-        assertFalse(card.opensFeedbackCardEntry(productFeedbackMultiAppEnabled = false))
-        assertFalse(preparedFeedbackCard(state = "executed").opensFeedbackCardEntry(productFeedbackMultiAppEnabled = true))
-        assertFalse(
-            card.copy(type = "channel:create").opensFeedbackCardEntry(productFeedbackMultiAppEnabled = true)
+        assertTrue(raftFeedbackCardEntryEnabled(viewingServerId))
+        assertTrue(card.opensFeedbackCardEntry())
+        val entry = raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId)
+        assertEquals(RaftFeedbackCardEntry(actionCardMessageId = cardMessageId, serverId = viewingServerId), entry)
+        assertEquals(
+            "https://web.example.test/feedback/?embed=raft-settings-v1&shell=host&actionCard=$cardMessageId&server=$viewingServerId",
+            settingsFeedbackWebUrl("https://web.example.test", entry),
         )
+        // Only the viewing server being unknown keeps the button off (the entry needs it).
+        assertFalse(raftFeedbackCardEntryEnabled(null))
+        assertFalse(raftFeedbackCardEntryEnabled(" "))
     }
 
     @Test
-    fun entryRequiresFlagCardTypeOpenStateAndBothIds() {
+    fun feedbackCardIsNeverAnInlineCommitButOpensTheFormWhilePrepared() {
         val card = preparedFeedbackCard()
-        assertEquals(
-            RaftFeedbackCardEntry(actionCardMessageId = cardMessageId, serverId = viewingServerId),
-            raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, productFeedbackMultiAppEnabled = true),
-        )
 
-        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, productFeedbackMultiAppEnabled = false))
+        assertFalse(card.isSupportedCommitAction())
+        assertFalse(preparedFeedbackCard(state = "executed").opensFeedbackCardEntry())
+        assertFalse(card.copy(type = "channel:create").opensFeedbackCardEntry())
+    }
+
+    @Test
+    fun entryRequiresCardTypeOpenStateAndBothIds() {
+        val card = preparedFeedbackCard()
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, preparedFeedbackCard(state = "executed"), viewingServerId))
         assertNull(
-            raftFeedbackCardEntryOrNull(
-                cardMessageId,
-                preparedFeedbackCard(state = "executed"),
-                viewingServerId,
-                productFeedbackMultiAppEnabled = true,
-            )
+            raftFeedbackCardEntryOrNull(cardMessageId, card.copy(type = "agent:create"), viewingServerId)
         )
-        assertNull(
-            raftFeedbackCardEntryOrNull(cardMessageId, card.copy(type = "agent:create"), viewingServerId, true)
-        )
-        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, null, viewingServerId, true))
+        assertNull(raftFeedbackCardEntryOrNull(cardMessageId, null, viewingServerId))
         listOf(null, "", "  ").forEach { blank ->
-            assertNull(raftFeedbackCardEntryOrNull(blank, card, viewingServerId, true), "messageId=$blank")
-            assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, blank, true), "server=$blank")
+            assertNull(raftFeedbackCardEntryOrNull(blank, card, viewingServerId), "messageId=$blank")
+            assertNull(raftFeedbackCardEntryOrNull(cardMessageId, card, blank), "server=$blank")
         }
     }
 
@@ -111,7 +112,7 @@ class RaftFeedbackCardEntryTest {
         assertEquals(cardServerId, card.sourceServerId)
         assertEquals(cardServerId, actionCardFromMessageMetadata(card.toMessageMetadata())?.sourceServerId)
 
-        val entry = assertNotNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId, true))
+        val entry = assertNotNull(raftFeedbackCardEntryOrNull(cardMessageId, card, viewingServerId))
 
         assertEquals(viewingServerId, entry.serverId)
         val url = settingsFeedbackWebUrl("https://web.example.test", entry)

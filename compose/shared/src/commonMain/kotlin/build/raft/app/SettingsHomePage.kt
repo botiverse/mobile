@@ -84,7 +84,6 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
-import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.RaftAppUpdateEvents
@@ -7662,20 +7661,15 @@ private fun RaftAppShellReadyContent(
                             onFeedback = {
                                 railHelpOpen = false
                                 bridge.log("app_shell_rail_help_pick item=feedback")
-                                // The Settings Feedback row's page (web Help > Feedback opens Settings' Feedback).
-                                val feedbackWeb =
-                                    settingsFeedbackUsesWebPage(
-                                        sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
-                                    )
-                                if (feedbackWeb && navRailActive) {
+                                // The Settings Feedback row's page (web Help > Feedback opens Settings' Feedback):
+                                // always the ticket web page (no server flag since 1.22).
+                                if (navRailActive) {
                                     // Wide: Settings with Feedback in its detail pane, as the web.
                                     railInlineSecondaryDestination = null
                                     settingsWidePicked = SettingsDestinationHandsFeedback
                                     onAppShellTabSelected("settings")
-                                } else if (feedbackWeb) {
-                                    pager.openSettingsFeedbackWebViewPage(storeScope)
                                 } else {
-                                    pager.openSettingsHandsFeedbackPage(storeScope)
+                                    pager.openSettingsFeedbackWebViewPage(storeScope)
                                 }
                             },
                         )
@@ -8639,12 +8633,9 @@ private fun RaftAppShellReadyContent(
                             SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
                             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
                             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
-                            SettingsDestinationHandsFeedback ->
-                                if (settingsFeedbackUsesWebPage(sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY))) {
-                                    pager.openSettingsFeedbackWebViewPage(storeScope)
-                                } else {
-                                    pager.openSettingsHandsFeedbackPage(storeScope)
-                                }
+                            // Always the ticket web page; its `integration-unavailable` event falls back to the
+                            // native page (SettingsStandaloneWebViewHost).
+                            SettingsDestinationHandsFeedback -> pager.openSettingsFeedbackWebViewPage(storeScope)
                             else -> {
                                 val page = SettingsNativeDetailPage.fromKey(key)
                                 if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
@@ -8665,19 +8656,13 @@ private fun RaftAppShellReadyContent(
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
                             // section opens beside the list (SettingsWideSplit.kt).
-                            // Feedback is the web page (and opens in the pane) behind this flag, and always on desktop.
-                            val feedbackWeb =
-                                settingsFeedbackUsesWebPage(
-                                    sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
-                                )
                             SettingsWideListDetail(
                                 payload = appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled),
                                 widths = adaptiveListPaneWidths,
                                 active = active,
                                 picked = settingsWidePicked,
-                                feedbackWeb = feedbackWeb,
                                 onPick = { key ->
-                                    when (val pick = settingsWidePick(key, feedbackWeb)) {
+                                    when (val pick = settingsWidePick(key)) {
                                         is SettingsWidePick.Detail -> {
                                             if (pick.key == SettingsDestinationComputers) {
                                                 writeComputerAttentionSeen(
@@ -8707,7 +8692,7 @@ private fun RaftAppShellReadyContent(
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 detailPane = { key, modifier ->
                                     val detailPage =
-                                        remember(key, storeScope, feedbackWeb) { settingsWideDetailPage(key, storeScope, feedbackWeb) }
+                                        remember(key, storeScope) { settingsWideDetailPage(key, storeScope) }
                                     if (detailPage != null) {
                                         RaftChildPage(
                                             pageName = detailPage.first,
