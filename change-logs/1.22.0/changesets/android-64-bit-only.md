@@ -3,7 +3,7 @@ type: changed
 area: app
 platforms:
   - android
-pull_request: https://github.com/botiverse/mobile/pull/0
+pull_request: https://github.com/botiverse/mobile/pull/4401
 rollout: full
 ---
 
