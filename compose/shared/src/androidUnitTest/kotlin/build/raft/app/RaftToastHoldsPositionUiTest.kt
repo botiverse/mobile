@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
@@ -44,6 +45,18 @@ class RaftToastHoldsPositionUiTest {
 
     private fun ComposeUiTest.bottomOf(text: String): Dp = onNodeWithText(text).getBoundsInRoot().bottom
 
+    /**
+     * With the clock held, a state write from outside composition (or from layout: an avoidance
+     * measured in that frame) needs its apply notification and a further frame to recompose.
+     */
+    private fun ComposeUiTest.settle() {
+        repeat(3) {
+            Snapshot.sendApplyNotifications()
+            mainClock.advanceTimeBy(250)
+            waitForIdle()
+        }
+    }
+
     private fun ComposeUiTest.host(state: RaftToastHostState, barHeight: () -> Dp) {
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
@@ -58,7 +71,7 @@ class RaftToastHoldsPositionUiTest {
                 }
             }
         }
-        mainClock.advanceTimeBy(500)
+        settle()
     }
 
     @Test
@@ -68,17 +81,17 @@ class RaftToastHoldsPositionUiTest {
         mainClock.autoAdvance = false
         host(state) { bar }
         state.show("First")
-        mainClock.advanceTimeBy(500)
+        settle()
         val appeared = bottomOf("First")
 
         bar = 0.dp
-        mainClock.advanceTimeBy(500)
+        settle()
         assertEquals(appeared, bottomOf("First"), "the page changed; the toast stays")
 
         state.dismissAll()
-        mainClock.advanceTimeBy(500)
+        settle()
         state.show("Second")
-        mainClock.advanceTimeBy(500)
+        settle()
         assertTrue(bottomOf("Second") > appeared, "a new toast takes the page it appears on")
     }
 
@@ -89,16 +102,16 @@ class RaftToastHoldsPositionUiTest {
         mainClock.autoAdvance = false
         host(state) { bar }
         state.show("First")
-        mainClock.advanceTimeBy(500)
+        settle()
         val appeared = bottomOf("First")
 
         bar = 120.dp
-        mainClock.advanceTimeBy(500)
+        settle()
         val above = bottomOf("First")
         assertTrue(above < appeared, "the composer that appeared is not covered")
 
         bar = 0.dp
-        mainClock.advanceTimeBy(500)
+        settle()
         assertEquals(above, bottomOf("First"), "and it does not drop again")
     }
 }
