@@ -1,5 +1,6 @@
 package build.raft.designsystem
 
+import build.raft.designsystem.components.raftToastPageAvoidedPx
 import build.raft.designsystem.components.RaftToastActionTimeoutMillis
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
@@ -125,5 +126,12 @@ class RaftToastHostStateTest {
         assertEquals(listOf("Uploading"), state.titles())
         state.dismiss(id)
         assertEquals(emptyList(), state.titles())
+    }
+
+    @Test
+    fun theHeldPageHeightLeavesTheKeyboardOut() {
+        assertEquals(150f, raftToastPageAvoidedPx(avoidedPx = 950f, imeBottomPx = 800f), "a composer on the keyboard")
+        assertEquals(300f, raftToastPageAvoidedPx(avoidedPx = 300f, imeBottomPx = 0f), "no keyboard")
+        assertEquals(0f, raftToastPageAvoidedPx(avoidedPx = 300f, imeBottomPx = 800f), "a tab bar under the keyboard")
     }
 }
