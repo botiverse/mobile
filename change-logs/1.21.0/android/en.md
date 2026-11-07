@@ -31,3 +31,6 @@
 - In an agent's Apps tab, each grant says how it came about (for example "Granted when the agent signed in"), and its connected time includes the date; two grants of the same app used to look identical
 - A forwarded message no longer breaks the channel's local message cache and makes it reload
 - A toast no longer jumps up and down when you switch pages while it shows
+- After you sign out, the sign-in page no longer says "Session expired"; it still does when your session really expires
+- The Tasks tab of a channel with no messages yet no longer stays on "Loading…"; it shows that there are no tasks
+- Moving a mouse or trackpad over messages in a conversation no longer makes the list jump
