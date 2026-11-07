@@ -997,7 +997,7 @@ jobs:
         lane: ${{ fromJSON(needs.plan.outputs.ios_lanes) }}
     env:
       IOS_LANE_XCODE_REQUEST: ${{ matrix.lane == 'github-xcode27.1' && '/Applications/Xcode_27.1.app' || '/Applications/Xcode_27.0.app' }}
-    runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || 'blacksmith-12vcpu-macos-latest' }}
+    runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || 'blacksmith-6vcpu-macos-latest' }}
     timeout-minutes: 75
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job (see ios-release.yml).
