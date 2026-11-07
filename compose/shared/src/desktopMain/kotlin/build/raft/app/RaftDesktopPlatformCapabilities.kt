@@ -117,6 +117,9 @@ internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
 
+/** Tabs switch from the tab strip only; a trackpad's sideways scroll never pages them. See expect. */
+internal actual fun raftPlatformTabPagerSwipeEnabled(): Boolean = false
+
 /** Desktop keeps its instant tab switch; see expect. */
 internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
 
