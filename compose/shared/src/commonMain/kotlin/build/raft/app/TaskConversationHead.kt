@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -51,6 +52,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.onSizeChanged
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
 import build.raft.app.data.TaskConversationDetailsViewModel
@@ -281,36 +287,51 @@ private fun TaskHistoryRow.toHeadRow(members: List<MemberProfile>, timeContext: 
 /** The description folds to three lines (web `DESCRIPTION_COLLAPSE_LINE_LIMIT`). */
 private const val TaskHeadDescriptionCollapsedLines = 3
 
-/** Narrower than this (a phone) the head is pulled down from the top bar ([TaskHeadScrollState]); wider it stays pinned. */
+/** Narrower than this (a phone) the head is the conversation's first row ([TaskHeadScrollState]); wider it stays pinned. */
 internal val TaskHeadPinnedMinWidth = 600.dp
 
 /**
- * Where the head of a phone's task conversation is: never in the page. The top bar always names
- * the task's state ([collapsed]) and pulls the head down over the messages ([floatOpen], web
- * `TaskHeadPullDown`, slock #11722). The head used to sit above the messages and scroll away with
- * them (web's first row, Artea #wg-task-v2 #7), folding only as far as a short conversation could
- * follow (Kirby, #proj-mobile:#69), with the panel only once it was gone: two heads that looked
- * and behaved differently. artin (2026-11-06, #proj-mobile:01b96d5b) chose the pull-down for the
- * first look too, so the panel is open when the conversation opens (once: one state per open
- * conversation) and after that opens only from the bar ([toggleFloat]).
+ * Where the head of a phone's task conversation is (web `mobile-modal`, artin 2026-11-06,
+ * #proj-mobile:ec53b56a): the conversation's first row, above where it begins ("Beginning of
+ * conversation", or the older messages still to load), so it moves with the conversation like
+ * any message: opening a short conversation shows it above the messages, a long one opens at the
+ * newest message with it out of view above. Nothing holds it or slides it on its own.
  *
- * It closes on the bar again, a tap outside it, a swipe up on it, Back / Escape, focus in the
- * composer or the keyboard coming up ([closeFloat]) and as soon as the reader scrolls the messages
- * ([connection]). Off a phone the head stays pinned in the page and none of this applies.
+ * While the row is out of view ([headInView] false, from the list's layout:
+ * [taskHeadRowInView]) the top bar names the task's state ([collapsed]) and pulls the same head
+ * down over the messages ([floatOpen], web `TaskHeadPullDown`, slock #11722): [toggleFloat] on the
+ * bar. It closes on the bar again, a tap outside it, a swipe up on it, Back / Escape, focus in the
+ * composer or the keyboard coming up ([closeFloat]), as soon as the reader scrolls the messages
+ * ([connection]) and when the row comes back in view. It never opens by itself.
+ *
+ * Off a phone the head stays pinned above the conversation and none of this applies.
  */
 @Stable
 internal class TaskHeadScrollState {
-    /** On a phone: the head is not in the page and the top bar summarizes the task ([updatePhone]). */
-    var collapsed by mutableStateOf(false)
+    /** The page is narrower than [TaskHeadPinnedMinWidth] ([updatePhone]). */
+    var phone by mutableStateOf(false)
         private set
 
-    /** Open on entry: the first look at the task is the pulled-down head. */
-    private var floatRequested by mutableStateOf(true)
+    /**
+     * Some of the head's row is on screen (web: the row intersects the timeline). True until the
+     * list says otherwise, and again once the row is no longer in a list (web unmount).
+     */
+    var headInView by mutableStateOf(true)
+        private set
+
+    /** The height of the head in its row, in px (the rest of the row is where the conversation begins). */
+    internal var rowHeadHeightPx by mutableIntStateOf(0)
+
+    /** On a phone with the head's row out of view: the top bar summarizes the task. */
+    val collapsed: Boolean
+        get() = phone && !headInView
+
+    private var floatRequested by mutableStateOf(false)
 
     /** The bottom edge of the pulled-down head in root coordinates (a press below it is outside). */
     internal var floatBottomInRootPx: Float = 0f
 
-    /** The head pulled down from the top bar over the messages: only on a phone. */
+    /** The head pulled down from the top bar over the messages: only while its row is out of view. */
     val floatOpen: Boolean
         get() = floatRequested && collapsed
 
@@ -326,13 +347,16 @@ internal class TaskHeadScrollState {
         return wasOpen
     }
 
-    /**
-     * [phone]: the page is narrower than [TaskHeadPinnedMinWidth]. Off a phone the head is pinned
-     * in the page, so the panel asked for on entry is dropped (and does not open on a later resize).
-     */
+    /** [phone]: the page is narrower than [TaskHeadPinnedMinWidth]. Off a phone the head is pinned: no panel. */
     internal fun updatePhone(phone: Boolean) {
-        collapsed = phone
+        this.phone = phone
         if (!phone) floatRequested = false
+    }
+
+    /** The head's row came into view or went out of it. Back in view, the head needs no panel (web). */
+    internal fun updateHeadInView(inView: Boolean) {
+        if (headInView != inView) headInView = inView
+        if (inView) floatRequested = false
     }
 
     /** On an ancestor of the messages: the reader starts scrolling them, so the pulled-down head goes back up (web). */
@@ -346,15 +370,112 @@ internal class TaskHeadScrollState {
 }
 
 /**
+ * Whether any of the head is on screen (web: `IntersectionObserver`, any part of the row): the head
+ * sits at the top of its row, [rowOffsetPx] from the viewport's start in forward (top-down) terms
+ * ([ThreadListViewport.layoutInfo]), [headHeightPx] tall (unmeasured: the whole row, [rowSizePx]).
+ * Null [rowOffsetPx]: the row is not laid out (scrolled far away), so out of view.
+ */
+internal fun taskHeadRowInView(
+    rowOffsetPx: Int?,
+    rowSizePx: Int,
+    headHeightPx: Int,
+    viewportStartPx: Int,
+    viewportEndPx: Int,
+): Boolean {
+    if (rowOffsetPx == null) return false
+    val headHeight = if (headHeightPx > 0) headHeightPx else rowSizePx
+    if (headHeight <= 0) return false
+    return rowOffsetPx + headHeight > viewportStartPx && rowOffsetPx < viewportEndPx
+}
+
+/**
+ * Task v2 on a phone: the head as the conversation's first row, for the message list to draw
+ * ([LocalTaskConversationHeadRow]). [Content] is the page's head ([TaskHeadPlacement.FirstRow]),
+ * kept current without changing this holder, so the list does not recompose for it.
+ */
+@Stable
+internal class TaskConversationHeadRow(
+    val scrollState: TaskHeadScrollState,
+    private val content: State<@Composable () -> Unit>,
+) {
+    @Composable
+    fun Content() {
+        content.value()
+    }
+}
+
+@Composable
+internal fun rememberTaskConversationHeadRow(scrollState: TaskHeadScrollState, content: @Composable () -> Unit): TaskConversationHeadRow {
+    val current = rememberUpdatedState(content)
+    return remember(scrollState, current) { TaskConversationHeadRow(scrollState, current) }
+}
+
+/** The task head the conversation's message list draws as its first row (null: not a task conversation). */
+internal val LocalTaskConversationHeadRow = compositionLocalOf<TaskConversationHeadRow?> { null }
+
+/**
+ * The head in its row: measured, so the list can tell when it is out of view ([taskHeadRowInView]).
+ * The row ends where the conversation begins: no rule under it (web: the first message follows it
+ * as the messages follow one another, Kirby).
+ */
+@Composable
+internal fun TaskConversationHeadRowContent(row: TaskConversationHeadRow, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().onSizeChanged { row.scrollState.rowHeadHeightPx = it.height }) {
+        row.Content()
+    }
+}
+
+/**
+ * A task conversation with no messages to list yet (loading, or empty): on a phone the head is
+ * still its first row, above [state] (web: the parent slot over the replies' placeholder). In view
+ * for as long as it is drawn here. Without a [row], or wider, [state] alone.
+ */
+@Composable
+internal fun TaskConversationHeadAboveState(row: TaskConversationHeadRow?, state: @Composable () -> Unit) {
+    if (row == null) {
+        state()
+        return
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (maxWidth >= TaskHeadPinnedMinWidth) {
+            state()
+        } else {
+            SideEffect { row.scrollState.updateHeadInView(true) }
+            val pageHeight = maxHeight
+            // At least the page's height, so the state fills what the head leaves; a taller head scrolls.
+            val fill = if (pageHeight.value.isFinite()) Modifier.heightIn(min = pageHeight) else Modifier
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).then(fill)) {
+                TaskConversationHeadRowContent(row)
+                Box(Modifier.fillMaxWidth().weight(1f)) { state() }
+            }
+        }
+    }
+}
+
+/** Where [TaskConversationHeadRoute] draws the head. */
+internal enum class TaskHeadPlacement {
+    /** Above the conversation: pinned off a phone; on a phone no room (it tells the state the page is a phone's). */
+    Page,
+
+    /** On a phone: the conversation's first row ([TaskConversationHeadRowContent]). */
+    FirstRow,
+
+    /** On a phone: pulled down from the top bar over the messages ([TaskHeadFloat]). */
+    PullDown,
+}
+
+/**
  * Task v2: the head of a task conversation (web `TaskModalHead` in `TaskConversationDialog`). In the
  * order the questions arise: what is this (the title, `text-headline` 600, and the description,
  * `text-subhead` muted, folded to three lines with Show More), what state is it in (the inline
  * facts: Status and Assignee as the editors they were, Source, Created by, Created at, Earlier
  * discussion), and what happened to it (History, folded, as on web).
  *
- * On a phone (narrower than [TaskHeadPinnedMinWidth]) it takes no room in the page: the head is
- * pulled down from the top bar instead ([TaskHeadFloat], [TaskHeadScrollState]), and the keyboard
- * coming up ([keyboardUp]) puts it back up. Wider it stays pinned and never takes more than
+ * On a phone (narrower than [TaskHeadPinnedMinWidth]) it takes no room above the conversation:
+ * the head is the conversation's first row there ([TaskConversationHeadRowContent]) and is pulled
+ * down from the top bar while that row is out of view ([TaskHeadFloat], [TaskHeadScrollState]);
+ * this only tells the state the page is a phone's, and the keyboard coming up ([keyboardUp]) puts
+ * the pulled-down head back up. Wider it stays pinned and never takes more than
  * [maxHeightFraction] of the page: past that it scrolls inside itself (web's pinned head,
  * `max-h-[45%]`).
  */
@@ -882,8 +1003,8 @@ internal fun TaskConversationHeadRoute(
     onRetryHistory: (() -> Unit)? = null,
     /** False: status and assignee are plain facts ([taskConversationHeadModel]). */
     editable: Boolean = true,
-    /** The head pulled down from the top bar over the messages ([TaskHeadFloat]), not the one pinned in the page. */
-    floating: Boolean = false,
+    /** Above the conversation (pinned off a phone), its first row on a phone, or pulled down from the bar. */
+    placement: TaskHeadPlacement = TaskHeadPlacement.Page,
     /** The task's server: the head's faces read its member directory. */
     serverId: String? = null,
 ) {
@@ -897,21 +1018,25 @@ internal fun TaskConversationHeadRoute(
         }
     }
     RaftDesignSystemTheme {
-        if (floating) {
-            val label = task.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: task.title
-            TaskHeadFloat(scrollState = scrollState, label = label) {
-                TaskHeadContent(
-                    model = model,
-                    onSelectStatus = onUpdateStatus,
-                    onOpenAssignee = onOpenAssignee,
-                    onOpenSource = onOpenSource,
-                    onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-                    onOpenCreator = onOpenCreator,
-                    onRetryHistory = onRetryHistory,
-                )
+        val content: @Composable () -> Unit = {
+            TaskHeadContent(
+                model = model,
+                onSelectStatus = onUpdateStatus,
+                onOpenAssignee = onOpenAssignee,
+                onOpenSource = onOpenSource,
+                onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                onOpenCreator = onOpenCreator,
+                onRetryHistory = onRetryHistory,
+            )
+        }
+        when (placement) {
+            TaskHeadPlacement.PullDown -> {
+                val label = task.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: task.title
+                TaskHeadFloat(scrollState = scrollState, label = label, content = content)
             }
-        } else {
-            TaskConversationHead(
+            // The panel's frame without the panel: the head reads the same in the row as pulled down.
+            TaskHeadPlacement.FirstRow -> TaskHeadFrame(content)
+            TaskHeadPlacement.Page -> TaskConversationHead(
                 model = model,
                 onSelectStatus = onUpdateStatus,
                 onOpenAssignee = onOpenAssignee,
@@ -1029,9 +1154,10 @@ internal fun TaskHeadDateTime.localized(): String {
 
 /**
  * The task conversation's top bar (web `TaskConversationBar`): the task's ref (`#channel:#7`, Space
- * Mono, muted) over "Task #7". On a phone, where the head is not in the page ([summarized]), the
- * second line is "Task #7", the status badge, the assignee's face and a chevron (slock #11722): tapping the bar
- * pulls the head down over the messages ([headFloatOpen]) and tapping it again puts it back. The
+ * Mono, muted) over "Task #7". On a phone, while the head's row in the conversation is out of view
+ * ([summarized]), the second line is "Task #7", the status badge, the assignee's face and a chevron
+ * (slock #11722): tapping the bar pulls the head down over the messages ([headFloatOpen]) and
+ * tapping it again puts it back. The
  * More menu's View in Channel and Follow / Unfollow Task go with it.
  */
 @Immutable
@@ -1092,7 +1218,7 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         chrome.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: chrome.ref
     // At large text the bar has room for one line: the task line keeps it.
     val refLine = LocalDensity.current.fontScale <= 1.3f
-    // The whole bar is the toggle on a phone (web: the summary button; here the bar's
+    // The whole bar is the toggle while the head is out of view (web: the summary button; here the bar's
     // title block, the ref line included, so a tap anywhere on it opens the head).
     val focusManager = LocalFocusManager.current
     val toggle =
@@ -1162,9 +1288,9 @@ private fun TaskBarChevron(open: Boolean) {
 
 /**
  * The head pulled down from the top bar over the messages (web `TaskHeadPullDown`, slock #11722):
- * on a phone the only head, open when the conversation opens ([TaskHeadScrollState]). The same
- * title, description, facts and History as the pinned head of a wider page, editable the same
- * way, without losing the reader's place. Composed at the top of the box over the messages.
+ * on a phone, while the head's row in the conversation is out of view ([TaskHeadScrollState]). The
+ * same title, description, facts and History as that row, editable the same way, without losing
+ * the reader's place. Composed at the top of the box over the messages.
  */
 @Composable
 internal fun TaskHeadFloat(
@@ -1181,9 +1307,15 @@ internal fun TaskHeadFloat(
         paneTitle = label,
         reducedMotion = reducedMotion,
     ) {
-        Column(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)) {
-            content()
-        }
+        TaskHeadFrame(content)
+    }
+}
+
+/** The head's insets on a phone, in the conversation's first row and pulled down from the bar alike. */
+@Composable
+internal fun TaskHeadFrame(content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)) {
+        content()
     }
 }
 
