@@ -456,6 +456,9 @@ internal fun RaftSheetWindow(
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
     val hidden by rememberUpdatedState(onHidden)
+    // A page pushed over this one takes a sliding window down at once, without the slide down
+    // (RaftWindowDialog asks the caller to close it): the covered page stops composing.
+    if (slideMotion) RaftDismissOnPageCover { hidden() }
     RaftWindowDialog(
         onDismissRequest = onDismissRequest,
         // The drawer slides itself: no platform window transition stacked on the slide (iOS).

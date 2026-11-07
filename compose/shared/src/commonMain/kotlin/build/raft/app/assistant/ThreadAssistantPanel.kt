@@ -3,6 +3,7 @@ package build.raft.app.assistant
 import androidx.compose.ui.unit.Dp
 import kotlin.math.roundToInt
 import build.raft.designsystem.components.RaftPopoverSurface
+import build.raft.designsystem.components.RaftDismissOnPageCover
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.PopupPositionProvider
@@ -373,6 +374,9 @@ private fun ThreadAssistantPanelPopover(
                 ): IntOffset = IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt())
             }
         }
+    // A page pushed over this one (a thread ref in the panel's DM) closes the popover first: the
+    // covered page stops composing, so the close on its `pageActive` came too late.
+    RaftDismissOnPageCover(onDismissRequest)
     Popup(
         popupPositionProvider = positioner,
         onDismissRequest = onDismissRequest,

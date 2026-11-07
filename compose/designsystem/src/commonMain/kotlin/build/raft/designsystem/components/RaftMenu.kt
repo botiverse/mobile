@@ -454,6 +454,8 @@ fun RaftDropdownMenu(
     // A right swipe must not pop the page underneath an open menu.
     RaftBlockBackSwipe()
     RaftAutofocusGuard.HoldOpenSurface()
+    // A page pushed over this one closes the menu first: the covered page stops composing.
+    RaftDismissOnPageCover { dismiss() }
     // Android: unfocused until the window carries the host's bar icons (RaftPopupWindowPolicy).
     var focusable by remember { mutableStateOf(!RaftPopupDefersFocus) }
     Popup(popupPositionProvider = provider, onDismissRequest = { dismiss() }, properties = PopupProperties(focusable = focusable)) {

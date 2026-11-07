@@ -52,6 +52,7 @@ data class RaftWindowDialogProperties(
  *
  * Every window gets the same policy, so none of them can miss it:
  * - a right swipe does not pop the page underneath ([RaftBlockBackSwipe]);
+ * - a page pushed over the page underneath asks it to close first ([RaftDismissOnPageCover]);
  * - the window is edge to edge and full size: [content] fills it and pads for the system bars,
  *   the cutout and the keyboard itself (`WindowInsets.safeDrawing`);
  * - no platform dim: the window draws the one scrim, [RaftTheme.scrim];
@@ -69,6 +70,8 @@ fun RaftWindowDialog(
     RaftBlockBackSwipe()
     // A conversation opened underneath does not take focus from the dialog.
     RaftAutofocusGuard.HoldOpenSurface()
+    // A page pushed over this one closes the window first: the covered page stops composing.
+    RaftDismissOnPageCover(onDismissRequest)
     RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
     Dialog(
         onDismissRequest = onDismissRequest,

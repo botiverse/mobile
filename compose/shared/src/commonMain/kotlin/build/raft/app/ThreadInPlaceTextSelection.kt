@@ -52,6 +52,7 @@ import build.raft.app.markdown.LocalRaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.markdown.raftCopyText
+import build.raft.designsystem.components.RaftDismissOnPageCover
 import build.raft.designsystem.components.RaftTextSelectionToolbar
 import build.raft.designsystem.components.RaftTextSelectionToolbarButton
 import build.raft.designsystem.components.RaftTextSelectionToolbarDefaults
@@ -666,6 +667,10 @@ internal fun ThreadInPlaceSelectableBody(
             }
         }
     }
+    // A page pushed over this one drops the selection first, so its popup bar goes while this
+    // page still composes (once covered it may not). Only while there is one: every message has a
+    // controller.
+    if (controller.hasSelection) RaftDismissOnPageCover { controller.clear() }
     // A kept-alive page that goes inactive (hidden shell tab) drops its selection so the popup
     // bar cannot linger over the visible page.
     LaunchedEffect(pageActive, controller) {

@@ -434,6 +434,8 @@ fun RaftPreviewCardPopup(
             )
         }
     DisposableEffect(state) { onDispose { state.setCardHovered(false) } }
+    // A page pushed over this one closes the card first (pinned or not).
+    RaftDismissOnPageCover { state.dismiss() }
     val scope = rememberCoroutineScope()
     val pinned = state.isPinned
     Popup(
