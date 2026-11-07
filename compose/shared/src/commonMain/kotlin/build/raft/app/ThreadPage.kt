@@ -12883,8 +12883,8 @@ private fun SharedThreadRouteContentContent(
                 action,
             )
         }
-        // Task v2 on a phone: the top bar names the task's state and pulls the head down over the
-        // messages; it is pulled down when the conversation opens (once per conversation).
+        // Task v2 on a phone: the head is the conversation's first row; while that row is out of
+        // view the top bar names the task's state and pulls the head down over the messages.
         val taskHeadScrollState = remember(taskConversationId) { TaskHeadScrollState() }
         // Back (and Escape) puts the pulled-down head back up before it leaves the page.
         RaftBackHandler(enabled = taskHeadScrollState.floatOpen, label = "task_head_float") {
@@ -12910,10 +12910,11 @@ private fun SharedThreadRouteContentContent(
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
             timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
-        // The head pinned in the page off a phone ([floating] false) and pulled down from the bar (true).
-        val taskConversationHeadRoute: (@Composable (floating: Boolean) -> Unit)? =
+        // The head pinned above the conversation off a phone, as its first row on a phone, and pulled
+        // down from the bar ([TaskHeadPlacement]).
+        val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
-                { floating ->
+                { placement ->
                     TaskConversationHeadRoute(
                         task = taskConversationTask,
                         state = taskConversationHeaderState,
@@ -12955,15 +12956,17 @@ private fun SharedThreadRouteContentContent(
                         onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                         // The offline stand-in refuses writes: its status and assignee are plain facts.
                         editable = taskConversationTasksState?.standIn != true,
-                        floating = floating,
+                        placement = placement,
                         serverId = currentServerId,
                     )
                 }
             } else {
                 null
             }
-        val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(false) } }
-        val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(true) } }
+        val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.Page) } }
+        val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.PullDown) } }
+        val taskConversationHeadRow =
+            rememberTaskConversationHeadRow(taskHeadScrollState) { taskConversationHeadRoute?.invoke(TaskHeadPlacement.FirstRow) }
         // What the settings drawer (and the phone's settings page) do beyond the members strip and
         // the preferences: Info with the Slack pick, Guest access and every action through the
         // settings page's store, then what follows them. [onLeave] leaves the conversation after
@@ -13137,6 +13140,7 @@ private fun SharedThreadRouteContentContent(
             taskConversationChrome = taskConversationChrome,
             taskConversationHead = taskHeadScrollState.takeIf { taskConversationBar != null },
             taskConversationFloat = taskConversationFloat,
+            taskConversationHeadRow = taskConversationHeadRow.takeIf { taskConversationBar != null },
             agentFollowersHeader = {
                 // Task v2: a task conversation's bar carries its Agent followers too (web
                 // ThreadAgentFollowers `subject="task"` on the conversation channel).
@@ -16589,10 +16593,12 @@ private data class ThreadPageContentData(
     val taskConversationBar: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
     val taskConversationChrome: TaskConversationHeaderChrome? = null,
-    /** Task v2 on a phone: the head pulled down from the bar, open on entry, closed by a scroll or a press outside it. */
+    /** Task v2 on a phone: whether the head's row is in view, and the head pulled down from the bar while it is not. */
     val taskConversationHead: TaskHeadScrollState? = null,
     /** Task v2 on a phone: the head pulled down from the bar over the messages ([TaskHeadFloat]). */
     val taskConversationFloat: (@Composable () -> Unit)? = null,
+    /** Task v2 on a phone: the head as the conversation's first row ([LocalTaskConversationHeadRow]). */
+    val taskConversationHeadRow: TaskConversationHeadRow? = null,
     val threadInstanceKey: String,
     val routeActive: Boolean,
     val hostForeground: Boolean,
@@ -16704,6 +16710,7 @@ fun ThreadPageContent(
     taskConversationChrome: TaskConversationHeaderChrome? = null,
     taskConversationHead: TaskHeadScrollState? = null,
     taskConversationFloat: (@Composable () -> Unit)? = null,
+    taskConversationHeadRow: TaskConversationHeadRow? = null,
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
@@ -16817,6 +16824,7 @@ fun ThreadPageContent(
                 taskConversationChrome = taskConversationChrome,
                 taskConversationHead = taskConversationHead,
                 taskConversationFloat = taskConversationFloat,
+                taskConversationHeadRow = taskConversationHeadRow,
                 threadInstanceKey = threadInstanceKey,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
@@ -18234,8 +18242,10 @@ private fun ThreadPageContentContent(
             } else {
                 // No tab pager around the list here: dragging it left shows message times
                 // (ThreadMessageTimeReveal.kt). Under the pager that drag pages to Tasks.
+                // Task v2 on a phone: the list draws the head as its first row.
                 CompositionLocalProvider(
                     LocalThreadTimeRevealAvailable provides true,
+                    LocalTaskConversationHeadRow provides data.taskConversationHeadRow,
                 ) {
                     renderThreadTabContent(
                         // Task v2 cards: the page under them is always the conversation.
@@ -21742,6 +21752,9 @@ private fun ThreadMessagesListContent(
             onThreadContentReady()
         }
         val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
+        // Task v2 on a phone: the head is the conversation's first row, so it stays above its
+        // loading or empty state (web: the parent slot over the replies' placeholder).
+        TaskConversationHeadAboveState(LocalTaskConversationHeadRow.current) {
         if (
             timelineSlice.status == "loading" ||
             threadEmptyStandInAwaitsFirstLoad(
@@ -21763,6 +21776,7 @@ private fun ThreadMessagesListContent(
                 localizedThreadStateTitle(timelineSlice.emptyTitle),
                 localizedThreadStateDetail(timelineSlice.emptyDetail)
             )
+        }
         }
         return
     }
@@ -24555,6 +24569,19 @@ private fun ThreadMessagesListContent(
                 )
             }
             val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
+            // Task v2 on a phone: the head is the list's first row, at the top of the history
+            // boundary row (web `mobile-modal`: the parent row over the history boundary), so it
+            // moves with the conversation; the top bar summarizes the task while it is out of view.
+            val taskHeadRow = LocalTaskConversationHeadRow.current?.takeIf { maxWidth < TaskHeadPinnedMinWidth }
+            if (taskHeadRow != null) {
+                LaunchedEffect(taskHeadRow, listState) {
+                    snapshotFlow { listState.threadTaskHeadRowInView(taskHeadRow.scrollState.rowHeadHeightPx) }
+                        .distinctUntilChanged()
+                        .collect { inView -> taskHeadRow.scrollState.updateHeadInView(inView) }
+                }
+                // No longer a row of this list: the bar does not keep a summary for it (web).
+                DisposableEffect(taskHeadRow) { onDispose { taskHeadRow.scrollState.updateHeadInView(true) } }
+            }
             // Drag the list toward its start to see message times (ThreadMessageTimeReveal.kt): where
             // no tab pager surrounds the list, and not while messages are being selected.
             val timeRevealState = rememberThreadTimeRevealState(threadInstanceKey)
@@ -24827,6 +24854,10 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (renderPayload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
+                    Column(Modifier.fillMaxWidth()) {
+                    // Task v2 on a phone: the head above where the conversation begins, or above the
+                    // older messages still to load (they come in under it: it stays the first row).
+                    taskHeadRow?.let { TaskConversationHeadRowContent(it) }
                     when {
                         renderPayload.canLoadMoreBefore && renderPayload.olderMessagesStatus == "error" ->
                             ThreadInlineActionRow(
@@ -24845,6 +24876,7 @@ private fun ThreadMessagesListContent(
                             )
                         else ->
                             ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
+                    }
                     }
                 }
             }
@@ -27759,6 +27791,19 @@ internal fun shouldRestoreThreadOlderPageAnchor(
     capturedUserScrollGeneration: Int,
     currentUserScrollGeneration: Int
 ): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
+
+/** Task v2: whether any of the head at the top of the history boundary row is on screen ([taskHeadRowInView]). */
+private fun ThreadListViewport.threadTaskHeadRowInView(headHeightPx: Int): Boolean {
+    val info = layoutInfo
+    val row = info.visibleItemsInfo.firstOrNull { it.key == ThreadOlderMessagesListItemKey }
+    return taskHeadRowInView(
+        rowOffsetPx = row?.offset,
+        rowSizePx = row?.size ?: 0,
+        headHeightPx = headHeightPx,
+        viewportStartPx = info.viewportStartOffset,
+        viewportEndPx = info.viewportEndOffset,
+    )
+}
 
 private fun ThreadListViewport.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,

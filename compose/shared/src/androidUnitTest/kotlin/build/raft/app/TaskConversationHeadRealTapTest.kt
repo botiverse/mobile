@@ -70,6 +70,10 @@ import org.robolectric.annotation.GraphicsMode
  * whole task conversation page as the app mounts it (SharedThreadRouteContent: the top bar, the
  * head, the messages, the composer) gets a real finger: a down and an up at the chip's centre,
  * injected at the page's root, so every layer over the head takes part in the hit test.
+ *
+ * On a phone the head is the conversation's first row (artin 2026-11-06, #proj-mobile:ec53b56a): in
+ * a short conversation it is in view above the messages; a long one opens at its newest message
+ * with the head out of view, the bar pulls it down, and scrolled back to the top it is the row again.
  */
 private const val ShellTag = "task-tap-shell"
 
@@ -136,34 +140,41 @@ class TaskConversationHeadRealTapTest {
         }
 
     @Test
-    fun inALongConversationAtItsNewestMessageAFingerOnTheAssigneeOpensThePicker() =
+    fun inALongConversationAtItsNewestMessageTheBarPullsTheHeadDownAndAFingerOnTheAssigneeOpensThePicker() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 60)
+            assertHeadOutOfViewAndNotPulledDown()
+            pullHeadDownFromTheBar()
             tapAtCentreOf(TaskHeadAssigneeTestTag)
             assertOpened("Search assignees", TaskHeadAssigneeTestTag)
         }
 
     @Test
-    fun inALongConversationScrolledBackAFingerOnTheStatusOpensTheMenu() =
+    fun inALongConversationTheBarPullsTheHeadDownAndAFingerOnTheStatusOpensTheMenu() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 60)
-            // Back through the messages a little (the Back to latest pill shows): scrolling puts the
-            // panel back up (artin 2026-11-06: on a phone the head is only the pull-down panel).
-            root().performTouchInput {
-                val x = width / 2f
-                swipe(Offset(x, height * 0.55f), Offset(x, height * 0.75f), durationMillis = 300)
+            assertHeadOutOfViewAndNotPulledDown()
+            pullHeadDownFromTheBar()
+            tapAtCentreOf(TaskHeadStatusTestTag)
+            assertOpened("Todo", TaskHeadStatusTestTag)
+        }
+
+    @Test
+    fun inALongConversationScrolledBackToTheTopAFingerOnTheStatusInTheRowOpensTheMenu() =
+        runRobolectricComposeUiTest {
+            openTaskPage(messages = 60)
+            assertHeadOutOfViewAndNotPulledDown()
+            // Back through the messages to where the conversation begins: the head is its first row.
+            repeat(40) {
+                if (onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return@repeat
+                swipeTowardsOlder()
             }
-            settle()
+            // On to the very top, so the whole head is on screen.
+            repeat(3) { swipeTowardsOlder() }
             assertTrue(
-                onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
-                "scrolling the messages left the panel open",
+                onAllNodesWithTag(TaskBarSummaryTestTag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
+                "the head's row is in view but the bar still summarizes the task\n" + root().printToString(Int.MAX_VALUE),
             )
-            // The bar pulls it down again, where the reader is: a finger on its chevron end (the
-            // middle of the bar is the task line, whose status chip has a menu of its own).
-            val bar = chipBounds(TaskBarSummaryTestTag)
-            tapAt(TaskBarSummaryTestTag, Rect(bar.right - 24f, bar.center.y - 1f, bar.right - 22f, bar.center.y + 1f))
-            // A finger on Status in the panel opens the menu.
-            settle()
             tapAtCentreOf(TaskHeadStatusTestTag)
             assertOpened("Todo", TaskHeadStatusTestTag)
         }
@@ -196,6 +207,8 @@ class TaskConversationHeadRealTapTest {
     fun withNavigation3AFingerOnTheAssigneeOpensTheAssigneePicker() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 60, nav3 = true)
+            assertHeadOutOfViewAndNotPulledDown()
+            pullHeadDownFromTheBar()
             tapAtCentreOf(TaskHeadAssigneeTestTag)
             assertOpened("Search assignees", TaskHeadAssigneeTestTag)
         }
@@ -275,11 +288,10 @@ class TaskConversationHeadRealTapTest {
             waitForIdle()
             runOnIdle { stack.open(taskTapFixturePageArgs().pageName, taskTapFixturePageArgs().pageData, from = stack.pages.first()) }
         }
-        // The page loads off the main thread: real time as well as the main looper's.
+        // The page loads off the main thread: real time as well as the main looper's. Loaded, the
+        // head shows as the first row (a short conversation) or the bar summarizes it (a long one).
         repeat(400) {
-            if (TaskTapFixture.threadServed && TaskTapFixture.taskServed &&
-                onAllNodesWithTag(TaskHeadAssigneeTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            ) {
+            if (TaskTapFixture.threadServed && TaskTapFixture.taskServed && headOrBarSummaryShows()) {
                 return@repeat
             }
             Thread.sleep(25)
@@ -288,10 +300,45 @@ class TaskConversationHeadRealTapTest {
         }
         settle()
         assertTrue(
-            onAllNodesWithTag(TaskHeadAssigneeTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
+            headOrBarSummaryShows(),
             "the task head never showed (threadServed=${TaskTapFixture.threadServed} taskServed=${TaskTapFixture.taskServed})\n" +
                 root().printToString(Int.MAX_VALUE),
         )
+    }
+
+    private fun ComposeUiTest.headOrBarSummaryShows(): Boolean =
+        onAllNodesWithTag(TaskHeadAssigneeTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() ||
+            onAllNodesWithTag(TaskBarSummaryTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
+    /** A long conversation opens at its newest message: the head's row is out of view, the bar summarizes it, nothing is pulled down. */
+    private fun ComposeUiTest.assertHeadOutOfViewAndNotPulledDown() {
+        assertTrue(
+            onAllNodesWithTag(TaskBarSummaryTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
+            "the head's row is out of view but the bar does not summarize the task\n" + root().printToString(Int.MAX_VALUE),
+        )
+        assertTrue(
+            onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
+            "the head was pulled down (or its row shown) as the conversation opened\n" + root().printToString(Int.MAX_VALUE),
+        )
+    }
+
+    /**
+     * The bar pulls the head down, where the reader is: a finger on its chevron end (the middle of
+     * the bar is the task line, whose status chip has a menu of its own).
+     */
+    private fun ComposeUiTest.pullHeadDownFromTheBar() {
+        val bar = chipBounds(TaskBarSummaryTestTag)
+        tapAt(TaskBarSummaryTestTag, Rect(bar.right - 24f, bar.center.y - 1f, bar.right - 22f, bar.center.y + 1f))
+        settle()
+    }
+
+    /** A drag down the messages: back towards the older ones. */
+    private fun ComposeUiTest.swipeTowardsOlder() {
+        root().performTouchInput {
+            val x = width / 2f
+            swipe(Offset(x, height * 0.3f), Offset(x, height * 0.8f), durationMillis = 300)
+        }
+        settle()
     }
 
     private fun ComposeUiTest.settle() {
