@@ -1,6 +1,6 @@
 ---
 type: fixed
-area: other
+area: ui
 platforms:
   - android
   - ios
