@@ -69,6 +69,38 @@ class AuthSessionTerminalRouteEffectTest {
         assertTrue(signals.isEmpty())
         collector.cancelAndJoin()
     }
+
+    @Test
+    fun deliberateSignOutOpensSignInWithoutSessionExpiredMessage() = runPortableCoroutineTest {
+        val source = FakeTerminalSource(1, authSessionFixture())
+        val logoutSeen = CompletableDeferred<Unit>()
+        val authLossSeen = CompletableDeferred<Unit>()
+        val messages = mutableListOf<String?>()
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            collectAuthSessionTerminalSignals(source) {
+                messages += authenticatedRouteTerminalLoginMessage(it, SESSION_EXPIRED)
+                when (it.generation) {
+                    2L -> logoutSeen.complete(Unit)
+                    4L -> authLossSeen.complete(Unit)
+                }
+            }
+        }
+
+        // Settings > Account > Sign out: AuthDataSource.logout() clears with reason "logout".
+        source.clearAndEmit(2, AuthSessionClearReason.Logout)
+        logoutSeen.await()
+        // A later sign-in whose refresh token is then rejected is a real expiry.
+        source.login(3, authSessionFixture())
+        source.clearAndEmit(4, AuthSessionClearReason.AuthLoss)
+        authLossSeen.await()
+
+        assertEquals(listOf(null, SESSION_EXPIRED), messages)
+        collector.cancelAndJoin()
+    }
+
+    private companion object {
+        const val SESSION_EXPIRED = "Session expired"
+    }
 }
 
 private class FakeTerminalSource(
