@@ -131,6 +131,22 @@ class MembersAgentHostedRuntimeUiTest {
         assertEquals(listOf("""{"model":null}"""), api.retryBodies)
     }
 
+    @Test
+    fun aPausedAssistantReadsPausedNotRunning() = runRobolectricComposeUiTest {
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                MembersAgentHostedRuntimeSection(
+                    MemberId("a1"),
+                    AgentHostedRuntimeSnapshot(state = "active"),
+                    RaftAgentsApiClient(FakeApi()),
+                    paused = true
+                )
+            }
+        }
+        onNodeWithText("Paused").assertIsDisplayed()
+        assertEquals(false, onAllNodesText("Running"))
+    }
+
     private fun androidx.compose.ui.test.ComposeUiTest.onAllNodesText(text: String): Boolean =
         onAllNodes(androidx.compose.ui.test.hasText(text)).fetchSemanticsNodes().isNotEmpty()
 }

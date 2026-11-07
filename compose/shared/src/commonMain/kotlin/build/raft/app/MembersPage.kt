@@ -11112,7 +11112,8 @@ private fun MembersAgentProfileTab(
                             MembersAgentHostedRuntimeSection(
                                 agentId = member.id,
                                 initial = hostedRuntime,
-                                agentsApiClient = agentsApiClient
+                                agentsApiClient = agentsApiClient,
+                                paused = !member.assistantPausedAt.isNullOrBlank()
                             )
                         }
                     MembersExternalAgentSection.Setup ->

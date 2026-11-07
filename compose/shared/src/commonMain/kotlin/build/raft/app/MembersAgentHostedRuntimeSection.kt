@@ -16,6 +16,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentHostedRuntimeSnapshot
 import build.raft.app.data.DataResult
@@ -113,6 +116,8 @@ internal fun MembersAgentHostedRuntimeSection(
     agentId: MemberId,
     initial: AgentHostedRuntimeSnapshot,
     agentsApiClient: RaftAgentsApiClient?,
+    /** A paused personal assistant's runtime is up but runs nothing: Paused, not Running (web `paused`). */
+    paused: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var summary by remember(agentId, initial) { mutableStateOf(initial) }
@@ -126,11 +131,15 @@ internal fun MembersAgentHostedRuntimeSection(
         val status = agentsApiClient?.agentExternalStatus(agentId) as? DataResult.Content
         status?.data?.hostedRuntime?.let { summary = it }
     }
-    LaunchedEffect(agentId, view.inProgress, agentsApiClient) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(agentId, view.inProgress, agentsApiClient, lifecycleOwner) {
         if (!view.inProgress) return@LaunchedEffect
-        while (true) {
-            delay(HOSTED_RUNTIME_POLL_MS)
-            reload()
+        // Nothing while the app is in the background (the shared refresh rule).
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                delay(HOSTED_RUNTIME_POLL_MS)
+                reload()
+            }
         }
     }
     Column(
@@ -138,8 +147,16 @@ internal fun MembersAgentHostedRuntimeSection(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            view.state?.let { state ->
-                RaftBadge(text = stringResource(state.label), appearance = RaftBadgeAppearance.Soft, variant = state.badgeVariant)
+            if (paused && view.state == HostedRuntimeState.Active) {
+                RaftBadge(
+                    text = stringResource(Res.string.assistant_paused_chip),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Muted
+                )
+            } else {
+                view.state?.let { state ->
+                    RaftBadge(text = stringResource(state.label), appearance = RaftBadgeAppearance.Soft, variant = state.badgeVariant)
+                }
             }
             RaftBadge(
                 text = stringResource(Res.string.member_hosted_runtime_location),
