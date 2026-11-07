@@ -619,6 +619,12 @@ android {
         versionName = raftAndroidVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 64-bit only (artin 2026-11-07): MMKV 2.x, which holds the sign-in, refuses a 32-bit process
+        // (UnsupportedArchitectureException at launch, Hands 317d4e9a). Without armeabi-v7a a 32-bit-only
+        // phone can't install the app instead of crashing on open. x86_64 keeps the emulators.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
         buildConfigField(
             "Boolean",
             "SHOW_TEST_BUILD_BADGE",
