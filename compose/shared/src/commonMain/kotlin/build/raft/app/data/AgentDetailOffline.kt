@@ -102,6 +102,7 @@ internal data class StoredAgentSummary(
     val createdAgents: List<StoredAgentCreated> = emptyList(),
     val deletedAt: String? = null,
     val lastSeenAt: String? = null,
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 @Serializable
@@ -264,6 +265,7 @@ internal fun RaftCachedAgentDetail.toStoredAgentDetail(): StoredAgentDetail =
 
 private fun AgentDetailSummary.toStored(): StoredAgentSummary =
     StoredAgentSummary(
+        hostedRuntime = hostedRuntime,
         id = id,
         name = name,
         displayName = displayName,
@@ -304,6 +306,7 @@ internal fun StoredAgentDetail.toCachedAgentDetail(): RaftCachedAgentDetail {
                 summary =
                     summary?.let {
                         AgentDetailSummary(
+                            hostedRuntime = it.hostedRuntime,
                             id = it.id,
                             name = it.name,
                             displayName = it.displayName,

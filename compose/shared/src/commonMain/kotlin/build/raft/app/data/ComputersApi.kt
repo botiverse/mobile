@@ -30,6 +30,22 @@ private val runtimeFormListJson = Json {
     coerceInputValues = false
 }
 
+@Serializable
+private data class AgentRuntimeProviderAvailabilityDto(val available: Boolean = false)
+
+@Serializable
+private data class HostedRuntimeModelOptionDto(val id: String, val label: String)
+
+/** `picker` is absent from older servers: they may pick. */
+@Serializable
+private data class HostedRuntimeModelsDto(
+    val models: List<HostedRuntimeModelOptionDto> = emptyList(),
+    val default: String? = null,
+    val defaultLabel: String? = null,
+    val locked: Boolean = false,
+    val picker: Boolean = true
+)
+
 /**
  * Typed Computers/Machines boundary.
  *
@@ -50,6 +66,12 @@ interface RaftComputersApi {
     suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse
     suspend fun runtimeOptions(serverId: ServerId, machineId: String): HomeNetworkResponse =
         error("runtimeOptions is not implemented")
+    /** `GET agent-runtime-providers/:kind`: the deployment has the provider and the server its flag. */
+    suspend fun agentRuntimeProvider(serverId: ServerId, kind: String): HomeNetworkResponse =
+        error("agentRuntimeProvider is not implemented")
+    /** `GET agent-runtime-providers/:kind/models`: the models a new cloud agent can start on. */
+    suspend fun agentRuntimeProviderModels(serverId: ServerId, kind: String): HomeNetworkResponse =
+        error("agentRuntimeProviderModels is not implemented")
     /** Runtime form protocol v2: `GET …/runtime-forms/v2/:runtimeId`, the current form with no schemaVersion pin. */
     suspend fun runtimeFormV2(
         serverId: ServerId,
@@ -172,6 +194,20 @@ internal class RaftComputersNetworkApi(
             // current; a reply with no marked row at all is read as "unknown", not "no forms"
             // (runtimeFormV2Availability), so a dropped header cannot disable create.
             headers = mapOf(RUNTIME_FORM_V2_MARKER_HEADER to "1"),
+            serverIdOverride = serverId
+        )
+
+    override suspend fun agentRuntimeProvider(serverId: ServerId, kind: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agent-runtime-providers/$kind",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun agentRuntimeProviderModels(serverId: ServerId, kind: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agent-runtime-providers/$kind/models",
             serverIdOverride = serverId
         )
 
@@ -412,6 +448,28 @@ internal class RaftComputersApiClient(
             runtimeFormListJson
         ) { wire -> wire.toDomain(normalizedMachineId) }
     }
+
+    suspend fun agentRuntimeProviderAvailable(serverId: ServerId, kind: String): DataResult<Boolean> =
+        transport.agentRuntimeProvider(serverId, kind).mapComputersBody(
+            "agent_runtime_provider_contract_mismatch",
+            AgentRuntimeProviderAvailabilityDto.serializer(),
+            runtimeFormListJson
+        ) { wire -> wire.available }
+
+    suspend fun agentRuntimeProviderModels(serverId: ServerId, kind: String): DataResult<HostedRuntimeModels> =
+        transport.agentRuntimeProviderModels(serverId, kind).mapComputersBody(
+            "agent_runtime_provider_models_contract_mismatch",
+            HostedRuntimeModelsDto.serializer(),
+            runtimeFormListJson
+        ) { wire ->
+            HostedRuntimeModels(
+                models = wire.models.map { HostedRuntimeModelOption(it.id, it.label) },
+                defaultLabel = wire.defaultLabel?.takeIf { it.isNotBlank() },
+                defaultModel = wire.default?.takeIf { it.isNotBlank() },
+                locked = wire.locked,
+                picker = wire.picker
+            )
+        }
 
     suspend fun deleteMachineWorkspace(
         serverId: ServerId,
