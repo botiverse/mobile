@@ -65,12 +65,16 @@ internal suspend fun resolveSharedTaskReference(
                 val task = channelResult.data.task
                 val foldOutcome = tasksDataStore?.upsertTaskForCurrentServer(serverId.value, task)
                 if (tasksDataStore != null && foldOutcome != SharedTaskFactFoldOutcome.Accepted) {
-                    return tasksDataStore.loadedTaskReferenceResolution(
+                    tasksDataStore.loadedTaskReferenceResolution(
                         serverId = serverId.value,
                         taskNumber = taskNumber,
                         currentChannelId = currentChannelId,
                         channelQualified = channelQualified
-                    ) ?: SharedTaskReferenceResolution.Failed
+                    )?.let { return it }
+                    // The store already holds this revision (a realtime frame), only not in a loaded
+                    // list, or its copy conflicts: the server just answered, so the task exists and
+                    // opens on that answer. Null: this store is no longer on this server.
+                    if (foldOutcome == null) return SharedTaskReferenceResolution.Failed
                 }
                 return SharedTaskReferenceResolution.Found(
                     task = task,
