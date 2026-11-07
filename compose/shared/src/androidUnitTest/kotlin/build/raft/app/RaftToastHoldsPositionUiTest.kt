@@ -32,7 +32,8 @@ import org.robolectric.annotation.Config
 
 /**
  * artin 2026-11-07 (recording): a toast moved with each page under it, above the composer, above the
- * tab bar, down to the window's edge on a page still loading. It keeps the height it appeared at.
+ * tab bar, down to the window's edge on a page still loading. While it shows it only moves up (Kirby):
+ * never down, and never left covering something taller that appears.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -43,17 +44,14 @@ class RaftToastHoldsPositionUiTest {
 
     private fun ComposeUiTest.bottomOf(text: String): Dp = onNodeWithText(text).getBoundsInRoot().bottom
 
-    @Test
-    fun aToastStaysWhereItAppearedWhenThePageChangesUnderIt() = runRobolectricComposeUiTest {
-        val state = RaftToastHostState()
-        var barShown by mutableStateOf(true)
-        mainClock.autoAdvance = false
+    private fun ComposeUiTest.host(state: RaftToastHostState, barHeight: () -> Dp) {
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
                 CompositionLocalProvider(LocalRaftToastHostState provides state) {
                     Box(Modifier.fillMaxSize()) {
-                        if (barShown) {
-                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(120.dp).raftToastAvoid())
+                        val height = barHeight()
+                        if (height > 0.dp) {
+                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(height).raftToastAvoid())
                         }
                         RaftToastHost(state)
                     }
@@ -61,11 +59,19 @@ class RaftToastHoldsPositionUiTest {
             }
         }
         mainClock.advanceTimeBy(500)
+    }
+
+    @Test
+    fun aToastDoesNotDropWhenThePageChangesUnderIt() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        var bar by mutableStateOf(120.dp)
+        mainClock.autoAdvance = false
+        host(state) { bar }
         state.show("First")
         mainClock.advanceTimeBy(500)
         val appeared = bottomOf("First")
 
-        barShown = false
+        bar = 0.dp
         mainClock.advanceTimeBy(500)
         assertEquals(appeared, bottomOf("First"), "the page changed; the toast stays")
 
@@ -74,5 +80,25 @@ class RaftToastHoldsPositionUiTest {
         state.show("Second")
         mainClock.advanceTimeBy(500)
         assertTrue(bottomOf("Second") > appeared, "a new toast takes the page it appears on")
+    }
+
+    @Test
+    fun aToastMovesUpForSomethingTallerAndStaysThere() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        var bar by mutableStateOf(0.dp)
+        mainClock.autoAdvance = false
+        host(state) { bar }
+        state.show("First")
+        mainClock.advanceTimeBy(500)
+        val appeared = bottomOf("First")
+
+        bar = 120.dp
+        mainClock.advanceTimeBy(500)
+        val above = bottomOf("First")
+        assertTrue(above < appeared, "the composer that appeared is not covered")
+
+        bar = 0.dp
+        mainClock.advanceTimeBy(500)
+        assertEquals(above, bottomOf("First"), "and it does not drop again")
     }
 }
