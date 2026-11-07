@@ -68,8 +68,9 @@ internal val SettingsWideNativeDetailKeys: Set<String> =
 
 /**
  * The web-backed Settings sections that open in the wide detail pane too (artin 2026-10-29: like
- * the native ones, not a page over the rail). Feedback joins them only when it is the web page
- * (the product-feedback flag); the older native Hands feedback page keeps being pushed.
+ * the native ones, not a page over the rail). Feedback is always the ticket web page (artin, 1.22:
+ * no server flag), so it opens in the pane too; the native Hands feedback page is only the
+ * `integration-unavailable` fallback (SettingsStandaloneWebViewHost), which is pushed.
  */
 internal val SettingsWideWebDetailKeys: Set<String> =
     setOf(
@@ -78,32 +79,18 @@ internal val SettingsWideWebDetailKeys: Set<String> =
         SettingsDestinationImBridges,
         SettingsDestinationConnectedApps,
         SettingsDestinationReleaseNotes,
+        SettingsDestinationHandsFeedback,
     )
 
-/**
- * Whether Feedback is the web page: behind the server's product-feedback flag, and always on a host
- * that cannot submit Hands feedback itself (the Compose desktop app), where the native page can't send.
- */
-internal fun settingsFeedbackUsesWebPage(
-    productFeedbackMultiApp: Boolean,
-    nativeSubmit: Boolean = raftPlatformSupportsHandsFeedbackSubmit(),
-): Boolean = productFeedbackMultiApp || !nativeSubmit
-
 /** Every Settings row that opens in the wide detail pane. */
-internal fun settingsWideDetailKeys(feedbackWeb: Boolean): Set<String> =
-    SettingsWideNativeDetailKeys + SettingsWideWebDetailKeys +
-        (if (feedbackWeb) setOf(SettingsDestinationHandsFeedback) else emptySet())
-
-internal val SettingsWideDetailKeys: Set<String> = settingsWideDetailKeys(feedbackWeb = false)
+internal val SettingsWideDetailKeys: Set<String> = SettingsWideNativeDetailKeys + SettingsWideWebDetailKeys
 
 /**
  * The section the wide detail shows for [picked] among the rows [rowKeys]: the picked one while it
  * is a row that opens in the pane, else the first such row (Account, the web's default).
  */
-internal fun settingsWideDetailKey(picked: String?, rowKeys: List<String>, feedbackWeb: Boolean = false): String? {
-    val paneKeys = settingsWideDetailKeys(feedbackWeb)
-    return picked?.takeIf { it in rowKeys && it in paneKeys } ?: rowKeys.firstOrNull { it in paneKeys }
-}
+internal fun settingsWideDetailKey(picked: String?, rowKeys: List<String>): String? =
+    picked?.takeIf { it in rowKeys && it in SettingsWideDetailKeys } ?: rowKeys.firstOrNull { it in SettingsWideDetailKeys }
 
 /** What picking [key] in the wide Settings list does. */
 internal sealed interface SettingsWidePick {
@@ -114,23 +101,22 @@ internal sealed interface SettingsWidePick {
     data object Push : SettingsWidePick
 }
 
-internal fun settingsWidePick(key: String, feedbackWeb: Boolean = false): SettingsWidePick =
-    if (key in settingsWideDetailKeys(feedbackWeb)) SettingsWidePick.Detail(key) else SettingsWidePick.Push
+internal fun settingsWidePick(key: String): SettingsWidePick =
+    if (key in SettingsWideDetailKeys) SettingsWidePick.Detail(key) else SettingsWidePick.Push
 
 /**
  * Whether system Back / Esc goes back to the default section: only while another section than the
  * default ([settingsWideDetailKey] of nothing) is showing. On the default, Back is the shell's.
  */
-internal fun settingsWideBackReturnsToDefault(picked: String?, rowKeys: List<String>, feedbackWeb: Boolean = false): Boolean {
-    val showing = settingsWideDetailKey(picked, rowKeys, feedbackWeb) ?: return false
-    return showing != settingsWideDetailKey(null, rowKeys, feedbackWeb)
+internal fun settingsWideBackReturnsToDefault(picked: String?, rowKeys: List<String>): Boolean {
+    val showing = settingsWideDetailKey(picked, rowKeys) ?: return false
+    return showing != settingsWideDetailKey(null, rowKeys)
 }
 
 /** The child page (name and page data) that draws section [key] in the wide detail pane. */
 internal fun settingsWideDetailPage(
     key: String,
     storeScope: RaftShellStoreScope,
-    feedbackWeb: Boolean = false,
 ): Pair<String, JSONObject>? =
     when (key) {
         SettingsDestinationBilling -> settingsWideWebPage(SettingsWebViewSurface.Billing, storeScope)
@@ -138,8 +124,7 @@ internal fun settingsWideDetailPage(
         SettingsDestinationImBridges -> settingsWideWebPage(SettingsWebViewSurface.ImBridges, storeScope)
         SettingsDestinationConnectedApps -> settingsWideWebPage(SettingsWebViewSurface.Marketplace, storeScope)
         SettingsDestinationReleaseNotes -> settingsWideWebPage(SettingsWebViewSurface.ReleaseNotes, storeScope)
-        SettingsDestinationHandsFeedback ->
-            if (feedbackWeb) settingsWideWebPage(SettingsWebViewSurface.Feedback, storeScope) else null
+        SettingsDestinationHandsFeedback -> settingsWideWebPage(SettingsWebViewSurface.Feedback, storeScope)
         SettingsDestinationAccount -> SETTINGS_ACCOUNT_PAGE to settingsStandalonePageData(SETTINGS_ACCOUNT_PAGE, storeScope)
         SettingsDestinationStorage -> SETTINGS_STORAGE_PAGE to settingsStandalonePageData(SETTINGS_STORAGE_PAGE, storeScope)
         SettingsDestinationComputers -> SETTINGS_COMPUTERS_PAGE to settingsComputersPageData(storeScope)
@@ -165,8 +150,6 @@ internal fun SettingsWideListDetail(
     widths: RaftListPaneWidths,
     active: Boolean,
     picked: String?,
-    /** The product-feedback flag: Feedback is the web page, which opens in the pane. */
-    feedbackWeb: Boolean = false,
     onPick: (String) -> Unit,
     onBackToDefault: () -> Unit,
     detailBottomInset: Dp,
@@ -177,9 +160,9 @@ internal fun SettingsWideListDetail(
     onResizingChange: (Boolean) -> Unit = {},
 ) {
     val rowKeys = payload.items.map { it.key }
-    val showing = settingsWideDetailKey(picked, rowKeys, feedbackWeb)
+    val showing = settingsWideDetailKey(picked, rowKeys)
     RaftBackHandler(
-        enabled = active && settingsWideBackReturnsToDefault(picked, rowKeys, feedbackWeb),
+        enabled = active && settingsWideBackReturnsToDefault(picked, rowKeys),
         label = "settings_wide_detail",
         blocksBackSwipe = false,
     ) { onBackToDefault() }

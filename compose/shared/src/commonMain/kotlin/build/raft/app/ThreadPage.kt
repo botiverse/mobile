@@ -302,7 +302,6 @@ import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.InstallMarketplaceAppActionCardType
-import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.messageBodyFontSizeOwnerKey
@@ -8683,17 +8682,10 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(taskConversationDetailsViewModel, taskConversationTask, currentServerId) {
         if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
     }
-    // `feedback:submit` cards open the Feedback WebView only where the viewing server has
-    // `product_feedback_multi_app` on; follow the flag live as its evaluation lands.
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val feedbackCardEntryEnabled =
-        remember(featureFlagSnapshotRevision, currentServerId) {
-            currentServerId != null &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(currentServerId),
-                    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
-                )
-        }
+    // `feedback:submit` cards open the Feedback WebView once the viewing server is known (no server
+    // flag since 1.22).
+    val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
     // The session is captured a few frames after the page composes; until then the shell's server
@@ -13865,12 +13857,6 @@ private fun SharedThreadRouteContentContent(
                                 messageId = itemId,
                                 card = actionCard,
                                 viewingServerId = currentServerId,
-                                productFeedbackMultiAppEnabled =
-                                    currentServerId != null &&
-                                        sharedStores.serverFeatureFlags.isEnabled(
-                                            ServerId(currentServerId),
-                                            PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
-                                        )
                             )
                         if (feedbackCardEntry == null) {
                             bridge.toast(actionUnsupportedLabel)
@@ -30894,7 +30880,7 @@ internal fun ThreadActionCardView(
                                 (
                                     card.needsReconfirmation ||
                                         card.isSupportedCommitAction() ||
-                                        card.opensFeedbackCardEntry(feedbackEntryEnabled)
+                                        (feedbackEntryEnabled && card.opensFeedbackCardEntry())
                                     ),
                     )
                 }
@@ -34966,7 +34952,7 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
 
-/** Whether the viewing server lets `feedback:submit` cards open the Feedback WebView. */
+/** Whether `feedback:submit` cards open the Feedback WebView: the viewing server is known ([raftFeedbackCardEntryEnabled]). */
 internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
 
 /**

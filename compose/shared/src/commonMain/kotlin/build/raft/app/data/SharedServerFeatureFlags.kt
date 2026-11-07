@@ -45,7 +45,6 @@ const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activi
  * New key, so builds that read the old `enable_webview_onboarding_v0` are unaffected.
  */
 const val MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY: String = "mobile_server_setup_v1"
-const val PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY: String = "product_feedback_multi_app"
 /**
  * #367 Thread first-frame render: single-paragraph light markdown path.
  * Default OFF everywhere (server-unresolved evaluates false); local A/B goes
@@ -67,6 +66,8 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // cleaned up: android_reused_h2_recovery_v0 (NetworkKMM reused-HTTP/2 watchdog), mobile_doh_fallback_v0
 // (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
 // sync_core_messages_v1 is no longer read either (2026-10-30): the sync-core message line is always on.
+// product_feedback_multi_app is no longer read from 1.22 (artin): Settings > Feedback and feedback cards
+// always open the ticket web page.
 // Gogo removes the server flag row after old clients are checked.
 
 /**
@@ -214,7 +215,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
     MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
-    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
