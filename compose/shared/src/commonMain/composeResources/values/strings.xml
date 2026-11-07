@@ -1116,6 +1116,12 @@
     <string name="thread_share_copy_markdown">Copy MD</string>
     <string name="thread_share_generate_image">Generate image</string>
     <string name="thread_share_download">Download</string>
+    <string name="thread_share_width_label">Image width</string>
+    <string name="thread_share_width_phone">Phone</string>
+    <string name="thread_share_width_tablet">Tablet</string>
+    <string name="thread_share_width_wide">Wide</string>
+    <string name="thread_share_width_custom">Custom</string>
+    <string name="thread_share_rendering">Laying out the image…</string>
     <string name="thread_task_candidate_current">Current</string>
     <string name="thread_task_candidate_untitled">Untitled task</string>
     <string name="thread_task_candidate_unknown_channel">Unknown channel</string>

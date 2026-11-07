@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalDensity
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,7 @@ import com.hrm.latex.renderer.model.LatexFontFamilies
 import com.hrm.latex.renderer.model.LatexTheme
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownFitWidth
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +57,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.atomicfu.locks.synchronized
+import kotlin.math.roundToInt
 
 /*
  * Task #775: LaTeX in messages, as the web renders it (botiverse/slock #10813).
@@ -366,19 +370,39 @@ internal fun RaftDisplayMath(source: String, style: TextStyle) {
             RaftMathSourceText(source, style, color, LocalMarkdownTypography.current.code.fontFamily)
             return@Box
         }
+        val fitWidth = LocalRaftMarkdownFitWidth.current
         // Centred when it fits; otherwise it starts at the edge and scrolls (no subcomposition).
+        // In the share image nothing scrolls: a formula wider than the message is scaled down to it.
         Layout(
             content = {
-                Box(Modifier.raftKeepsHorizontalDrags().horizontalScroll(rememberScrollState())) {
+                if (fitWidth) {
                     Latex(latex = tex, config = config, isDarkTheme = false)
+                } else {
+                    Box(Modifier.raftKeepsHorizontalDrags().horizontalScroll(rememberScrollState())) {
+                        Latex(latex = tex, config = config, isDarkTheme = false)
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
         ) { measurables, constraints ->
-            val formula = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+            val formulaConstraints =
+                if (fitWidth) constraints.copy(minWidth = 0, minHeight = 0, maxWidth = Constraints.Infinity)
+                else constraints.copy(minWidth = 0, minHeight = 0)
+            val formula = measurables.single().measure(formulaConstraints)
             val width = if (constraints.hasBoundedWidth) constraints.maxWidth else formula.width
-            layout(width, formula.height) {
-                formula.place(((width - formula.width) / 2).coerceAtLeast(0), 0)
+            val shrink = if (fitWidth && formula.width > width && formula.width > 0) width.toFloat() / formula.width else 1f
+            if (shrink < 1f) {
+                layout(width, (formula.height * shrink).roundToInt()) {
+                    formula.placeWithLayer(0, 0) {
+                        scaleX = shrink
+                        scaleY = shrink
+                        transformOrigin = TransformOrigin(0f, 0f)
+                    }
+                }
+            } else {
+                layout(width, formula.height) {
+                    formula.place(((width - formula.width) / 2).coerceAtLeast(0), 0)
+                }
             }
         }
     }
@@ -386,7 +410,9 @@ internal fun RaftDisplayMath(source: String, style: TextStyle) {
 
 @Composable
 private fun RaftMathSourceText(source: String, style: TextStyle, color: Color, fontFamily: FontFamily?) {
-    Box(Modifier.fillMaxWidth().raftKeepsHorizontalDrags().horizontalScroll(rememberScrollState())) {
+    // In the share image the source wraps (web share capture `pre { white-space: pre-wrap }`).
+    val scroll = if (LocalRaftMarkdownFitWidth.current) Modifier else Modifier.raftKeepsHorizontalDrags().horizontalScroll(rememberScrollState())
+    Box(Modifier.fillMaxWidth().then(scroll)) {
         MarkdownBasicText(
             text = source,
             style = style.copy(color = color, fontFamily = fontFamily ?: style.fontFamily),

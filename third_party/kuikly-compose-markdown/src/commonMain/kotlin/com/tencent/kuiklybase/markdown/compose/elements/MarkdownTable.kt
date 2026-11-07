@@ -30,6 +30,7 @@ import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownDimens
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownFitWidth
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableCellPadding
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableClosedGrid
 import com.tencent.kuiklybase.markdown.compose.handleElement
@@ -45,6 +46,11 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes.CELL
  * when the content would not fit, and a table whose columns cannot shrink enough scrolls sideways.
  * Column widths come from [markdownTableColumnWidths]. Header cells do not wrap (web `th`
  * `whitespace-nowrap`).
+ *
+ * Under [LocalRaftMarkdownFitWidth] (the share image) the table never scrolls: it keeps the same
+ * widths while its words fit, and otherwise fits the width it is given with every cell wrapping,
+ * header cells too, a word longer than its column broken (web share capture: `table-layout:
+ * fixed; width: 100%`, `th, td { white-space: normal; word-break: break-word }`).
  */
 @Composable
 fun MarkdownTable(
@@ -62,6 +68,7 @@ fun MarkdownTable(
     val colors = LocalMarkdownColors.current
     val cellPadding = LocalRaftMarkdownTableCellPadding.current ?: PaddingValues(dimens.tableCellPadding)
     val closedGrid = LocalRaftMarkdownTableClosedGrid.current
+    val fitWidth = LocalRaftMarkdownFitWidth.current
     val markdownComponents = LocalMarkdownComponents.current
     val strokeColor = colors.tableStroke
     val stroke = dimens.tableSeparatorThickness
@@ -105,21 +112,28 @@ fun MarkdownTable(
         // The scroller measures its content with an unbounded width, so the width the table may
         // take without scrolling is read here, outside it.
         val availableWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
+        val fits = fitWidth && availableWidth != Int.MAX_VALUE
         Layout(
             contents = listOf(cells, headerBackground, rules),
-            modifier = Modifier
-                // A drag that starts on the table is the table's, even at its end (no hand-off to
-                // the thread list's drag-to-see-times).
-                .raftKeepsHorizontalDrags()
-                .then(backSwipe.modifier)
-                .horizontalScroll(scroll, enabled = backSwipe.userScrollEnabled),
-            measurePolicy = remember(rows, columnCount, headerRows, closedGrid, stroke, availableWidth) {
+            modifier =
+                if (fits) {
+                    Modifier
+                } else {
+                    Modifier
+                        // A drag that starts on the table is the table's, even at its end (no
+                        // hand-off to the thread list's drag-to-see-times).
+                        .raftKeepsHorizontalDrags()
+                        .then(backSwipe.modifier)
+                        .horizontalScroll(scroll, enabled = backSwipe.userScrollEnabled)
+                },
+            measurePolicy = remember(rows, columnCount, headerRows, closedGrid, stroke, availableWidth, fits) {
                 MarkdownTableMeasurePolicy(
                     rowHeaders = rows.map { it.header },
                     columnCount = columnCount,
                     closedGrid = closedGrid,
                     stroke = stroke,
                     availableWidth = availableWidth,
+                    fitWidth = fits,
                 )
             },
         )
@@ -147,6 +161,7 @@ private class MarkdownTableMeasurePolicy(
     private val closedGrid: Boolean,
     private val stroke: Dp,
     private val availableWidth: Int,
+    private val fitWidth: Boolean = false,
 ) : MultiContentMeasurePolicy {
     override fun MeasureScope.measure(
         measurables: List<List<Measurable>>,
@@ -165,15 +180,19 @@ private class MarkdownTableMeasurePolicy(
             val column = index % columnCount
             // Capped so a pathological one-line cell still fits in Constraints; it wraps there.
             val max = cell.maxIntrinsicWidth(Constraints.Infinity).coerceAtMost(MaxColumnWidthPx)
-            val min = if (rowHeaders[index / columnCount]) max else cell.minIntrinsicWidth(Constraints.Infinity).coerceAtMost(max)
+            // Fitting, a header wraps like any cell (web share capture `th { white-space: normal }`).
+            val headerKeepsLine = rowHeaders[index / columnCount] && !fitWidth
+            val min = if (headerKeepsLine) max else cell.minIntrinsicWidth(Constraints.Infinity).coerceAtMost(max)
             minWidths[column] = maxOf(minWidths[column], min)
             maxWidths[column] = maxOf(maxWidths[column], max)
         }
-        val widths = markdownTableColumnWidths(
-            minWidths = minWidths,
-            maxWidths = maxWidths,
-            availableWidth = if (availableWidth == Int.MAX_VALUE) Int.MAX_VALUE else availableWidth - verticalRules * strokePx,
-        )
+        val columnsWidth = if (availableWidth == Int.MAX_VALUE) Int.MAX_VALUE else availableWidth - verticalRules * strokePx
+        val widths =
+            if (fitWidth) {
+                markdownTableFittedColumnWidths(minWidths, maxWidths, columnsWidth.coerceAtLeast(0))
+            } else {
+                markdownTableColumnWidths(minWidths = minWidths, maxWidths = maxWidths, availableWidth = columnsWidth)
+            }
 
         val placeables = arrayOfNulls<Placeable>(cells.size)
         val rowHeights = IntArray(rowCount)
@@ -256,6 +275,29 @@ internal fun markdownTableColumnWidths(minWidths: IntArray, maxWidths: IntArray,
                 leftover--
             }
         }
+    }
+    return widths
+}
+
+/**
+ * Column widths of a table that must fit [availableWidth] (the share image): the automatic layout
+ * of [markdownTableColumnWidths] while the columns' min-content widths fit; past that, the width
+ * shared out equally (web share capture `table-layout: fixed; width: 100%`), each column's words
+ * breaking where they must. The result never exceeds [availableWidth].
+ */
+internal fun markdownTableFittedColumnWidths(minWidths: IntArray, maxWidths: IntArray, availableWidth: Int): IntArray {
+    val minSum = minWidths.fold(0L) { sum, width -> sum + width.coerceAtLeast(0) }
+    if (minSum <= availableWidth) return markdownTableColumnWidths(minWidths, maxWidths, availableWidth)
+    val count = minWidths.size
+    if (count == 0) return IntArray(0)
+    val share = availableWidth / count
+    val widths = IntArray(count) { share }
+    var leftover = availableWidth - share * count
+    var column = 0
+    while (leftover > 0) {
+        widths[column]++
+        leftover--
+        column++
     }
     return widths
 }
