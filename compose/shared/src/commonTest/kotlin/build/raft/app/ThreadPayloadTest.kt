@@ -7514,6 +7514,49 @@ class ThreadPayloadTest {
         assertEquals(emptyList(), api.calls)
     }
 
+    /**
+     * Hands 10e5cecd: a task the store already holds from a realtime frame, in a channel whose list
+     * is not loaded. The server's answer has the same revision, so the fold ignores it as stale; it
+     * must still open, on any tap, not fail because no loaded list names it.
+     */
+    @Test
+    fun markdownTaskRefOpensATaskAlreadyKnownFromARealtimeFrame() = runBlocking {
+        val store = SharedTasksDataStore()
+        val channel = ChannelId("wg-mobile")
+        store.upsertTaskForCurrentServer(
+            "server-1",
+            TaskSummary(
+                id = TaskId("task-16"),
+                title = "Known from a frame",
+                status = TaskStatus.InProgress,
+                taskNumber = 16,
+                channelId = channel,
+                revision = 3,
+                updatedAtLabel = ""
+            )
+        )
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-16","title":"Known from a frame","status":"in_progress","taskNumber":16,""" +
+                        """"channelId":"wg-mobile","revision":3}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+
+        repeat(2) {
+            val resolution =
+                resolveSharedTaskReference(
+                    serverId = ServerId("server-1"),
+                    taskNumber = 16,
+                    currentChannelId = channel,
+                    tasksDataSource = SharedTasksDataSource(api),
+                    tasksDataStore = store,
+                    channelQualified = true
+                )
+            assertEquals("task-16", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.id.value)
+        }
+    }
+
     @Test
     fun markdownTaskNumberOpenUsesLoadedExactChannelStoreWithoutNetwork() = runBlocking {
         val store = SharedTasksDataStore()
