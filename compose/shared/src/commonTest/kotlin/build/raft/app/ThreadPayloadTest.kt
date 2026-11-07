@@ -49,6 +49,8 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.SharedTaskFactFoldOutcome
+import build.raft.app.data.TaskActionResult
 import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.resolveSharedTaskReference
@@ -7517,46 +7519,47 @@ class ThreadPayloadTest {
     }
 
     /**
-     * Hands 10e5cecd: a task the store already holds from a realtime frame, in a channel whose list
-     * is not loaded. The server's answer has the same revision, so the fold ignores it as stale; it
-     * must still open, on any tap, not fail because no loaded list names it.
+     * Hands 10e5cecd: a task the store already holds (a realtime frame), in a channel whose list is
+     * not loaded. The server's answer at that revision folds as stale, or as a conflict if the copies
+     * differ; either way the task exists and opens on the answer, on every tap.
      */
     @Test
-    fun markdownTaskRefOpensATaskAlreadyKnownFromARealtimeFrame() = runBlocking {
-        val store = SharedTasksDataStore()
+    fun markdownTaskRefOpensATaskTheStoreAlreadyHolds() = runBlocking {
         val channel = ChannelId("wg-mobile")
-        store.upsertTaskForCurrentServer(
-            "server-1",
-            TaskSummary(
-                id = TaskId("task-16"),
-                title = "Known from a frame",
-                status = TaskStatus.InProgress,
-                taskNumber = 16,
-                channelId = channel,
-                revision = 3,
-                updatedAtLabel = ""
-            )
-        )
         val api =
             FakeMarkdownTaskNumberApi(
                 channelTaskBody =
-                    """{"task":{"id":"task-16","title":"Known from a frame","status":"in_progress","taskNumber":16,""" +
-                        """"channelId":"wg-mobile","revision":3}}""",
+                    """{"task":{"id":"task-16","title":"From the server","status":"in_progress","taskNumber":16,""" +
+                        """"channelId":"wg-mobile","messageId":"host","revision":3}}""",
                 serverTasksBody = """{"tasks":[]}"""
             )
+        val source = SharedTasksDataSource(api)
+        val answer =
+            assertIs<DataResult.Content<TaskActionResult>>(
+                source.loadChannelTaskByNumber(ServerId("server-1"), channel, 16, DataRequestPriority.Foreground)
+            ).data.task
 
-        repeat(2) {
-            val resolution =
-                resolveSharedTaskReference(
-                    serverId = ServerId("server-1"),
-                    taskNumber = 16,
-                    currentChannelId = channel,
-                    tasksDataSource = SharedTasksDataSource(api),
-                    tasksDataStore = store,
-                    channelQualified = true
-                )
-            assertEquals("task-16", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.id.value)
-        }
+        suspend fun assertOpens(store: SharedTasksDataStore) =
+            repeat(2) {
+                val resolution =
+                    resolveSharedTaskReference(
+                        serverId = ServerId("server-1"),
+                        taskNumber = 16,
+                        currentChannelId = channel,
+                        tasksDataSource = source,
+                        tasksDataStore = store,
+                        channelQualified = true
+                    )
+                assertEquals("From the server", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.title)
+            }
+
+        val sameCopy = SharedTasksDataStore()
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, sameCopy.upsertTaskForCurrentServer("server-1", answer))
+        assertOpens(sameCopy)
+
+        val differentCopy = SharedTasksDataStore()
+        differentCopy.upsertTaskForCurrentServer("server-1", answer.copy(title = "An older wording"))
+        assertOpens(differentCopy)
     }
 
     @Test

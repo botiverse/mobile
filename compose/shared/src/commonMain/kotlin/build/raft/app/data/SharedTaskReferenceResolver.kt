@@ -71,9 +71,10 @@ internal suspend fun resolveSharedTaskReference(
                         currentChannelId = currentChannelId,
                         channelQualified = channelQualified
                     )?.let { return it }
-                    // The store already holds this revision or a newer one (a realtime frame), only
-                    // not in a loaded list: the task exists. A real conflict stays a failure.
-                    if (foldOutcome != SharedTaskFactFoldOutcome.StaleIgnored) return SharedTaskReferenceResolution.Failed
+                    // The store already holds this revision (a realtime frame), only not in a loaded
+                    // list, or its copy conflicts: the server just answered, so the task exists and
+                    // opens on that answer. Null: this store is no longer on this server.
+                    if (foldOutcome == null) return SharedTaskReferenceResolution.Failed
                 }
                 return SharedTaskReferenceResolution.Found(
                     task = task,
