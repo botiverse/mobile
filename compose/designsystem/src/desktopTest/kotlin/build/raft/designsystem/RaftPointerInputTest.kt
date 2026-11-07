@@ -89,6 +89,18 @@ class RaftPointerInputTest {
     }
 
     @Test
+    fun withoutATouchScreenTheInputStaysFine() {
+        RaftPointerInputState.assumeNoTouchScreen()
+        assertEquals(RaftPointerInput.Fine, RaftPointerInputState.current, "fine before any event")
+        RaftPointerInputState.report(PointerType.Touch, PointerEventType.Release)
+        assertEquals(RaftPointerInput.Fine, RaftPointerInputState.current, "a click that arrives as a touch")
+        RaftPointerInputState.reset()
+        RaftPointerInputState.report(PointerType.Mouse, PointerEventType.Move)
+        RaftPointerInputState.report(PointerType.Touch, PointerEventType.Release)
+        assertEquals(RaftPointerInput.Touch, RaftPointerInputState.current, "a touch screen still flips back")
+    }
+
+    @Test
     fun aPinnedInputWinsOverTheLastOneUsed() {
         RaftPointerInputState.report(PointerType.Mouse, PointerEventType.Move)
         var height: Dp = 0.dp

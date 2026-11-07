@@ -13,8 +13,13 @@ import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
+// Read once: an app's process never moves between an iPad and a Mac.
+private val isiOSAppOnMac: Boolean = NSProcessInfo.processInfo.iOSAppOnMac
+
+internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = isiOSAppOnMac
+
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
-    RaftPullToRefreshStyle.Cupertino
+    raftIosPullToRefreshStyle(onMac = isiOSAppOnMac)
 
 internal actual fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State = Lifecycle.State.RESUMED
 
@@ -36,7 +41,8 @@ internal actual fun raftPlatformSupportsMultiShellHost(): Boolean =
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
 
-internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
+internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean =
+    raftIosComposerEnterSendsByDefault(onMac = isiOSAppOnMac)
 
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
 
