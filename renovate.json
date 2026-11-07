@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "iOS CocoaPods only (artin, #wg-mobile-feedback:e922c493). Gradle stays on Dependabot (.github/dependabot.yml), which does not support CocoaPods.",
+  "extends": [":disableDependencyDashboard"],
+  "enabledManagers": ["cocoapods"],
+  "timezone": "Asia/Shanghai",
+  "schedule": ["before 10am on monday"],
+  "prConcurrentLimit": 3,
+  "labels": ["dependencies", "full-ci"],
+  "commitMessagePrefix": "build(deps):",
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 10am on monday"],
+    "commitMessageAction": "Refresh",
+    "description": "SDWebImage and SDWebImageSVGCoder have no range in the Podfile; they move through Podfile.lock."
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["cocoapods"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Hands is pinned by git tag ios-vX.Y.Z on oranix-io/hands; that repo also tags other clients, so only ios-v* tags count.",
+      "matchPackageNames": ["Hands"],
+      "extractVersion": "^ios-v(?<version>\\d+\\.\\d+\\.\\d+)$"
+    }
+  ]
+}
