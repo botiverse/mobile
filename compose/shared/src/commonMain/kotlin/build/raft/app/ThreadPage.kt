@@ -559,6 +559,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
@@ -30159,6 +30160,7 @@ private fun ThreadMessageCardContent(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
+                        .threadMessageHoverToolbarOverlay()
                         .offset(
                             x = -RaftMessageItemToolbarDefaults.EndInset,
                             // web `top-[-18px]` is measured inside the row's border, below a turn's
@@ -34581,6 +34583,18 @@ internal fun threadMessageHoverToolbarActions(
         )
     return actions.takeUnless { it.isEmpty }
 }
+
+/**
+ * The hover toolbar floats over its row (web `absolute`): it is drawn and takes pointer input at
+ * its full size, but tells the row's Box it has no height, so the row never grows to fit it. A
+ * one-line continuation row is 32dp (4 + 24 + 4) and the toolbar 36dp; counted in the Box, it made
+ * the hovered row 4dp taller and shifted every row above it in the bottom-anchored list.
+ */
+private fun Modifier.threadMessageHoverToolbarOverlay(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+        layout(placeable.width, 0) { placeable.place(0, 0) }
+    }
 
 /** Between a hover toolbar button and the menu or reactions it opens (web: 4px). */
 internal val ThreadMessageHoverToolbarPopupGap = 4.dp
