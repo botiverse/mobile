@@ -4,6 +4,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.authSessionFixture
+import build.raft.app.data.sharedReferenceFailure
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.markdown.RaftMarkdownMessageRef
@@ -18,6 +19,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -119,6 +121,105 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals(ThreadChannelId, payload.streamChannelId)
         assertEquals(FocusedMessageId, payload.focusedMessageId)
         assertEquals(emptyList(), payload.messages)
+    }
+
+    @Test
+    fun secondTapOnAFetchedThreadRefOpensLocallyWithoutFetchingAgain() = runBlocking {
+        // Device log 1.21.0: the same `#ch:short` tapped twice fetched messages/context twice.
+        // Two pages (two data sources) share the process-wide payload store, as in the app.
+        val payloadStore = SharedThreadPayloadStore()
+        val (firstPage, repository) = threadRefDataSource(payloadStore = payloadStore)
+        val (secondPage, _) = threadRefDataSource(payloadStore = payloadStore, repository = repository)
+        val currentPayload = RaftThreadScreenPayload(status = "content", canSend = false)
+
+        listOf(firstPage, firstPage, secondPage).forEach { page ->
+            val provenance = requireNotNull(page.captureReplyCacheProducerContext()).provenance
+            val payload =
+                assertIs<DataResult.Content<RaftThreadScreenPayload>>(
+                    page.markdownThreadRefLaunchPayload(
+                        provenance = provenance,
+                        currentPayload = currentPayload,
+                        channelLabel = "artin",
+                        threadShortId = ShortId,
+                        requiredParentKind = ConversationKind.DirectMessage
+                    )
+                ).data
+            assertEquals(ThreadChannelId, payload.streamChannelId)
+            assertEquals(ParentMessageId, payload.parentMessageId)
+        }
+
+        assertEquals(1, repository.parentRequests.size, "only the first tap may fetch messages/context")
+    }
+
+    @Test
+    fun threadRefKnownFromTheMessageStoreOpensWithoutFetching() = runBlocking {
+        // The parent is a message the device already loaded (another page's timeline).
+        val messageStore = SharedThreadMessageStore()
+        val (dataSource, repository) = threadRefDataSource(messageStore = messageStore)
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        messageStore.upsertScoped(
+            scopeId = requireNotNull(provenance.messageStoreScopeId),
+            channelId = ChannelId(DmChannelId),
+            message =
+                build.raft.app.model.Message(
+                    id = MessageId(TopLevelMessageId),
+                    threadId = ThreadId(DmChannelId),
+                    channelId = ChannelId(DmChannelId),
+                    threadChannelId = ChannelId(ThreadChannelId),
+                    author = dmPeer(),
+                    timestampLabel = "",
+                    body = "parent"
+                )
+        )
+
+        val payload =
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
+                dataSource.markdownThreadRefLaunchPayload(
+                    provenance = provenance,
+                    currentPayload = RaftThreadScreenPayload(status = "content", canSend = false),
+                    channelLabel = "artin",
+                    threadShortId = ShortId,
+                    requiredParentKind = ConversationKind.DirectMessage,
+                    actionId = "message-a:thread"
+                )
+            ).data
+
+        assertEquals(0, repository.parentRequests.size, "a local hit must not call messages/context")
+        assertEquals(TopLevelMessageId, payload.parentMessageId)
+        assertEquals(ThreadChannelId, payload.streamChannelId)
+        assertEquals(null, dataSource.referenceResolver.fetching.value)
+    }
+
+    @Test
+    fun threadRefMissIsTheResolverFetchPhaseAndAFailureClearsIt() = runBlocking {
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val (dataSource, repository) =
+            threadRefDataSource(
+                parentResult = DataResult.NoPermission(build.raft.app.data.PermissionBlocker(code = "channel_forbidden"))
+            )
+        repository.releaseParent = release
+        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+
+        val pending =
+            async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                dataSource.markdownThreadRefLaunchPayload(
+                    provenance = provenance,
+                    currentPayload = RaftThreadScreenPayload(status = "content", canSend = false),
+                    channelLabel = "artin",
+                    threadShortId = ShortId,
+                    requiredParentKind = ConversationKind.DirectMessage,
+                    actionId = "message-a:thread"
+                )
+            }
+        repository.parentStarted.await()
+        assertEquals("message-a:thread", dataSource.referenceResolver.fetching.value?.actionId)
+
+        release.complete(Unit)
+        val failed = assertIs<DataResult.NoPermission>(pending.await())
+
+        assertEquals(build.raft.app.data.SharedReferenceFailure.NoAccess, failed.sharedReferenceFailure())
+        assertEquals(null, dataSource.referenceResolver.fetching.value, "loading must end with the failed fetch")
+        assertEquals(1, repository.parentRequests.size)
     }
 
     @Test
@@ -752,6 +853,29 @@ class SharedMarkdownDirectMessageThreadRefTest {
             homeSnapshotProvider = { home },
             cacheEnvironmentIdProvider = { EnvironmentId },
             replyCacheIdentityAuthority = replyThreadAccessIdentityAuthority(sessionStore, EnvironmentId)
+        ) to repository
+    }
+
+    private fun threadRefDataSource(
+        parentResult: DataResult<build.raft.app.data.ThreadSnapshot> = DataResult.Content(dmMessageContextSnapshot()),
+        repository: ReplyThreadAccessConversationRepositoryRecorder =
+            ReplyThreadAccessConversationRepositoryRecorder(
+                replyResult = DataResult.Content(replyThreadAccessSnapshot()),
+                parentResult = parentResult
+            ),
+        messageStore: SharedThreadMessageStore? = null,
+        payloadStore: SharedThreadPayloadStore? = null
+    ): Pair<SharedThreadDataSource, ReplyThreadAccessConversationRepositoryRecorder> {
+        val sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "viewer"))
+        return SharedThreadDataSource(
+            networkApi = SharedThreadStoreTest.FakeThreadApi(),
+            sessionStore = sessionStore,
+            conversationRepository = repository,
+            homeSnapshotProvider = { dmHomeSnapshot() },
+            messageStore = messageStore,
+            cacheEnvironmentIdProvider = { EnvironmentId },
+            replyCacheIdentityAuthority = replyThreadAccessIdentityAuthority(sessionStore, EnvironmentId),
+            payloadStore = payloadStore
         ) to repository
     }
 

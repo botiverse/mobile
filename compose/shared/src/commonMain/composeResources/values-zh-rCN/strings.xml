@@ -563,6 +563,9 @@
     <string name="thread_error_open_target">无法打开 %1$s</string>
     <string name="thread_error_open_thread_ref">无法打开消息列，它可能不可用或已被删除。</string>
     <string name="thread_error_open_task_number">无法打开 #%1$s</string>
+    <string name="thread_error_ref_not_found">找不到 %1$s，它可能已被删除。</string>
+    <string name="thread_error_ref_no_access">你没有 %1$s 的访问权限。</string>
+    <string name="thread_error_ref_other_server">%1$s 不在当前服务器中。</string>
     <string name="thread_error_attachment_picker">附件选择器不可用</string>
     <string name="thread_error_file_source">文件来源不可用</string>
     <string name="thread_feedback_copied">已复制</string>

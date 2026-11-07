@@ -247,6 +247,9 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SharedReferenceFailure
+import build.raft.app.data.SharedReferenceResolver
+import build.raft.app.data.sharedReferenceFailure
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
@@ -4247,7 +4250,10 @@ internal suspend fun openMarkdownTaskNumberPayload(
     taskV2Enabled: Boolean = false,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     /** `#proj:#7` / `dm:@peer:#7`: only a task of [currentTaskChannelId] matches. */
-    channelQualified: Boolean = false
+    channelQualified: Boolean = false,
+    /** Its network lookup runs in this resolver's shared fetch phase (the chip spinner). */
+    referenceResolver: SharedReferenceResolver? = null,
+    actionId: String? = null
 ): MarkdownTaskNumberOpenResult {
     return when (
         val resolution =
@@ -4257,7 +4263,9 @@ internal suspend fun openMarkdownTaskNumberPayload(
                 currentChannelId = currentTaskChannelId,
                 tasksDataSource = tasksDataSource,
                 tasksDataStore = tasksDataStore,
-                channelQualified = channelQualified
+                channelQualified = channelQualified,
+                referenceResolver = referenceResolver,
+                actionId = actionId
             )
     ) {
         is SharedTaskReferenceResolution.Found -> {
@@ -8017,9 +8025,11 @@ private fun SharedThreadRouteContentContent(
     val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow() }
     val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    // Reference-chip opens are single-flight in their store: busy chip, ignored repeat taps.
+    // Reference-chip opens are single-flight in their store (ignored repeat taps). The busy chip is
+    // the reference resolver's fetch phase: a local hit never shows it, a fetch shows it throughout.
     val markdownRefOpenStore = remember(threadInstanceKey) { ThreadMarkdownRefOpenStore(coroutineScope) }
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
+    val markdownReferenceFetch by dataSource.referenceResolver.fetching.collectAsState()
     fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? =
         markdownRefOpenStore.begin(actionId)
     fun finishMarkdownReferencePending(token: ThreadMarkdownReferencePendingToken?) {
@@ -8250,6 +8260,12 @@ private fun SharedThreadRouteContentContent(
         stringResource(Res.string.thread_error_open_target, ThreadLocalizedFeedbackPlaceholder)
     val unableToOpenTaskNumberTemplate =
         stringResource(Res.string.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
+    val referenceNotFoundTemplate =
+        stringResource(Res.string.thread_error_ref_not_found, ThreadLocalizedFeedbackPlaceholder)
+    val referenceNoAccessTemplate =
+        stringResource(Res.string.thread_error_ref_no_access, ThreadLocalizedFeedbackPlaceholder)
+    val referenceOtherServerTemplate =
+        stringResource(Res.string.thread_error_ref_other_server, ThreadLocalizedFeedbackPlaceholder)
     val genericThreadErrorLabel = stringResource(Res.string.common_error)
     val pendingMentionActionBatchStrings =
         PendingMentionActionBatchStrings(
@@ -8370,6 +8386,15 @@ private fun SharedThreadRouteContentContent(
         unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
         unableToOpenTaskNumberTemplate.replace(ThreadLocalizedFeedbackPlaceholder, taskNumber.toString())
+    /** The toast of a reference that did not open, naming why ([fallback] when no reason applies). */
+    fun localizedReferenceFailure(failure: SharedReferenceFailure, target: String, fallback: String): String =
+        when (failure) {
+            SharedReferenceFailure.NotFound -> referenceNotFoundTemplate
+            SharedReferenceFailure.NoAccess -> referenceNoAccessTemplate
+            SharedReferenceFailure.OtherServer -> referenceOtherServerTemplate
+            SharedReferenceFailure.AuthRequired,
+            SharedReferenceFailure.Unavailable -> null
+        }?.replace(ThreadLocalizedFeedbackPlaceholder, target) ?: fallback
     fun localizedForwardModeLabel(mode: String?): String =
         if (mode?.trim()?.lowercase() == ThreadForwardSelectionMode.Individual.wireValue) {
             individualForwardModeLabel
@@ -13273,7 +13298,8 @@ private fun SharedThreadRouteContentContent(
             },
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-            markdownReferencePendingActionId = markdownReferencePending.busyActionId,
+            markdownReferencePendingActionId =
+                markdownReferencePending.busyActionId(markdownReferenceFetch?.actionId),
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
@@ -14144,7 +14170,9 @@ private fun SharedThreadRouteContentContent(
                                     tasksDataStore = tasksDataStore,
                                     taskV2Enabled = taskV2Enabled,
                                     conversationIdentityProvider = conversationIdentityProvider,
-                                    channelQualified = qualifiedTaskRef != null
+                                    channelQualified = qualifiedTaskRef != null,
+                                    referenceResolver = dataSource.referenceResolver,
+                                    actionId = markdownActionId
                                 )
                             val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
                             if (result == null) {
@@ -14348,9 +14376,16 @@ private fun SharedThreadRouteContentContent(
                     val openMessageRef = action == "openMarkdownMessageRef"
                     val unableToOpenRefLabel =
                         if (openMessageRef) localizedUnableToOpenTarget(itemId.take(32)) else unableToOpenThreadRefLabel
+                    val refToastTarget =
+                        if (openMessageRef || tab.isNullOrBlank()) {
+                            itemId.take(32)
+                        } else {
+                            "#${itemId.removePrefix("#").take(31)}:${tab.take(12)}"
+                        }
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    // How long the chip waits for its target (a local hit, or messages/context).
+                    // How long the open waits for its target: a local hit opens with no spinner;
+                    // only a miss fetches messages/context, and the chip is busy for that fetch alone.
                     val resolveStartedAt = TimeSource.Monotonic.markNow()
                     var resolveOutcome = "cancelled"
                     bridge.log("thread_markdown_ref_resolve result=start label=${itemId.take(32)}")
@@ -14372,7 +14407,8 @@ private fun SharedThreadRouteContentContent(
                                                 dataSource.markdownMessageRefLaunchPayload(
                                                     provenance = provenance,
                                                     currentPayload = renderedThread,
-                                                    ref = ref
+                                                    ref = ref,
+                                                    actionId = markdownActionId
                                                 )
                                             }
                                             ?: DataResult.Empty(EmptyReason.NoMessages)
@@ -14387,7 +14423,8 @@ private fun SharedThreadRouteContentContent(
                                                     ConversationKind.DirectMessage
                                                 } else {
                                                     null
-                                                }
+                                                },
+                                            actionId = markdownActionId
                                         )
                                     }
                             ) {
@@ -14424,9 +14461,11 @@ private fun SharedThreadRouteContentContent(
                                         onOpenThreadPayload(result.data)
                                     }
                                 }
+                                // A failure never navigates: the toast names why and the page stays.
                                 is DataResult.Empty -> {
-                                    resolveOutcome = "empty"
-                                    bridge.errorToast(unableToOpenRefLabel)
+                                    val failure = result.sharedReferenceFailure()
+                                    resolveOutcome = if (failure == SharedReferenceFailure.OtherServer) "other_server" else "not_found"
+                                    bridge.errorToast(localizedReferenceFailure(failure, refToastTarget, unableToOpenRefLabel))
                                 }
                                 is DataResult.Error -> {
                                     resolveOutcome = "error"
@@ -14434,7 +14473,15 @@ private fun SharedThreadRouteContentContent(
                                 }
                                 is DataResult.NoPermission -> {
                                     resolveOutcome = "no_permission"
-                                    routeAuthRequired(result)
+                                    if (!routeAuthRequired(result)) {
+                                        bridge.errorToast(
+                                            localizedReferenceFailure(
+                                                result.sharedReferenceFailure(),
+                                                refToastTarget,
+                                                unableToOpenRefLabel
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         } finally {

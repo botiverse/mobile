@@ -563,6 +563,9 @@
     <string name="thread_error_open_target">%1$s을(를) 열 수 없어요</string>
     <string name="thread_error_open_thread_ref">스레드를 열 수 없어요. 사용할 수 없거나 삭제되었을 수 있어요.</string>
     <string name="thread_error_open_task_number">#%1$s을(를) 열 수 없어요</string>
+    <string name="thread_error_ref_not_found">%1$s을(를) 찾을 수 없어요. 삭제되었을 수 있어요.</string>
+    <string name="thread_error_ref_no_access">%1$s에 접근할 권한이 없어요.</string>
+    <string name="thread_error_ref_other_server">%1$s은(는) 이 서버에 없어요.</string>
     <string name="thread_error_attachment_picker">첨부 파일 선택기를 사용할 수 없어요</string>
     <string name="thread_error_file_source">파일 출처를 사용할 수 없어요</string>
     <string name="thread_feedback_copied">복사됨</string>
