@@ -21,8 +21,8 @@ class RaftIosAppOnMacTest {
 
     @Test
     fun enterSendsByDefaultOnAMac() {
-        assertTrue(raftIosComposerEnterSendsByDefault(onMac = true))
-        assertFalse(raftIosComposerEnterSendsByDefault(onMac = false))
+        assertTrue(raftIosComposerEnterSendsByDefault(onMac = true, hardwareKeyboard = false))
+        assertFalse(raftIosComposerEnterSendsByDefault(onMac = false, hardwareKeyboard = false))
     }
 
     @Test

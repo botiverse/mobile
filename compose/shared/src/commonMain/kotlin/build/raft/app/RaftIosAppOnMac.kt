@@ -15,8 +15,12 @@ import build.raft.app.components.RaftPullToRefreshStyle
 internal fun raftIosPullToRefreshStyle(onMac: Boolean): RaftPullToRefreshStyle =
     if (onMac) RaftPullToRefreshStyle.None else RaftPullToRefreshStyle.Cupertino
 
-/** The "Enter sends" default: on with a Mac's keyboard, like desktop. */
-internal fun raftIosComposerEnterSendsByDefault(onMac: Boolean): Boolean = onMac
+/**
+ * The "Enter sends" default: on with a Mac's keyboard, like desktop, and on an iPad or iPhone while
+ * a hardware keyboard is connected (RaftIosHardwareKeyboard.kt). A choice saved in Settings wins.
+ */
+internal fun raftIosComposerEnterSendsByDefault(onMac: Boolean, hardwareKeyboard: Boolean): Boolean =
+    onMac || hardwareKeyboard
 
 /**
  * The host's status-bar-hidden flag as the top inset reads it. A Mac has no status bar: a hidden

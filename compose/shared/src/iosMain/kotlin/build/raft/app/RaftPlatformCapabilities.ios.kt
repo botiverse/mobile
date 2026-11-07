@@ -45,8 +45,14 @@ internal actual fun raftPlatformSupportsMultiShellHost(): Boolean =
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
 
+// Read at every call, not once: the keyboard state is snapshot state, so a page reading the
+// preference (ThreadPage reads it in composition) follows a keyboard being attached or removed.
+// LocalPreferences only falls back to this while the user has not chosen in Settings.
 internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean =
-    raftIosComposerEnterSendsByDefault(onMac = isiOSAppOnMac)
+    raftIosComposerEnterSendsByDefault(
+        onMac = isiOSAppOnMac,
+        hardwareKeyboard = RaftIosHardwareKeyboardState.connected,
+    )
 
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
 

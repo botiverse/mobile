@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -44,6 +46,7 @@ import build.raft.designsystem.theme.RaftTheme
  * - iOS: UIRefreshControl feel driven by [RaftPullToRefreshController]: the list follows the finger
  *   with UIScrollView's rubber band and the design system's spin loader sits in the gap
  *   ([RaftCupertinoRefreshIndicator]; metrics on [RaftCupertinoTrigger] / [RaftCupertinoHold]).
+ *   A wheel or trackpad scroll on an iPad neither pulls nor over-scrolls the top, as on desktop.
  *
  * [isRefreshing] is the caller's store signal; [enabled] gates the gesture and the indicator. Both
  * gestures listen to user-input nested scroll only, so programmatic scrolls and flings pass untouched.
@@ -197,6 +200,18 @@ private fun RaftCupertinoPullToRefreshBox(
     Box(
         modifier
             .onSizeChanged { controller.viewportPx = it.height.toFloat() }
+            // Watches (never consumes) the pointer events on their way to the list, so a wheel or
+            // trackpad scroll does not pull (raftPullToRefreshPointerScrolling).
+            .pointerInput(controller) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val type = event.changes.firstOrNull()?.type ?: continue
+                        controller.pointerScrolling =
+                            raftPullToRefreshPointerScrolling(controller.pointerScrolling, event.type, type)
+                    }
+                }
+            }
             .nestedScroll(controller.nestedScrollConnection)
             .clipToBounds(),
         contentAlignment = contentAlignment,
