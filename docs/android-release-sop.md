@@ -542,9 +542,14 @@ After activation and public endpoint verification:
    and intentional newer product work. Never resolve by replacing `main` with
    the older release tree.
 4. Run the normal required hosted gates on the merge PR. Merge only after the
-   PR is reviewed, green, and cleanly mergeable.
-5. Verify the released source commit is an ancestor of `origin/main`, then
-   close release-only tasks and Hands feedback using the shipped evidence.
+   PR is reviewed, green, and cleanly mergeable. The repository allows only
+   squash and rebase merges, so squash-merge it: the shipped commit itself does
+   not become an ancestor of `main`; the `vX.Y.Z` tag stays the record of
+   exactly what shipped (artin, 2026-11-07).
+5. Verify the release branch's content is in `main`: comparing `vX.Y.Z` with
+   `origin/main` shows no file the release changed that `main` lacks (only
+   newer `main` work). Then close release-only tasks and Hands feedback using
+   the shipped evidence.
 6. Delete `release-X.Y.Z` only after the merge-back is verified and no release
    audit or rollback operation still needs the branch.
 
