@@ -120,6 +120,24 @@ class MainActivityLaunchTest {
         )
     }
 
+    /**
+     * The web's social sign-in callback (`/?auth_callback=social&code=…`) is no longer completed in
+     * the app: without the browser's binding cookie the server refuses it (`social_completion_binding`,
+     * Tenny 2026-11-07). The link goes back to the browser, where the sign-in started.
+     */
+    @Test
+    fun webSocialSignInCallbackGoesBackToTheBrowser() {
+        assertTrue(
+            shouldOpenUnsupportedRaftWebLinkExternally(
+                action = "android.intent.action.VIEW",
+                dataScheme = "https",
+                dataHost = "app.raft.build",
+                dataPath = "/",
+                verifyToken = null
+            )
+        )
+    }
+
     @Test
     fun exactEmailVerificationLinkIsConsumedBeforeGenericBrowserFallback() {
         assertEquals(
