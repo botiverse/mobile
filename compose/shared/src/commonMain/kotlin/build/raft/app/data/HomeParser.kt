@@ -311,19 +311,8 @@ fun parseRaftHome(
     val serverUnreadCounts =
         payload.serverUnreadSummary
             .associate { it.serverId to it.unreadCount.coerceAtLeast(0) }
-    val serverActivityUnreadCounts =
-        payload.serverUnreadSummary
-            .mapNotNull { summary ->
-                val serverId = summary.serverId.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-                summary.knownActivityUnreadCount?.let { serverId to it }
-            }
-            .toMap()
-    val serverPushMutedByServer =
-        payload.serverUnreadSummary
-            .mapNotNull { summary ->
-                summary.serverId.trim().takeIf { it.isNotEmpty() }?.let { it to summary.serverPushMuted }
-            }
-            .toMap()
+    val serverActivityUnreadCounts = payload.serverUnreadSummary.serverActivityUnreadCounts()
+    val serverPushMutedByServer = payload.serverUnreadSummary.serverPushMutedByServer()
     val unreadTotal = serverUnreadTotal ?: channelUnreadTotal
     val unreadSource =
         if (serverUnreadTotal != null) AppBadgeSource.SERVER_UNREAD_SUMMARY
@@ -658,3 +647,16 @@ private fun List<HomeDirectMessageRow>.dedupeHomeDirectMessages(): List<HomeDire
     }
     return deduped.values.toList()
 }
+
+/** Every server's known Activity unread from `servers/unread-summary` (launcher badge). */
+internal fun List<ServerUnreadSummaryDto>.serverActivityUnreadCounts(): Map<String, Long> =
+    mapNotNull { summary ->
+        val serverId = summary.serverId.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        summary.knownActivityUnreadCount?.let { serverId to it }
+    }.toMap()
+
+/** Every server's push mute from `servers/unread-summary`. */
+internal fun List<ServerUnreadSummaryDto>.serverPushMutedByServer(): Map<String, Boolean> =
+    mapNotNull { summary ->
+        summary.serverId.trim().takeIf { it.isNotEmpty() }?.let { it to summary.serverPushMuted }
+    }.toMap()

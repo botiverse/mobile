@@ -78,6 +78,12 @@ class SharedHomeDataSource(
         priority: DataRequestPriority
     ): DataResult<ChannelUnreadSummary> = typedApi.channelUnreadSummary(serverId, priority)
 
+    /** `servers/unread-summary` alone ([RaftHomeApiClient.serverUnreadSummary]). */
+    suspend fun serverUnreadSummary(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<List<ServerUnreadSummaryDto>> = typedApi.serverUnreadSummary(serverId, priority)
+
     suspend fun currentSessionSnapshot(): DataResult<build.raft.app.model.SessionSnapshot> {
         val session = sessionStore.readSession()
             ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
@@ -766,6 +772,33 @@ internal class RaftHomeApiClient(
                     listOfNotNull(unreadCountsStale.retryAfterMillis, serverUnreadSummaryStale.retryAfterMillis).maxOrNull()
             )
         )
+    }
+
+    /**
+     * `servers/unread-summary` alone: every server's Activity unread for the launcher badge while Home
+     * is hidden (feedback fb-52cc0499). A remembered (stale) answer comes back as an error so the
+     * caller keeps the counts it has.
+     */
+    suspend fun serverUnreadSummary(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<List<ServerUnreadSummaryDto>> {
+        val staleness = HomeSectionStaleness()
+        val result =
+            requestHomeSection(
+                category = "server_unread_summary",
+                contractCode = "home_server_unread_summary_contract_mismatch",
+                serializer = ListSerializer(ServerUnreadSummaryDto.serializer()),
+                errorTextDecoder = HomeNetworkResponse::homeServerUnreadSummaryRouteErrorTextOrNull,
+                staleness = staleness
+            ) {
+                transport.serverUnreadSummary(serverId, priority)
+            }
+        return if (result is DataResult.Content && staleness.stale) {
+            DataResult.Error(ScreenError(code = "server_unread_summary_stale", retryable = true))
+        } else {
+            result
+        }
     }
 
     /**

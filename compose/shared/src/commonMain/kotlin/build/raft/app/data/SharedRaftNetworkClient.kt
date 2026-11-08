@@ -63,6 +63,8 @@ internal class SharedRaftNetworkClient(
     // A 403 `account_deletion_pending` on any request opens the web deletion page once (app shell).
     private val accountDeletionPendingSignal: RaftAccountDeletionPendingSignal = RaftAccountDeletionPendingSignal.Process,
     private val ssoRequiredSignal: RaftSsoRequiredSignal = RaftSsoRequiredSignal.Process,
+    // Identical GETs started together share one request (fb-52cc0499); shared like the reachability gates.
+    private val inFlightGets: RaftInFlightGetDedupe = RaftInFlightGetDedupe(),
 ) : RaftNetworkClient, AuthorityBoundRaftNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): RaftNetworkAuthMiddleware =
         RaftNetworkAuthMiddleware(
@@ -162,6 +164,39 @@ internal class SharedRaftNetworkClient(
         bodyText: String?,
         expectedAuthority: RaftExpectedAuthBinding?,
         extraHeaders: Map<String, String> = emptyMap()
+    ): HomeNetworkResponse {
+        val send: suspend () -> HomeNetworkResponse = {
+            sendRequest(priority, path, method, query, serverIdOverride, bodyText, expectedAuthority, extraHeaders)
+        }
+        val session = sessionStore.readSession()
+        val baseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
+        if (!method.equals("GET", ignoreCase = true) || bodyText != null) {
+            // A write closes this account's GETs already in flight to later joiners (read-after-write).
+            return inFlightGets.write(RaftInFlightGetDedupe.WriteScope(baseUrl, session?.user?.id), send)
+        }
+        val key =
+            RaftInFlightGetDedupe.Key(
+                baseUrl = baseUrl,
+                path = path,
+                query = query,
+                serverIdOverride = serverIdOverride?.value,
+                headers = extraHeaders.entries.map { it.key to it.value }.sortedBy { it.first },
+                authority = expectedAuthority,
+                sessionUserId = session?.user?.id,
+                sessionServerId = session?.currentServerId,
+            )
+        return inFlightGets.run(key, send)
+    }
+
+    private suspend fun sendRequest(
+        priority: DataRequestPriority,
+        path: String,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?,
+        expectedAuthority: RaftExpectedAuthBinding?,
+        extraHeaders: Map<String, String>
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val category = path.networkDiagnosticsCategory()

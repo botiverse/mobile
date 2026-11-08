@@ -2499,6 +2499,7 @@ internal class RaftSharedStoreProvider private constructor(
                 onSummaryFact = activityUnreadSummaryStore::submitFact,
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),
+                hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()
@@ -3004,6 +3005,7 @@ internal class RaftSharedStoreProvider private constructor(
             val networkRequestScheduler = RaftRequestScheduler()
             val networkExecutor = createPlatformRaftHttpExecutor(networkWarningLogger)
             val networkReachabilityGates = RaftHostReachabilityGates()
+            val networkInFlightGets = RaftInFlightGetDedupe()
             val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { session, caller ->
                 authLossFunnel.report(
                     AuthLossSignal(
@@ -3028,7 +3030,8 @@ internal class RaftSharedStoreProvider private constructor(
                     requestScheduler = networkRequestScheduler,
                     platformFileResolver = platformFileResolver,
                     executor = networkExecutor,
-                    reachabilityGates = networkReachabilityGates
+                    reachabilityGates = networkReachabilityGates,
+                    inFlightGets = networkInFlightGets
                 )
             }
             val ownerScopedNetworkClientFactory: (RaftAuthSessionStore, String) -> RaftNetworkClient =
@@ -3047,7 +3050,8 @@ internal class RaftSharedStoreProvider private constructor(
                         requestScheduler = networkRequestScheduler,
                         platformFileResolver = platformFileResolver,
                         executor = networkExecutor,
-                        reachabilityGates = networkReachabilityGates
+                        reachabilityGates = networkReachabilityGates,
+                        inFlightGets = networkInFlightGets
                     )
                 }
             val networkClient = scopedNetworkClientFactory(authStore)
@@ -3128,6 +3132,7 @@ internal class RaftSharedStoreProvider private constructor(
                     ownerFlowResolver = resolveActivityUnreadOwnerFlow,
                     projectionCache = processActivityUnreadProjectionCache,
                     scope = CoroutineScope(SupervisorJob()),
+                    realtimeMinIntervalMillis = ActivityUnreadRealtimeMinIntervalMillis,
                     logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread")
                 ).also { store -> store.followAppLifecycle() }
             // ONE sink instance shared by the legacy and every scoped realtime

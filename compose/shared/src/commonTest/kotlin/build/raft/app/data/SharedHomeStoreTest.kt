@@ -5052,6 +5052,13 @@ class SharedHomeStoreTest {
         assertNull(
             (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         )
+        // Let the Home load finish before the Pin (CI flake, PR #4427). With Unconfined, the load
+        // resumes on the coroutine timer thread when the 300ms cap expires and keeps writing state
+        // after it publishes (loadNotifications' `_state.value.copy(...)`); a Pin dispatched from
+        // this thread at the same moment could be lost to that read-modify-write. Production runs
+        // both on the serial store dispatcher. The late first-paint merge is a separate coroutine
+        // still waiting on firstPaintGate, so the case under test is unchanged.
+        startJob.join()
 
         // The Pin lands while the deferred is still in flight: ensureSidebarOrderLoaded
         // finds no cached order, fetches the empty base under sidebarOrderMutex, then
@@ -5066,7 +5073,6 @@ class SharedHomeStoreTest {
         // fetched before the mutation). It must be dropped inside sidebarOrderMutex
         // because sidebarPinChangeVersion changed — not clobber the pin.
         firstPaintGate.complete(DataResult.Content(SettingsServerSidebarOrderSnapshot(pinnedChannelIds = emptyList())))
-        startJob.join()
         awaitCondition { loadCalls >= 2 }
         // Give the spawned late-merge coroutine a beat to run under the mutex, then
         // assert the pin survived and the stale result was discarded.
