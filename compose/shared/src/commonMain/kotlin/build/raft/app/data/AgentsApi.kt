@@ -643,7 +643,9 @@ internal data class AgentSummary(
     val lastRuntimeErrorClass: String? = null,
     val lastRuntimeErrorReason: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
-    val toolStuck: AgentToolStuck? = null
+    val toolStuck: AgentToolStuck? = null,
+    /** `modelLimits.defaultsReported`: true only when the server says so; false, null or absent is false. */
+    val modelLimitsDefaultsReported: Boolean = false
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -683,7 +685,8 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         lastRuntimeErrorMessage = lastRuntimeErrorMessage,
         lastRuntimeErrorClass = lastRuntimeErrorClass,
         lastRuntimeErrorReason = lastRuntimeErrorReason,
-        toolStuck = toolStuck
+        toolStuck = toolStuck,
+        modelLimitsDefaultsReported = modelLimitsDefaultsReported
     )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
@@ -905,6 +908,17 @@ private data class AgentWireDto(
     val lastRuntimeError: AgentLastRuntimeErrorWireDto? = null,
     /** Shared `ToolStuckActivityDiagnostic`, served with any activity while the agent is stuck. */
     val toolStuck: ToolStuckDto? = null,
+    /**
+     * botiverse/slock #13492 (`routes/agents.ts`): `{ defaultsReported }` on the detail, the list and the
+     * PATCH answer of a Built-in custom gateway agent; absent elsewhere and from older servers, null in a
+     * PATCH answer with nothing to report.
+     */
+    val modelLimits: AgentModelLimitsWireDto? = null,
+)
+
+@Serializable
+private data class AgentModelLimitsWireDto(
+    val defaultsReported: Boolean? = null,
 )
 
 /** The fields of shared `AgentRuntimeErrorState` the client reads. */
@@ -972,7 +986,8 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastRuntimeErrorMessage = lastRuntimeError?.message?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorClass = lastRuntimeError?.errorClass?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorReason = lastRuntimeError?.errorReason?.trim()?.takeIf { it.isNotEmpty() },
-        toolStuck = toolStuck.toAgentToolStuck()
+        toolStuck = toolStuck.toAgentToolStuck(),
+        modelLimitsDefaultsReported = modelLimits?.defaultsReported == true
     )
 }
 

@@ -3430,6 +3430,8 @@
     <string name="joint_create_failed">Não foi possível criar o canal compartilhado</string>
     <string name="agent_stop_turn">Parar turno atual</string>
     <string name="agent_status_tool_stuck">Travado em %1$s · sem saída há %2$d min</string>
+    <string name="agent_model_limits_defaults_warning_title">Este modelo pode estar usando os limites padrão do Raft</string>
+    <string name="agent_model_limits_defaults_warning_body">O Computer informou que pelo menos um limite deste modelo não estava disponível em uma entrada correspondente do catálogo, então o Raft o preencheu com um valor padrão. O Raft ainda não consegue confirmar os limites que a sessão atual usa. Confira os limites reais do seu provedor. Este aviso não impede que o agente seja executado.</string>
     <string name="agent_status_tool_stuck_waiting_one">1 mensagem aguardando</string>
     <string name="agent_status_tool_stuck_waiting_other">%1$d mensagens aguardando</string>
     <string name="agent_status_tool_stuck_hint">Um comando iniciado por este agente está há algum tempo sem produzir saída. As novas mensagens vão aguardar até ele terminar ou este turno ser interrompido.</string>

@@ -184,7 +184,12 @@ internal sealed interface SharedAgentDetailIntent {
         val owner: SharedAgentDetailOwner,
         val agentId: MemberId,
         val config: RuntimeConfig,
-        val profileGeneration: Long
+        val profileGeneration: Long,
+        /**
+         * The saved agent's `modelLimits.defaultsReported` from the read-back after the save (the
+         * signal for the new config, never the old one); null leaves the shown value as it is.
+         */
+        val modelLimitsDefaultsReported: Boolean? = null
     ) : SharedAgentDetailIntent
     data class SetAgentActivity(
         val agentId: MemberId,
@@ -353,8 +358,14 @@ internal class SharedAgentDetailStore(
                             config = intent.config,
                             profileGeneration = intent.profileGeneration
                         )
+                    val projected = current.detail.withRuntimeConfigProjection(intent.config)
                     current.copy(
-                        detail = current.detail.withRuntimeConfigProjection(intent.config),
+                        // The read-back's modelLimits signal is shown once; the projection never pins it,
+                        // so a later fresh read (agent:updated) decides again.
+                        detail =
+                            intent.modelLimitsDefaultsReported?.let { reported ->
+                                projected.copy(summary = projected.summary?.copy(modelLimitsDefaultsReported = reported))
+                            } ?: projected,
                         runtimeConfigProjection = projection
                     )
                 } else {

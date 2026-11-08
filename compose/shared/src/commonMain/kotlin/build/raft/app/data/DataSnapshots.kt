@@ -968,7 +968,13 @@ data class AgentDetailSummary(
     val lastRuntimeErrorClass: String? = null,
     val lastRuntimeErrorReason: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
-    val toolStuck: build.raft.app.model.AgentToolStuck? = null
+    val toolStuck: build.raft.app.model.AgentToolStuck? = null,
+    /**
+     * `modelLimits.defaultsReported` (botiverse/slock #13492): the agent's Computer reported that the
+     * current session filled at least one limit of its Built-in custom gateway model with a Raft
+     * default. Only true shows the warning; false, null and an old server's absent field show nothing.
+     */
+    val modelLimitsDefaultsReported: Boolean = false
 )
 
 data class AgentCreatorSummary(

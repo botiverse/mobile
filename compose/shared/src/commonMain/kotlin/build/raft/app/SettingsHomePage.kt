@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.updatedAgentIdOrNull
 import build.raft.app.data.raftDedupeKey
 import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.data.archivedNameCollisionOrNull
@@ -5868,6 +5869,10 @@ private fun RaftAppShellReadyContent(
                     // only the agents, as web re-reads /api/agents.
                     if (event.isAgentProfileUpdate()) {
                         agentProfileRefreshCoalescer.request(serverId)
+                        // An open agent Profile shows `GET /agents/:id`, not the roster: it re-reads too.
+                        event.updatedAgentIdOrNull()?.let { agentId ->
+                            sharedStores.agentUpdatedSignals.publish(serverId, agentId)
+                        }
                     }
                     if (
                         event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers &&

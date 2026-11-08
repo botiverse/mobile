@@ -3433,6 +3433,8 @@
     <string name="joint_create_failed">创建联合频道失败</string>
     <string name="agent_stop_turn">停止当前这一轮</string>
     <string name="agent_status_tool_stuck">卡在 %1$s 上 · %2$d 分钟没有输出</string>
+    <string name="agent_model_limits_defaults_warning_title">这个模型可能在用 Raft 默认上限</string>
+    <string name="agent_model_limits_defaults_warning_body">Computer 回报过，这个模型至少有一项上限没有从匹配的目录配置里取到，由 Raft 用默认值补上。目前还不能确认当前会话实际用的上限，请到服务商那边确认实际上限。这条提示本身不会阻止 Agent 运行。</string>
     <string name="agent_status_tool_stuck_waiting_one">1 条消息在等待</string>
     <string name="agent_status_tool_stuck_waiting_other">%1$d 条消息在等待</string>
     <string name="agent_status_tool_stuck_hint">这个 agent 运行的一个命令已经很久没有输出。新消息会一直等到命令结束，或者停止这一轮。</string>

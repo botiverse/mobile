@@ -63,6 +63,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     runtimeId: String,
     machineRuntimeIds: List<String>,
     activeAgent: Boolean,
+    /** The agent's `modelLimits.defaultsReported` (botiverse/slock #13492). */
+    modelLimitsDefaultsReported: Boolean = false,
     saving: Boolean,
     error: String?,
     errorFieldKeys: Set<String>,
@@ -226,6 +228,16 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                             )
                         }
                     }
+                }
+                // Web: under the runtime fields, only while the draft is still the saved Built-in target.
+                if (
+                    membersAgentModelLimitsWarningInEditor(
+                        defaultsReported = modelLimitsDefaultsReported,
+                        selectedRuntimeId = selectedRuntimeId,
+                        draftChanged = runtimeSwitched || values != initialValues
+                    )
+                ) {
+                    item(key = "model-limits-defaults-warning") { MembersAgentModelLimitsWarning() }
                 }
                 item(key = "restart-hint") {
                     Text(
