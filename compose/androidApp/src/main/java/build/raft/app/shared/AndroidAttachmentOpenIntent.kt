@@ -94,9 +94,11 @@ internal fun androidAttachmentOpenIntents(
     val target =
         Intent(spec.action.intentAction).apply {
             if (spec.action == AndroidAttachmentOpenIntentAction.Send) {
+                // Same shape as ShareCompat.IntentBuilder: type + EXTRA_STREAM, with the URI also in
+                // ClipData and FLAG_GRANT_READ_URI_PERMISSION below. EXTRA_TITLE is a
+                // CREATE_DOCUMENT/chooser extra, not a Send one; receivers read the name from the URI.
                 type = spec.source.mimeType
                 putExtra(Intent.EXTRA_STREAM, attachmentUri)
-                putExtra(Intent.EXTRA_TITLE, spec.source.displayName)
             } else {
                 setDataAndType(attachmentUri, spec.source.mimeType)
             }

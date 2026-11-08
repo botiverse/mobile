@@ -7934,6 +7934,46 @@ internal class RaftBridgeModule(
             source: AndroidAttachmentContentUriSource,
             privateSourceFile: File? = null
     ): AndroidAttachmentOpenResult {
+        val share = request.optBoolean("share", false)
+        if (share) {
+            // Hand receivers a copy named after the attachment: WeChat/QQ read the URI's last
+            // segment, which for the open cache is the extension-less hash name.
+            val attachmentId = request.optString("attachmentId").ifBlank { "attachment" }
+            val shareMimeType = androidAttachmentShareMimeType(source.displayName, source.mimeType)
+            val staged =
+                    runCatching {
+                        stageAndroidAttachmentShareFile(
+                                shareRoot = androidAttachmentShareRoot(appContext),
+                                displayName = source.displayName,
+                                mimeType = shareMimeType,
+                                expectedSizeBytes = source.sizeBytes
+                        ) {
+                            appContext.contentResolver.openInputStream(Uri.parse(source.contentUri))
+                                    ?: error("Attachment source is unavailable")
+                        }
+                    }.getOrElse { throwable ->
+                        RaftAppLog.record(
+                                "SlockAttachmentOpen",
+                                "attachmentId=${attachmentId.take(8)} phase=share_stage status=failed source=${source.kind.diagnosticName} type=${throwable::class.java.simpleName}"
+                        )
+                        return AndroidAttachmentOpenResult.storageFailed()
+                    }
+            return launchResolvedAttachment(
+                    request = request,
+                    owner = owner,
+                    source = androidAttachmentShareSource(appContext, staged, shareMimeType),
+                    privateSourceFile = staged
+            )
+        }
+        return launchResolvedAttachment(request, owner, source, privateSourceFile)
+    }
+
+    private fun launchResolvedAttachment(
+            request: JSONObject,
+            owner: AndroidAttachmentOwnerLease,
+            source: AndroidAttachmentContentUriSource,
+            privateSourceFile: File?
+    ): AndroidAttachmentOpenResult {
         val attachmentId = request.optString("attachmentId").ifBlank { "attachment" }
         val startedAt = System.currentTimeMillis()
         val requestedFileName = source.displayName
@@ -8474,10 +8514,8 @@ internal class RaftBridgeModule(
         if (normalized.equals(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE, ignoreCase = true)) {
             return ANDROID_PACKAGE_ARCHIVE_MIME_TYPE
         }
-        if (!normalized.isNullOrBlank()) return normalized
-        val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase(Locale.US)
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-                ?: "application/octet-stream"
+        // A generic server type (application/octet-stream, ...) defers to the file extension.
+        return androidAttachmentShareMimeType(fileName, normalized)
     }
 
     private fun isAndroidPackageArchive(fileName: String, mimeType: String): Boolean =
