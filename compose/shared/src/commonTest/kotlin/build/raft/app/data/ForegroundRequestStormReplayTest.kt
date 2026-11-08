@@ -127,6 +127,7 @@ class ForegroundRequestStormReplayTest {
                         parseDispatcher = Dispatchers.Unconfined,
                     ),
                 scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("https://api.raft.build/api", accountId, serverId) },
                 loadSidebarOrder = {
                     requests.hit(HomeSidebarOrder)
                     delay(NetworkMillis)

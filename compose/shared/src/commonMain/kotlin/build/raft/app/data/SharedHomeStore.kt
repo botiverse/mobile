@@ -305,6 +305,10 @@ internal class SharedHomeStore(
     private val unreadReconcileLock = SynchronizedObject()
     private var unreadReconcileOwner: Any? = null
     private var unreadReconcilePending = false
+    // requestHiddenServerActivityUnreadRefresh (store scope only).
+    private var hiddenServerUnreadJob: Job? = null
+    private var hiddenServerUnreadAsked = false
+    private var hiddenServerUnreadLastStartedAtMillis: Long? = null
 
     fun snapshotFor(serverId: ServerId): HomeSnapshot? =
         (_state.value.content as? SharedHomeContentState.Content)
@@ -506,6 +510,9 @@ internal class SharedHomeStore(
             unreadReconcileOwner = null
             unreadReconcilePending = false
         }
+        hiddenServerUnreadJob?.cancel()
+        hiddenServerUnreadJob = null
+        hiddenServerUnreadAsked = false
         synchronized(readProjectionOwnerLock) {
             readPredictionRevisions = emptyMap()
         }
@@ -1357,6 +1364,69 @@ internal class SharedHomeStore(
         if (changed) scheduleReadStateReconcile()
     }
 
+    /**
+     * Hidden Home: `servers/unread-summary` alone, for [SharedHomeState.serverActivityUnread] (the
+     * launcher badge's other-server counts), leading + trailing at most once per
+     * [HOME_HIDDEN_SERVER_UNREAD_REFRESH_MIN_INTERVAL_MS]. Stops once Home shows: its full reload
+     * reads the summary anyway. Runs on the store scope.
+     */
+    private fun requestHiddenServerActivityUnreadRefresh() {
+        hiddenServerUnreadAsked = true
+        if (hiddenServerUnreadJob?.isActive == true) return
+        hiddenServerUnreadJob =
+            scope.launch {
+                while (hiddenServerUnreadAsked) {
+                    val wait =
+                        hiddenServerUnreadLastStartedAtMillis
+                            ?.let { it + HOME_HIDDEN_SERVER_UNREAD_REFRESH_MIN_INTERVAL_MS - nowMillis() }
+                            ?: 0L
+                    if (wait > 0L) delay(wait)
+                    hiddenServerUnreadAsked = false
+                    if (homeSurfaceVisible) break
+                    hiddenServerUnreadLastStartedAtMillis = nowMillis()
+                    refreshServerActivityUnreadOnly()
+                }
+            }
+    }
+
+    private suspend fun refreshServerActivityUnreadOnly() {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val serverId = content.baseSnapshot.server.id
+        val session = authStore.readSession() ?: return
+        val owner = readReceiptOwnerFactory?.invoke(serverId.value, session.user.id) ?: return
+        val result =
+            try {
+                dataSource.serverUnreadSummary(serverId, DataRequestPriority.Background)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                diagnosticsLogger("home_hidden_server_unread_refresh result=exception")
+                return
+            }
+        val summaries = (result as? DataResult.Content)?.data
+        if (summaries == null) {
+            // Stale, failed or empty: keep the counts shown.
+            diagnosticsLogger("home_hidden_server_unread_refresh result=unavailable")
+            return
+        }
+        val now = _state.value
+        val nowContent = now.content as? SharedHomeContentState.Content ?: return
+        val liveOwner =
+            authStore.readSession()?.let { live -> readReceiptOwnerFactory?.invoke(serverId.value, live.user.id) }
+        if (nowContent.baseSnapshot.server.id != serverId || liveOwner != owner) return
+        reduceState(
+            now.copy(
+                serverActivityUnread =
+                    HomeServerActivityUnreadProjection(
+                        requestOwner = owner,
+                        countsByServer = summaries.serverActivityUnreadCounts(),
+                        serverPushMutedByServer = summaries.serverPushMutedByServer(),
+                    )
+            )
+        )
+        diagnosticsLogger("home_hidden_server_unread_refresh result=content servers=${summaries.size}")
+    }
+
     private fun scheduleReadStateReconcile() {
         diagnosticsLogger("per_receiver_read_state_reconcile reason=incomplete_home_projection")
         dispatch(SharedHomeIntent.ForegroundRefresh)
@@ -1394,6 +1464,9 @@ internal class SharedHomeStore(
             hiddenHomeSnapshotDirty = true
             diagnosticsLogger("per_receiver_read_state_reconcile_deferred reason=$reason detail=surface_hidden")
             markHomeRealtimeDirty(serverId, "read_state_reconcile")
+            // The launcher badge sums every server's Activity unread from Home's state: keep that part
+            // fresh while hidden with the light summary read (at most one per window).
+            requestHiddenServerActivityUnreadRefresh()
             return
         }
         val token = Any()
@@ -5194,6 +5267,9 @@ internal const val SERVER_SWITCH_TIMEOUT_MS = 15_000L
 
 // Reconcile loads after realtime unread raced a Home load; past this the local counts stand until the next load.
 private const val MAX_REALTIME_UNREAD_RECONCILE_ROUNDS = 3
+
+/** fb-52cc0499: hidden Home reads `servers/unread-summary` for the launcher badge at most this often. */
+internal const val HOME_HIDDEN_SERVER_UNREAD_REFRESH_MIN_INTERVAL_MS: Long = 10_000L
 
 /** Task #60: a ForegroundRefresh joins a Start/ForegroundRefresh load launched at most this long ago. */
 internal const val FOREGROUND_REFRESH_COALESCE_WINDOW_MILLIS = 1_000L

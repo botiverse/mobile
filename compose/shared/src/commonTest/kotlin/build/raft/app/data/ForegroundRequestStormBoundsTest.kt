@@ -288,6 +288,42 @@ class ForegroundRequestStormBoundsTest {
     }
 
     @Test
+    fun hiddenHomeKeepsTheLauncherBadgeCountsFreshWithTheSummaryAloneAtMostEveryTenSeconds() = runTest {
+        val reloads = mutableListOf<Long>()
+        val api = DelayedHomeApi { reloads += testScheduler.currentTime }
+        val home = homeStore(api) { }
+        home.dispatch(SharedHomeIntent.Start)
+        advanceTimeBy(5_000L)
+        home.dispatch(SharedHomeIntent.SetSurfaceVisible(false))
+        runCurrent()
+        reloads.clear()
+        api.summaryReads = 0
+        api.summaryBody = """[{"serverId":"server-1","unreadCount":1,"activityUnreadCount":1},""" +
+            """{"serverId":"server-2","unreadCount":7,"activityUnreadCount":7}]"""
+
+        // 20 s of Activity asks, one a second, while Home is hidden.
+        repeat(20) {
+            home.requestUnreadCountsReconcile(reason = "activity_unread_counts")
+            advanceTimeBy(1_000L)
+        }
+        advanceTimeBy(30_000L)
+        runCurrent()
+
+        assertEquals(emptyList(), reloads, "no whole Home bootstrap while hidden")
+        assertTrue(api.summaryReads in 2..3, "servers/unread-summary at most once per 10 s: ${api.summaryReads}")
+        val owner = ReadReceiptOwner("https://api.raft.build/api", "user-1", "server-1")
+        assertEquals(7L, home.state.value.serverActivityUnread.countsForAccountOf(owner)["server-2"], "badge counts refreshed")
+
+        // Shown again: one full reload, and the summary reads stop.
+        val summaryReadsBeforeShow = api.summaryReads
+        home.dispatch(SharedHomeIntent.SetSurfaceVisible(true))
+        advanceTimeBy(30_000L)
+        runCurrent()
+        assertEquals(1, reloads.size)
+        assertEquals(summaryReadsBeforeShow + 1, api.summaryReads, "only the full reload's own summary read")
+    }
+
+    @Test
     fun homesOwnReadStateReconcileStaysImmediateWhileHidden() = runTest {
         val reloads = mutableListOf<Long>()
         val home = homeStore { reloads += testScheduler.currentTime }
@@ -370,14 +406,18 @@ class ForegroundRequestStormBoundsTest {
             appForeground = MutableStateFlow(true),
         )
 
-    private fun TestScope.homeStore(onChannels: () -> Unit): SharedHomeStore {
+    private fun TestScope.homeStore(
+        api: DelayedHomeApi? = null,
+        onChannels: () -> Unit
+    ): SharedHomeStore {
         val authStore = InMemoryRaftAuthSessionStore(sampleSession())
         return SharedHomeStore(
             authStore = authStore,
+            readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("https://api.raft.build/api", accountId, serverId) },
             dataSource =
                 SharedHomeDataSource(
                     sessionStore = authStore,
-                    api = DelayedHomeApi(onChannels),
+                    api = api ?: DelayedHomeApi(onChannels),
                     parseHome = { payload, _ ->
                         DataResult.Content(
                             HomeSnapshot(
@@ -398,6 +438,9 @@ class ForegroundRequestStormBoundsTest {
     }
 
     private class DelayedHomeApi(private val onChannels: () -> Unit) : RaftHomeApi {
+        var summaryReads = 0
+        var summaryBody = "[]"
+
         override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             onChannels()
             delay(HomeNetworkMillis)
@@ -410,8 +453,10 @@ class ForegroundRequestStormBoundsTest {
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority) =
             HomeNetworkResponse(code = 200, bodyText = EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
 
-        override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority) =
-            HomeNetworkResponse(code = 200, bodyText = "[]")
+        override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            summaryReads += 1
+            return HomeNetworkResponse(code = 200, bodyText = summaryBody)
+        }
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = error("unused")
         override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = error("unused")
