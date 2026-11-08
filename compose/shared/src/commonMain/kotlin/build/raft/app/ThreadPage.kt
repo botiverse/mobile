@@ -8758,8 +8758,8 @@ private fun SharedThreadRouteContentContent(
         if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
     }
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    // `feedback:submit` cards open the Feedback WebView once the viewing server is known (no server
-    // flag since 1.22).
+    // `feedback:submit` cards open the Feedback WebView only where Settings > Feedback is the web page
+    // (Compose desktop; settingsFeedbackUsesWebPage) and the viewing server is known. No server flag.
     val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
@@ -35565,7 +35565,7 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
 
-/** Whether `feedback:submit` cards open the Feedback WebView: the viewing server is known ([raftFeedbackCardEntryEnabled]). */
+/** Whether `feedback:submit` cards open the Feedback WebView ([raftFeedbackCardEntryEnabled]). */
 internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
 
 /**

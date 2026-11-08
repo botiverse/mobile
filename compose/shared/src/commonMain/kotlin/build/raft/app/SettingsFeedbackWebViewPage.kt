@@ -28,21 +28,29 @@ internal data class RaftFeedbackCardEntry(
 )
 
 /**
- * Whether `feedback:submit` cards open the Feedback WebView on [viewingServerId]. No server flag
- * (artin, 1.22: the ticket web page is always on); only an unknown viewing server keeps it off,
- * since the card entry is sent as operated from that server.
+ * Whether `feedback:submit` cards open the Feedback WebView on [viewingServerId] (and a done card
+ * shows "View in Settings"). One rule with Settings > Feedback ([settingsFeedbackUsesWebPage], no
+ * server flag): only where Feedback is the web page (Compose desktop). On Android and iOS (artin,
+ * 1.22.0) the card is as in 1.21 with the flag off: no in-App entry, its button is "Open in web".
+ * An unknown viewing server keeps it off too, since the card entry is sent as operated from it.
  */
-internal fun raftFeedbackCardEntryEnabled(viewingServerId: String?): Boolean = !viewingServerId.isNullOrBlank()
+internal fun raftFeedbackCardEntryEnabled(
+    viewingServerId: String?,
+    feedbackWeb: Boolean = settingsFeedbackUsesWebPage(),
+): Boolean = feedbackWeb && !viewingServerId.isNullOrBlank()
 
 /**
  * The entry for tapping [card] (message [messageId]) on [viewingServerId], or null when the card
- * stays read-only: not a `feedback:submit` card, already executed, or missing ids.
+ * stays read-only: not a `feedback:submit` card, already executed, missing ids, or the card entry
+ * is off on this platform ([raftFeedbackCardEntryEnabled]).
  */
 internal fun raftFeedbackCardEntryOrNull(
     messageId: String?,
     card: ThreadActionCard?,
     viewingServerId: String?,
+    feedbackWeb: Boolean = settingsFeedbackUsesWebPage(),
 ): RaftFeedbackCardEntry? {
+    if (!raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb)) return null
     if (card == null || !card.isFeedbackSubmitAction() || card.isExecuted) return null
     val id = messageId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val server = viewingServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
