@@ -260,6 +260,11 @@ internal const val AppShellServerTabKey = "more"
 
 /** The server's pages in the server panel, in order; each opens the page the More row opened. */
 internal enum class RaftServerMenuEntry(val key: String) {
+    /**
+     * The Artifacts home (web MobileServerTab: first of the server's pages, behind the rail's gate,
+     * workspace_artifacts_v0; guests too). Not a shell tab: a pushed page.
+     */
+    Artifacts("artifacts"),
     Members(RaftAppDestination.Members.id),
     Computers(RaftAppDestination.Computers.id),
     Apps(RaftAppDestination.Apps.id),
@@ -324,12 +329,16 @@ internal fun raftServerMenuEntriesFor(
     entries: List<RaftServerMenuEntry>,
     wide: Boolean,
     guest: Boolean,
-): List<RaftServerMenuEntry> =
-    when {
+    /** The server's workspace_artifacts_v0, already loaded and on (web `useArtifactsRailShown`). */
+    artifacts: Boolean = false,
+): List<RaftServerMenuEntry> {
+    val shown = if (artifacts) entries else entries - RaftServerMenuEntry.Artifacts
+    return when {
         wide -> emptyList()
-        guest -> entries - RaftServerMenuEntry.Apps
-        else -> entries
+        guest -> shown - RaftServerMenuEntry.Apps
+        else -> shown
     }
+}
 
 /** The unread count a server row shows: the Home switcher's label, or null. */
 internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? =

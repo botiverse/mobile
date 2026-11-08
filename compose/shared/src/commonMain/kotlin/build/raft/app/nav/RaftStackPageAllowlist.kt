@@ -131,6 +131,8 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_STORAGE_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.RELEASE_NOTES_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),
+                // The Artifacts home, from the server panel (task #proj-mobile:#62).
+                RaftStackPageRule(pageName = build.raft.app.ARTIFACTS_HOME_PAGE),
             ) +
             RaftStackChatFilesBrowsePages.map { RaftStackPageRule(pageName = it) } +
             RaftStackServerPanelTabs.map { tab ->

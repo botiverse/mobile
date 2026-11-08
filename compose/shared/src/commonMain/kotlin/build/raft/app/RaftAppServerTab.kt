@@ -205,6 +205,7 @@ internal fun RaftAppServerMenuOverlay(
     val moveDownLabel = stringResource(Res.string.server_panel_move_down)
     val pageLabels =
         mapOf(
+            RaftServerMenuEntry.Artifacts to stringResource(Res.string.artifacts_dashboard_title),
             RaftServerMenuEntry.Members to stringResource(Res.string.tab_members),
             RaftServerMenuEntry.Computers to stringResource(Res.string.settings_computers_title),
             RaftServerMenuEntry.Apps to stringResource(Res.string.tab_apps),
@@ -350,6 +351,7 @@ internal fun raftServerMenuUnreadCount(server: RaftServerSwitcherItem): Pair<Int
 /** The popover's page icons: the ones their old More rows wore. */
 internal fun raftServerMenuEntryIcon(entry: RaftServerMenuEntry): RaftLucideIconName =
     when (entry) {
+        RaftServerMenuEntry.Artifacts -> RaftLucideIconName.Artifact
         RaftServerMenuEntry.Members -> RaftLucideIconName.Users
         RaftServerMenuEntry.Computers -> RaftLucideIconName.Monitor
         RaftServerMenuEntry.Apps -> RaftLucideIconName.Blocks

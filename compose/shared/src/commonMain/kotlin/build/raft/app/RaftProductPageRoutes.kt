@@ -132,7 +132,9 @@ internal fun authenticatedProductPageView(
         // No `drafts` route in the shared page_viewed registry yet.
         AuthenticatedProductRoute.HomeDrafts,
         AuthenticatedProductRoute.FilePreview,
-        AuthenticatedProductRoute.ArtifactViewer -> null
+        AuthenticatedProductRoute.ArtifactViewer,
+        // No `artifacts` route in the shared page_viewed registry yet.
+        AuthenticatedProductRoute.ArtifactsHome -> null
     }
 
 private val productPageRouteJson = Json { ignoreUnknownKeys = true }

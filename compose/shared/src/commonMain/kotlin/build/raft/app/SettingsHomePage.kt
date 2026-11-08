@@ -7117,6 +7117,11 @@ private fun RaftAppShellReadyContent(
         bridge.log("app_shell_server_menu_open row=${entry.key} from=$selectedTab")
         if (!navRailActive) serverPageOrigin = appShellServerPageOrigin(selectedTab, serverPageOrigin)
         when (entry) {
+            RaftServerMenuEntry.Artifacts -> {
+                // web MobileServerTab `openArtifacts`: the page pushed over the shell.
+                if (!navRailActive) serverTabFocusOnPageReturn = true
+                pager.openArtifactsHomePage(storeScope)
+            }
             RaftServerMenuEntry.Members -> {
                 RaftProductEvents.navEntrySelected(
                     destination = RaftNavDestination.Members,
@@ -7177,6 +7182,14 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    // web `useArtifactsRailShown`: the Artifacts entry only where the current server's
+    // workspace_artifacts_v0 is already loaded and on (the panel never asks for flags itself).
+    val artifactsFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val serverMenuArtifactsShown =
+        remember(serverMenuModel?.currentServer?.id, artifactsFlagRevision) {
+            appShellArtifactsShown(sharedStores.serverFeatureFlags, serverMenuModel?.currentServer?.id)
+        }
+
     // iPhone Duo's inner screen (raft-design #859): the wide layout without the top bar; the rail
     // holds the server tile, Search and the bell.
     val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive)
@@ -7198,6 +7211,7 @@ private fun RaftAppShellReadyContent(
                         serverMenuModel.entries,
                         wide = navRailActive,
                         guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
+                        artifacts = serverMenuArtifactsShown,
                     ),
                 onPick = ::onServerMenuPick,
                 switchPending = homeServerSwitchListPending(homeState.serverSwitchState.pendingServerId),
