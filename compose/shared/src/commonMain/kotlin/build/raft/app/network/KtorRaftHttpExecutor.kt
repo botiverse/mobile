@@ -311,7 +311,7 @@ internal class KtorRaftHttpExecutor(
             throw cancellation
         } catch (error: Exception) {
             warningLogger(
-                "${spec.logPrefix}_failed $common " +
+                "${spec.logPrefix}_failed $common clientRequestId=$clientRequestId " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
             RaftHttpExecutorResponse(

@@ -1,6 +1,7 @@
 package build.raft.app.core.data.diagnostics
 
 import build.raft.app.BuildConfig
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import java.io.File
@@ -20,6 +21,7 @@ import org.json.JSONObject
  */
 object RaftAndroidLocalDiagnostics {
     private const val Tag = "SlockAndroidDiagnostics"
+    private const val InFlightTag = "SlockSharedNetwork"
     private const val FeedbackDirName = "raft-feedback"
     private const val FeedbackFilePrefix = "raft-feedback-"
     private const val FeedbackZipExtension = ".zip"
@@ -29,13 +31,26 @@ object RaftAndroidLocalDiagnostics {
     private const val MaxQueuedMessageLength = 8_192
     private const val MaxQueuedThreadNameLength = 128
 
+    private val coalescer = RaftDiagnosticsCoalescer()
+    private val inFlightRequests = RaftInFlightRequests()
+
     private val dispatchQueue =
         RaftDiagnosticsDispatchQueue(processor = ::processPendingLog)
 
     fun init(context: Context) {
         RaftGeneralLogRing.init(context.applicationContext)
         RaftAuthCriticalJournal.init(context.applicationContext)
-        AndroidHistoricalProcessExitDiagnostics.recordLatest(context.applicationContext)
+        // On the telemetry thread, with the earlier processes' memory telemetry, before this
+        // process writes its own (also keeps the exit-history binder call off the main thread).
+        val appContext = context.applicationContext
+        val application = appContext as? Application
+        if (application != null) {
+            RaftMemoryTelemetry.install(application) { previous ->
+                AndroidHistoricalProcessExitDiagnostics.recordLatest(appContext, previous)
+            }
+        } else {
+            AndroidHistoricalProcessExitDiagnostics.recordLatest(appContext)
+        }
         RaftAppLog.d(
             Tag,
             "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl hands=crash"
@@ -122,10 +137,38 @@ object RaftAndroidLocalDiagnostics {
         val authEvent = classifyAuthCriticalEvent(sanitized.message)
         if (!shouldEmitDiagnostic(entry.includeNonCritical, authEvent)) return
         writeLogcat(sanitized.level, sanitized.tag, sanitized.message)
+        inFlightRequests.observe(sanitized.message, sanitized.timestampMillis)
         if (authEvent != null) {
             RaftAuthCriticalJournal.record(sanitized, authEvent)
         } else if (RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
-            RaftGeneralLogRing.record(sanitized)
+            // Logcat above still gets every line; only the persistent ring is rate limited.
+            val admission =
+                coalescer.admit(sanitized.level, sanitized.tag, sanitized.message, sanitized.timestampMillis)
+            admission.summaries.forEach { summary ->
+                RaftGeneralLogRing.record(
+                    sanitized.copy(level = "info", tag = RaftDiagnosticsCoalescer.SummaryTag, message = summary)
+                )
+            }
+            if (admission.persist) RaftGeneralLogRing.record(sanitized)
+        }
+    }
+
+    /**
+     * Before an export reads the ring: the counts the coalescer is still holding back, and the
+     * requests that started and have not finished (their start lines are not persisted).
+     */
+    private fun drainCoalescedSummaries() {
+        val now = System.currentTimeMillis()
+        coalescer.drain(now).forEach { summary ->
+            recordLog("info", RaftDiagnosticsCoalescer.SummaryTag, summary)
+        }
+        inFlightRequests.unfinished(now).forEach { line -> recordLog("warn", InFlightTag, line) }
+    }
+
+    /** Persists the coalescer's counts so far (memory-telemetry thread, every 30s in foreground). */
+    internal fun checkpointCoalescedCounts() {
+        coalescer.checkpoint(System.currentTimeMillis()).forEach { summary ->
+            recordLog("info", RaftDiagnosticsCoalescer.SummaryTag, summary)
         }
     }
 
@@ -142,6 +185,7 @@ object RaftAndroidLocalDiagnostics {
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
         val appContext = context.applicationContext
+        drainCoalescedSummaries()
         check(flush()) { "diagnostics_flush_timeout operation=prepare_archive" }
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
         pruneFeedbackArchives(feedbackDir)
@@ -198,6 +242,7 @@ object RaftAndroidLocalDiagnostics {
 
     fun exportRecentDiagnosticsText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
         val appContext = context.applicationContext
+        drainCoalescedSummaries()
         if (!flush()) {
             return "Diagnostics snapshot unavailable because pending logs did not flush."
         }
