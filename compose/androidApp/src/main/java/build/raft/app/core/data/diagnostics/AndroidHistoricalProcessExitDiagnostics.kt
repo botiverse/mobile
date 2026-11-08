@@ -13,7 +13,8 @@ internal data class HistoricalProcessExitSnapshot(
     val importance: Int,
     val pssKb: Long,
     val rssKb: Long,
-    val traceAvailable: Boolean
+    val traceAvailable: Boolean,
+    val pid: Int = 0
 )
 
 internal fun newestEligibleHistoricalProcessExit(
@@ -25,7 +26,14 @@ internal fun newestEligibleHistoricalProcessExit(
     return exits.filter { it.timestampMillis > cutoff }.maxByOrNull { it.timestampMillis }
 }
 
-internal fun formatHistoricalProcessExit(snapshot: HistoricalProcessExitSnapshot): String =
+/**
+ * [previousTelemetry] is the memory telemetry the previous process persisted
+ * ([RaftMemoryTelemetry]); its fields are appended only when it belongs to the exited pid.
+ */
+internal fun formatHistoricalProcessExit(
+    snapshot: HistoricalProcessExitSnapshot,
+    previousTelemetry: MemoryTelemetrySnapshot? = null
+): String =
     "previous_process_exit " +
         "timestampMillis=${snapshot.timestampMillis} " +
         "reason=${historicalProcessExitReasonLabel(snapshot.reasonCode)} " +
@@ -34,7 +42,19 @@ internal fun formatHistoricalProcessExit(snapshot: HistoricalProcessExitSnapshot
         "importance=${snapshot.importance} " +
         "pssKb=${snapshot.pssKb} " +
         "rssKb=${snapshot.rssKb} " +
-        "traceAvailable=${snapshot.traceAvailable}"
+        "traceAvailable=${snapshot.traceAvailable}" +
+        formatExitTelemetry(snapshot, previousTelemetry)
+
+private fun formatExitTelemetry(
+    snapshot: HistoricalProcessExitSnapshot,
+    previousTelemetry: MemoryTelemetrySnapshot?
+): String =
+    when {
+        previousTelemetry == null -> ""
+        previousTelemetry.pid != snapshot.pid ->
+            " pid=${snapshot.pid} telemetry=pid_mismatch telemetryPid=${previousTelemetry.pid}"
+        else -> " pid=${snapshot.pid} telemetry=matched ${previousTelemetry.formatForExit(snapshot.timestampMillis)}"
+    }
 
 internal fun historicalProcessExitReasonLabel(reasonCode: Int): String =
     when (reasonCode) {
@@ -64,7 +84,7 @@ internal object AndroidHistoricalProcessExitDiagnostics {
     private const val LastReportedTimestampKey = "last-reported-timestamp-millis"
     private const val MaxHistoricalExits = 8
 
-    fun recordLatest(context: Context) {
+    fun recordLatest(context: Context, previousTelemetry: MemoryTelemetrySnapshot? = null) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val appContext = context.applicationContext
         runCatching {
@@ -89,7 +109,8 @@ internal object AndroidHistoricalProcessExitDiagnostics {
                         importance = exit.importance,
                         pssKb = exit.pss,
                         rssKb = exit.rss,
-                        traceAvailable = false
+                        traceAvailable = false,
+                        pid = exit.pid
                     )
                 }
             val latestMetadata =
@@ -132,7 +153,7 @@ internal object AndroidHistoricalProcessExitDiagnostics {
             RaftAndroidLocalDiagnostics.recordLog(
                 level = "warn",
                 tag = Tag,
-                message = formatHistoricalProcessExit(latest)
+                message = formatHistoricalProcessExit(latest, previousTelemetry)
             )
         }.onFailure { error ->
             RaftAndroidLocalDiagnostics.recordLog(

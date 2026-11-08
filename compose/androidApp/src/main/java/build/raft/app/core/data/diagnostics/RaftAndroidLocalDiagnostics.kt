@@ -1,6 +1,7 @@
 package build.raft.app.core.data.diagnostics
 
 import build.raft.app.BuildConfig
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import java.io.File
@@ -35,7 +36,10 @@ object RaftAndroidLocalDiagnostics {
     fun init(context: Context) {
         RaftGeneralLogRing.init(context.applicationContext)
         RaftAuthCriticalJournal.init(context.applicationContext)
-        AndroidHistoricalProcessExitDiagnostics.recordLatest(context.applicationContext)
+        // Reads the previous process's memory telemetry before this process starts overwriting it.
+        val previousTelemetry =
+            (context.applicationContext as? Application)?.let(RaftMemoryTelemetry::install)
+        AndroidHistoricalProcessExitDiagnostics.recordLatest(context.applicationContext, previousTelemetry)
         RaftAppLog.d(
             Tag,
             "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl hands=crash"

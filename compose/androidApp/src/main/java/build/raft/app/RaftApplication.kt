@@ -7,9 +7,11 @@ import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
+import build.raft.app.core.data.diagnostics.AndroidSystemKillReporter
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.hands.update.HandsCrash
+import build.hands.update.HandsFeedback
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
@@ -132,6 +134,26 @@ class RaftApplication : Application() {
             appSlug = BuildConfig.HANDS_APP_SLUG,
             channel = BuildConfig.HANDS_CHANNEL,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
+        )
+        // System kills (low memory, freezer, OEM `reason=other`) leave no crash for HandsCrash to
+        // catch; report the ones the user saw as crash tickets (ANRs stay with RaftAnrReporter).
+        val handsKillFeedback =
+            HandsFeedback(
+                context = this,
+                baseUrl = BuildConfig.HANDS_BASE_URL,
+                appSlug = BuildConfig.HANDS_APP_SLUG,
+                versionName = BuildConfig.VERSION_NAME,
+                versionCode = BuildConfig.VERSION_CODE.toLong(),
+                channel = BuildConfig.HANDS_CHANNEL,
+                clientKey = BuildConfig.HANDS_CLIENT_KEY,
+            )
+        AndroidSystemKillReporter.start(
+            context = this,
+            versionName = BuildConfig.VERSION_NAME,
+            versionCode = BuildConfig.VERSION_CODE.toLong(),
+            submitter = { message, extras ->
+                handsKillFeedback.submit(message = message, kind = "crash", extras = extras)
+            },
         )
     }
 }
