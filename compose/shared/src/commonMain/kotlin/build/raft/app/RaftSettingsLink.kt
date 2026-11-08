@@ -7,7 +7,8 @@ import build.raft.app.data.StoredAuthServer
  * A link to the web's Settings on one of Raft's own origins: `/settings[/{tab}]` or
  * `/s/{slug}/settings[/{tab}]` (slock `components/settings/settingsNavigation.ts`, the
  * `/s/:serverSlug/settings/:tab` route). Announcements link here, e.g. "Choose a theme" to
- * `/settings/theme` and the passkey announcement to `/settings/account#two-step`.
+ * `/settings/theme` and the passkey announcement to `/settings/account#two-step` (which the app
+ * leaves to the web: its Account page has no two-step block).
  */
 internal data class RaftSettingsLink(
     /** The `/s/{slug}` server the link names, or null when it names none (the current server). */
@@ -46,7 +47,7 @@ internal fun raftSettingsDestinationKeyForWebTab(webTab: String?): String? =
 
 /**
  * Parses a web Settings link, or null when [url] is not one: another origin (it stays a web link),
- * or another path. The origins are exactly those of message links ([raftOwnWebLinkPath]):
+ * another path, or a `#…` block the in-app page does not have. The origins are exactly those of message links ([raftOwnWebLinkPath]):
  * production, the client config's [appHosts], and the Developer environment's [configuredWebUrl]
  * (so a staging build takes its staging links). Segments after the tab (a computer, a feedback
  * ticket) open the tab.
@@ -70,13 +71,28 @@ internal fun parseRaftSettingsLink(
         }
     if (rest.any(String::isEmpty)) return null
     val webTab = rest.firstOrNull()
+    val destinationKey = raftSettingsDestinationKeyForWebTab(webTab)
+    val section = own.fragment?.takeIf(String::isNotBlank)
+    // A block the in-app page does not have would land on a page without it: the web shows it.
+    if (section != null && !raftSettingsInAppPageHasSection(destinationKey, section)) return null
     return RaftSettingsLink(
         serverSlug = serverSlug,
         webTab = webTab,
-        destinationKey = raftSettingsDestinationKeyForWebTab(webTab),
-        section = own.fragment?.takeIf(String::isNotBlank),
+        destinationKey = destinationKey,
+        section = section,
     )
 }
+
+/**
+ * The `#…` blocks of a web Settings tab the in-app page can show, by in-app row key. The in-app
+ * Account page has none of the web's linkable ones (`#two-step`, `#passkeys`), so an Account link
+ * with any block opens the web page. Tabs not listed take any block (the page opens at its top).
+ */
+private val RaftSettingsInAppSections: Map<String, Set<String>> =
+    mapOf(SettingsDestinationAccount to emptySet())
+
+private fun raftSettingsInAppPageHasSection(destinationKey: String?, section: String): Boolean =
+    RaftSettingsInAppSections[destinationKey]?.contains(section) ?: true
 
 /** What the app shell opens for a [RaftSettingsLink]. */
 internal data class RaftSettingsLinkTarget(

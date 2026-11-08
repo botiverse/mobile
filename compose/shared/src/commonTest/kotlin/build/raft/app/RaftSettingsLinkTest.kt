@@ -65,11 +65,27 @@ class RaftSettingsLinkTest {
     }
 
     @Test
-    fun accountTwoStepLinkOpensAccountSettingsWithItsSection() {
-        val link = parse("$prod/settings/account#two-step")
+    fun plainAccountLinkOpensAccountSettings() {
+        val link = parse("$prod/settings/account")
         assertEquals(SettingsDestinationAccount, link?.destinationKey)
-        assertEquals("two-step", link?.section)
-        assertEquals(SettingsDestinationAccount, key("$prod/s/hq/settings/account?x=1#two-step"))
+        assertNull(link?.section)
+        assertEquals(SettingsDestinationAccount, key("$prod/s/hq/settings/account?x=1"))
+    }
+
+    @Test
+    fun accountLinkToABlockTheAppLacksStaysAWebLink() {
+        for (url in listOf(
+            "$prod/settings/account#two-step",
+            "$prod/s/hq/settings/account#two-step",
+            "$prod/s/hq/settings/account#passkeys",
+            "$prod/s/hq/settings/account?x=1#something-new",
+        )) {
+            assertNull(parse(url), url)
+        }
+        // An empty fragment names no block.
+        assertEquals(SettingsDestinationAccount, key("$prod/settings/account#"))
+        // Other tabs open at their top whatever block they name.
+        assertEquals(SettingsNativeDetailPage.Theme.key, key("$prod/s/hq/settings/theme?x=1#y"))
     }
 
     @Test
@@ -156,10 +172,21 @@ class RaftSettingsLinkTest {
     }
 
     @Test
-    fun announcementTwoStepLinkOpensInAppAccountSettings() {
-        val action = assertIs<AnnouncementLinkAction.OpenSettings>(action("/settings/account#two-step"))
-        assertEquals(SettingsDestinationAccount, action.target.destinationKey)
-        assertEquals("two-step", action.link.section)
+    fun announcementAccountLinkOpensInAppAccountSettings() {
+        val action = assertIs<AnnouncementLinkAction.OpenSettings>(action("/settings/account"))
+        assertEquals(RaftSettingsLinkTarget(null, SettingsDestinationAccount), action.target)
+    }
+
+    @Test
+    fun announcementTwoStepLinkOpensTheWebPageOnTheCurrentServer() {
+        assertEquals(
+            AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#two-step"),
+            action("/settings/account#two-step"),
+        )
+        assertEquals(
+            AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#unknown-block"),
+            action("/settings/account#unknown-block"),
+        )
     }
 
     @Test
