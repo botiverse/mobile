@@ -30,6 +30,7 @@ import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.refreshPixelAvatarsFromWeb
+import build.raft.app.RaftLogLevel
 import build.raft.app.raftLogError
 import build.raft.app.raftLogInfo
 import build.raft.app.raftLogWarn
@@ -68,6 +69,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.RaftRequestScheduler
 import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.raftNetworkLogLevel
 import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
 import build.raft.app.network.sync.RaftThreadReplyWindowCache
 import build.raft.app.network.sync.CanonicalFinalPreparedCommitStep
@@ -153,6 +155,16 @@ private fun sharedInfoLogger(
 ): (String) -> Unit =
     { message ->
         raftLogInfo(tag, if (prefix.isBlank()) message else "$prefix $message", hint)
+    }
+
+/** Warn, except routine request start/finish lines, which are info ([raftNetworkLogLevel]). */
+private fun sharedNetworkLogger(tag: String, prefix: String): (String) -> Unit =
+    { message ->
+        val line = "$prefix $message"
+        when (raftNetworkLogLevel(message)) {
+            RaftLogLevel.Info -> raftLogInfo(tag, line)
+            else -> raftLogWarn(tag, line)
+        }
     }
 
 private fun sharedWarnLogger(
@@ -2982,7 +2994,7 @@ internal class RaftSharedStoreProvider private constructor(
                     scope = CoroutineScope(SupervisorJob()),
                     diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "auth_loss_funnel")
                 )
-            val networkWarningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network")
+            val networkWarningLogger = sharedNetworkLogger("SlockSharedNetwork", "shared_network")
             val networkRequestScheduler = RaftRequestScheduler()
             val networkExecutor = createPlatformRaftHttpExecutor(networkWarningLogger)
             val networkReachabilityGates = RaftHostReachabilityGates()
