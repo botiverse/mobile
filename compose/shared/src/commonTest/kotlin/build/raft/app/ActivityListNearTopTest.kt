@@ -67,7 +67,7 @@ class ActivityListNearTopTest {
     }
 
     @Test
-    fun `without day headings the signature is the head row's, and an empty list has none`() {
+    fun `without day headings the signature is the head row and an empty list has none`() {
         val list = listOf(row("a", null), row("b", null))
         assertEquals(activityListHeadSignature(list, null), activityListHeadSignature(list.take(1), null))
         assertNotEquals(activityListHeadSignature(list, null), activityListHeadSignature(list.reversed(), null))
