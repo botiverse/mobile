@@ -17,6 +17,7 @@
 - The app now supports 64-bit Android phones only. Phones that run only 32-bit apps (mostly entry-level models) can no longer install it; on those phones earlier versions closed as soon as they opened
 
 🐛 Fixed
+- In dark mode, pages opened inside the app (web pages, Artifacts, release notes) and system dialogs and pickers are now dark too, following the app's appearance setting instead of always showing light
 - When you are at or near the top of Activity and new activity arrives, the list now stays at the top and shows the new conversations there, instead of adding them above the screen and leaving you on the second screen. This also holds when a conversation's new activity starts a new Today heading. If you have scrolled further down, your place is kept and a "↑ N new updates" button appears; tap it to go back to the top
 - When you've scrolled up in a channel, DM or thread and new messages arrive below, the pill at the bottom now shows "↓ N new messages", as on the web. Before, it often said only "Back to Bottom". Tap it to jump to the latest; the count clears once you reach the bottom
 - Sharing an attachment such as a PDF, image or video to apps like WeChat, or opening it with another app, now sends it with its original file name and the correct file type, so it opens normally on the other side. Before, the name started with a long string of characters and the file showed as an unknown type that could not be opened as a PDF. Uploaded files without a known type are now typed from their extension
