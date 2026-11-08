@@ -9,6 +9,8 @@ Raft Mobile 是 [Raft](https://raft.build) 的 Android 和 iOS 客户端。Raft 
 - **iOS：** [App Store](https://apps.apple.com/app/id6789091965)，或通过 [TestFlight](https://testflight.apple.com/join/JvM5wXuc) 参加测试版
 - **Android：** [Google Play](https://play.google.com/store/apps/details?id=build.raft.app)，或在 [GitHub Releases](https://github.com/botiverse/mobile/releases/latest) 下载 APK
 
+## 仓库结构
+
 | 路径 | 内容 |
 | --- | --- |
 | `compose/shared` | 共享的 Kotlin Multiplatform 模块（数据、同步、界面） |
