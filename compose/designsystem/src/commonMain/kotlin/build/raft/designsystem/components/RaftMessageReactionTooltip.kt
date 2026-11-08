@@ -71,7 +71,8 @@ internal object RaftMessageReactionTooltipMetrics {
  * bubble ([RaftTooltip]'s look: `layer-hud`, `foreground-on-hud`, `radius-chip`, 10 x 4dp
  * padding, `text-footnote` medium, `shadow-float`, the caret pointing at the chip) under the chip,
  * its start edge on the chip's (web `side="bottom" align="start" sideOffset={4}`); above it when
- * there is no room below.
+ * there is no room below. Opened by a long press (not a pointer hover) it goes above the chip
+ * first, below without room: the finger still on the chip would cover a bubble under it.
  *
  * - [names]: the reactors to show, already capped by the caller (web shows 5, "You" first). Each
  *   truncates at 112dp; they wrap within 240dp, comma-separated (the comma in `foreground-on-hud`
@@ -101,7 +102,9 @@ fun RaftMessageReactionTooltip(
     val density = LocalDensity.current
     val spacing = with(density) { RaftMessageReactionTooltipMetrics.AnchorSpacing.roundToPx() }
     val frame = LocalRaftFrameInsets.current.toPx(density)
-    val placed = remember(spacing) { RaftTooltipBelowStartPositionProvider(spacing) }
+    // Touch (open without hover): above first, out from under the finger. Hover keeps web's below.
+    val aboveFirst = open && !hovered
+    val placed = remember(spacing, aboveFirst) { RaftTooltipBelowStartPositionProvider(spacing, aboveFirst) }
     val framed = remember(placed, spacing, frame) { RaftTooltipFrameProvider(placed, spacing, frame) }
     val transition = rememberTransition(visible, label = "RaftMessageReactionTooltip")
     Box(modifier.raftMouseHover { hovered = it }, propagateMinConstraints = true) {
@@ -193,13 +196,17 @@ private fun RaftMessageReactionTooltipBody(
  * align="start"`), [spacing] px under it; above it when only above has room (`side: "flip"`),
  * and slid back inside the window (`align: "shift"`).
  */
-internal class RaftTooltipBelowStartPositionProvider(private val spacing: Int) : PopupPositionProvider {
+internal class RaftTooltipBelowStartPositionProvider(
+    private val spacing: Int,
+    private val aboveFirst: Boolean = false,
+) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
-    ): IntOffset = raftTooltipBelowStartPosition(anchorBounds, windowSize, popupContentSize, spacing, layoutDirection)
+    ): IntOffset =
+        raftTooltipBelowStartPosition(anchorBounds, windowSize, popupContentSize, spacing, layoutDirection, aboveFirst)
 }
 
 internal fun raftTooltipBelowStartPosition(
@@ -208,12 +215,18 @@ internal fun raftTooltipBelowStartPosition(
     popup: IntSize,
     spacing: Int,
     layoutDirection: LayoutDirection = LayoutDirection.Ltr,
+    aboveFirst: Boolean = false,
 ): IntOffset {
     val start = if (layoutDirection == LayoutDirection.Ltr) anchor.left else anchor.right - popup.width
     val x = start.coerceAtMost(window.width - popup.width).coerceAtLeast(0)
     val below = anchor.bottom + spacing
     val above = anchor.top - spacing - popup.height
-    val y = if (below + popup.height > window.height && above >= 0) above else below
+    val y =
+        if (aboveFirst) {
+            if (above < 0 && below + popup.height <= window.height) below else above
+        } else {
+            if (below + popup.height > window.height && above >= 0) above else below
+        }
     return IntOffset(x, y)
 }
 
