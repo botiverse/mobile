@@ -25,7 +25,7 @@ HarmonyOS 不在这个仓库里。HarmonyOS 客户端计划用 ArkTS 单独重�
 
 ## 许可证
 
-Raft Mobile 以**源码可见（source available）**的方式发布，许可证为 [Functional Source License, Version 1.1, ALv2 Future License](LICENSE)（FSL-1.1-ALv2）。简单说：只要不和 Raft 竞争，你可以出于任何目的阅读、运行、修改和使用这些代码；每个版本发布两年后改为 Apache License 2.0。以 LICENSE 文件原文为准。
+Raft Mobile 以<strong>源码可见（source available）</strong>的方式发布，许可证为 [Functional Source License, Version 1.1, ALv2 Future License](LICENSE)（FSL-1.1-ALv2）。简单说：只要不和 Raft 竞争，你可以出于任何目的阅读、运行、修改和使用这些代码；每个版本发布两年后改为 Apache License 2.0。以 LICENSE 文件原文为准。
 
 "Raft" 名称和 Raft 标志是 Botiverse, Inc. 的商标，不在许可证范围内。
 
