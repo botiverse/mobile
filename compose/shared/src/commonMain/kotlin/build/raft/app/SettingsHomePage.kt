@@ -3104,18 +3104,18 @@ private fun RaftAppShellReadyContent(
                         .initialServerId
             )
         }
-    var systemNotificationNavigationTick by remember { mutableStateOf(0) }
+    // #4260: links and notification opens are taken and opened by this intake, which does not wait
+    // for the shell to recompose (a covered shell does not).
+    val navigationIntake =
+        remember(windowNavigationCoordinator) { RaftShellNavigationIntake(windowNavigationCoordinator) }
     // A notification without a conversation (reminder, notice, test, agent route; contract §4.5):
     // switch to its server and open Activity. From the launch pageData (Android) or the open event (iOS).
     var pendingNotificationActivityServerId by remember(pager.pageData.params.toString()) {
         mutableStateOf(pager.pageData.params.appShellNotificationActivityServerId())
     }
-    var desktopShortcutNavigationTick by remember { mutableStateOf(0) }
     // #proj-mobile #25/#26: external message links wait in the process inbox (through sign-in)
     // and, once resolved for this account, enter the same window navigation queue as a
-    // notification tap.
-    var messageLinkNavigationTick by remember { mutableStateOf(0) }
-    val pendingMessageLink by RaftMessageLinkInbox.Process.pending.collectAsState()
+    // notification tap ([navigationIntake]).
     val messageLinkSwitchedServerTemplate =
         stringResource(Res.string.message_link_switched_server, MessageLinkServerNamePlaceholder)
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
@@ -3133,12 +3133,11 @@ private fun RaftAppShellReadyContent(
                     bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
                     return@observe
                 }
-                val enqueued = windowNavigationCoordinator.enqueue(intent)
+                val enqueued = navigationIntake.enqueue(intent)
                 bridge.log(
                     "window_navigation_received source=app_shortcut enqueued=$enqueued " +
                         "targetServerId=${intent.serverId}"
                 )
-                desktopShortcutNavigationTick += 1
             }
         eventBus.post(
             eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenReadyEventName,
@@ -3175,12 +3174,11 @@ private fun RaftAppShellReadyContent(
                     bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
                     return@observe
                 }
-                val enqueued = windowNavigationCoordinator.enqueue(intent)
+                val enqueued = navigationIntake.enqueue(intent)
                 bridge.log(
                     "window_navigation_received source=system_notification enqueued=$enqueued " +
                         "targetServerId=${intent.serverId}"
                 )
-                systemNotificationNavigationTick += 1
             }
         eventBus.post(
             eventName = RaftSystemNotificationContract.OpenReadyEventName,
@@ -5114,13 +5112,12 @@ private fun RaftAppShellReadyContent(
 
     // External sources only transport this typed identity envelope in pageData. The queue and
     // its consumed/opened markers live with the window's RaftShellStoreScope, so an AppShell
-    // recreation or duplicate PendingIntent cannot replay the route.
+    // recreation or duplicate PendingIntent cannot replay the route. #4260: the opens themselves
+    // run in [navigationIntake], which reads the latest shell state below; this effect only wakes
+    // it when that state changes while the shell composes.
     LaunchedEffect(
         notificationWindowNavigationIntent?.key,
         desktopShortcutWindowNavigationIntent?.key,
-        systemNotificationNavigationTick,
-        desktopShortcutNavigationTick,
-        messageLinkNavigationTick,
         readySession?.currentServerId,
         readySession?.servers,
         homeState.content,
@@ -5129,19 +5126,26 @@ private fun RaftAppShellReadyContent(
         myMessageAlignment,
         authoritativeHomeStartAllowed
     ) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
-        desktopShortcutWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+        if (authoritativeHomeStartAllowed) {
+            notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+            desktopShortcutWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+        }
+        navigationIntake.wake()
+    }
+    val latestNavigationReadiness by rememberUpdatedState {
+        if (!authoritativeHomeStartAllowed) return@rememberUpdatedState null
         val content = homeState.content as? SharedHomeContentState.Content
-        val readiness =
-            WindowNavigationReadiness(
-                knownServerIds = readySession?.servers.orEmpty().mapTo(linkedSetOf()) { server -> server.id },
-                canonicalServerId = readySession?.currentServerId,
-                homeSnapshotServerId = content?.snapshot?.server?.id?.value,
-                homeSessionServerId = content?.session?.currentServerId,
-                conversationDirectory = appShellConversationDirectory
-            )
-        when (val action = windowNavigationCoordinator.advance(readiness)) {
+        WindowNavigationReadiness(
+            knownServerIds = readySession?.servers.orEmpty().mapTo(linkedSetOf()) { server -> server.id },
+            canonicalServerId = readySession?.currentServerId,
+            homeSnapshotServerId = content?.snapshot?.server?.id?.value,
+            homeSessionServerId = content?.session?.currentServerId,
+            conversationDirectory = appShellConversationDirectory
+        )
+    }
+    val latestNavigationPerform by rememberUpdatedState<suspend (WindowNavigationAction) -> Unit> { action ->
+        val content = homeState.content as? SharedHomeContentState.Content
+        when (action) {
             is WindowNavigationAction.ActivateServer -> {
                 bridge.log(
                     "window_navigation_server_activate source=${action.intent.source} " +
@@ -5206,7 +5210,7 @@ private fun RaftAppShellReadyContent(
                 )
                 if (action.intent.source == MessageLinkNavigationSource) {
                     pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
-                    return@LaunchedEffect
+                    return@rememberUpdatedState
                 }
                 bridge.toast(
                     if (action.reason == "server_unavailable") {
@@ -5216,60 +5220,69 @@ private fun RaftAppShellReadyContent(
                     }
                 )
             }
-            null -> Unit
         }
     }
     // An external message link (Android App Link / iOS Universal Link). It waits in the process
-    // inbox while signed out or restoring; with a ready session this shell takes it once,
+    // inbox while signed out or restoring; with a ready session [navigationIntake] takes it once,
     // resolves {slug}/conversation/message for this account, and either queues the same
     // identity-only WindowNavigationIntent a notification tap queues, or shows the one
-    // "Message not found" page. The resolve runs in the shell scope so a session/key change
+    // "Message not found" page. The resolve runs in the intake's scope so a session/key change
     // after the take cannot drop the link half-way.
     val messageLinkSessionReady = authoritativeHomeStartAllowed && readySession != null
-    LaunchedEffect(pendingMessageLink?.id, messageLinkSessionReady) {
-        val pending = pendingMessageLink
-        if (!raftMessageLinkShouldTake(pending, messageLinkSessionReady)) return@LaunchedEffect
-        val taken = RaftMessageLinkInbox.Process.take(pending!!.id)
-        if (taken == null) {
-            bridge.log("message_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
-            return@LaunchedEffect
-        }
+    LaunchedEffect(messageLinkSessionReady) { navigationIntake.wake() }
+    val latestMessageLinkSessionReady by rememberUpdatedState(messageLinkSessionReady)
+    val latestResolveMessageLink by rememberUpdatedState<suspend (RaftPendingMessageLink) -> WindowNavigationIntent?> { taken ->
         val servers = readySession?.servers.orEmpty()
-        bridge.log("message_link_take id=${taken.id} source=${taken.source} servers=${servers.size}")
+        bridge.log("message_link_resolve id=${taken.id} servers=${servers.size}")
         val resolver = RaftMessageLinkResolver(
             appShellNetworkClient,
             diagnosticsLogger = bridge::log,
             contextPageSink = sharedStores.messageContextPageSink(storeScope),
         )
-        appShellCoroutineScope.launch {
-            when (val resolution = resolver.resolve(taken.link, servers)) {
-                is RaftMessageLinkResolution.Open -> {
-                    val intent =
-                        WindowNavigationIntent(
-                            serverId = resolution.serverId,
-                            sourceIdentity = resolution.sourceIdentity,
-                            source = MessageLinkNavigationSource,
-                            launchId = "message-link-${taken.id}"
-                        )
-                    val enqueued = windowNavigationCoordinator.enqueue(intent)
-                    bridge.log(
-                        "window_navigation_received source=$MessageLinkNavigationSource enqueued=$enqueued " +
-                            "targetServerId=${intent.serverId}"
-                    )
-                    messageLinkNavigationTick += 1
-                }
-                is RaftMessageLinkResolution.NotFound -> {
-                    // The page's button goes back to the conversation list (Home tab) on a phone, the
-                    // server's channel list on a wide window: leave the Home tab with nothing open under it.
-                    selectAppShellTab("home")
-                    retainedAppShellTabs = retainedAppShellTabs + "home"
-                    homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-                    pager.openRaftConversationUnavailablePage(navigationStoreScope)
-                }
-                is RaftMessageLinkResolution.PublicPreview ->
-                    pager.openRaftMessageLinkPublicPreviewPage(resolution.link, navigationStoreScope)
+        when (val resolution = resolver.resolve(taken.link, servers)) {
+            is RaftMessageLinkResolution.Open ->
+                WindowNavigationIntent(
+                    serverId = resolution.serverId,
+                    sourceIdentity = resolution.sourceIdentity,
+                    source = MessageLinkNavigationSource,
+                    launchId = "message-link-${taken.id}"
+                )
+            is RaftMessageLinkResolution.NotFound -> {
+                // The page's button goes back to the conversation list (Home tab) on a phone, the
+                // server's channel list on a wide window: leave the Home tab with nothing open under it.
+                selectAppShellTab("home")
+                retainedAppShellTabs = retainedAppShellTabs + "home"
+                homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+                pager.openRaftConversationUnavailablePage(navigationStoreScope)
+                null
+            }
+            is RaftMessageLinkResolution.PublicPreview -> {
+                pager.openRaftMessageLinkPublicPreviewPage(resolution.link, navigationStoreScope)
+                null
             }
         }
+    }
+    // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
+    val latestNavigationTopPageRoute by rememberUpdatedState {
+        if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
+    }
+    LaunchedEffect(navigationIntake) {
+        navigationIntake.run(
+            object : RaftShellNavigationIntakeHost {
+                override fun messageLinkSessionReady(): Boolean = latestMessageLinkSessionReady
+
+                override suspend fun resolveMessageLink(taken: RaftPendingMessageLink): WindowNavigationIntent? =
+                    latestResolveMessageLink(taken)
+
+                override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
+
+                override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
+
+                override suspend fun perform(action: WindowNavigationAction) = latestNavigationPerform(action)
+
+                override fun log(message: String) = bridge.log(message)
+            }
+        )
     }
     LaunchedEffect(
         processRealtimeAuthority?.witness?.connectionFamilyId,
@@ -9114,7 +9127,7 @@ private fun RaftAppShellReadyContent(
                 if (crossServerSource != null) {
                     // Another workspace: switch to it first, then open (window navigation).
                     val enqueued =
-                        windowNavigationCoordinator.enqueue(
+                        navigationIntake.enqueue(
                             WindowNavigationIntent(
                                 serverId = target.serverId,
                                 sourceIdentity = crossServerSource,
@@ -9122,7 +9135,6 @@ private fun RaftAppShellReadyContent(
                             )
                         )
                     bridge.log("window_navigation_received source=foreground_banner enqueued=$enqueued targetServerId=${target.serverId}")
-                    systemNotificationNavigationTick += 1
                 } else {
                     openHomeMessageRequest(
                         request = target.openRequest,
