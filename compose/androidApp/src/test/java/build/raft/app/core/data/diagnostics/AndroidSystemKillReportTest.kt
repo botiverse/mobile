@@ -1,7 +1,7 @@
 package build.raft.app.core.data.diagnostics
 
 import android.app.ApplicationExitInfo
-import build.raft.app.shared.RaftAnrReporter
+import build.raft.app.shared.RaftBuildStamp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -14,7 +14,7 @@ class AndroidSystemKillReportTest {
     private val visible = 200
     private val perceptible = 230
     private val service = 300
-    private val stamp = RaftAnrReporter.StampedBuild("1.22.0", 12200001L)
+    private val stamp = RaftBuildStamp.StampedBuild("1.22.0", 12200001L)
 
     @Test
     fun huaweiOtherKillWithCachedImportanceIsReportedOnlyWhenTelemetrySaysForeground() {
