@@ -100,15 +100,18 @@ data class ArtifactCardWireDto(
 )
 
 /**
- * `ArtifactPreview`: the excerpt's text (the description's fallback) and the screenshot's files
- * (slock #13046 `artifactScreenshot.ts` `ArtifactScreenshotPreview`: `{ kind: "screenshot", desktop,
- * phone: ObjectFileId | null }`). Fields of other kinds are not read; a field of an unexpected type
- * reads as absent, so the card still shows.
+ * `ArtifactPreview`: the excerpt's text (the description's fallback) and its optional `blocks`
+ * (slock #13472, read by [parseArtifactExcerptBlocks], kept raw here so a list this client can't
+ * read never fails the card), and the screenshot's files (slock #13046 `artifactScreenshot.ts`
+ * `ArtifactScreenshotPreview`: `{ kind: "screenshot", desktop, phone: ObjectFileId | null }`).
+ * Fields of other kinds are not read; a field of an unexpected type reads as absent, so the card
+ * still shows.
  */
 @Serializable
 data class ArtifactPreviewWireDto(
     val kind: String,
     val text: String? = null,
+    val blocks: JsonElement? = null,
     val desktop: JsonElement? = null,
     val phone: JsonElement? = null,
 )
@@ -126,6 +129,16 @@ private fun JsonElement?.nonBlankStringOrNull(): String? =
     (this as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
 /** web `artifactScreenshotFile`'s guard: a screenshot only with a desktop file; any other kind has none. */
+/**
+ * web `useArtifactCardPicture`'s excerpt: a card of kind `excerpt` with text, and the blocks this
+ * client can draw ([parseArtifactExcerptBlocks]; null to draw the text instead).
+ */
+internal fun ArtifactPreviewWireDto.excerptOrNull(): ArtifactExcerpt? {
+    if (kind != "excerpt") return null
+    val text = text?.takeIf { it.isNotBlank() } ?: return null
+    return ArtifactExcerpt(text = text, blocks = parseArtifactExcerptBlocks(blocks))
+}
+
 internal fun ArtifactPreviewWireDto.screenshotOrNull(): ArtifactScreenshot? {
     if (kind != "screenshot") return null
     val desktop = desktop.nonBlankStringOrNull() ?: return null
@@ -203,6 +216,11 @@ data class ArtifactSummary(
     val facts: ArtifactFacts = ArtifactFacts(),
     /** The publish check's screenshot (card `preview` of kind `screenshot`), drawn above the header. */
     val screenshot: ArtifactScreenshot? = null,
+    /**
+     * A Markdown version's excerpt (card `preview` of kind `excerpt`): a message card draws it where
+     * a screenshot goes, as rich text from its blocks or its plain text (web #13445, #13472).
+     */
+    val excerpt: ArtifactExcerpt? = null,
 )
 
 /**
@@ -346,6 +364,7 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
                 height = facts?.height,
             ),
         screenshot = card.preview?.screenshotOrNull(),
+        excerpt = card.preview?.excerptOrNull(),
     )
 }
 

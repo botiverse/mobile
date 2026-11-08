@@ -3776,6 +3776,10 @@
     <string name="artifacts_card_comments_one">1 comentario</string>
     <string name="artifacts_card_comments_many">%1$d comentarios</string>
     <string name="artifacts_card_loading">Cargando Artifact</string>
+    <string name="artifacts_card_excerpt_image">Imagen</string>
+    <string name="artifacts_card_excerpt_image_named">Imagen: %1$s</string>
+    <string name="artifacts_card_excerpt_images">%1$d imágenes</string>
+    <string name="artifacts_card_excerpt_diagram">Diagrama</string>
     <string name="artifacts_card_deleted_by">Eliminado por %1$s %2$s</string>
     <string name="artifacts_card_deleted_by_name">Eliminado por %1$s</string>
     <string name="artifacts_card_deleted_at">Eliminado %1$s</string>

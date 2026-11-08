@@ -400,7 +400,9 @@ private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
  * Badge; the fact line (`footnote` muted, 1 line); the description (`callout` muted, 1 line under
  * a fact line, else 2) or the start of its text (2 lines); ↗ opens its own page. Footer: where it
  * lives, who updated it when (Space Mono hint), and its comment count. Above them, the publish
- * check's screenshot when the card has one ([ArtifactCardScreenshot]); no publisher cover yet.
+ * check's screenshot when the card has one ([ArtifactCardScreenshot]), else a Markdown version's
+ * excerpt ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the
+ * description; no publisher cover yet.
  */
 @Composable
 internal fun ArtifactMessageCard(
@@ -420,8 +422,15 @@ internal fun ArtifactMessageCard(
             else -> summary.authorName.takeIf { it.isNotBlank() }
         }
     val screenshot = rememberArtifactCardScreenshot(summary)
+    // web `useArtifactCardPicture`: a screenshot, else a Markdown version's excerpt (one kind at a
+    // time from the server, so an excerpt never waits for or replaces a picture).
+    val excerpt = summary.excerpt.takeIf { screenshot == ArtifactCardScreenshotView.None }
     RaftMessageEmbed(modifier = modifier, onClick = onOpen, onClickLabel = summary.title) {
-        if (screenshot != ArtifactCardScreenshotView.None) ArtifactCardScreenshot(screenshot)
+        if (screenshot != ArtifactCardScreenshotView.None) {
+            ArtifactCardScreenshot(screenshot)
+        } else if (excerpt != null) {
+            RaftMessageEmbedContent { ArtifactCardExcerpt(excerpt) }
+        }
         RaftMessageEmbedHeader {
             RaftFilePreview(summary.kind.filePreviewKind(), badge = summary.kind.badge)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -444,7 +453,8 @@ internal fun ArtifactMessageCard(
                 facts?.let {
                     RaftText(it, style = typography.footnote, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                summary.description?.let {
+                // The card's own description only once its excerpt is drawn above (web: `card.description`).
+                summary.description?.takeUnless { excerpt != null && summary.descriptionIsExcerpt }?.let {
                     RaftText(
                         it,
                         style = typography.callout,
