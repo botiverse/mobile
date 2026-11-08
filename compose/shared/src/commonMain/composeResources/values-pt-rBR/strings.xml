@@ -1027,6 +1027,11 @@
     <string name="thread_agent_typing_agent_fallback">Agente</string>
     <string name="thread_jump_new_messages_one">1 nova mensagem</string>
     <string name="thread_jump_new_messages_many">%1$d novas mensagens</string>
+    <string name="thread_outline_label">Linha do tempo da thread</string>
+    <string name="thread_outline_row_label">%1$s, %2$s, %3$s</string>
+    <string name="thread_outline_attachments_one">1 anexo</string>
+    <string name="thread_outline_attachments_many">%1$d anexos</string>
+    <string name="thread_outline_no_text">Sem texto</string>
     <string name="thread_jump_next_unread_thread">Próxima thread não lida (%1$d)</string>
     <string name="thread_jump_earliest_unread_thread">Thread não lida mais antiga (%1$d)</string>
     <string name="thread_jump_unread_thread_dismiss">Dispensar</string>

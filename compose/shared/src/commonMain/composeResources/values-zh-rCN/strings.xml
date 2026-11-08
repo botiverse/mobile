@@ -1027,6 +1027,11 @@
     <string name="thread_agent_typing_agent_fallback">Agent</string>
     <string name="thread_jump_new_messages_one">1 条新消息</string>
     <string name="thread_jump_new_messages_many">%1$d 条新消息</string>
+    <string name="thread_outline_label">Thread 时间线</string>
+    <string name="thread_outline_row_label">%1$s，%2$s，%3$s</string>
+    <string name="thread_outline_attachments_one">1 个附件</string>
+    <string name="thread_outline_attachments_many">%1$d 个附件</string>
+    <string name="thread_outline_no_text">没有文字</string>
     <string name="thread_jump_next_unread_thread">下一个未读消息列（%1$d）</string>
     <string name="thread_jump_earliest_unread_thread">最早的未读消息列（%1$d）</string>
     <string name="thread_jump_unread_thread_dismiss">关闭</string>

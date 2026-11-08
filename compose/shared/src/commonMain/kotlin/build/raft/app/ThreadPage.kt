@@ -5103,8 +5103,10 @@ private fun ThreadPageScreen(
             wide = adaptivePaneState.layout == RaftAdaptivePaneLayout.DualPane,
             onBack = rootBack,
         )
+    val threadOutlineApi = remember(networkClient) { build.raft.app.data.NetworkRaftThreadOutlineApi(networkClient) }
     CompositionLocalProvider(
         LocalConversationUnavailableNav provides conversationUnavailableNav,
+        LocalThreadOutlineApi provides threadOutlineApi,
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
@@ -13551,6 +13553,17 @@ private fun SharedThreadRouteContentContent(
                                 messageId = itemId,
                                 switchToTab = RaftThreadTab.Chat.wireValue,
                                 prewarmThreadChannelId = eventThreadChannelId,
+                            )
+                        )
+                    }
+                    action == ThreadOutlineJumpAction && !itemId.isNullOrBlank() -> {
+                        // The thread timeline (botiverse/slock #13534): focus the message as a search
+                        // hit does, loading around it first when it isn't loaded; top-aligned.
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.JumpToMessage(
+                                messageId = itemId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                                unreadThreadPill = false,
                             )
                         )
                     }
@@ -25783,6 +25796,37 @@ private fun ThreadMessagesListContent(
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
             )
         }
+        if (renderPayload.replyThreadSurface && !shareSelectionActive && !shareSelectionCaptureActive) {
+            // The thread timeline (web ConversationOutline): wide windows only; see ThreadOutline.kt.
+            val outlineKeyToMessageId =
+                remember(renderPayload.messages, renderPayload.originMessage?.id, duplicateMessageRandomIds) {
+                    buildMap {
+                        renderPayload.originMessage?.id?.let { put(ThreadOriginListItemKey, it) }
+                        renderPayload.messages.forEach { put(it.messageListItemKey(duplicateMessageRandomIds), it.id) }
+                    }
+                }
+            val outlineViewport =
+                remember(listState, reverseLayout, outlineKeyToMessageId) {
+                    {
+                        val visible = listState.raw.layoutInfo.visibleItemsInfo
+                        val topFirst = if (reverseLayout) visible.sortedByDescending { it.offset } else visible.sortedBy { it.offset }
+                        ThreadOutlineViewport(topFirst.mapNotNull { outlineKeyToMessageId[it.key] })
+                    }
+                }
+            ThreadOutlineHost(
+                channelId = renderPayload.historyChannelId ?: renderPayload.sourceThreadId,
+                active = routeActive && hostForeground,
+                origin = renderPayload.originMessage,
+                messages = renderPayload.messages,
+                viewport = outlineViewport,
+                jumpTargetId = renderPayload.focusedMessageId,
+                jumpNonce = renderPayload.focusedMessageRequestNonce,
+                listWidth = maxWidth,
+                formatTime = { value -> renderConfig.formatTimestampLabel(value) },
+                onJump = { messageId -> onThreadEvent(ThreadOutlineJumpAction, messageId, null, null) },
+                modifier = Modifier.zIndex(ThreadJumpControlsZIndex),
+            )
+        }
         if (agentTyping != null && agentTypingLineShown) {
             ThreadAgentTypingLine(
                 typing = agentTyping,
@@ -28433,6 +28477,9 @@ internal fun threadRenderedBottomScrollOffset(
 
 /** The action the unread-thread pill sends: focus that parent message. */
 internal const val ThreadJumpToUnreadThreadParentAction = "focusUnreadThreadParent"
+
+/** The thread timeline's row or tick: focus that message (ThreadOutline.kt). */
+internal const val ThreadOutlineJumpAction = "focusThreadOutlineMessage"
 
 /** The pill's thread has its parent past the history window and replies inside it: open the thread. */
 internal const val ThreadOpenUnreadThreadPastHistoryAction = "openUnreadThreadPastHistory"
