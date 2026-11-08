@@ -1116,6 +1116,12 @@
     <string name="thread_share_copy_markdown">Копировать Markdown</string>
     <string name="thread_share_generate_image">Создать изображение</string>
     <string name="thread_share_download">Скачать</string>
+    <string name="thread_share_width_label">Ширина изображения</string>
+    <string name="thread_share_width_phone">Телефон</string>
+    <string name="thread_share_width_tablet">Планшет</string>
+    <string name="thread_share_width_wide">Широкий</string>
+    <string name="thread_share_width_custom">Свой</string>
+    <string name="thread_share_rendering">Компоновка изображения…</string>
     <string name="thread_task_candidate_current">Текущий</string>
     <string name="thread_task_candidate_untitled">Задача без названия</string>
     <string name="thread_task_candidate_unknown_channel">Неизвестный канал</string>
