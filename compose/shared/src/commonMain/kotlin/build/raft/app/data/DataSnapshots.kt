@@ -315,6 +315,9 @@ sealed interface HomeConversationRow {
     /** Channel `guestJoinable` (see [HomeChannelWireDto.guestJoinable]); only channels carry one. */
     val guestJoinable: Boolean
         get() = false
+    /** Agent Lounge v0: the agent this channel is the Lounge of; only channels carry one. */
+    val loungeAgentId: String?
+        get() = null
     val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
     /**
@@ -374,7 +377,9 @@ data class HomeChannelRow(
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
-    override val channelCapabilities: ChannelCapabilities? = null
+    override val channelCapabilities: ChannelCapabilities? = null,
+    /** Agent Lounge v0 (see [HomeConversationRow.loungeAgentId]). */
+    override val loungeAgentId: String? = null
 ) : HomeConversationRow
 
 @Serializable
@@ -417,7 +422,12 @@ data class HomeDirectMessageRow(
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
-    override val channelCapabilities: ChannelCapabilities? = null
+    override val channelCapabilities: ChannelCapabilities? = null,
+    /**
+     * Agent Lounge v0: on an agent DM row (`GET /channels/dm` `lounge`), that agent's Lounge, present
+     * only once it exists. Its unread comes from the unread summary by the Lounge's channel id.
+     */
+    val lounge: AgentLoungeSummary? = null
 ) : HomeConversationRow
 
 fun HomeConversationRow.toConversationSummary(): ConversationSummary =
@@ -461,7 +471,8 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         guestJoinable = guestJoinable,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
-        channelCapabilities = channelCapabilities
+        channelCapabilities = channelCapabilities,
+        loungeAgentId = loungeAgentId
     )
 
 fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
@@ -505,7 +516,8 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         guestJoinable = guestJoinable,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
-        channelCapabilities = channelCapabilities
+        channelCapabilities = channelCapabilities,
+        loungeAgentId = loungeAgentId
     )
 
 fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
@@ -969,6 +981,8 @@ data class AgentDetailSummary(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /** A personal assistant's owner; null for a shared agent (Agent Lounge v0 hides the Lounge for it). */
+    val assistantOwnerUserId: String? = null,
     /** External agents only: `lastSeenAt` — credential last-use; realtime `agent:seen` advances it (task #410). */
     val lastSeenAt: String? = null,
     /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeConversationRow
@@ -567,6 +568,7 @@ internal fun RaftDraftEntry.toRaftDraftRowModel(directory: RaftDraftDirectory, l
         channelSymbol: String,
         threadInDirectMessage: Boolean = false,
         taskConversation: Boolean = false,
+        lounge: ActivityConversationLounge? = null,
     ) = ActivityConversationRowModel(
         leadingKind = kind,
         dmPeer = dmPeer,
@@ -585,18 +587,26 @@ internal fun RaftDraftEntry.toRaftDraftRowModel(directory: RaftDraftDirectory, l
         taskNumber = null,
         taskStatus = null,
         taskConversation = taskConversation,
+        lounge = lounge,
     )
+    // Agent Lounge v0: a draft in a Lounge (or a thread in one) names the Lounge; no list holds it.
+    fun loungeOf(channelId: String?): ActivityConversationLounge? =
+        RaftAgentLounges.loungeAnyServer(channelId)?.let { ActivityConversationLounge(it.agentId, it.displayAgentName) }
     return when (val place = place) {
         is RaftDraftPlace.Conversation -> {
             val row = directory.conversationRow(place.channelId)
-            val name = row?.name?.trimStart('#')?.takeIf { it.isNotBlank() } ?: labels.unknownConversation
+            val lounge = if (row == null && !place.directMessage) loungeOf(place.channelId) else null
+            val name =
+                lounge?.let { agentLoungeTitleNow(it.agentName) }
+                    ?: row?.name?.trimStart('#')?.takeIf { it.isNotBlank() }
+                    ?: labels.unknownConversation
             RaftDraftRowModel(
                 key = key,
                 leading =
                     if (place.directMessage) {
                         leading(ActivityConversationLeadingKind.DirectMessage, row?.raftDraftDmPeer(), "#")
                     } else {
-                        leading(ActivityConversationLeadingKind.Channel, null, directory.channelSymbols[place.channelId] ?: "#")
+                        leading(ActivityConversationLeadingKind.Channel, null, directory.channelSymbols[place.channelId] ?: "#", lounge = lounge)
                     },
                 leadingLabel = name,
                 title = name,
@@ -608,6 +618,7 @@ internal fun RaftDraftEntry.toRaftDraftRowModel(directory: RaftDraftDirectory, l
         is RaftDraftPlace.Thread -> {
             val parent = directory.conversationRow(place.parentChannelId)
             val inDm = parent?.kind == ConversationKind.DirectMessage
+            val parentLounge = if (parent == null) loungeOf(place.parentChannelId) else null
             RaftDraftRowModel(
                 key = key,
                 leading =
@@ -616,9 +627,14 @@ internal fun RaftDraftEntry.toRaftDraftRowModel(directory: RaftDraftDirectory, l
                         parent?.takeIf { inDm }?.raftDraftDmPeer(),
                         directory.channelSymbols[place.parentChannelId] ?: "#",
                         threadInDirectMessage = inDm,
+                        lounge = parentLounge,
                     ),
-                leadingLabel = parent?.name.orEmpty(),
-                title = labels.threadIn(parent.raftDraftChannelRef(labels.unknownConversation)),
+                leadingLabel = parentLounge?.agentName ?: parent?.name.orEmpty(),
+                title =
+                    labels.threadIn(
+                        parentLounge?.let { agentLoungeTitleNow(it.agentName) }
+                            ?: parent.raftDraftChannelRef(labels.unknownConversation)
+                    ),
                 prefix = null,
                 preview = preview,
                 editedAt = editedAt,
