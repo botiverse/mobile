@@ -27,10 +27,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.Dp
@@ -53,7 +55,7 @@ import build.raft.designsystem.components.RaftAvatarSize
  *    working agents first, then the most recently active. At the live edge only.
  *  - A, the faces: each relevant agent's 19dp face on the last loaded message at or below its read
  *    position ([placeThreadAgentReads]), [ThreadAgentReadMaxFacesNarrow] per message on a phone width
- *    ([ThreadAgentReadMaxFaces] from 768dp) then "+N". Who read, replied or is working is the faces'
+ *    ([ThreadAgentReadMaxFaces] from a 768dp window) then "+N". Who read, replied or is working is the faces'
  *    to say (a working agent's face carries the busy light).
  *  - B, the line: under the viewer's own latest message, only when it will not reach a relevant agent
  *    that stopped following the thread or muted the channel and has done nothing with it yet, and the
@@ -135,7 +137,8 @@ private val ThreadAgentReadMentionToken = Regex("""(?<![\w@])@([\w.\-]+)""")
 /**
  * The agents [message] @mentions, in order, without repeats. Its resolved `mentions[]` (web
  * `message.mentions`) when it has any; a row that carries none (cached, optimistic) falls back to its
- * body's `@handle` tokens through the page directory, as its mention badges do.
+ * body's `@handle` tokens through the page directory, as its mention badges do (a sentence's
+ * trailing `.` or `-` is not part of the handle).
  */
 internal fun RaftThreadMessageItem.threadAgentMentionIds(directory: Map<String, MessageMention> = emptyMap()): List<String> {
     val mentions =
@@ -143,7 +146,7 @@ internal fun RaftThreadMessageItem.threadAgentMentionIds(directory: Map<String, 
             if (directory.isEmpty()) {
                 emptyList()
             } else {
-                ThreadAgentReadMentionToken.findAll(body).mapNotNull { directory[it.groupValues[1]] }.toList()
+                ThreadAgentReadMentionToken.findAll(body).mapNotNull { directory[it.groupValues[1].trimEnd('.', '-')] }.toList()
             }
         }
     return mentions.filter { it.type == "agent" && it.id.isNotBlank() }.map { it.id }.distinct()
@@ -239,7 +242,9 @@ internal fun threadOwnLatestMessageId(
  * agent stopped following ([stoppedFollowingAgentIds], a thread) or muted the channel
  * ([mutedAgentIds]) and has done nothing with the message yet: working, replied (posted after it, or
  * in its thread: the message's own inline replies in a channel) or read (its position reached it) all
- * mean it already has it. A message that @mentions an agent that can read here flags no one: the
+ * mean it already has it. (The app's message rows carry the latest few replies of a message's
+ * thread, not the summary's participant ids the web reads, so an agent that replied earlier in a
+ * long thread is only known through its read position.) A message that @mentions an agent that can read here flags no one: the
  * mention reaches it, and the agents it does not name are not its audience. Null too without a seq
  * (a send still on its way).
  */
@@ -289,6 +294,11 @@ internal fun ThreadPeerReadReceiptsUi.threadAgentReadProgress(
     messages: List<RaftThreadMessageItem>,
     hasNewer: Boolean,
     workingAgentIds: List<String>,
+    /**
+     * Web `statusThreadWorking`: in a channel, who is typing in the thread under a message (by its
+     * id); they have the viewer's message, so the line does not flag them. Empty in a thread.
+     */
+    threadWorkingAgentIds: (String) -> List<String> = { emptyList() },
 ): ThreadAgentReadProgressUi? {
     if (!agentReadProgressEnabled || dmSurface) return null
     val positions = threadAgentReadPositions(scope) ?: return null
@@ -306,7 +316,7 @@ internal fun ThreadPeerReadReceiptsUi.threadAgentReadProgress(
             messageId = messageId,
             positions = positions,
             relevantAgentIds = relevant,
-            workingAgentIds = workingAgentIds,
+            workingAgentIds = messageId?.let(threadWorkingAgentIds).orEmpty().let { if (it.isEmpty()) workingAgentIds else workingAgentIds + it },
             stoppedFollowingAgentIds = threadAgentsStoppedFollowing(scope),
             mutedAgentIds = threadAgentsMutedChannel(scope),
             directory = directoryMentions,
@@ -418,8 +428,8 @@ internal fun threadAgentReadStatusRuns(
 
 /**
  * Web `formatAgentReadStatus`: the line's words as one string, "Stopped following: Niko, Ray ·
- * Muted: Cindy": what a tap shows and, with [reachHint] after the last segment, the screen-reader
- * sentence.
+ * Muted: Cindy": what a tap shows and, with [reachHint] after the last segment and ", " for
+ * [separator] (a "·" is not read well), the screen-reader sentence.
  */
 internal fun formatThreadAgentReadStatus(
     entries: List<ThreadAgentReadEntry>,
@@ -427,6 +437,7 @@ internal fun formatThreadAgentReadStatus(
     strings: ThreadAgentReadStatusStrings,
     maxNames: Int = ThreadAgentReadStatusMaxNames,
     reachHint: String? = null,
+    separator: String = " · ",
 ): String {
     if (entries.isEmpty()) return ""
     val segments =
@@ -435,7 +446,7 @@ internal fun formatThreadAgentReadStatus(
             strings.template(run.state).fillThreadAgentRead(listed)
         }.toMutableList()
     if (reachHint != null) segments += reachHint
-    return segments.joinToString(" · ")
+    return segments.joinToString(separator)
 }
 
 /** The line's one icon, for its first segment (web: Unfollow for a thread, the mute bell for a channel). */
@@ -517,11 +528,16 @@ internal fun planThreadAgentReadLine(
             }
         }
         // The narrowest share that no longer shows a letter goes first; then look again.
-        val gone = open.filter { shares[it] < segments[it].minNames }.minByOrNull { shares[it] }
+        // A name shorter than a letter and the ellipsis ("Al") still fits whole at its own width.
+        val gone = open.filter { shares[it] < minOf(segments[it].minNames, segments[it].names) }.minByOrNull { shares[it] }
         if (gone == null) return ThreadAgentReadLinePlan(segments.indices.map { if (counted[it]) null else shares[it] }, hint)
         counted[gone] = true
     }
 }
+
+/** The first letter of [names], a whole code point (an emoji or a supplementary-plane letter is two chars). */
+internal fun threadAgentReadFirstLetter(names: String): String =
+    if (names.length >= 2 && names[0].isHighSurrogate() && names[1].isLowSurrogate()) names.take(2) else names.take(1)
 
 internal const val ThreadAgentReadStatusTestTag = "agent-read-status"
 internal const val ThreadAgentReadStatusTextTestTag = "agent-read-status-text"
@@ -549,7 +565,7 @@ internal fun ThreadAgentReadStatusRow(status: ThreadAgentReadStatusUi, modifier:
     val label =
         remember(status, strings, fallbackName) {
             strings.label.fillThreadAgentRead(
-                formatThreadAgentReadStatus(status.entries, nameOf, strings, status.entries.size, strings.stoppedFollowingHint),
+                formatThreadAgentReadStatus(status.entries, nameOf, strings, status.entries.size, strings.stoppedFollowingHint, separator = ", "),
             )
         }
     var expanded by rememberSaveable(status.messageId) { mutableStateOf(false) }
@@ -562,8 +578,12 @@ internal fun ThreadAgentReadStatusRow(status: ThreadAgentReadStatusUi, modifier:
             .fillMaxWidth()
             .heightIn(min = 20.dp)
             .testTag(ThreadAgentReadStatusTestTag)
-            .clickable(interactionSource = interaction, indication = null, role = Role.Button) { expanded = !expanded }
-            .semantics(mergeDescendants = true) { contentDescription = label },
+            .clickable(interactionSource = interaction, indication = null) { expanded = !expanded }
+            // One sentence for a screen reader, read once: the visible parts are not read on their own.
+            .clearAndSetSemantics {
+                contentDescription = label
+                role = Role.Button
+            },
         contentAlignment = Alignment.CenterEnd,
     ) {
         val icon: @Composable () -> Unit = {
@@ -609,7 +629,7 @@ internal fun ThreadAgentReadStatusRow(status: ThreadAgentReadStatusUi, modifier:
                     Triple(Triple(before, after, more), count, ThreadAgentReadSegmentWidths(
                         verb = width(before) + width(after),
                         names = width(run.names),
-                        minNames = width(run.names.take(1) + "…"),
+                        minNames = width(threadAgentReadFirstLetter(run.names) + "…"),
                         more = width(more),
                         count = width(count),
                     ))
@@ -677,8 +697,10 @@ internal fun ThreadAgentReadFacesRow(
     val label = remember(names, strings, groupLabelTemplate) { groupLabelTemplate.fillThreadAgentRead(strings.formatList(names)) }
     var expanded by rememberSaveable(faces.map { it.agentId }) { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val maxFaces = threadAgentReadMaxFaces(maxWidth)
+    // Web `NARROW_QUERY` is the viewport's width, not the row's.
+    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    Box(modifier.fillMaxWidth()) {
+        val maxFaces = threadAgentReadMaxFaces(windowWidth)
         val shown = faces.take(maxFaces)
         val rest = faces.size - shown.size
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
@@ -722,9 +744,10 @@ internal fun ThreadAgentReadFacesRow(
                 }
             }
             if (expanded) {
+                // Visual only: the faces' own label already says it.
                 Text(
                     label,
-                    modifier = Modifier.padding(top = 2.dp).testTag(ThreadAgentReadFacesDetailsTestTag),
+                    modifier = Modifier.padding(top = 2.dp).clearAndSetSemantics { testTag = ThreadAgentReadFacesDetailsTestTag },
                     style = RaftType.Caption,
                     color = RaftColor.ForegroundHint,
                     textAlign = TextAlign.End,

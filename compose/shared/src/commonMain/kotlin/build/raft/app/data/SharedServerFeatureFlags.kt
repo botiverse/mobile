@@ -39,8 +39,9 @@ const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_sta
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 /**
  * Agent read progress (botiverse/slock `packages/shared/src/featureFlags.ts`
- * `AGENT_READ_PROGRESS_FEATURE_FLAG_KEY`, default off). With [READ_RECEIPTS_FEATURE_FLAG_KEY] on, a thread
- * shows the agents' read status line under the viewer's latest reply (ThreadAgentReadStatus.kt).
+ * `AGENT_READ_PROGRESS_FEATURE_FLAG_KEY`, default off). With [READ_RECEIPTS_FEATURE_FLAG_KEY] on, a channel or
+ * reply thread shows each agent's face on the message it read up to, and, only when the viewer's latest
+ * message will not reach an agent that stopped following or muted, the line under it (ThreadAgentReadStatus.kt).
  */
 const val AGENT_READ_PROGRESS_FEATURE_FLAG_KEY: String = "agent_read_progress_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"

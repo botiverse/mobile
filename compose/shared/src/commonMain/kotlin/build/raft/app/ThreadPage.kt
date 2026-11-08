@@ -12670,6 +12670,13 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
             )
+        val agentTypingInThread =
+            rememberThreadAgentTypingInThread(
+                payload = renderedThread,
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                serverId = currentServerId,
+            )
         // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
         // when the assistant is ready with its DM, never on that DM or a thread in it.
         val assistantOtterHostId = remember { newAssistantOtterHostId() }
@@ -12821,6 +12828,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
+                LocalThreadAgentTypingInThread provides agentTypingInThread,
                 LocalThreadAssistantOtter provides assistantOtter,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
@@ -21876,14 +21884,16 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
+    val agentTypingInThread = LocalThreadAgentTypingInThread.current
     // agent_read_progress_v0 (web useAgentReadProgress): each agent's face on the message it read up to,
     // and the line under the viewer's latest message when it will not reach an agent.
     val agentReadProgress =
-        remember(peerReadReceipts, renderPayload.messages, renderPayload.canLoadMoreAfter, agentTyping) {
+        remember(peerReadReceipts, renderPayload.messages, renderPayload.canLoadMoreAfter, agentTyping, agentTypingInThread) {
             peerReadReceipts?.threadAgentReadProgress(
                 messages = renderPayload.messages,
                 hasNewer = renderPayload.canLoadMoreAfter,
                 workingAgentIds = agentTyping?.agents?.map { it.agentId }.orEmpty(),
+                threadWorkingAgentIds = { parent -> agentTypingInThread?.agentIds(parent).orEmpty() },
             )
         }
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.

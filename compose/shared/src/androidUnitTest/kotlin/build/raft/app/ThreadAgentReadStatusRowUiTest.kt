@@ -7,6 +7,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
@@ -82,7 +85,10 @@ class ThreadAgentReadStatusRowUiTest {
         val hint = onNodeWithTag(ThreadAgentReadStatusHintTestTag, useUnmergedTree = true)
         assertEquals("Mention them to reach them", hint.text())
         assertFalse(hint.isCut())
-        onNodeWithTag(ThreadAgentReadStatusTestTag).assertContentDescriptionEquals("Agents on this message: Muted: Kirby · Mention them to reach them")
+        onNodeWithTag(ThreadAgentReadStatusTestTag).assertContentDescriptionEquals("Agents on this message: Muted: Kirby, Mention them to reach them")
+        // One button, one sentence: the visible parts are not in the merged tree on their own.
+        onNodeWithTag(ThreadAgentReadStatusTestTag).assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        onNodeWithText("Kirby").assertDoesNotExist()
         // The hint ends the line, inside it.
         val row = onNodeWithTag(ThreadAgentReadStatusTestTag).getBoundsInRoot()
         assertTrue(abs((row.right - hint.getBoundsInRoot().right).value) < 0.5f)
@@ -131,7 +137,7 @@ class ThreadAgentReadStatusRowUiTest {
         val row = onNodeWithTag(ThreadAgentReadStatusTestTag).getBoundsInRoot()
         assertTrue(hint.getBoundsInRoot().right <= row.right + 0.5.dp)
         onNodeWithTag(ThreadAgentReadStatusTestTag).assertContentDescriptionEquals(
-            "Agents on this message: Muted: ProductDesigner, Rayleigh, Cindy, and Tenny · Mention them to reach them",
+            "Agents on this message: Muted: ProductDesigner, Rayleigh, Cindy, and Tenny, Mention them to reach them",
         )
         // A tap lists every name, without the hint (the web's tooltip).
         onNodeWithTag(ThreadAgentReadStatusTestTag).performClick()
@@ -163,7 +169,9 @@ class ThreadAgentReadStatusRowUiTest {
         onNodeWithTag(ThreadAgentReadFacesDetailsTestTag, useUnmergedTree = true).assertDoesNotExist()
         onNodeWithTag(ThreadAgentReadFacesTestTag).performClick()
         waitForIdle()
-        onNodeWithText(label, useUnmergedTree = true).assertExists()
+        onNodeWithTag(ThreadAgentReadFacesDetailsTestTag, useUnmergedTree = true).assertExists()
+        // Shown, not read again: the faces' label already says it.
+        onNodeWithText(label, useUnmergedTree = true).assertDoesNotExist()
         onNodeWithTag(ThreadAgentReadFacesTestTag).performClick()
         waitForIdle()
         onNodeWithTag(ThreadAgentReadFacesDetailsTestTag, useUnmergedTree = true).assertDoesNotExist()

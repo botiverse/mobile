@@ -189,6 +189,21 @@ class ThreadAgentReadStatusTest {
         assertEquals(ThreadAgentReadLinePlan(listOf(null), 0f), plan(50f, muted4))
     }
 
+    @Test fun aNameShorterThanALetterAndTheEllipsisStillFitsWhole() {
+        // "Al" (8) is narrower than "A…" (12): at its own width it is whole, not a reason for the count.
+        val al = muted4.copy(names = 8f, minNames = 12f)
+        // Two segments sharing 40: "Al" takes its own 8 and stays; the other gets the 32 left.
+        assertEquals(ThreadAgentReadLinePlan(listOf(8f, 32f), 170f), plan(386f, al, muted4))
+        assertEquals(ThreadAgentReadLinePlan(listOf(null), 170f), plan(16f + 10f + 50f + 20f + 7f + 170f, al))
+    }
+
+    @Test fun theFirstLetterIsAWholeCodePoint() {
+        assertEquals("N", threadAgentReadFirstLetter("Niko"))
+        assertEquals("\uD83E\uDD16", threadAgentReadFirstLetter("\uD83E\uDD16 Bot"))
+        assertEquals("\uD840\uDC0B", threadAgentReadFirstLetter("\uD840\uDC0Bx"))
+        assertEquals("", threadAgentReadFirstLetter(""))
+    }
+
     @Test fun segmentsShareTheRoomAndTheNarrowestGoesFirst() {
         val stopped = ThreadAgentReadSegmentWidths(verb = 120f, names = 60f, minNames = 10f, more = 0f, count = 160f)
         // 24 left: 12 each, both still show a letter.
@@ -292,6 +307,25 @@ class ThreadAgentReadStatusTest {
         assertEquals(listOf("a-niko"), threadRelevantReadAgentIds(listOf(old) + recent, positions, emptyList()))
         val mentionedInSystem = system(32).copy(mentions = listOf(MessageMention("agent", "a-cindy", "Cindy")))
         assertEquals(listOf("a-niko"), threadRelevantReadAgentIds(recent + mentionedInSystem, positions, emptyList()))
+    }
+
+    @Test fun aSentencesTrailingPunctuationIsNotPartOfTheHandle() {
+        val directory = mapOf("niko" to MessageMention("agent", "a-niko", "niko"), "ray" to MessageMention("agent", "a-ray", "ray"))
+        assertEquals(listOf("a-niko", "a-ray"), mine(3).copy(body = "Thanks @niko. And @ray-").threadAgentMentionIds(directory))
+    }
+
+    @Test fun inAChannelAnAgentTypingInTheMessagesThreadHasIt() {
+        val scope = PeerReadReceiptScope.Peers(listOf(PeerReadState(ReadReceiptPeerKind.Agent, "a-niko", 1, mutedChannel = true)))
+        val messages = listOf(agent("a-niko", 1), mine(3))
+        val receipts = ThreadPeerReadReceiptsUi(scope, dmSurface = false, agentReadProgressEnabled = true, agentNames = names)
+        assertEquals(entries("a-niko" to Muted), receipts.threadAgentReadProgress(messages, false, emptyList())!!.status?.entries)
+        val typingInThread = { parent: String -> if (parent == "m-3") listOf("a-niko") else emptyList() }
+        assertNull(receipts.threadAgentReadProgress(messages, false, emptyList(), typingInThread)!!.status)
+        // Typing under another message does not count.
+        assertEquals(
+            entries("a-niko" to Muted),
+            receipts.threadAgentReadProgress(messages, false, emptyList()) { if (it == "m-1") listOf("a-niko") else emptyList() }!!.status?.entries,
+        )
     }
 
     @Test fun aCachedRowWithoutResolvedMentionsFallsBackToItsBodyHandles() {
