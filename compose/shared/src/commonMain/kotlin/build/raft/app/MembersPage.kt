@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.agentOffersLounge
 import build.raft.app.data.isFor
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
@@ -7,6 +8,7 @@ import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.getDefaultModel
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.requiredWidth
@@ -4038,6 +4040,7 @@ internal fun MemberDetailPageContent(
     val tabOrderPermissionError = stringResource(Res.string.member_error_tab_order_permission)
     val reminderOpenError = stringResource(Res.string.member_error_open_reminder)
     val directMessageOpenError = stringResource(Res.string.member_error_open_direct_message)
+    val loungeOpenFailed = stringResource(Res.string.agent_lounge_open_failed)
     val directMessageOpenErrorTemplate = membersStringTemplate(Res.string.member_error_open_direct_message_detail)
     val directMessagePermissionError = stringResource(Res.string.member_error_open_direct_message_permission)
     val openProfileFailed = stringResource(Res.string.member_error_open_profile)
@@ -4111,6 +4114,9 @@ internal fun MemberDetailPageContent(
             .collectAsState()
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
     val pendingDirectMessageOpens by provider.directMessageOpens.pending.collectAsState()
+    // Agent Lounge v0: the profile's Lounge action (web useOpenAgentLounge).
+    val loungeOpener = rememberAgentLoungeOpener(bridge, provider.storeScope)
+    val pendingLoungeOpens by loungeOpener.opening.collectAsState()
     val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
     val serverMembersState by provider.serverMembersStore.state.collectAsState()
     val selectedMemberId = memberIdentity?.memberId
@@ -4510,6 +4516,8 @@ internal fun MemberDetailPageContent(
                 )
             is MemberDetailRouteState.Agent -> {
                 val member = selectedAgentDetail?.toStaticMembersProfile(current.server)
+                val loungeEnabled =
+                    rememberAgentLoungeEnabled(provider.serverFeatureFlags, current.server.id.value, current.server.role)
                 if (member == null) {
                     Box(
                         modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite),
@@ -4774,6 +4782,35 @@ internal fun MemberDetailPageContent(
                         actions = MembersDetailActions(
                             onBack = { closeDetail() },
                             directMessageOpening = pendingDirectMessageOpens.isOpening(member.kind, member.id),
+                            onOpenLounge =
+                                if (loungeEnabled) {
+                                    {
+                                        loungeOpener.open(current.server.id.value, member.id.value, member.displayName) { opened ->
+                                            val identity = opened.conversationIdentity()
+                                            if (openDirectMessageInShell?.invoke(identity) != true) {
+                                                val launchPayload =
+                                                    buildStandaloneConversationThreadLaunchPayload(
+                                                        conversation = identity,
+                                                        timeContext = timeContext,
+                                                        instanceIdOverride = "members-lounge-${member.id.value}-${identity.threadId.value}"
+                                                    )
+                                                if (launchPayload == null) {
+                                                    bridge.toast(loungeOpenFailed)
+                                                } else {
+                                                    pager.openRaftPage(
+                                                        pageName = THREAD_PAGE,
+                                                        pageData = launchPayload.toThreadPageData(),
+                                                        storeScopeOverride = provider.storeScope,
+                                                        onMissingScope = { bridge.toast(loungeOpenFailed) }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    null
+                                },
+                            loungeOpening = member.id.value in pendingLoungeOpens,
                             onOpenDirectMessage = {
                                 routeScope.launch {
                                     provider.openDirectMessage(member)?.openMembersDirectMessageResult(
@@ -6313,7 +6350,13 @@ private class MembersDetailActions(
     val onOpenActivityMessage: (channelId: String, messageId: String) -> Unit = { _, _ -> },
     val onUnavailableAction: (String) -> Unit,
     /** Opens the profile of an agent listed under a human's Created Agents. */
-    val onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null
+    val onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null,
+    /**
+     * Agent Lounge v0: opens this agent's Lounge. Null when Lounges are off here (flag, Guest); the
+     * profile also hides it for a deleted agent, a personal assistant and a remote profile.
+     */
+    val onOpenLounge: (() -> Unit)? = null,
+    val loungeOpening: Boolean = false
 )
 
 private class MembersAgentDetailPresentation(
@@ -6944,6 +6987,16 @@ private fun MembersDetailContent(
                     onBack = onBack,
                     onOpenDirectMessage = onOpenDirectMessage,
                     directMessageOpening = actions.directMessageOpening,
+                    onOpenLounge =
+                        actions.onOpenLounge?.takeIf {
+                            agentOffersLounge(
+                                deleted = deleted || member.agentDeletedAt?.isNotBlank() == true,
+                                personalAssistant =
+                                    detail?.summary?.assistantOwnerUserId != null || member.assistantPausedAt != null,
+                                remoteProfile = membersAgentProfileIsRemote(accessMode)
+                            )
+                        },
+                    loungeOpening = actions.loungeOpening,
                     onCopyMemberId = onCopyMemberId,
                     agentStatusIndicatorState = agentStatusIndicatorState,
                     memberAvatarResolver = memberAvatarResolver,
@@ -7684,6 +7737,9 @@ internal fun MembersDetailHeader(
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
     directMessageOpening: Boolean = false,
+    /** Agent Lounge v0: opens the agent's Lounge; null hides the action (flag off, Guest, or no Lounge for it). */
+    onOpenLounge: (() -> Unit)? = null,
+    loungeOpening: Boolean = false,
     onCopyMemberId: () -> Unit,
     onManagementMenuAnchorResolverReady: (RaftPopoverAnchorResolver) -> Unit,
     onRequestManagementMenu: (RaftPopoverAnchor?) -> Unit
@@ -7719,6 +7775,7 @@ internal fun MembersDetailHeader(
     // PROTOTYPE (native nav bar): name and meta on the host bar, Message and the management ⋯ as
     // its buttons. The ⋯ opens the same management menu, anchored under the bar's trailing edge.
     val nativeMessageLabel = stringResource(Res.string.member_label_message)
+    val nativeLoungeLabel = stringResource(Res.string.agent_lounge_label)
     val nativeMoreLabel = stringResource(Res.string.tab_more)
     val nativeBar = LocalRaftNativeNavBar.current
     if (
@@ -7728,6 +7785,9 @@ internal fun MembersDetailHeader(
             subtitle = headerMetaLabel,
             actions =
                 buildList {
+                    if (onOpenLounge != null) {
+                        add(RaftNativeNavBarAction("member-lounge", nativeLoungeLabel, "person.2", onOpenLounge))
+                    }
                     if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
                         add(RaftNativeNavBarAction("member-message", nativeMessageLabel, "message", onOpenDirectMessage))
                     }
@@ -7807,6 +7867,20 @@ internal fun MembersDetailHeader(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Agent Lounge v0 (web AgentProfileOverflowMenu `agent-profile-inline-lounge`): the
+                // Lounge button inline in the head, before Message.
+                if (onOpenLounge != null) {
+                    RaftIconButton(
+                        onClick = onOpenLounge,
+                        tooltip = nativeLoungeLabel,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Lg,
+                        loading = loungeOpening,
+                        modifier = Modifier.testTag(AgentLoungeTestTags.ProfileAction)
+                    ) {
+                        RaftContentLucideIcon(RaftLucideIconName.Users, size = 22.dp)
+                    }
+                }
                 if (
                     directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
                     membersHeaderMessageUsesIconOnly(member.kind)

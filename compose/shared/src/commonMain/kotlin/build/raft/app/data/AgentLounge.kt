@@ -169,6 +169,29 @@ class AgentLoungeApi(private val networkClient: RaftNetworkClient) {
             )
         return agentLoungeOpenResponse(response, agentId)
     }
+
+    /**
+     * `POST channels/:id/unarchive` for an archived Lounge (web `LoungeUnarchiveAction`: no settings
+     * sheet). The server answers with the row; the Lounge is known unarchived from then on.
+     */
+    suspend fun unarchive(serverId: ServerId, channelId: ChannelId): DataResult<HomeChannelRow> {
+        val response =
+            networkClient.request(
+                priority = DataRequestPriority.Foreground,
+                path = "channels/${channelId.value}/unarchive",
+                method = "POST",
+                serverIdOverride = serverId,
+            )
+        if (!response.isSuccessful) {
+            return DataResult.Error(
+                ScreenError(code = "http_${response.code}", retryable = response.code >= 500, traceId = response.traceId)
+            )
+        }
+        val row = response.bodyText?.let(::parseSharedChannelRowResult)?.takeIf { it.channelId == channelId }
+            ?: return DataResult.Error(ScreenError(code = "agent_lounge_unarchive_contract_mismatch", retryable = false))
+        RaftAgentLounges.markArchived(serverId.value, channelId.value, archived = row.archived)
+        return DataResult.Content(row)
+    }
 }
 
 /** Map POST /agents/:id/lounge's answer (exposed for tests). */

@@ -7093,12 +7093,17 @@ private fun SharedThreadRouteContentContent(
     // parent row whenever it appears/changes so the store re-evaluates
     // event-driven; the store fences every hint by route, account state and
     // current authority status, so redundant dispatches are cheap no-ops.
+    // Agent Lounge v0: a Lounge is in no Home list; once it is known (opened, its DM row, or the
+    // parent detail this reply load reads by id) it is the parent row. No Join: replying before
+    // joining is allowed, as in the Lounge itself; a Lounge you may only read stays read-only.
+    val knownLounges by RaftAgentLounges.lounges.collectAsState()
     LaunchedEffect(
         payload.surfaceKind,
         payload.parentChannelId,
         payload.parentMessageId,
         payload.originParentMessageId,
         sharedHomeState,
+        knownLounges,
     ) {
         if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return@LaunchedEffect
         val parentChannelId =
@@ -7112,6 +7117,20 @@ private fun SharedThreadRouteContentContent(
         val parentRow =
             snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
                 ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
+        val parentLounge = if (parentRow == null) RaftAgentLounges.loungeAnyServer(parentChannelId) else null
+        if (parentLounge != null) {
+            threadViewModel.dispatch(
+                SharedThreadIntent.ApplyParentDirectoryHint(
+                    parentChannelId = parentChannelId,
+                    parentMessageId = parentMessageId,
+                    present = true,
+                    joined = parentLounge.postable,
+                    canSend = parentLounge.postable,
+                    authoritative = true,
+                )
+            )
+            return@LaunchedEffect
+        }
         threadViewModel.dispatch(
             SharedThreadIntent.ApplyParentDirectoryHint(
                 parentChannelId = parentChannelId,
@@ -13167,8 +13186,41 @@ private fun SharedThreadRouteContentContent(
                     onMissingScope = { bridge.logWarn("thread_settings_page_open_skip reason=missing_scope") },
                 )
         }
+        // Agent Lounge v0: this page as (or inside) an agent's Lounge, and an agent DM's Lounge toggle.
+        val loungeAssistantAnswers by
+            remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()
+        val threadLounge =
+            rememberThreadPageLounge(
+                payload = renderedThread,
+                bridge = bridge,
+                storeScope = storeScope,
+                flags = sharedStores.serverFeatureFlags,
+                serverId = currentServerId,
+                serverRole = currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
+                memberAvatarResolver = memberAvatarResolver,
+                personalAssistantAgentIds =
+                    remember(loungeAssistantAnswers) {
+                        loungeAssistantAnswers.values.mapNotNull { it.assistant?.agentId }.toSet()
+                    },
+                onOpenConversation = { identity ->
+                    buildAppShellThreadPayload(
+                        conversation = identity,
+                        timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
+                        alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                        compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                        onWarn = bridge::logWarn
+                    )?.let(onOpenThreadPayload)
+                        ?: bridge.logWarn("agent_lounge_open_rejected reason=identity_unresolved")
+                },
+                onOpenAgentProfile = { agentId ->
+                    memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
+                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
+                    }
+                },
+            )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+                lounge = threadLounge,
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
                 // task #180: forwarded from the route scope, which owns the workspace store.
                 onToggleFocusMode = threadFocusModeToggle,
@@ -16641,6 +16693,7 @@ private class ThreadEventHandler(
  * un-minified giant composable frame on API 34/36 builds).
  */
 private data class ThreadPageContentData(
+    val lounge: ThreadPageLounge? = null,
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
@@ -16758,6 +16811,8 @@ private class ThreadPageContentCallbacks(
 
 private @Composable
 fun ThreadPageContent(
+    /** Agent Lounge v0 (see [ThreadPageLounge]); null on pages that never show one. */
+    lounge: ThreadPageLounge? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
@@ -16872,6 +16927,7 @@ fun ThreadPageContent(
         focusModeActive = focusModeActive,
         data =
             ThreadPageContentData(
+                lounge = lounge,
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
                 taskConversationChrome = taskConversationChrome,
@@ -16994,7 +17050,10 @@ private fun ThreadPageContentContent(
     val threadInstanceKey = data.threadInstanceKey
     val routeActive = data.routeActive
     val hostForeground = data.hostForeground
-    val payload = data.payload
+    // Agent Lounge v0: the Lounge this page is, or a reply thread is in (null elsewhere).
+    val pageLounge = data.lounge?.lounge
+    val conversationLounge = pageLounge?.takeIf { data.payload.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val payload = remember(data.payload, conversationLounge) { data.payload.withAgentLoungeAccess(conversationLounge) }
     val messageBodyTextStyle = data.messageBodyTextStyle
     val timelineSlice = data.timelineSlice
     // In the assistant's panel: a card from it still waiting here gives the otter its confirm mood.
@@ -18121,8 +18180,11 @@ private fun ThreadPageContentContent(
                     onShowMembers = {
                         onThreadEvent("openMembersPager", null, null, null)
                     },
+                    lounge = data.lounge,
                     onShowSettings = {
-                        if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
+                        if (conversationLounge != null) {
+                            activeModal = "settings"
+                        } else if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
                             onThreadEvent("openChannelSettings", null, null, null)
                         } else if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) {
                             // A wide window, or a page that could not open: the drawer.
@@ -18276,6 +18338,10 @@ private fun ThreadPageContentContent(
                         },
                 )
             }
+            // Agent Lounge v0: who is here, always on top of the conversation (web lounge-audience-notice).
+            if (conversationLounge != null) {
+                AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
             // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
@@ -18384,9 +18450,18 @@ private fun ThreadPageContentContent(
                         )
                     )
                 }
+            } else if (agentLoungeFooterKind(conversationLounge, pageLounge) != null) {
+                // Agent Lounge v0: an archived Lounge says so (Unarchive only for a viewer whose server
+                // role may archive channels), and one you may only read has the read-only composer;
+                // never a Join.
+                AgentLoungeFooter(
+                    kind = agentLoungeFooterKind(conversationLounge, pageLounge),
+                    inputs = data.lounge,
+                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+                )
             } else if (!writeActionsEnabled) {
                 Unit
-            } else if (!payload.joined) {
+            } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
@@ -18508,7 +18583,8 @@ private fun ThreadPageContentContent(
                         )
                 ) {
                     CompositionLocalProvider(
-                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal
+                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
+                        LocalAgentLoungeComposerName provides conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
                     ) {
                         ThreadComposerRoute(
                             baseComposerState = baseComposerState,
@@ -18801,9 +18877,11 @@ private fun ThreadPageContentContent(
         }
         when (activeModal) {
             "settings" -> {
-                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                // Agent Lounge v0: a Lounge's overflow is the DM's (mute, section, collapse): no
+                // members, settings or edit (the server refuses rename, visibility and other agents).
+                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || conversationLounge != null) {
                     ThreadDirectMessageSettingsDrawer(
-                        name = headerDisplay.title,
+                        name = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) } ?: headerDisplay.title,
                         activityMuteState = activityMuteState,
                         section = channelSettingsPanel?.section,
                         sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
@@ -18923,7 +19001,16 @@ internal fun ThreadPageHeader(
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
     /** Task v2: the Tasks / Files card toggles between Search and Settings (null: none). */
     sideCardToggles: ThreadHeaderSideCardToggles? = null,
+    /** Agent Lounge v0: the Lounge this page is (or is in), and an agent DM's Lounge toggle. */
+    lounge: ThreadPageLounge? = null,
 ) {
+    // Agent Lounge v0 (web ChatPanel `lounge-header`): a Lounge is headed "{Name}'s Lounge" with its
+    // agent's face and the Lounge mark; no # tile, no description. A thread in it names the Lounge.
+    val headerLounge = lounge?.takeIf { it.lounge != null }
+    val loungeHeader = headerLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val loungeTitle = headerLounge?.let { agentLoungeTitle(it.agentName) }
+    val dmLoungeToggle = lounge?.onOpenDmAgentLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage }
+    val loungeLabel = stringResource(Res.string.agent_lounge_label)
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
@@ -18944,9 +19031,15 @@ internal fun ThreadPageHeader(
             originReplyCount == 1 -> stringResource(Res.string.thread_inline_reply_count_one)
             else -> stringResource(Res.string.thread_inline_reply_count_many, originReplyCount)
         }
-    val headerSubtitle = replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
+    val headerSubtitle =
+        when {
+            loungeHeader != null -> null
+            headerLounge != null && headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ->
+                replyThreadHeaderSubtitle(loungeTitle, replyThreadReplyCountLabel)
+            else -> replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
+        }
     val localizedHeaderTitle =
-        replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
+        loungeTitle?.takeIf { loungeHeader != null } ?: replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
             title = headerDisplay.title,
             surfaceKind = headerDisplay.surfaceKind,
             localizedReplyThread = stringResource(Res.string.thread_reply_title),
@@ -19046,7 +19139,7 @@ internal fun ThreadPageHeader(
             emptyList()
         } else {
             buildList {
-                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage) {
+                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage && loungeHeader == null) {
                     add(
                         RaftNativeNavBarAction(
                             "members",
@@ -19057,6 +19150,9 @@ internal fun ThreadPageHeader(
                             priority = Int.MAX_VALUE,
                         )
                     )
+                }
+                if (dmLoungeToggle != null) {
+                    add(RaftNativeNavBarAction("lounge", loungeLabel, "person.2", dmLoungeToggle))
                 }
                 addAll(nativeSideActions.toRaftNativeNavBarActions())
                 if (nativeLevelTarget != null) {
@@ -19081,6 +19177,14 @@ internal fun ThreadPageHeader(
             RaftNativeNavBarTitleExtras(
                 leading =
                     when {
+                        loungeHeader != null ->
+                            RaftNativeNavBarTitleLeading.Avatar(
+                                label = loungeHeader.agentName,
+                                imageUrl =
+                                    loungeHeader.agentAvatarWireValue
+                                        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+                                fillArgb = raftArgbHex(raftAvatarFallbackFill(MemberKind.Agent)),
+                            )
                         headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
                             RaftNativeNavBarTitleLeading.Avatar(
                                 label = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
@@ -19113,7 +19217,25 @@ internal fun ThreadPageHeader(
             if (showsBack && !controlsInColumn) {
                 RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             }
-            if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+            if (loungeHeader != null) {
+                // The face is decorative for screen readers; its tap opens the agent's profile.
+                Box(
+                    modifier =
+                        Modifier
+                            .padding(end = ThreadHeaderChannelTitleGapExtra)
+                            .then(
+                                loungeHeader.onOpenAgentProfile?.let { open -> Modifier.clickable(onClick = open) } ?: Modifier
+                            )
+                ) {
+                    RaftLoungeAvatar(
+                        agentId = loungeHeader.lounge?.agentId,
+                        avatarWireValue = loungeHeader.agentAvatarWireValue,
+                        label = loungeHeader.agentName,
+                        cacheServerId = loungeHeader.cacheServerId,
+                        avatarSize = 35.dp,
+                    )
+                }
+            } else if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
                     // The peer's name (the header title): initials come from its words.
@@ -19148,9 +19270,11 @@ internal fun ThreadPageHeader(
                 modifier =
                     Modifier
                         .weight(1f)
+                        .then(if (loungeHeader != null) Modifier.testTag(AgentLoungeTestTags.Header) else Modifier)
                         // A long press copies the channel / DM name; the tap (scroll to top) stays.
                         .raftCopyable(
-                            threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind).takeIf { replyThreadPreviewTitle == null },
+                            (loungeTitle?.takeIf { loungeHeader != null }
+                                ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind)).takeIf { replyThreadPreviewTitle == null },
                             onClick = onTitleClick,
                         ),
                 // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
@@ -19165,7 +19289,7 @@ internal fun ThreadPageHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
                         RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
                     }
                     if (activityMutedIndicatorVisible) {
@@ -19182,7 +19306,7 @@ internal fun ThreadPageHeader(
                 // Web #10285: a reply thread's channel name does what Open in Channel does (the
                 // parent message in its channel), under a View in Channel tooltip.
                 val channelLinkLabel =
-                    headerDisplay.subtitle?.takeIf {
+                    (loungeTitle ?: headerDisplay.subtitle)?.takeIf {
                         it.isNotBlank() &&
                             headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                             payload.threadHeaderOpenInParentActionVisible()
@@ -19223,6 +19347,17 @@ internal fun ThreadPageHeader(
                     val replyThreadMenu = headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread
                     if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
+                    }
+                    // Agent Lounge v0 (web useChannelHeadToggles): an agent DM's Lounge, between Search and Settings.
+                    if (dmLoungeToggle != null) {
+                        Box(Modifier.testTag(AgentLoungeTestTags.DmHeaderToggle)) {
+                            ConversationHeaderToggle(
+                                icon = RaftLucideIconName.Users,
+                                selected = false,
+                                label = loungeLabel,
+                                onClick = dmLoungeToggle
+                            )
+                        }
                     }
                     sideCardToggles?.let { toggles ->
                         // web ChannelTasksToggle / ChannelFilesToggle: no count on either.
@@ -28638,8 +28773,10 @@ internal fun ThreadQuotedPermalinkCard(
             val item = state.message.item
             val direct = target?.routeKind == ConversationKind.DirectMessage
             val resolvedChannel = target?.let { LocalRaftMessagePermalinkLabelResolver.current(it) }
+            // Agent Lounge v0: a quote from a Lounge names the Lounge, without the # glyph.
+            val loungeLabel = if (direct) null else agentLoungeLabelOrNull(target?.channelId?.value)
             val channel =
-                resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
+                loungeLabel ?: resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
                     ?: if (direct) {
                         stringResource(Res.string.thread_quoted_permalink_direct_message)
                     } else {
@@ -28658,6 +28795,7 @@ internal fun ThreadQuotedPermalinkCard(
                 // A resolved DM title names the peer; without one the fallback reads as a place.
                 channel = channel,
                 direct = direct && resolvedChannel != null,
+                channelGlyph = loungeLabel == null,
                 threadLabel =
                     if (target?.threadParentMessageId != null) {
                         stringResource(Res.string.thread_quoted_permalink_thread)

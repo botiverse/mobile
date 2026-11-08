@@ -72,6 +72,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.formatTaskConversationRef
@@ -152,6 +153,12 @@ internal data class ActivityConversationListContext(
      * ([homeChannelSymbol]: `#`, lock, joint branch, public-page hash-globe).
      */
     val channelSymbolsByChannelId: Map<String, String> = emptyMap(),
+    /**
+     * Agent Lounge v0: the Lounges known here, keyed by their channel id (an agent DM row's `lounge`,
+     * or a Lounge this client opened or loaded). Their rows are named "{Name}'s Lounge" and lead
+     * with the agent's face and the Lounge mark, never `#<agent>-lounge`.
+     */
+    val loungesByChannelId: Map<String, ActivityConversationLounge> = emptyMap(),
 ) {
     companion object {
         val Empty = ActivityConversationListContext()
@@ -195,7 +202,35 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
             },
         currentMemberId = snapshot.currentMember.id.value.takeIf { it.isNotBlank() },
         channelSymbolsByChannelId = snapshot.activityChannelSymbolsByChannelId(),
+        loungesByChannelId = snapshot.activityLoungesByChannelId(),
     )
+}
+
+/** An agent's Lounge as an Activity row draws it. */
+internal data class ActivityConversationLounge(
+    val agentId: String,
+    val agentName: String,
+    val avatarWireValue: String? = null,
+)
+
+/** The Lounges this server's DM rows carry, and those the client knows by id. */
+internal fun HomeSnapshot.activityLoungesByChannelId(): Map<String, ActivityConversationLounge> {
+    val known =
+        RaftAgentLounges.lounges.value[server.id.value].orEmpty().mapValues { (_, lounge) ->
+            ActivityConversationLounge(agentId = lounge.agentId, agentName = lounge.displayAgentName)
+        }
+    val carried =
+        directMessages.mapNotNull { dm ->
+            val lounge = dm.lounge ?: return@mapNotNull null
+            val agentId = dm.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            lounge.channelId.value to
+                ActivityConversationLounge(
+                    agentId = agentId,
+                    agentName = dm.name.ifBlank { known[lounge.channelId.value]?.agentName.orEmpty() },
+                    avatarWireValue = dm.directMessagePeerAvatarWireValue,
+                )
+        }
+    return known + carried
 }
 
 /** The Home sidebar's glyph per channel id ([homeChannelSymbol]), for Activity's channel icons. */
@@ -370,6 +405,8 @@ internal data class ActivityConversationRowModel(
      */
     val taskConversation: Boolean = false,
     val taskStatusMark: TaskStatus? = null,
+    /** Agent Lounge v0: the row is a Lounge (or a thread in one); named and drawn as the Lounge. */
+    val lounge: ActivityConversationLounge? = null,
 ) {
     /** The thread badge sits in the leading corner (on the channel tile or the DM peer's face). */
     val leadingThreadBadge: Boolean
@@ -554,6 +591,12 @@ internal fun InboxItem.activityConversationRowModel(
         delegatedBy = previewDelegatedBy(),
         taskConversation = taskConversationRow,
         taskStatusMark = taskStatus.takeIf { taskConversationRow },
+        lounge =
+            if (directMessage || threadInDirectMessage) {
+                null
+            } else {
+                context.loungesByChannelId[(if (kind == InboxItemKind.Thread) parentChannelId ?: channelId else channelId).value]
+            },
     )
 }
 
@@ -813,7 +856,10 @@ internal fun ActivityConversationListRow(
                 true
             }
         }
-    val threadChannelText = model.threadChannelLabel?.let { stringResource(Res.string.activity_list_thread_channel, it) }
+    val loungeTitle = model.lounge?.let { agentLoungeTitle(it.agentName) }
+    val threadChannelText =
+        (loungeTitle?.takeIf { model.threadChannelLabel != null && model.taskConversation.not() } ?: model.threadChannelLabel)
+            ?.let { stringResource(Res.string.activity_list_thread_channel, it) }
     // A DM thread's face says the peer, so its line drops "@peer ·"; screen readers still hear it.
     val visibleThreadChannelText = threadChannelText?.takeIf { model.threadChannelLabelVisible }
     val untitledObject = stringResource(Res.string.artifacts_activity_untitled)
@@ -916,7 +962,10 @@ internal fun ActivityConversationListRow(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RaftText(
-                                text = model.title?.toAnnotatedString() ?: AnnotatedString(fallback),
+                                text =
+                                    loungeTitle?.takeIf { item.kind != InboxItemKind.Thread }?.let(::AnnotatedString)
+                                        ?: model.title?.toAnnotatedString()
+                                        ?: AnnotatedString(fallback),
                                 modifier = Modifier.weight(1f, fill = false),
                                 style = typography.subhead.copy(fontWeight = if (model.strong) FontWeight.Bold else FontWeight.SemiBold),
                                 color = titleColor,
@@ -1084,7 +1133,12 @@ internal fun ActivityConversationLeading(
         if (flipped) {
             {
                 RaftInboxItemLeadingBadge {
-                    HomeSidebarChannelGlyph(model.channelSymbol, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    if (model.lounge != null) {
+                        // Agent Lounge v0: a thread in a Lounge wears the Lounge mark as its place badge.
+                        RaftContentLucideIcon(RaftLucideIconName.Users, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    } else {
+                        HomeSidebarChannelGlyph(model.channelSymbol, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    }
                 }
             }
         } else if (model.leadingThreadBadge) {
@@ -1108,7 +1162,17 @@ internal fun ActivityConversationLeading(
         }
     RaftInboxItemLeading(badge = threadBadge) {
         val peer = model.dmPeer
-        if (peer != null) {
+        val lounge = model.lounge
+        if (lounge != null && !flipped && model.leadingKind == ActivityConversationLeadingKind.Channel) {
+            // Agent Lounge v0: a Lounge is drawn as its agent's face with the Lounge mark, not a # tile.
+            RaftLoungeAvatar(
+                agentId = lounge.agentId,
+                avatarWireValue = lounge.avatarWireValue,
+                label = lounge.agentName,
+                cacheServerId = null,
+                avatarSize = ConversationLeadingAvatar,
+            )
+        } else if (peer != null) {
             val label = peer.displayName ?: fallbackLabel
             val avatarKind = if (peer.peerIsAgent) MemberKind.Agent else MemberKind.Human
             // An agent's DM row carries its status light, as on its sidebar row; people do not, and a

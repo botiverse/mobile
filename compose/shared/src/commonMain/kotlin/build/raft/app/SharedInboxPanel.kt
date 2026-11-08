@@ -2850,7 +2850,8 @@ internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap(
             if (parentChannelKind == ConversationKind.DirectMessage) {
                 "@${dmPeerLabelOrFallback(dmPeerNames)}"
             } else {
-                "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
+                agentLoungeLabelOrNull((parentChannelId ?: channelId).value)
+                    ?: "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
             }
         InboxItemKind.MentionAction ->
             if (channelKind == ConversationKind.DirectMessage) {
@@ -2858,7 +2859,8 @@ internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap(
             } else {
                 "#${channelName.ifBlank { channelId.value }}"
             }
-        InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
+        InboxItemKind.Channel, InboxItemKind.System ->
+            agentLoungeLabelOrNull(channelId.value) ?: "#${channelName.ifBlank { channelId.value }}"
     }
 
 /**

@@ -647,6 +647,8 @@ internal data class AgentSummary(
     val activity: String?,
     val activityDetail: String?,
     val deletedAt: String?,
+    /** A personal assistant's owner (`assistantOwnerUserId`); null for a shared agent. */
+    val assistantOwnerUserId: String? = null,
     /** Web parity: `agent.external === true || runtime === "external"`. */
     val isExternal: Boolean = false,
     /** External agents only: `lastSeenAt` from `GET /agents*` (`agent:seen` updates it in the store). */
@@ -700,6 +702,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
+        assistantOwnerUserId = assistantOwnerUserId,
         lastSeenAt = lastSeenAt,
         activityDetailKind = activityDetailKind,
         wakeCrashLoop = wakeCrashLoop,
@@ -914,6 +917,8 @@ private data class AgentWireDto(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /** Personal assistant (botiverse/slock packages/shared agent `assistantOwnerUserId`): its owner, else null. */
+    val assistantOwnerUserId: String? = null,
     /**
      * External agents only: ISO-8601 `lastSeenAt` from `GET /agents*` — last
      * credential use; presence derives from it (`agent:seen` supersedes).
@@ -1003,6 +1008,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
+        assistantOwnerUserId = assistantOwnerUserId?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         activityDetailKind = activityDetailKind?.trim()?.takeIf { it.isNotEmpty() },
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind),

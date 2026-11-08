@@ -2008,6 +2008,8 @@ private fun raftMessagePermalinkSpacerInlineContent(width: TextUnit): InlineText
 private fun ParsedRaftPermalink.raftMessagePermalinkChipTargetLabel(
     resolvedLabel: String?
 ): String {
+    // Agent Lounge v0: a link into a Lounge is named after the Lounge, never `#<agent>-lounge`.
+    build.raft.app.agentLoungeLabelOrNull(channelId.value)?.let { return it }
     val prefix = if (routeKind == build.raft.app.model.ConversationKind.DirectMessage) "@" else "#"
     val name =
         resolvedLabel

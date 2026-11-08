@@ -981,6 +981,8 @@ data class AgentDetailSummary(
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null,
+    /** A personal assistant's owner; null for a shared agent (Agent Lounge v0 hides the Lounge for it). */
+    val assistantOwnerUserId: String? = null,
     /** External agents only: `lastSeenAt` — credential last-use; realtime `agent:seen` advances it (task #410). */
     val lastSeenAt: String? = null,
     /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */
