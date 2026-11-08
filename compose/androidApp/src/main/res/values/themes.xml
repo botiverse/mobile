@@ -1,22 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Raft" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- The window theme follows the app's own light/dark choice (Settings > Appearance), not
+         just the OS: RaftAndroidNightMode puts that choice into the configuration's night bits
+         (API 31+ UiModeManager.setApplicationNightMode, API 29-30 each Activity's resources), so
+         this light base and its values-night twin (the dark Material theme) are picked per mode.
+         Everything the platform draws from the theme then matches the app: WebView
+         prefers-color-scheme (android:isLightTheme), AlertDialogs, pickers, the window background
+         and the first frame's bar icons. Mode-specific items live here and in
+         values-night/themes.xml; shared items stay on Theme.Raft below. -->
+    <style name="Base.Theme.Raft" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Dark bar icons from the first frame. Compose Dialog windows (menus, sheets,
+             popovers, all opened through designsystem RaftWindowDialog) inherit this theme;
+             without it they were added with light icons and RaftDialogWindowPolicy only set
+             them a frame later, so the status bar icons blinked white-on-white whenever a
+             menu opened in the light theme. RaftDialogWindowPolicy then sets them from
+             RaftTheme.isDark (light icons in the dark theme, values-night). -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Theme.Raft" parent="Base.Theme.Raft">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowBackground">@color/raft_window_background</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">@color/raft_accent_pink</item>
         <item name="android:textColorHighlight">@color/raft_accent_pink</item>
+        <!-- The app draws its own dark theme; the platform must never invert it. -->
         <item name="android:forceDarkAllowed">false</item>
-        <!-- Dark bar icons from the first frame. Compose Dialog windows (menus, sheets,
-             popovers, all opened through designsystem RaftWindowDialog) inherit this theme;
-             without it they were added with light icons and RaftDialogWindowPolicy only set
-             them a frame later, so the status bar icons blinked white-on-white whenever a
-             menu opened in the light theme. RaftDialogWindowPolicy then sets them from
-             RaftTheme.isDark (light icons in the dark theme). -->
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
     </style>
 
     <style name="Theme.Raft.Starting" parent="Theme.SplashScreen">

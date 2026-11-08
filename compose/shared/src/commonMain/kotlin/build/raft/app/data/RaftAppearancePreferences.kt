@@ -59,8 +59,9 @@ internal fun parseRaftAppearance(value: String?): RaftAppAppearance? =
  * frame is already in the right theme; the page registry calls it again as a fallback.
  *
  * Hosts that style native chrome from the choice itself (iOS `overrideUserInterfaceStyle`, so
- * keyboards, system menus and the tab bar follow an explicit Light/Dark) read [hostStyleCode]
- * and register through [setHostListener].
+ * keyboards, system menus and the tab bar follow an explicit Light/Dark; Android
+ * `RaftAndroidNightMode`, the window theme's night mode, so WebViews, system dialogs and pickers
+ * follow it) read [hostStyleCode] and register through [setHostListener].
  */
 object RaftAppAppearanceRuntime {
     @Volatile
