@@ -7944,6 +7944,13 @@ internal sealed interface SharedThreadIntent {
          * payload cache the reply page opens from (artin: opening it right after the jump is instant).
          */
         val prewarmThreadChannelId: String? = null,
+        /**
+         * The unread-thread pill's jump (the default): it lands on the parent's replies summary and
+         * holds the pill busy while it loads. False for any other jump (the thread timeline,
+         * botiverse/slock #13534): the target lands top-aligned as a link's focus does. (The
+         * thread's first message is not a reply: the page scrolls to its row itself.)
+         */
+        val unreadThreadPill: Boolean = true,
     ) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
@@ -8362,7 +8369,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
             is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
             is SharedThreadIntent.JumpToMessage -> {
-                jumpToMessage(intent.messageId, intent.switchToTab)
+                jumpToMessage(intent.messageId, intent.switchToTab, intent.unreadThreadPill)
                 intent.prewarmThreadChannelId?.let { threadId -> prewarmUnreadThread(threadId, intent.messageId) }
             }
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
@@ -12991,8 +12998,12 @@ internal class SharedThreadStore(
      * focus and one refresh loads the messages around it (the focused-route context load), after
      * which the page's focus anchor scrolls to and highlights it.
      */
-    private suspend fun jumpToMessage(messageId: String, switchToTab: String?) {
+    private suspend fun jumpToMessage(messageId: String, switchToTab: String?, unreadThreadPill: Boolean = true) {
         val target = messageId.trim().takeIf { it.isNotBlank() } ?: return
+        if (!unreadThreadPill) {
+            jumpToMessageOutsidePill(target, switchToTab)
+            return
+        }
         // Web: a second tap while the pill is busy starts no second jump.
         if (_state.value.unreadThreadJumpLoading) {
             diagnosticsLogger?.invoke("thread_jump_to_message result=ignored reason=busy target=${target.take(8)}")
@@ -13056,6 +13067,48 @@ internal class SharedThreadStore(
             "thread_jump_to_message result=${if (loaded) "applied" else "failed"} target=${target.take(8)} " +
                 "messages=${_state.value.payload.messages.size}"
         )
+    }
+
+    /**
+     * A jump that is not the unread-thread pill's (the thread timeline): a loaded target is focused
+     * in place; any other is loaded around first, as the pill's jump does, but top-aligned and
+     * without the pill's busy state.
+     */
+    private suspend fun jumpToMessageOutsidePill(target: String, switchToTab: String?) {
+        val initial = _state.value.payload
+        if (initial.messages.any { it.id == target }) {
+            focusMessage(target, switchToTab)
+            return
+        }
+        val nonce = nextThreadFocusedMessageRequestNonce()
+        val tab = switchToTab?.takeIf { it.isNotBlank() }
+        val focusRoute =
+            (lastRoutePayload ?: initial.withoutThreadTimelineContent())
+                .withRouteIntentFrom(initial)
+                .copy(
+                    selectedTab = tab ?: initial.selectedTab,
+                    focusedMessageId = target,
+                    focusedMessageRequestNonce = nonce,
+                )
+                .withoutTransientLocalSendingMessages()
+        lastRoutePayload = focusRoute
+        reducePayloadPatch { current ->
+            current.copy(
+                selectedTab = tab ?: current.selectedTab,
+                focusedMessageId = target,
+                focusedMessageRequestNonce = nonce,
+            )
+        }
+        loadJob?.cancel()
+        loadJob = null
+        secondaryTimelineRefreshJob?.cancel()
+        secondaryTimelineRefreshJob = null
+        pendingSecondaryTimelineApply = null
+        val staleToken = advanceRouteStaleToken()
+        diagnosticsLogger?.invoke("thread_outline_jump result=requested target=${target.take(8)} visibleMessages=${initial.messages.size}")
+        refresh(basePayload = focusRoute, staleToken = staleToken)
+        val loaded = _state.value.payload.messages.any { it.id == target }
+        diagnosticsLogger?.invoke("thread_outline_jump result=${if (loaded) "applied" else "failed"} target=${target.take(8)}")
     }
 
     private fun applyChannelProfile(intent: SharedThreadIntent.ApplyChannelProfile) {

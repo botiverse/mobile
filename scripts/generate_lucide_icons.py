@@ -206,6 +206,7 @@ LUCIDE_ICONS = [
     "link",
     "link-2",
     "list-filter",
+    "list",
     "list-checks",
     "list-tree",
     "list-todo",
