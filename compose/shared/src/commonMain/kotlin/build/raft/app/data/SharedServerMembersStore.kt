@@ -853,6 +853,20 @@ class SharedServerMembersStore internal constructor(
         return profile.takeUnless { it.isDeletedAgentProfile(cleanServerId) }
     }
 
+    /**
+     * The agents archived on [serverId] in this process ([markAgentDeleted], i.e. a successful
+     * [deleteAgent]). The roster drops them itself; this is for a screen that also lists rows of
+     * its own outside the roster (the Members page's just-created agents), so an archived agent
+     * leaves at once there too -- web `deleteAgent` marks the agent and every list drops it.
+     */
+    fun deletedAgentIdsFlow(serverId: ServerId): Flow<Set<String>> {
+        val serverKey = serverId.value.trim()
+        return deletedAgentIdsByServerId.map { it[serverKey].orEmpty() }.distinctUntilChanged()
+    }
+
+    fun deletedAgentIds(serverId: ServerId): Set<String> =
+        deletedAgentIdsByServerId.value[serverId.value.trim()].orEmpty()
+
     fun serverMembersEntryFlow(serverId: ServerId): Flow<SharedServerMembersEntry> {
         val entryFlow =
             state

@@ -2056,6 +2056,7 @@
     <string name="member_hosted_runtime_state_failed">创建失败</string>
     <string name="member_hosted_runtime_state_deleting">正在移除</string>
     <string name="member_hosted_runtime_state_deleted">已移除</string>
+    <string name="members_agent_group_no_computer">外部与云端</string>
     <string name="member_hosted_runtime_location">在云端运行</string>
     <string name="member_hosted_runtime_free">限时免费</string>
     <string name="member_hosted_runtime_last_error">最近一次错误（%1$s）：%2$s</string>

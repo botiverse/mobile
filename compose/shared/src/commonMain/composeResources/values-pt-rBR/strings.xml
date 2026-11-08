@@ -2055,6 +2055,7 @@
     <string name="member_hosted_runtime_state_failed">Falha na configuração</string>
     <string name="member_hosted_runtime_state_deleting">Removendo</string>
     <string name="member_hosted_runtime_state_deleted">Removido</string>
+    <string name="members_agent_group_no_computer">externos e na nuvem</string>
     <string name="member_hosted_runtime_location">Executado na nuvem</string>
     <string name="member_hosted_runtime_free">Gratuito por tempo limitado</string>
     <string name="member_hosted_runtime_last_error">Último erro (%1$s): %2$s</string>
