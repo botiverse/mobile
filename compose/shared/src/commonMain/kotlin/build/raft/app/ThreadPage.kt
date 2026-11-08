@@ -26085,6 +26085,9 @@ private fun ThreadMessagesListContent(
                     }
                 }
             val outlineOriginId = renderPayload.originMessage?.id
+            val outlineTimeContext =
+                currentRaftTimeContextProvider?.current?.copy(timeFormat = renderConfig.timeContext.timeFormat)
+                    ?: renderConfig.timeContext.refreshedAt(defaultNowMillis())
             ThreadOutlineHost(
                 state = LocalThreadOutlineState.current,
                 leadingMessageId = renderPayload.parentMessageId ?: outlineOriginId,
@@ -26094,7 +26097,9 @@ private fun ThreadMessagesListContent(
                 jumpTargetId = renderPayload.focusedMessageId,
                 jumpNonce = renderPayload.focusedMessageRequestNonce,
                 listWidth = maxWidth,
-                formatTime = { value -> renderConfig.formatTimestampLabel(value) },
+                // The payload's time context has no "today": without the page's live one every row
+                // would show the raw UTC wire timestamp. Same day source as the date dividers.
+                formatTime = { value -> outlineTimeContext.formatTimestampLabel(value) },
                 onJump = { messageId ->
                     // The thread's first message heads the list and isn't among the replies the
                     // page focuses: scroll to its row (web `jumpToParent`); a reply is focused.
