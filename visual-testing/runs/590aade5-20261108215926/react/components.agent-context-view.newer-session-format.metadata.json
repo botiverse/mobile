@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.agent-context-view.newer-session-format",
+  "image": "visual-testing-results/react/components.agent-context-view.newer-session-format.png",
+  "viewport": {
+    "width": 1280,
+    "height": 900,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 900,
+    "density": 1
+  },
+  "selector": "[data-visual-case='components.agent-context-view.newer-session-format']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 840,
+      "y": 0,
+      "width": 440,
+      "height": 900
+    },
+    "targetRect": {
+      "x": 840,
+      "y": 0,
+      "width": 440,
+      "height": 900
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-08T21:39:57.154Z"
+}

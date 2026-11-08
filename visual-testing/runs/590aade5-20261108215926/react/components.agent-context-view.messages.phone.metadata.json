@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.agent-context-view.messages.phone",
+  "image": "visual-testing-results/react/components.agent-context-view.messages.phone.png",
+  "viewport": {
+    "width": 390,
+    "height": 1400,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 1400,
+    "density": 3
+  },
+  "selector": "body",
+  "crop": {
+    "mode": "element",
+    "contract": "modal-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1400
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1400
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-08T21:39:52.403Z"
+}

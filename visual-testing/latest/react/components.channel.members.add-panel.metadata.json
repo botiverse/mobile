@@ -40,7 +40,7 @@
     "iterations": 1,
     "capped": false,
     "maxHeight": 2700,
-    "scroller": "div.min-h-0.min-w-0.p-1.flex-1"
+    "scroller": "div.r-scroll-area.r-scroll-area--medium.r-scroll-area--hover-trigger.r-scroll-area--vertical-orientation"
   },
-  "capturedAt": "2026-11-07T21:37:31.835Z"
+  "capturedAt": "2026-11-08T21:37:34.062Z"
 }

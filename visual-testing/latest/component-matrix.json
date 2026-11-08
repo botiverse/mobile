@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-11-07T22:46:26.102Z",
-  "runId": "40815d3e-20261107215920",
+  "generatedAt": "2026-11-08T22:01:40.088Z",
+  "runId": "590aade5-20261108215926",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 135,
-    "active": 115,
+    "total": 151,
+    "active": 131,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 102,
-        "active": 97,
+        "total": 118,
+        "active": 113,
         "pending": 3,
         "skipped": 2
       },
@@ -24,10 +24,10 @@
     },
     "providers": {
       "react": {
-        "active": 105,
+        "active": 121,
         "pending": 13,
         "unsupported": 0,
-        "total": 118
+        "total": 134
       },
       "android": {
         "active": 79,
@@ -516,8 +516,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9690255855158285,
-        "pixelPerfectSimilarity": 0.9139428984215714,
+        "rgbSimilarity": 0.969025730247256,
+        "pixelPerfectSimilarity": 0.9139432359811507,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.comment-anchor.side-by-side.png"
       }
     },
@@ -541,6 +541,550 @@
         "rgbSimilarity": 0.9833121278140899,
         "pixelPerfectSimilarity": 0.9667617260787993,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.forward-modal.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.all-reachable",
+      "title": "Agent read line: everyone reached (no line)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.all-reachable.dark",
+      "title": "Agent read line: everyone reached (no line) (dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.all-reachable.en",
+      "title": "Agent read line: everyone reached (no line) (en)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.all-reachable.en.dark",
+      "title": "Agent read line: everyone reached (no line) (en, dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.many-narrow",
+      "title": "Agent read line: four muted agents, narrow",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.many-narrow.dark",
+      "title": "Agent read line: four muted agents, narrow (dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.many-narrow.en",
+      "title": "Agent read line: four muted agents, narrow (en)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.many-narrow.en.dark",
+      "title": "Agent read line: four muted agents, narrow (en, dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.muted-channel",
+      "title": "Agent read line: muted channel",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.muted-channel.dark",
+      "title": "Agent read line: muted channel (dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.muted-channel.en",
+      "title": "Agent read line: muted channel (en)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.muted-channel.en.dark",
+      "title": "Agent read line: muted channel (en, dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.stopped-following-thread",
+      "title": "Agent read line: stopped following a thread",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.stopped-following-thread.dark",
+      "title": "Agent read line: stopped following a thread (dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.stopped-following-thread.en",
+      "title": "Agent read line: stopped following a thread (en)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.thread.message.agent-read-line.stopped-following-thread.en.dark",
+      "title": "Agent read line: stopped following a thread (en, dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/message/MessageItem",
+            "components/message/AgentReadFaces",
+            "components/message/MessageReadStatusLine"
+          ],
+          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
+          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
       }
     },
     {
@@ -608,8 +1152,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9083770709415409,
-        "pixelPerfectSimilarity": 0.796296627383205,
+        "rgbSimilarity": 0.8257695306406059,
+        "pixelPerfectSimilarity": 0.6987092576865964,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
     },
@@ -893,8 +1437,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9714339592702577,
-        "pixelPerfectSimilarity": 0.9191463793359528,
+        "rgbSimilarity": 0.9714663089505644,
+        "pixelPerfectSimilarity": 0.9192084902985377,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
       }
     },
@@ -948,8 +1492,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9083688293182068,
-        "pixelPerfectSimilarity": 0.8284078857071557,
+        "rgbSimilarity": 0.9083289628506889,
+        "pixelPerfectSimilarity": 0.8285378584648657,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-latest-release.side-by-side.png"
       }
     },
@@ -1058,8 +1602,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9410964355872427,
-        "pixelPerfectSimilarity": 0.8833637713979594,
+        "rgbSimilarity": 0.9408353096191734,
+        "pixelPerfectSimilarity": 0.8831933182360533,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-adjacent.side-by-side.png"
       }
     },
@@ -1223,8 +1767,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9080465696362992,
-        "pixelPerfectSimilarity": 0.8213828559437625,
+        "rgbSimilarity": 0.9079672645041323,
+        "pixelPerfectSimilarity": 0.8213465372105598,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-status606.side-by-side.png"
       }
     },
@@ -1278,8 +1822,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8542364395451563,
-        "pixelPerfectSimilarity": 0.8276871647931819,
+        "rgbSimilarity": 0.8541264410481696,
+        "pixelPerfectSimilarity": 0.8276247153037984,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-task607.side-by-side.png"
       }
     },
@@ -1690,8 +2234,8 @@
         "status": "basic-pass",
         "rawStatus": "different",
         "acceptance": "basic pass: pixel perfect 96.66% > 96%",
-        "rgbSimilarity": 0.989987672466747,
-        "pixelPerfectSimilarity": 0.9666277787622817,
+        "rgbSimilarity": 0.9899876628147479,
+        "pixelPerfectSimilarity": 0.9666253175025105,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.checkbox.states.side-by-side.png"
       }
     },
@@ -1732,7 +2276,7 @@
         "status": "basic-pass",
         "rawStatus": "different",
         "acceptance": "basic pass: pixel perfect 97.01% > 96%",
-        "rgbSimilarity": 0.9872141735245156,
+        "rgbSimilarity": 0.9872141390903566,
         "pixelPerfectSimilarity": 0.9700676553746729,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png"
       }
@@ -2108,8 +2652,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9328509953978048,
-        "pixelPerfectSimilarity": 0.890207927225471,
+        "rgbSimilarity": 0.9330404968282954,
+        "pixelPerfectSimilarity": 0.8904006930907515,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.typography.specimen.side-by-side.png"
       }
     },
@@ -2502,8 +3046,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9114564111329492,
-        "pixelPerfectSimilarity": 0.8489702409808122,
+        "rgbSimilarity": 0.8433671865994113,
+        "pixelPerfectSimilarity": 0.761791448821333,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-missing.side-by-side.png"
       }
     },
@@ -2524,8 +3068,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8506454406361809,
-        "pixelPerfectSimilarity": 0.7711849594611907,
+        "rgbSimilarity": 0.9172716722631675,
+        "pixelPerfectSimilarity": 0.8232632167591517,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-offline.side-by-side.png"
       }
     },
@@ -2546,8 +3090,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9121530833690542,
-        "pixelPerfectSimilarity": 0.8499792993187594,
+        "rgbSimilarity": 0.830538510448892,
+        "pixelPerfectSimilarity": 0.7511008998659774,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.daemon-only.side-by-side.png"
       }
     },
@@ -2568,8 +3112,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9101729012472812,
-        "pixelPerfectSimilarity": 0.8474409732796897,
+        "rgbSimilarity": 0.8539904181617295,
+        "pixelPerfectSimilarity": 0.7710306456295204,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.loading-state.side-by-side.png"
       }
     },
@@ -2590,8 +3134,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8999388104062879,
-        "pixelPerfectSimilarity": 0.824852494131313,
+        "rgbSimilarity": 0.820747764459365,
+        "pixelPerfectSimilarity": 0.7385146033641207,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.long-machine-name.side-by-side.png"
       }
     },
@@ -2612,8 +3156,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9092490649807146,
-        "pixelPerfectSimilarity": 0.8482127601407922,
+        "rgbSimilarity": 0.907503387690339,
+        "pixelPerfectSimilarity": 0.818986813078328,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.no-computer.side-by-side.png"
       }
     },
@@ -2634,8 +3178,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9114764691932244,
-        "pixelPerfectSimilarity": 0.8485740914561368,
+        "rgbSimilarity": 0.8434425553337161,
+        "pixelPerfectSimilarity": 0.7626462783348315,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.no-membership.side-by-side.png"
       }
     },
@@ -3121,8 +3665,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9225384281474998,
-        "pixelPerfectSimilarity": 0.8918325555752457,
+        "rgbSimilarity": 0.9225373728622646,
+        "pixelPerfectSimilarity": 0.8918276330557032,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.states.side-by-side.png"
       }
     },
@@ -3266,8 +3810,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.966146121207692,
-        "pixelPerfectSimilarity": 0.9227211860799647,
+        "rgbSimilarity": 0.9661458515392091,
+        "pixelPerfectSimilarity": 0.922720254017964,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.members.add-panel.side-by-side.png"
       }
     },
@@ -3323,8 +3867,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9361395808419459,
-        "pixelPerfectSimilarity": 0.8875150214012774,
+        "rgbSimilarity": 0.9361613558617072,
+        "pixelPerfectSimilarity": 0.8828418465859225,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.settings.panel.side-by-side.png"
       }
     },
@@ -3443,8 +3987,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.944209055545415,
-        "pixelPerfectSimilarity": 0.8904257976532858,
+        "rgbSimilarity": 0.9442083517447237,
+        "pixelPerfectSimilarity": 0.8904244474149687,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.create-channel.dialog.side-by-side.png"
       }
     },
@@ -3498,8 +4042,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9853420603736502,
-        "pixelPerfectSimilarity": 0.9055957251454881,
+        "rgbSimilarity": 0.9853427703519025,
+        "pixelPerfectSimilarity": 0.9055974129433845,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.notification-center.states.side-by-side.png"
       }
     },
@@ -3797,8 +4341,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9118897275446851,
-        "pixelPerfectSimilarity": 0.8493291351513316,
+        "rgbSimilarity": 0.829327572767129,
+        "pixelPerfectSimilarity": 0.7493425441711322,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -3969,8 +4513,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8778736533168506,
-        "pixelPerfectSimilarity": 0.7955947988178692,
+        "rgbSimilarity": 0.8778736498422065,
+        "pixelPerfectSimilarity": 0.7955943155264614,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.error-state.side-by-side.png"
       }
     },
@@ -4556,8 +5100,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9523609259223672,
-        "pixelPerfectSimilarity": 0.9354595074892105,
+        "rgbSimilarity": 0.9084730319597313,
+        "pixelPerfectSimilarity": 0.8923944303243022,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.root.page.side-by-side.png"
       }
     },
@@ -4727,8 +5271,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9866698648936928,
-        "pixelPerfectSimilarity": 0.8662043284850303,
+        "rgbSimilarity": 0.9876806679753596,
+        "pixelPerfectSimilarity": 0.8673764182536112,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.status-menu.side-by-side.png"
       }
     },
@@ -4843,8 +5387,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9729437554698954,
-        "pixelPerfectSimilarity": 0.8940004748338082,
+        "rgbSimilarity": 0.9734361301975648,
+        "pixelPerfectSimilarity": 0.8945275403608737,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.header.states.side-by-side.png"
       }
     },
@@ -5177,7 +5721,7 @@
         "rawStatus": "different",
         "acceptance": "",
         "rgbSimilarity": 0.9840083651235098,
-        "pixelPerfectSimilarity": 0.9409868216740255,
+        "pixelPerfectSimilarity": 0.9409928977464522,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -5390,8 +5934,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9117506303604709,
-        "pixelPerfectSimilarity": 0.8491394223526705,
+        "rgbSimilarity": 0.8291884755829109,
+        "pixelPerfectSimilarity": 0.7491528313724711,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
     },
