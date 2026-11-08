@@ -68,13 +68,16 @@ internal data class ThreadPeerReadReceiptsUi(
     /** Agents with `managedByAppInstallId` (app-managed bots): no badge, web `isManagedBot`. */
     val managedAgentIds: Set<String> = emptySet(),
     /**
-     * Web `useAgentReadProgress` gate: `agent_read_progress_v0` on and a reply thread (a thread is its
-     * own read scope). The agents' read status line ([threadAgentReadStatus]) shows only then; never
-     * on a DM surface, which keeps its "Read" line.
+     * Web `useAgentReadProgress` gate: `agent_read_progress_v0` on, in a channel or a reply thread
+     * whose scope carries receipts (not `#all`; a joint channel is not fetched here). The agents' faces
+     * and line ([threadAgentReadProgress]) show only then; never on a DM surface, which keeps its
+     * "Read" line.
      */
-    val agentReadStatusEnabled: Boolean = false,
-    /** Agent id -> display name for the status line (server directory, then the page's members). */
+    val agentReadProgressEnabled: Boolean = false,
+    /** Agent id -> display name for the faces and the line (server directory, then the page's members). */
     val agentNames: Map<String, String> = emptyMap(),
+    /** The server the scope belongs to: the agents' faces are read from its directory. */
+    val serverId: String? = null,
 )
 
 internal val LocalThreadPeerReadReceipts = compositionLocalOf<ThreadPeerReadReceiptsUi?> { null }
@@ -184,12 +187,12 @@ internal fun threadPeerReadReceiptRealtimeAction(
     eventServerId: String,
     serverId: String,
     scopeId: String?,
-    agentReadStatusEnabled: Boolean,
+    agentReadProgressEnabled: Boolean,
 ): ThreadPeerReadReceiptRealtimeAction {
     if (scopeId == null || eventServerId != serverId) return ThreadPeerReadReceiptRealtimeAction.None
     return when {
         event is ScopeReadUpdated && event.scopeId == scopeId -> ThreadPeerReadReceiptRealtimeAction.ApplyReadMove
-        agentReadStatusEnabled && event is ThreadFollowersUpdated && event.threadChannelId.value == scopeId ->
+        agentReadProgressEnabled && event is ThreadFollowersUpdated && event.threadChannelId.value == scopeId ->
             ThreadPeerReadReceiptRealtimeAction.RefreshFollowState
         else -> ThreadPeerReadReceiptRealtimeAction.None
     }
@@ -235,9 +238,10 @@ internal fun rememberThreadPeerReadReceipts(
         remember(owner, flagRevision) {
             owner != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(owner.serverId), READ_RECEIPTS_FEATURE_FLAG_KEY)
         }
-    val agentReadStatusEnabled =
+    val agentReadProgressEnabled =
         remember(owner, flagRevision, enabled, payload.surfaceKind) {
-            enabled && owner != null && payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+            enabled && owner != null &&
+                (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread || payload.surfaceKind == RaftThreadSurfaceKind.Channel) &&
                 sharedStores.serverFeatureFlags.isEnabled(ServerId(owner.serverId), AGENT_READ_PROGRESS_FEATURE_FLAG_KEY)
         }
     val scopeId = payload.peerReadReceiptScopeId()
@@ -252,12 +256,12 @@ internal fun rememberThreadPeerReadReceipts(
         if (scopeId != null && firstPageSettled && active) store.hydrate(currentOwner, scopeId)
     }
     val realtimeOwner = remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
-    DisposableEffect(realtimeOwner, store, owner, scopeId, enabled, agentReadStatusEnabled) {
+    DisposableEffect(realtimeOwner, store, owner, scopeId, enabled, agentReadProgressEnabled) {
         val currentOwner = owner
         val sink =
             RealtimeGuardedActiveThreadSink { eventServerId, event ->
                 if (!enabled || currentOwner == null) return@RealtimeGuardedActiveThreadSink
-                when (threadPeerReadReceiptRealtimeAction(event, eventServerId, currentOwner.serverId, scopeId, agentReadStatusEnabled)) {
+                when (threadPeerReadReceiptRealtimeAction(event, eventServerId, currentOwner.serverId, scopeId, agentReadProgressEnabled)) {
                     ThreadPeerReadReceiptRealtimeAction.ApplyReadMove ->
                         store.consumeScopeUpdated(currentOwner, event as ScopeReadUpdated)
                     ThreadPeerReadReceiptRealtimeAction.RefreshFollowState ->
@@ -283,15 +287,16 @@ internal fun rememberThreadPeerReadReceipts(
     val agentNames = remember(serverMembers, payload.members, payload.memberCandidates) {
         threadAgentNames(serverMembers, payload.members + payload.memberCandidates)
     }
-    return remember(scope, dmSurface, directory, managedAgentIds, agentReadStatusEnabled, agentNames) {
+    return remember(scope, dmSurface, directory, managedAgentIds, agentReadProgressEnabled, agentNames, owner) {
         scope?.let {
             ThreadPeerReadReceiptsUi(
                 scope = it,
                 dmSurface = dmSurface,
                 directoryMentions = directory,
                 managedAgentIds = managedAgentIds,
-                agentReadStatusEnabled = agentReadStatusEnabled,
+                agentReadProgressEnabled = agentReadProgressEnabled,
                 agentNames = agentNames,
+                serverId = owner?.serverId,
             )
         }
     }

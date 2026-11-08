@@ -21876,10 +21876,11 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
-    // agent_read_progress_v0 (web AgentReadStatusLine): the agents' read status under the viewer's latest reply.
-    val agentReadStatus =
+    // agent_read_progress_v0 (web useAgentReadProgress): each agent's face on the message it read up to,
+    // and the line under the viewer's latest message when it will not reach an agent.
+    val agentReadProgress =
         remember(peerReadReceipts, renderPayload.messages, renderPayload.canLoadMoreAfter, agentTyping) {
-            peerReadReceipts?.threadAgentReadStatus(
+            peerReadReceipts?.threadAgentReadProgress(
                 messages = renderPayload.messages,
                 hasNewer = renderPayload.canLoadMoreAfter,
                 workingAgentIds = agentTyping?.agents?.map { it.agentId }.orEmpty(),
@@ -25353,8 +25354,18 @@ private fun ThreadMessagesListContent(
                             Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
                         )
                     }
-                    // agent_read_progress_v0 (web option C, AgentReadStatusLine): in a thread, the agents'
-                    // read status under the viewer's latest reply. The @mention read badges stay, as on web.
+                    // agent_read_progress_v0 (web AgentReadFaces): the faces of the agents that read up to
+                    // this message, at its end. The @mention read badges stay, as on web.
+                    agentReadProgress?.facesByMessageId?.get(message.id)?.let { faces ->
+                        ThreadAgentReadFacesRow(
+                            faces = faces,
+                            serverId = agentReadProgress.serverId,
+                            modifier = Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web option C, AgentReadStatusLine): under the viewer's latest
+                    // message, only when it will not reach an agent that stopped following or muted.
+                    val agentReadStatus = agentReadProgress?.status
                     if (agentReadStatus != null && message.id == agentReadStatus.messageId) {
                         ThreadAgentReadStatusRow(
                             agentReadStatus,

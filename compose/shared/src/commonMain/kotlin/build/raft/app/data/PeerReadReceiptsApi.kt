@@ -32,6 +32,9 @@ import kotlinx.serialization.json.jsonObject
  *  - slock #13497 (staging ecc7b14): in a thread, a `peerReadStates[]` agent that stopped following it
  *    carries `stoppedFollowing: true` (only when true). It is not a read move: `thread:followers-updated`
  *    to the thread's room says load the detail again ([SharedPeerReadReceiptStore.refreshFollowState]).
+ *  - slock #13513: in a channel, an agent that muted it carries `mutedChannel: true` (only when true).
+ *    The web hears mute changes through its `read_progress:watch` room (`read_progress:detail_changed`);
+ *    the app has no such watch, so a mute shows on the next load of the detail.
  *  - Realtime `scope_read:updated` to room `channel:{scopeId}`: `{ scopeId, peerKind, peerId,
  *    maxReadSeq }` when an agent's read cursor advances, or `{ scopeId, summaryChanged: true }`
  *    once the scope has more than LIMIT exposed peers (the client then re-fetches the hydrate).
@@ -52,6 +55,11 @@ internal data class PeerReadStateWire(
      * `item.stoppedFollowing === true`); anything else, or absent, is unknown and never breaks the row.
      */
     val stoppedFollowing: JsonElement? = null,
+    /**
+     * slock #13513: in a channel (not a thread, not a DM), this agent muted it. Only `true` counts (web
+     * `item.mutedChannel === true`); anything else, or absent, is unknown.
+     */
+    val mutedChannel: JsonElement? = null,
 )
 
 /** `peerReadSummary.readCountAtSeq[]` row. */
@@ -88,6 +96,11 @@ data class PeerReadState(
      * still follows it). False is "not known to have", never "follows".
      */
     val stoppedFollowing: Boolean = false,
+    /**
+     * Web `PeerReadState.mutedChannel` (slock #13513): in a channel, an agent that muted it, so a message
+     * that does not @mention it never reaches it. False is "not known to have", never "listens".
+     */
+    val mutedChannel: Boolean = false,
 )
 
 data class PeerReadCountAtSeq(val seq: Long, val count: Int)
@@ -145,7 +158,13 @@ private fun decodePeerReadReceiptHydrate(root: JsonObject): PeerReadReceiptScope
                 val kind = readReceiptPeerKindFromWire(wire.peerKind) ?: return null
                 if (wire.peerId.isEmpty() || wire.maxReadSeq < 0) return null
                 if (!seen.add(kind to wire.peerId)) return null
-                PeerReadState(kind, wire.peerId, wire.maxReadSeq, stoppedFollowing = wire.stoppedFollowing.isJsonTrue())
+                PeerReadState(
+                    kind,
+                    wire.peerId,
+                    wire.maxReadSeq,
+                    stoppedFollowing = wire.stoppedFollowing.isJsonTrue(),
+                    mutedChannel = wire.mutedChannel.isJsonTrue(),
+                )
             }
         return PeerReadReceiptScope.Peers(peers)
     }
