@@ -3945,6 +3945,19 @@
     <string name="thread_composer_placeholder_named">Enviar mensaje a %1$s</string>
     <string name="thread_archived_notice">Este canal está archivado.</string>
     <string name="thread_archived_unarchive">Desarchivar</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">Cambiar modelo</string>
+    <string name="agent_status_model_unsupported">La cuenta o el plan de este runtime no incluye “%1$s”. Cambia el modelo o inicia sesión con una cuenta que lo incluya</string>
+    <string name="agent_status_model_unsupported_default">La cuenta o el plan de este runtime no incluye el modelo de este agente. Cambia el modelo o inicia sesión con una cuenta que lo incluya</string>
+    <string name="agent_status_repeated_failure_paused">Tras iniciarse, falló varias veces de la misma manera: las activaciones automáticas están en pausa; Raft volverá a intentarlo por sí solo más tarde. Reinicia el agente para intentarlo ahora</string>
+    <string name="agent_status_repeated_failure_paused_at">Tras iniciarse, falló varias veces de la misma manera: las activaciones automáticas están en pausa; Raft volverá a intentarlo por sí solo (próximo intento: %1$s). Reinicia el agente para intentarlo ahora</string>
+    <string name="agent_status_session_needs_reset">El contexto es demasiado grande y reducirlo automáticamente no lo resolvió. Restablece la sesión y reinicia; si un mensaje es muy grande por sí solo, cambia a un modelo con un contexto más grande o separa el contenido en partes.</string>
+    <string name="agent_status_start_timeout_paused">%1$s: las activaciones automáticas están en pausa; Raft volverá a intentarlo por sí solo más tarde. Reinicia el agente o cambia su modelo para reanudarlo ahora</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s: las activaciones automáticas están en pausa; Raft volverá a intentarlo por sí solo (próximo intento: %2$s). Reinicia el agente o cambia su modelo para reanudarlo ahora</string>
+    <string name="agent_runtime_error_billing_exhausted">Saldo insuficiente en el servicio de modelos</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s no puede responder ahora. Revisa el saldo y la facturación del servicio de modelos que usa este agente y vuelve a iniciarlo.</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">Ver configuración del modelo</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">Pídele a un administrador del servidor que lo solucione.</string>
     <!-- Artifacts home (web artifacts.dashboard.*, slock staging aae2b7a89) -->
     <string name="artifacts_dashboard_title">Artifacts</string>
     <string name="artifacts_dashboard_conversation_label">Conversación</string>

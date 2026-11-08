@@ -34,13 +34,16 @@ private val AgentRuntimeAuthFailedPattern =
 
 /**
  * Web `RuntimeErrorKind` (classifyRuntimeError.ts): the runtime errors told in the app's own words.
- * [ToolArgsInvalid] comes only from the typed diagnostic, never from the message text.
+ * [ToolArgsInvalid] and [BillingExhausted] come only from the typed diagnostic, never from the
+ * message text: the daemon classifies the provider's 402 / insufficient-balance reply into
+ * `BillingError` / `billing_exhausted` (botiverse/slock #13435, task #1351).
  */
 internal enum class AgentRuntimeErrorKind {
     NotLoggedIn,
     NotInstalled,
     AuthFailed,
     ToolArgsInvalid,
+    BillingExhausted,
 }
 
 /** Web `classifyRuntimeError`: only these stable patterns, in this order; anything else is null. */
@@ -61,6 +64,7 @@ internal fun agentTypedRuntimeErrorKind(errorClass: String?, errorReason: String
     return when {
         errorReason == "auth_failed" || errorClass == "AuthError" -> AgentRuntimeErrorKind.AuthFailed
         errorReason == "model_tool_args_invalid" || errorClass == "ToolArgumentParseError" -> AgentRuntimeErrorKind.ToolArgsInvalid
+        errorReason == "billing_exhausted" || errorClass == "BillingError" -> AgentRuntimeErrorKind.BillingExhausted
         else -> null
     }
 }
@@ -76,6 +80,10 @@ internal sealed interface AgentRuntimeErrorDisplay {
     /** Anything else: "Error: [detail]", or "Error" without one (web `formatActivityText(..., "error", raw)`). */
     data class Raw(val detail: String) : AgentRuntimeErrorDisplay
 }
+
+/** The agent stopped on a typed BillingError (web `runtimeErrorKind === "billingExhausted"`): the billing banner. */
+internal val AgentRuntimeErrorDisplay.isBillingExhausted: Boolean
+    get() = (this as? AgentRuntimeErrorDisplay.Known)?.kind == AgentRuntimeErrorKind.BillingExhausted
 
 /**
  * Web AgentDetailPanel `activityErrorText`, from [runtimeError] (the live error, or the one the
@@ -112,6 +120,8 @@ internal fun agentRuntimeErrorDisplayText(display: AgentRuntimeErrorDisplay): St
                 AgentRuntimeErrorKind.NotInstalled -> stringResource(Res.string.agent_runtime_error_not_installed)
                 AgentRuntimeErrorKind.AuthFailed -> stringResource(Res.string.agent_runtime_error_auth_failed)
                 AgentRuntimeErrorKind.ToolArgsInvalid -> stringResource(Res.string.agent_runtime_error_tool_args_invalid)
+                // The billing banner's title; the banner adds its body and one action.
+                AgentRuntimeErrorKind.BillingExhausted -> stringResource(Res.string.agent_runtime_error_billing_exhausted)
             }
         is AgentRuntimeErrorDisplay.Raw ->
             if (display.detail.isBlank()) {

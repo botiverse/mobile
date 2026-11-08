@@ -4388,37 +4388,64 @@ internal fun MemberDetailPageContent(
     // Realtime `agent:updated { agentId }` (a profile edit, or botiverse/slock #13492: the agent's
     // modelLimits signal may have changed): the app shell re-reads the roster, and the open Profile
     // re-reads this agent's detail in the background, keeping what it shows until the answer lands.
+    // One background re-read of the open agent's detail, keeping what it shows until the answer
+    // lands. Skipped for another server's profile, and while a first load (or a cache replay still
+    // refreshing) brings the fresh answer itself.
+    suspend fun rereadAgentDetailInBackground(identity: MemberDetailIdentity, signal: build.raft.app.data.RaftAgentUpdatedSignal? = null) {
+        val route = routeState as? MemberDetailRouteState.Agent ?: return
+        if (route.accessMode != MemberDetailAccessMode.LocalFull) return
+        if (signal != null && !signal.isFor(route.server.id.value, identity.memberId.value)) return
+        val state = provider.agentDetailStore.state.value
+        val owner = state.detailOwner ?: return
+        if (
+            state.agentId != identity.memberId ||
+            state.detailFromCache ||
+            state.detailLoadStatus != SharedAgentDetailLoadStatus.Content
+        ) {
+            return
+        }
+        val generation = state.detailProfileGeneration
+        val requestGeneration = agentProfileRequestGeneration
+        val current = {
+            agentProfileRequestGeneration == requestGeneration &&
+                provider.agentDetailStore.state.value.let {
+                    it.agentId == identity.memberId && it.detailProfileGeneration == generation
+                }
+        }
+        val loaded = provider.loadMember(identity, owner, generation, current, hasCachedAgentDetail = true)
+        if (!current() || (loaded as? MemberDetailRouteState.Error)?.error?.code == "member_request_stale") {
+            return
+        }
+        routeState = loaded
+    }
     LaunchedEffect(provider, memberIdentity) {
         val signals = provider.agentUpdatedSignals ?: return@LaunchedEffect
         val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
-        signals.events.collect { signal ->
-            val route = routeState as? MemberDetailRouteState.Agent ?: return@collect
-            if (route.accessMode != MemberDetailAccessMode.LocalFull) return@collect
-            if (!signal.isFor(route.server.id.value, identity.memberId.value)) return@collect
-            val state = provider.agentDetailStore.state.value
-            val owner = state.detailOwner ?: return@collect
-            // A first load (or a cache replay still refreshing) brings the fresh answer itself.
-            if (
-                state.agentId != identity.memberId ||
-                state.detailFromCache ||
-                state.detailLoadStatus != SharedAgentDetailLoadStatus.Content
-            ) {
-                return@collect
+        signals.events.collect { signal -> rereadAgentDetailInBackground(identity, signal) }
+    }
+    // botiverse/slock #13435: a kept BillingError shows while the agent starts again, and the
+    // server clears it once the provider answers, then sends `agent:updated`. That signal can be
+    // missed (a reconnect, the app in the background, a load in flight when it came), so while the
+    // banner shows, the agent moving into a running state and the page coming back on screen each
+    // re-read the detail once.
+    val billingRereadAgentId = memberIdentity?.takeIf { it.kind == MemberKind.Agent }?.memberId
+    val billingRereadStatus =
+        rememberRaftAgentStatusIndicatorState(agentStatusResolver, billingRereadAgentId?.value)?.status
+    val billingErrorShown =
+        agentDetailStoreState.agentId == billingRereadAgentId &&
+            agentDetailStoreState.detail?.summary.let {
+                agentTypedRuntimeErrorKind(it?.lastRuntimeErrorClass, it?.lastRuntimeErrorReason) ==
+                    AgentRuntimeErrorKind.BillingExhausted
             }
-            val generation = state.detailProfileGeneration
-            val requestGeneration = agentProfileRequestGeneration
-            val current = {
-                agentProfileRequestGeneration == requestGeneration &&
-                    provider.agentDetailStore.state.value.let {
-                        it.agentId == identity.memberId && it.detailProfileGeneration == generation
-                    }
-            }
-            val loaded = provider.loadMember(identity, owner, generation, current, hasCachedAgentDetail = true)
-            if (!current() || (loaded as? MemberDetailRouteState.Error)?.error?.code == "member_request_stale") {
-                return@collect
-            }
-            routeState = loaded
-        }
+    val billingRereadOnRun = membersBillingErrorRereadDue(billingErrorShown, billingRereadStatus)
+    LaunchedEffect(provider, memberIdentity, billingRereadOnRun) {
+        val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
+        if (billingRereadOnRun) rereadAgentDetailInBackground(identity)
+    }
+    val currentBillingErrorShown by rememberUpdatedState(billingErrorShown)
+    LaunchedEffect(provider, memberIdentity, pageVisibleTick) {
+        val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
+        if (pageVisibleTick > 0 && currentBillingErrorShown) rereadAgentDetailInBackground(identity)
     }
     LaunchedEffect(provider.serverMembersStore, statusResolverServerId) {
         val serverId = statusResolverServerId ?: return@LaunchedEffect
@@ -6610,6 +6637,19 @@ private fun MembersDetailContent(
     var selectedTabOverride by remember(member.id.value, initialAgentTab) {
         mutableStateOf(initialAgentTab)
     }
+    // Web AgentDetailPanel `openModelSettings` (botiverse/slock #13435, #13460): Change model on the
+    // status and View model settings on the billing banner open the Profile tab's runtime editor,
+    // for whoever may configure the agent (`canManageAgent && !deletedAt && !isExternalAgent`).
+    var runtimeEditorOpenRequested by remember(member.id.value) { mutableStateOf(false) }
+    val openModelSettings: (() -> Unit)? =
+        if (membersAgentCanOpenModelSettings(canManage = canManage, isExternalAgent = isExternalAgent)) {
+            {
+                selectedTabOverride = MembersAgentDetailTab.Profile
+                runtimeEditorOpenRequested = true
+            }
+        } else {
+            null
+        }
     // task #232 PR2 (@LiBai review): each tab's list scroll position lives here,
     // keyed by TAB rather than by pager index so it survives both a swipe away
     // and a tab reorder. Inside the page the LazyColumn is discarded whenever
@@ -6974,8 +7014,8 @@ private fun MembersDetailContent(
             // Web AgentDetailPanel `activityErrorText`: known runtime errors in the app's words (a
             // "not installed" says how the lookup ended and names the runtime, botiverse/slock
             // #12729), anything else as the server put it.
-            val runtimeErrorText =
-                member.membersAgentRuntimeErrorDisplay(detail, agentStatusIndicatorState)?.let { agentRuntimeErrorDisplayText(it) }
+            val runtimeErrorDisplay = member.membersAgentRuntimeErrorDisplay(detail, agentStatusIndicatorState)
+            val runtimeErrorText = runtimeErrorDisplay?.let { agentRuntimeErrorDisplayText(it) }
             if (member.kind == MemberKind.Human) {
                 MembersHumanDetailHeader(
                     member = member,
@@ -7024,7 +7064,8 @@ private fun MembersDetailContent(
                 membersAgentRuntimeErrorBannerState(
                     memberKind = member.kind,
                     selectedTab = selectedTab,
-                    runtimeErrorText = runtimeErrorText
+                    runtimeErrorText = runtimeErrorText,
+                    billingExhausted = runtimeErrorDisplay?.isBillingExhausted == true
                 )
             if (runtimeErrorBanner != null) {
                 MembersAgentRuntimeErrorBanner(
@@ -7032,7 +7073,9 @@ private fun MembersDetailContent(
                     canViewPrivate = canViewPrivate,
                     showViewLogs = runtimeErrorBanner.showViewLogs,
                     onViewLogs = { selectedTabOverride = MembersAgentDetailTab.Activity },
-                    onCopyInfo = { copyDiagnostics() }
+                    onCopyInfo = { copyDiagnostics() },
+                    billingAgentName = member.displayName.takeIf { runtimeErrorBanner.billingExhausted },
+                    onOpenModelSettings = openModelSettings
                 )
             }
             if (member.kind == MemberKind.Agent && !agentPanelTabOrderReady) {
@@ -7226,7 +7269,11 @@ private fun MembersDetailContent(
                                                 onOpenComputer = onOpenComputer,
                                                 onStopTurn = profileStopTurn,
                                                 stopTurnInProgress = turnStopState.inFlightAgentId != null,
-                                                showActivityDetail = canViewPrivate
+                                                showActivityDetail = canViewPrivate,
+                                                onOpenModelSettings = openModelSettings,
+                                                runtimeEditorOpenRequested = runtimeEditorOpenRequested,
+                                                onRuntimeEditorOpenRequestHandled = { runtimeEditorOpenRequested = false },
+                                                timeContext = timeContext
                                             ),
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,
@@ -8659,21 +8706,57 @@ private fun MembersAgentTabBar(
 
 internal data class MembersAgentRuntimeErrorBannerState(
     val errorText: String,
-    val showViewLogs: Boolean
+    val showViewLogs: Boolean,
+    /** A typed BillingError (botiverse/slock #13435): the billing banner, whose one action is model settings. */
+    val billingExhausted: Boolean = false
 )
 
 internal fun membersAgentRuntimeErrorBannerState(
     memberKind: MemberKind,
     selectedTab: MembersAgentDetailTab,
-    runtimeErrorText: String?
+    runtimeErrorText: String?,
+    billingExhausted: Boolean = false
 ): MembersAgentRuntimeErrorBannerState? {
     if (memberKind != MemberKind.Agent) return null
     val errorText = runtimeErrorText?.takeIf { it.isNotBlank() } ?: return null
     return MembersAgentRuntimeErrorBannerState(
         errorText = errorText,
-        showViewLogs = selectedTab != MembersAgentDetailTab.Activity
+        // The billing banner keeps one action (its copy rule); its log is still on the Activity tab.
+        showViewLogs = selectedTab != MembersAgentDetailTab.Activity && !billingExhausted,
+        billingExhausted = billingExhausted
     )
 }
+
+/**
+ * A kept BillingError is on screen and the agent is running again (botiverse/slock #13435): the
+ * error may have been cleared without this page hearing `agent:updated`, so re-read once.
+ */
+internal fun membersBillingErrorRereadDue(billingErrorShown: Boolean, liveStatus: AgentStatus?): Boolean =
+    billingErrorShown &&
+        when (liveStatus) {
+            AgentStatus.Online, AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Idle -> true
+            AgentStatus.Offline, AgentStatus.Disconnected, AgentStatus.Error, null -> false
+        }
+
+/** The runtime editor can open now: the pencil's conditions (a known status, a readable config, the v2 form). */
+internal fun membersRuntimeEditorCanOpen(
+    canEdit: Boolean,
+    hasAuthority: Boolean,
+    hasConfig: Boolean,
+    runtimeEditorReady: Boolean,
+    hasFormV2Access: Boolean
+): Boolean = canEdit && hasAuthority && hasConfig && runtimeEditorReady && hasFormV2Access
+
+/** An open-editor request acts only once the editor can open; until then it stays pending. */
+internal fun membersRuntimeEditorOpenRequestActs(requested: Boolean, canOpen: Boolean): Boolean = requested && canOpen
+
+/**
+ * Web AgentDetailPanel `canOpenModelSettings` (`canManageAgent && !agent.deletedAt &&
+ * !isExternalAgent && !activityOnly`; the app has no activity-only page, and [canManage] is
+ * already false for an archived agent).
+ */
+internal fun membersAgentCanOpenModelSettings(canManage: Boolean, isExternalAgent: Boolean): Boolean =
+    canManage && !isExternalAgent
 
 @Composable
 private fun MembersAgentDetailStateNotice(
@@ -8716,8 +8799,23 @@ internal fun MembersAgentRuntimeErrorBanner(
     showViewLogs: Boolean,
     onViewLogs: () -> Unit,
     onCopyInfo: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The agent's name when the error is a typed BillingError: the billing banner (web AgentRuntimeErrorNotice). */
+    billingAgentName: String? = null,
+    /** Present when the viewer may open the agent's model settings. */
+    onOpenModelSettings: (() -> Unit)? = null
 ) {
+    if (billingAgentName != null) {
+        MembersAgentBillingBanner(
+            title = errorText,
+            agentName = billingAgentName,
+            canViewPrivate = canViewPrivate,
+            onOpenModelSettings = onOpenModelSettings,
+            onCopyInfo = onCopyInfo,
+            modifier = modifier
+        )
+        return
+    }
     // raft-ui PanelNotice under the header: the runtime error, then Copy Info and View Logs.
     RaftPanelNotice(
         message = if (canViewPrivate) errorText else stringResource(Res.string.member_state_agent_error),
@@ -8746,6 +8844,62 @@ internal fun MembersAgentRuntimeErrorBanner(
         } else {
             null
         }
+    )
+}
+
+internal object MembersAgentBillingBannerTestTags {
+    const val Banner = "agent-billing-banner"
+    const val ModelSettings = "agent-billing-banner-model-settings"
+}
+
+/**
+ * Web AgentRuntimeErrorNotice's billing banner (botiverse/slock #13435, task #1351): the title, a
+ * body naming the agent, and one action — View model settings for whoever may open them, otherwise
+ * who can fix it. Catalog copy, so every viewer gets it (never the provider's 402 text, which stays
+ * in Copy Info for whoever may see details). No dismissal of its own: it goes when the error does.
+ */
+@Composable
+private fun MembersAgentBillingBanner(
+    title: String,
+    agentName: String,
+    canViewPrivate: Boolean,
+    onOpenModelSettings: (() -> Unit)?,
+    onCopyInfo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    RaftPanelNotice(
+        message = title,
+        modifier = modifier.testTag(MembersAgentBillingBannerTestTags.Banner),
+        status = RaftBannerStatus.Warning,
+        maxLines = Int.MAX_VALUE,
+        stackActions = true,
+        details =
+            listOfNotNull(
+                stringResource(Res.string.agent_runtime_error_billing_exhausted_body, agentName),
+                if (onOpenModelSettings == null) stringResource(Res.string.agent_runtime_error_billing_exhausted_ask_admin) else null
+            ),
+        actions =
+            if (onOpenModelSettings != null || canViewPrivate) {
+                {
+                    if (onOpenModelSettings != null) {
+                        RaftButton(
+                            text = stringResource(Res.string.agent_runtime_error_billing_exhausted_view_model_settings),
+                            onClick = onOpenModelSettings,
+                            variant = RaftButtonVariant.Ghost,
+                            modifier = Modifier.testTag(MembersAgentBillingBannerTestTags.ModelSettings)
+                        )
+                    }
+                    if (canViewPrivate) {
+                        RaftButton(
+                            text = stringResource(Res.string.member_action_copy_info),
+                            onClick = onCopyInfo,
+                            variant = RaftButtonVariant.Ghost
+                        )
+                    }
+                }
+            } else {
+                null
+            }
     )
 }
 
@@ -9671,14 +9825,28 @@ internal fun MembersAgentProfileHeader(
      * Web AgentStatusBadge `showDetail` (= canViewPrivateAgentSurfaces): the status chip carries
      * the agent's current activity text ("Capturing …"), not just the coarse "Working".
      */
-    showActivityDetail: Boolean = false
+    showActivityDetail: Boolean = false,
+    /** The failed start the status shows ([membersAgentStatusSpawnFailure]); null when none. */
+    spawnFailure: AgentStatusSpawnFailure? = null,
+    /** Change model beside a start failure another model gets out of; null when the viewer may not. */
+    onChangeModel: (() -> Unit)? = null,
+    timeContext: RaftTimeContext? = null
 ) {
+    // Web AgentStatusBadge: a failed start's typed copy stands in for the daemon's detail
+    // (botiverse/slock #13460). It gets its own lines under the chip (as the stuck-tool notice
+    // does), so the chip keeps the status words and never cuts the copy.
+    val spawnFailureStatus =
+        spawnFailure?.takeIf {
+            showActivityDetail &&
+                member.managedByAppInstallId.isNullOrBlank() &&
+                agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
+        }
     val rawStatusLabel = membersHeroAgentStatusLabel(
         indicatorState = agentStatusIndicatorState,
         summaryStatus = summary?.status,
         summaryActivity = summary?.activity,
         summaryActivityDetail = summary?.activityDetail,
-        showActivityDetail = showActivityDetail
+        showActivityDetail = showActivityDetail && spawnFailureStatus == null
     )
     // SSOT audit: the badge words localize like every other live-status caption.
     val statusLabel =
@@ -9807,6 +9975,14 @@ internal fun MembersAgentProfileHeader(
                 )
                 // Web #10446: stuck on one tool call: its own lines under the status chip, so the
                 // chip never truncates it, with the way out for whoever can stop the turn.
+                if (spawnFailureStatus != null) {
+                    AgentSpawnFailureStatusNotice(
+                        status = spawnFailureStatus,
+                        timeContext = timeContext,
+                        onChangeModel = onChangeModel,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
                 if (toolStuck != null && member.managedByAppInstallId.isNullOrBlank()) {
                     AgentToolStuckNotice(
                         toolStuck = toolStuck,
@@ -9875,7 +10051,17 @@ private class MembersAgentLifecycleInputs(
     val onStopTurn: (() -> Unit)? = null,
     val stopTurnInProgress: Boolean = false,
     /** Web AgentStatusBadge `showDetail` (canViewPrivateAgentSurfaces): the hero chip shows the activity text. */
-    val showActivityDetail: Boolean = false
+    val showActivityDetail: Boolean = false,
+    /**
+     * Web AgentDetailPanel `openModelSettings` (botiverse/slock #13435, #13460): opens the runtime
+     * editor, for whoever may change the agent's model; null otherwise.
+     */
+    val onOpenModelSettings: (() -> Unit)? = null,
+    /** A Change model / View model settings tap waiting for the runtime editor to open it. */
+    val runtimeEditorOpenRequested: Boolean = false,
+    val onRuntimeEditorOpenRequestHandled: () -> Unit = {},
+    /** The viewer's clock, for a paused start's next try. */
+    val timeContext: RaftTimeContext? = null
 )
 
 /**
@@ -9891,7 +10077,10 @@ private class MembersAgentProfileEditInputs(
     val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     val onApplyAgentProfileResult: (MemberProfile) -> Unit,
     val onUnavailableAction: (String) -> Unit,
-    val errorStrings: ErrorPresentationStrings
+    val errorStrings: ErrorPresentationStrings,
+    /** Web AgentProfileInfo `openRuntimeConfigRequested`: open the runtime editor once it can. */
+    val runtimeEditorOpenRequested: Boolean = false,
+    val onRuntimeEditorOpenRequestHandled: () -> Unit = {}
 )
 
 /**
@@ -10891,6 +11080,48 @@ private fun MembersAgentRuntimeConfigSection(
         }
     }
 
+    val runtimeEditorCanOpen =
+        membersRuntimeEditorCanOpen(
+            canEdit = canEdit,
+            hasAuthority = agentProfileEditAuthority != null,
+            hasConfig = canonicalRuntimeConfig != null,
+            runtimeEditorReady = runtimeEditorReady,
+            hasFormV2Access = runtimeFormV2Access != null
+        )
+
+    fun openRuntimeEditor() {
+        val authority = agentProfileEditAuthority
+        val config = canonicalRuntimeConfig
+        if (runtimeEditorCanOpen && authority != null && config != null && runtimeFormV2Access != null) {
+            runtimeConfigError = null
+            runtimeEditorAuthority = authority
+            runtimeEditorSession =
+                MembersRuntimeEditorSession(
+                    authority = authority,
+                    config = config,
+                    machineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() },
+                    formV2Access = runtimeFormV2Access
+                )
+            editingRuntimeConfig = true
+        } else {
+            // Shown as on the web, but the editor needs a known status and a
+            // readable config; until then say so instead of opening nothing.
+            onUnavailableAction(runtimeEditingUnavailable)
+        }
+    }
+
+    // Web AgentProfileInfo `openRuntimeConfigRequested` (botiverse/slock #13435, #13460): Change
+    // model on the status, or View model settings on the billing banner, opens this editor, from
+    // another tab once this one is shown. As on the web (`editing = opened || (requested &&
+    // canOpen)`), a request waits while the editor cannot open yet (status still unknown, the
+    // config or the form access still loading) and opens it once it can; it is consumed then.
+    val runtimeEditorOpenRequested = edit.runtimeEditorOpenRequested
+    LaunchedEffect(runtimeEditorOpenRequested, runtimeEditorCanOpen) {
+        if (!membersRuntimeEditorOpenRequestActs(runtimeEditorOpenRequested, runtimeEditorCanOpen)) return@LaunchedEffect
+        if (!editingRuntimeConfig) openRuntimeEditor()
+        edit.onRuntimeEditorOpenRequestHandled()
+    }
+
     // RUNTIME CONFIG section — web AgentProfileInfo: the "Runtime config" eyebrow with its pencil
     // (`canManageAgent && !editing`), the stacked Runtime / Model / Reasoning / Mode / Provider /
     // Command rows, then Environment Variables (`mt-3`), shown read-only and only when the agent
@@ -10905,26 +11136,7 @@ private fun MembersAgentRuntimeConfigSection(
                 {
                     MembersProfilePencilButton(
                         contentDescription = stringResource(Res.string.member_dialog_edit_runtime_config),
-                        onClick = {
-                            val authority = agentProfileEditAuthority
-                            val config = canonicalRuntimeConfig
-                            if (authority != null && config != null && runtimeEditorReady && runtimeFormV2Access != null) {
-                                runtimeConfigError = null
-                                runtimeEditorAuthority = authority
-                                runtimeEditorSession =
-                                    MembersRuntimeEditorSession(
-                                        authority = authority,
-                                        config = config,
-                                        machineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() },
-                                        formV2Access = runtimeFormV2Access
-                                    )
-                                editingRuntimeConfig = true
-                            } else {
-                                // Shown as on the web, but the editor needs a known status and a
-                                // readable config; until then say so instead of opening nothing.
-                                onUnavailableAction(runtimeEditingUnavailable)
-                            }
-                        }
+                        onClick = { openRuntimeEditor() }
                     )
                 }
             } else {
@@ -11191,7 +11403,9 @@ private fun MembersAgentProfileTab(
             onUpdateAgentProfile = onUpdateAgentProfile,
             onApplyAgentProfileResult = onApplyAgentProfileResult,
             onUnavailableAction = onUnavailableAction,
-            errorStrings = errorStrings
+            errorStrings = errorStrings,
+            runtimeEditorOpenRequested = lifecycle.runtimeEditorOpenRequested,
+            onRuntimeEditorOpenRequestHandled = lifecycle.onRuntimeEditorOpenRequestHandled
         )
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
@@ -11325,7 +11539,16 @@ private fun MembersAgentProfileIdentity(
                 stopTurnInProgress = lifecycle.stopTurnInProgress,
                 // Web: `canManageAgent && !agent.deletedAt && !agent.managedByAppInstallId`.
                 onEditDisplayName = onEditDisplayName?.takeIf { member.managedByAppInstallId.isNullOrBlank() },
-                showActivityDetail = lifecycle.showActivityDetail
+                showActivityDetail = lifecycle.showActivityDetail,
+                spawnFailure =
+                    membersAgentStatusSpawnFailure(
+                        indicator = agentStatusIndicatorState,
+                        summaryDetailKind = summary?.activityDetailKind,
+                        summaryActivityDetail = summary?.activityDetail,
+                        summarySpawnFailure = summary?.spawnFailure,
+                    ),
+                onChangeModel = lifecycle.onOpenModelSettings,
+                timeContext = lifecycle.timeContext
             )
         }
     )
@@ -14344,13 +14567,21 @@ internal fun MemberProfile.membersAgentRuntimeErrorDisplay(
 ): AgentRuntimeErrorDisplay? {
     if (kind != MemberKind.Agent) return null
     val summary = detail?.summary
+    // A kept BillingError (botiverse/slock #13435) follows the stored error, as on the web: Start /
+    // Starting does not clear it, and the server clears it only once the provider answers again,
+    // then sends `agent:updated`, which re-reads this profile. Its banner is catalog copy, so it
+    // needs no message of its own.
+    val keptBillingError =
+        agentTypedRuntimeErrorKind(summary?.lastRuntimeErrorClass, summary?.lastRuntimeErrorReason) ==
+            AgentRuntimeErrorKind.BillingExhausted
     val runtimeError =
         when (statusIndicatorState?.status) {
             AgentStatus.Error -> summary?.activityDetail.orEmpty()
             // The kept error only while the agent is not running: the profile is not re-read when
             // it starts again, so a running agent must not keep showing an old failure.
-            null, AgentStatus.Offline, AgentStatus.Disconnected -> summary?.lastRuntimeErrorMessage ?: return null
-            else -> return null
+            null, AgentStatus.Offline, AgentStatus.Disconnected ->
+                summary?.lastRuntimeErrorMessage ?: if (keptBillingError) "" else return null
+            else -> if (keptBillingError) summary?.lastRuntimeErrorMessage.orEmpty() else return null
         }
     val runtime = (summary?.runtime ?: statusIndicatorState?.runtime)?.trim()?.takeIf { it.isNotEmpty() }
     return agentRuntimeErrorDisplay(

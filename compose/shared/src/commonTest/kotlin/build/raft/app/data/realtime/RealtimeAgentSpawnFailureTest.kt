@@ -35,10 +35,10 @@ class RealtimeAgentSpawnFailureTest {
     fun failedStartCarriesItsReasonAndLookupOnlyWithItsKind() {
         val failed = map(failedStart())
         assertEquals("runtime_unavailable", failed.detailKind)
-        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", lookupReason = "not_on_path"), failed.spawnFailure)
+        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", lookupReason = "not_on_path", autoRestartPaused = true), failed.spawnFailure)
 
         // An older daemon: no lookup verdict, still the failed start.
-        assertEquals(AgentSpawnFailure(reason = "runtime_not_found"), map(failedStart(lookupReason = null)).spawnFailure)
+        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", autoRestartPaused = true), map(failedStart(lookupReason = null)).spawnFailure)
 
         assertNull(map(failedStart(detailKind = "stopped")).spawnFailure)
     }

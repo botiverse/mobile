@@ -3945,6 +3945,19 @@
     <string name="thread_composer_placeholder_named">傳送訊息至 %1$s</string>
     <string name="thread_archived_notice">此頻道已封存。</string>
     <string name="thread_archived_unarchive">取消封存</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">更換模型</string>
+    <string name="agent_status_model_unsupported">這個執行環境的帳號或方案不包含模型「%1$s」。請更換模型，或登入包含該模型的帳號</string>
+    <string name="agent_status_model_unsupported_default">這個執行環境的帳號或方案不包含這個 Agent 的模型。請更換模型，或登入包含該模型的帳號</string>
+    <string name="agent_status_repeated_failure_paused">啟動後多次以同樣的方式失敗——自動喚醒已暫停，Raft 稍後會自動重試；重新啟動 Agent 即可立即重試</string>
+    <string name="agent_status_repeated_failure_paused_at">啟動後多次以同樣的方式失敗——自動喚醒已暫停，Raft 會在 %1$s 自動重試；重新啟動 Agent 即可立即重試</string>
+    <string name="agent_status_session_needs_reset">上下文太大，自動縮減沒能解決。可以重設工作階段後重新啟動；如果某則訊息本身很大，換一個上下文更大的模型，或把內容拆小。</string>
+    <string name="agent_status_start_timeout_paused">%1$s——自動喚醒已暫停，Raft 稍後會自動重試；重新啟動 Agent 或更換模型即可立即恢復</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s——自動喚醒已暫停，Raft 會在 %2$s 自動重試；重新啟動 Agent 或更換模型即可立即恢復</string>
+    <string name="agent_runtime_error_billing_exhausted">模型服務餘額不足</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s 暫時無法回覆。請檢查這個 agent 所用模型服務的餘額和計費狀態，處理好後再啟動。</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">查看模型設定</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">請聯絡伺服器管理員處理。</string>
     <!-- Artifacts home (web artifacts.dashboard.*, slock staging aae2b7a89) -->
     <string name="artifacts_dashboard_title">Artifacts</string>
     <string name="artifacts_dashboard_conversation_label">對話</string>

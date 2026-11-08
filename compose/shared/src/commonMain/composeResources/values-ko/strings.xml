@@ -3945,6 +3945,19 @@
     <string name="thread_composer_placeholder_named">%1$s에 메시지 보내기</string>
     <string name="thread_archived_notice">보관된 채널이에요.</string>
     <string name="thread_archived_unarchive">보관 취소</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">모델 변경</string>
+    <string name="agent_status_model_unsupported">이 런타임의 계정이나 플랜에 ‘%1$s’ 모델이 포함되어 있지 않아요. 모델을 변경하거나 이 모델이 포함된 계정으로 로그인하세요</string>
+    <string name="agent_status_model_unsupported_default">이 런타임의 계정이나 플랜에 이 에이전트의 모델이 포함되어 있지 않아요. 모델을 변경하거나 이 모델이 포함된 계정으로 로그인하세요</string>
+    <string name="agent_status_repeated_failure_paused">시작한 뒤 같은 방식으로 계속 실패했어요 — 자동 깨우기가 일시 중지됐어요. Raft가 잠시 후 자동으로 다시 시도해요. 지금 시도하려면 에이전트를 재시작하세요</string>
+    <string name="agent_status_repeated_failure_paused_at">시작한 뒤 같은 방식으로 계속 실패했어요 — 자동 깨우기가 일시 중지됐어요. %1$s에 Raft가 자동으로 다시 시도해요. 지금 시도하려면 에이전트를 재시작하세요</string>
+    <string name="agent_status_session_needs_reset">컨텍스트가 너무 커서 자동으로 줄여도 해결되지 않았어요. 세션을 초기화한 뒤 재시작하세요. 메시지 하나가 그 자체로 아주 크다면 컨텍스트가 더 큰 모델로 바꾸거나 내용을 나누세요.</string>
+    <string name="agent_status_start_timeout_paused">%1$s — 자동 깨우기가 일시 중지됐어요. Raft가 잠시 후 자동으로 다시 시도해요. 지금 재개하려면 에이전트를 재시작하거나 모델을 바꾸세요</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s — 자동 깨우기가 일시 중지됐어요. %2$s에 Raft가 자동으로 다시 시도해요. 지금 재개하려면 에이전트를 재시작하거나 모델을 바꾸세요</string>
+    <string name="agent_runtime_error_billing_exhausted">모델 서비스 잔액이 부족해요</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s이(가) 지금은 답할 수 없어요. 이 에이전트가 사용하는 모델 서비스의 잔액과 결제 상태를 확인한 뒤 다시 시작하세요.</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">모델 설정 보기</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">서버 관리자에게 해결을 요청하세요.</string>
     <!-- Artifacts home (web artifacts.dashboard.*, slock staging aae2b7a89) -->
     <string name="artifacts_dashboard_title">Artifacts</string>
     <string name="artifacts_dashboard_conversation_label">대화</string>

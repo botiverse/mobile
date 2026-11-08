@@ -341,6 +341,10 @@ private val RaftBannerInlineActionMinWidth = 452.dp
  * [messageTooltip] puts the whole message in a [RaftTooltip] on it (a pointer over it, or a long
  * press), for a message clamped to [maxLines] (slock's agent error notice: `line-clamp-2` inside a
  * Tooltip with the same text).
+ *
+ * [details] are further lines under the message, unclamped, in regular `text-callout` and
+ * `foreground-muted` (slock's billing notice: a title, then `font-normal text-foreground-muted`
+ * lines in the same PanelNoticeContent).
  */
 @Composable
 fun RaftPanelNotice(
@@ -351,6 +355,7 @@ fun RaftPanelNotice(
     stackActions: Boolean = false,
     pending: Boolean = false,
     messageTooltip: Boolean = false,
+    details: List<String> = emptyList(),
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
@@ -366,10 +371,26 @@ fun RaftPanelNotice(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (messageTooltip) {
-            RaftTooltip(text = message, modifier = textModifier) { text(Modifier) }
+        val headline: @Composable (Modifier) -> Unit = { headlineModifier ->
+            if (messageTooltip) {
+                RaftTooltip(text = message, modifier = headlineModifier) { text(Modifier) }
+            } else {
+                text(headlineModifier)
+            }
+        }
+        if (details.isEmpty()) {
+            headline(textModifier)
         } else {
-            text(textModifier)
+            Column(textModifier) {
+                headline(Modifier)
+                details.forEach { line ->
+                    RaftText(
+                        line,
+                        style = RaftTheme.typography.callout,
+                        color = colors.foregroundMuted,
+                    )
+                }
+            }
         }
     }
     Row(
