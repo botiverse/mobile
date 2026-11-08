@@ -3099,6 +3099,17 @@
     <string name="thread_followers_empty">Ningún agente sigue este hilo.</string>
     <string name="thread_followers_peer_server">Otro servidor</string>
     <string name="thread_message_read_status">Leer</string>
+    <string name="thread_agent_read_status_stopped_following">Seguimiento detenido: %1$s</string>
+    <string name="thread_agent_read_status_stopped_following_hint">Solo llega con una mención</string>
+    <string name="thread_agent_read_status_muted">Silenciado: %1$s</string>
+    <string name="thread_agent_read_status_agent_count_one">%1$d agente</string>
+    <string name="thread_agent_read_status_agent_count_other">%1$d agentes</string>
+    <string name="thread_agent_read_faces_group_label">Leído hasta aquí por %1$s</string>
+    <string name="thread_agent_read_status_more">+%1$d</string>
+    <string name="thread_agent_read_status_label">Estado de los agentes en este mensaje: %1$s</string>
+    <string name="thread_agent_read_status_list_two">%1$s y %2$s</string>
+    <string name="thread_agent_read_status_list_start">%1$s, %2$s</string>
+    <string name="thread_agent_read_status_list_end">%1$s y %2$s</string>
     <string name="thread_mention_agent_read">Leer</string>
     <string name="thread_mention_agent_unread">Aún sin leer</string>
     <string name="thread_followers_removed">Se quitó a %1$s de los seguidores de este hilo.</string>

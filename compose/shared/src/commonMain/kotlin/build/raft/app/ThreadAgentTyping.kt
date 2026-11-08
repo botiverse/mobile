@@ -149,6 +149,35 @@ internal fun rememberThreadAgentTyping(
     return remember(server, agents) { ThreadAgentTypingUi(server, agents) }
 }
 
+/** Web `statusThreadWorking`: who is typing in the thread under a channel message, by the message's id. */
+internal fun interface ThreadAgentTypingInThread {
+    fun agentIds(parentMessageId: String): List<String>
+}
+
+/** Null outside a channel (a thread's own replies have no thread under them). */
+internal val LocalThreadAgentTypingInThread = compositionLocalOf<ThreadAgentTypingInThread?> { null }
+
+/**
+ * The page's channel's typing per thread, for agent read progress: an agent typing in the thread
+ * under the viewer's message has it, so the line does not flag it. Null on a reply thread or a page
+ * with no conversation; the store's server is bound by [rememberThreadAgentTyping].
+ */
+@Composable
+internal fun rememberThreadAgentTypingInThread(
+    payload: RaftThreadScreenPayload,
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    serverId: String?,
+): ThreadAgentTypingInThread? {
+    val store = remember(sharedStores, storeScope) { sharedStores.agentTypingStore(storeScope) }
+    val server = serverId?.trim()?.takeIf { it.isNotBlank() }
+    val state by store.state.collectAsState()
+    val conversation = payload.agentTypingConversation()
+    if (server == null || conversation == null || conversation.second != null) return null
+    val channel = conversation.first
+    return remember(state, server, channel) { ThreadAgentTypingInThread { parent -> state.typingAgentIds(server, channel, parent) } }
+}
+
 /** web `h-6`: the line's row. */
 internal val ThreadAgentTypingLineHeight = 24.dp
 

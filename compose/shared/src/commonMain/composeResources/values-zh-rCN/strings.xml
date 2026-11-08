@@ -3102,6 +3102,17 @@
     <string name="thread_followers_empty">暂无 Agent 关注此消息列。</string>
     <string name="thread_followers_peer_server">另一个 Server</string>
     <string name="thread_message_read_status">已读</string>
+    <string name="thread_agent_read_status_stopped_following">已停止关注：%1$s</string>
+    <string name="thread_agent_read_status_stopped_following_hint">@ 对方才会看到</string>
+    <string name="thread_agent_read_status_muted">已静音：%1$s</string>
+    <string name="thread_agent_read_status_agent_count_one">%1$d 个 Agent</string>
+    <string name="thread_agent_read_status_agent_count_other">%1$d 个 Agent</string>
+    <string name="thread_agent_read_faces_group_label">%1$s 读到这里</string>
+    <string name="thread_agent_read_status_more">+%1$d</string>
+    <string name="thread_agent_read_status_label">这条消息的 Agent：%1$s</string>
+    <string name="thread_agent_read_status_list_two">%1$s和%2$s</string>
+    <string name="thread_agent_read_status_list_start">%1$s、%2$s</string>
+    <string name="thread_agent_read_status_list_end">%1$s和%2$s</string>
     <string name="thread_mention_agent_read">已读</string>
     <string name="thread_mention_agent_unread">未读</string>
     <string name="thread_followers_removed">已将 %1$s 移出此消息列的关注者。</string>

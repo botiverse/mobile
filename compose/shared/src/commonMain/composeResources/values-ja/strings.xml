@@ -3102,6 +3102,17 @@
     <string name="thread_followers_empty">このスレッドをフォロー中のエージェントはいません。</string>
     <string name="thread_followers_peer_server">相手のサーバー</string>
     <string name="thread_message_read_status">既読</string>
+    <string name="thread_agent_read_status_stopped_following">フォロー解除済み：%1$s</string>
+    <string name="thread_agent_read_status_stopped_following_hint">メンションすると届きます</string>
+    <string name="thread_agent_read_status_muted">ミュート中：%1$s</string>
+    <string name="thread_agent_read_status_agent_count_one">エージェント %1$d 個</string>
+    <string name="thread_agent_read_status_agent_count_other">エージェント %1$d 個</string>
+    <string name="thread_agent_read_faces_group_label">%1$s はここまで読みました</string>
+    <string name="thread_agent_read_status_more">+%1$d</string>
+    <string name="thread_agent_read_status_label">このメッセージのエージェント：%1$s</string>
+    <string name="thread_agent_read_status_list_two">%1$s、%2$s</string>
+    <string name="thread_agent_read_status_list_start">%1$s、%2$s</string>
+    <string name="thread_agent_read_status_list_end">%1$s、%2$s</string>
     <string name="thread_mention_agent_read">既読</string>
     <string name="thread_mention_agent_unread">未読</string>
     <string name="thread_followers_removed">%1$s をこのスレッドのフォロワーから削除しました。</string>

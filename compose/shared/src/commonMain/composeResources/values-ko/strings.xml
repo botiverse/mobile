@@ -3099,6 +3099,17 @@
     <string name="thread_followers_empty">이 스레드를 팔로우하는 에이전트가 없어요.</string>
     <string name="thread_followers_peer_server">다른 서버</string>
     <string name="thread_message_read_status">읽기</string>
+    <string name="thread_agent_read_status_stopped_following">팔로우 취소함: %1$s</string>
+    <string name="thread_agent_read_status_stopped_following_hint">멘션해야 전달돼요</string>
+    <string name="thread_agent_read_status_muted">음소거함: %1$s</string>
+    <string name="thread_agent_read_status_agent_count_one">에이전트 %1$d개</string>
+    <string name="thread_agent_read_status_agent_count_other">에이전트 %1$d개</string>
+    <string name="thread_agent_read_faces_group_label">%1$s 여기까지 읽음</string>
+    <string name="thread_agent_read_status_more">+%1$d</string>
+    <string name="thread_agent_read_status_label">이 메시지의 에이전트: %1$s</string>
+    <string name="thread_agent_read_status_list_two">%1$s 및 %2$s</string>
+    <string name="thread_agent_read_status_list_start">%1$s, %2$s</string>
+    <string name="thread_agent_read_status_list_end">%1$s 및 %2$s</string>
     <string name="thread_mention_agent_read">읽기</string>
     <string name="thread_mention_agent_unread">아직 읽지 않음</string>
     <string name="thread_followers_removed">%1$s을(를) 이 스레드의 팔로워에서 제거했어요.</string>

@@ -12670,6 +12670,13 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
             )
+        val agentTypingInThread =
+            rememberThreadAgentTypingInThread(
+                payload = renderedThread,
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                serverId = currentServerId,
+            )
         // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
         // when the assistant is ready with its DM, never on that DM or a thread in it.
         val assistantOtterHostId = remember { newAssistantOtterHostId() }
@@ -12821,6 +12828,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
+                LocalThreadAgentTypingInThread provides agentTypingInThread,
                 LocalThreadAssistantOtter provides assistantOtter,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
@@ -21871,6 +21879,18 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
+    val agentTypingInThread = LocalThreadAgentTypingInThread.current
+    // agent_read_progress_v0 (web useAgentReadProgress): each agent's face on the message it read up to,
+    // and the line under the viewer's latest message when it will not reach an agent.
+    val agentReadProgress =
+        remember(peerReadReceipts, renderPayload.messages, renderPayload.canLoadMoreAfter, agentTyping, agentTypingInThread) {
+            peerReadReceipts?.threadAgentReadProgress(
+                messages = renderPayload.messages,
+                hasNewer = renderPayload.canLoadMoreAfter,
+                workingAgentIds = agentTyping?.agents?.map { it.agentId }.orEmpty(),
+                threadWorkingAgentIds = { parent -> agentTypingInThread?.agentIds(parent).orEmpty() },
+            )
+        }
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -25336,6 +25356,24 @@ private fun ThreadMessagesListContent(
                     if (message.id == dmReadStatusMessageId && peerReadReceipts?.showsDmReadStatus(displayMessage) == true) {
                         // The card already ends in its 8dp bottom padding, which stands in for web `mt-1`.
                         ThreadDmReadStatusRow(
+                            Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web AgentReadFaces): the faces of the agents that read up to
+                    // this message, at its end. The @mention read badges stay, as on web.
+                    agentReadProgress?.facesByMessageId?.get(message.id)?.let { faces ->
+                        ThreadAgentReadFacesRow(
+                            faces = faces,
+                            serverId = agentReadProgress.serverId,
+                            modifier = Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web option C, AgentReadStatusLine): under the viewer's latest
+                    // message, only when it will not reach an agent that stopped following or muted.
+                    val agentReadStatus = agentReadProgress?.status
+                    if (agentReadStatus != null && message.id == agentReadStatus.messageId) {
+                        ThreadAgentReadStatusRow(
+                            agentReadStatus,
                             Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
                         )
                     }
