@@ -161,7 +161,12 @@ data class ConversationSummary(
      * payload never carried the object — consumers must treat that as "unknown"
      * and hide capability-gated affordances rather than assume permission.
      */
-    val channelCapabilities: ChannelCapabilities? = null
+    val channelCapabilities: ChannelCapabilities? = null,
+    /**
+     * Agent Lounge v0: the agent this channel is the Lounge of (web `Channel.loungeAgentId`).
+     * Null: not a Lounge. A Lounge is a plain channel on the wire, kept out of every channel list.
+     */
+    val loungeAgentId: String? = null
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted

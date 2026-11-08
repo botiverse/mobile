@@ -241,8 +241,13 @@ private val ChannelSymbolWidth = 18.dp
 /** Web sidebar avatar `size-[19px]`: fills the raft-ui SidebarItem leading slot. */
 private val ChannelAvatarSize = 19.dp
 private val ChannelAvatarFontSize = 11.sp
-/** raft-ui phone `SidebarItem`: `max-md:min-h-11` (44px), what a loading skeleton row stands in for. */
-private val HomeSidebarSkeletonRowHeight = 44.dp
+/**
+ * raft-ui phone `SidebarItem`: `max-md:min-h-11` (44px), what a loading skeleton row stands in for;
+ * the sidebar row's shared 34dp under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+ */
+private val HomeSidebarSkeletonRowHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.rowHeight ?: 44.dp
 /** raft-ui `SidebarItem` `pl-2` inside its 1.5dp edge. */
 private val HomeSidebarSkeletonRowStartPadding = 9.5.dp
 /** `SidebarItemMetaIcon`: 14dp after the name and in the aside. */
@@ -299,7 +304,10 @@ private const val HomeServerDrawerWidthFraction = 0.84f
 private const val HomeServerDrawerLandscapeWidthFraction = 0.50f
 private val HomeServerDrawerMaxWidth = 360.dp
 private val HomeServerDrawerSwipeDismissThreshold = 72.dp
-private val HomeServerDrawerHeaderHeight = 56.dp
+// 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+private val HomeServerDrawerHeaderHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headHeight
 private val HomeServerDrawerSectionHeaderHeight = 28.dp
 private val HomeServerDrawerConversationHorizontalPadding = 16.dp
 
@@ -446,7 +454,20 @@ data class RaftHomeConversationItem(
      * Marked unread with nothing countable (botiverse/slock #11795, [build.raft.app.data.HomeSnapshot.markedUnreadIds]):
      * with no count the row shows the quiet unread dot (web `QuietUnreadDot`); a count wins over it.
      */
-    val markedUnread: Boolean = false
+    val markedUnread: Boolean = false,
+    /**
+     * Agent Lounge v0: an agent DM row's Lounge sub-row (web `AgentLoungeRow`), present only when
+     * Lounges are on here, not a Guest, and the Lounge was joined or mentions you.
+     */
+    val agentLounge: RaftHomeAgentLoungeRow? = null
+)
+
+/** The Lounge sub-row under an agent's DM row: its channel, unread and @ marker. */
+@Serializable
+data class RaftHomeAgentLoungeRow(
+    val channelId: String,
+    val unreadCount: Int = 0,
+    val mentioned: Boolean = false,
 )
 
 data class RaftHomeServerDrawerSection(
@@ -3211,6 +3232,8 @@ private fun RaftStructuralHomeShellContent(
                                             items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
                                                 val dm = displayedDirectMessages[index]
                                                 val dmSelected = sidebarSelection.conversationId == dm.id
+                                                // Agent Lounge v0: the Lounge's row right under its agent's DM row.
+                                                Column {
                                                 HomeSidebarDirectMessageRow(
                                                     interactionIdentity = homeSidebarInteractionIdentity("dm", dm.id),
                                                     name = dm.name,
@@ -3236,6 +3259,18 @@ private fun RaftStructuralHomeShellContent(
                                                         pinMenuAnchor = anchor
                                                     }) else null
                                                 )
+                                                dm.agentLounge?.let { lounge ->
+                                                    HomeSidebarAgentLoungeSubRow(
+                                                        dm = dm,
+                                                        lounge = lounge,
+                                                        cacheServerId = currentServerId,
+                                                        memberAvatarResolver = memberAvatarResolver,
+                                                        selected = sidebarSelection.conversationId == lounge.channelId,
+                                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
+                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(lounge.channelId) }) else null,
+                                                    )
+                                                }
+                                                }
                                             }
                                         }
                                         if (directMessagesExpanded && loadingSkeletonRowsShown) {

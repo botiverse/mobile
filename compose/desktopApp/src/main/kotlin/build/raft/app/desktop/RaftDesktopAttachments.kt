@@ -1,5 +1,6 @@
 package build.raft.app.desktop
 
+import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.RaftDesktopPickedAttachments
 import build.raft.app.data.RaftDesktopThreadImageCompressor
 import build.raft.app.network.AttachmentDownloadCoordinator
@@ -36,6 +37,8 @@ import kotlinx.serialization.json.put
 class RaftDesktopAttachments(
     private val dialogs: RaftDesktopFileDialogs = RaftFileKitDialogs,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    /** The page's PNG cache (`rememberRaftPngFileWriter`); a share image from there is deleted once handled. */
+    private val snapshotsDir: () -> File = { RaftDesktopPaths.snapshotsDir },
     private val startDownload: (downloadId: String, target: File, url: String, observer: AttachmentDownloadObserver) -> Unit =
         { downloadId, target, url, observer ->
             AttachmentDownloadCoordinator.start(
@@ -109,7 +112,9 @@ class RaftDesktopAttachments(
     /**
      * `saveThreadShareImage`: the share image (a PNG the page wrote to the app cache, `path`) copied
      * where the user picks in the system save panel. Answers `ok`, `cancelled` (panel closed) or
-     * `failed`, as the Android host does.
+     * `failed`, as the Android host does. The cache PNG is deleted once the panel is done with it
+     * (copied, cancelled or failed: the page writes a new one for the next Download), when it is
+     * one of the page's own ([snapshotsDir]); any other path is left alone.
      */
     fun saveThreadShareImage(params: JsonObject, callback: ((String?) -> Unit)?) {
         val source = File(params.string("path"))
@@ -132,9 +137,17 @@ class RaftDesktopAttachments(
                 } catch (error: Throwable) {
                     log("share image save failed: ${error::class.simpleName}")
                     status("failed", "Unable to save image")
+                } finally {
+                    deleteShareImageCache(source)
                 }
             callback?.invoke(answer)
         }
+    }
+
+    private fun deleteShareImageCache(file: File) {
+        val inCache =
+            runCatching { file.canonicalFile.parentFile == snapshotsDir().canonicalFile }.getOrDefault(false)
+        if (inCache && !file.delete() && file.exists()) log("share image cache not deleted")
     }
 
     fun saveAttachment(params: JsonObject, callback: ((String?) -> Unit)?) {

@@ -3935,4 +3935,13 @@
     <string name="member_app_grant_source_agent_login">Agent 登入時授權</string>
     <string name="member_app_grant_source_app_request">自動授權給應用程式</string>
     <string name="member_app_grant_source_legacy_import">Agent 的提醒移轉到這個應用程式時授權</string>
+    <!-- Agent Lounge v0: web agent.lounge.*, message.pendingMention.loungeAgentExcluded, message.composer.messagePlaceholder, message.chatPanel.archivedNotice / unarchive -->
+    <string name="agent_lounge_label">會客廳</string>
+    <string name="agent_lounge_title">%1$s 的會客廳</string>
+    <string name="agent_lounge_audience_notice">伺服器的成員都能參與，其他 Agent 也能讀到。</string>
+    <string name="agent_lounge_open_failed">無法開啟會客廳，請再試一次。</string>
+    <string name="thread_composer_mention_lounge_agent_excluded">%1$s 不會收到這則訊息：其他 Agent 只能讀這裡，不能參與。</string>
+    <string name="thread_composer_placeholder_named">傳送訊息至 %1$s</string>
+    <string name="thread_archived_notice">此頻道已封存。</string>
+    <string name="thread_archived_unarchive">取消封存</string>
 </resources>

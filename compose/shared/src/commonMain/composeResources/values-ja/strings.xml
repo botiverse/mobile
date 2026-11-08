@@ -4029,4 +4029,13 @@
     <string name="member_app_grant_source_agent_login">エージェントのログイン時に許可</string>
     <string name="member_app_grant_source_app_request">アプリのリクエスト時に自動で許可</string>
     <string name="member_app_grant_source_legacy_import">エージェントのリマインダーをこのアプリに移行した際に許可</string>
+    <!-- Agent Lounge v0: web agent.lounge.*, message.pendingMention.loungeAgentExcluded, message.composer.messagePlaceholder, message.chatPanel.archivedNotice / unarchive -->
+    <string name="agent_lounge_label">ラウンジ</string>
+    <string name="agent_lounge_title">%1$s のラウンジ</string>
+    <string name="agent_lounge_audience_notice">このサーバーのメンバーが参加できます。ほかのエージェントも閲覧できます。</string>
+    <string name="agent_lounge_open_failed">ラウンジを開けませんでした。もう一度お試しください。</string>
+    <string name="thread_composer_mention_lounge_agent_excluded">%1$s には通知されません。ほかのエージェントはこのチャットを閲覧することしかできません。</string>
+    <string name="thread_composer_placeholder_named">%1$s へのメッセージ</string>
+    <string name="thread_archived_notice">このチャンネルはアーカイブされています。</string>
+    <string name="thread_archived_unarchive">アーカイブを解除</string>
 </resources>

@@ -1,5 +1,7 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.theme.RaftControlMetrics
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -167,6 +169,24 @@ fun raftAppRailCompact(windowHeight: Dp): Boolean = windowHeight > 0.dp && windo
 /** [RaftAppRailMetrics.Compact] when [compact], else [RaftAppRailMetrics.Regular]. */
 fun raftAppRailMetrics(compact: Boolean): RaftAppRailMetrics = if (compact) RaftAppRailMetrics.Compact else RaftAppRailMetrics.Regular
 
+/**
+ * The rail's metrics in a window [windowHeight] tall under the input in use. With a finger:
+ * compact only in a short window ([raftAppRailCompact]). Under a fine pointer always compact,
+ * 48dp plus the seam with 36dp items (sizing v12, raft-ui 0.65 desktop density,
+ * [RaftControlMetrics.railCompact]), its header the 44dp head
+ * ([RaftControlMetrics.headHeight]) so its seam lines up with the pages' heads beside it.
+ */
+@Composable
+@ReadOnlyComposable
+fun raftAppRailMetricsFor(windowHeight: Dp): RaftAppRailMetrics {
+    val controls = RaftTheme.controls
+    return if (controls.railCompact) {
+        RaftAppRailMetrics.Compact.copy(headerHeight = controls.headHeight)
+    } else {
+        raftAppRailMetrics(raftAppRailCompact(windowHeight))
+    }
+}
+
 /** The metrics [RaftAppRail] lays out with, for its items. */
 internal val LocalRaftAppRailMetrics = staticCompositionLocalOf { RaftAppRailMetrics.Regular }
 
@@ -231,8 +251,10 @@ sealed interface RaftAppRailFooterItem {
  *
  * Compact ([RaftAppRailMetrics.Compact]): in a window at most 600dp tall the rail narrows to
  * 48dp, its header to 48dp and its items to 36dp, 6dp from the ends (raft-ui
- * `[@media(max-height:600px)]`). [compact] forces it either way (tests, previews); null decides
- * from the window's height ([raftAppRailCompact]). Items read the size from the rail.
+ * `[@media(max-height:600px)]`); under a fine pointer it is compact at any height, its header
+ * the 44dp head (sizing v12, [raftAppRailMetricsFor]). [compact] forces it either way (tests,
+ * previews); null decides from the input and the window's height. Items read the size from the
+ * rail.
  *
  * Each item names itself in a tooltip on the side away from the rail's edge (right; left in RTL);
  * a [RaftTooltip] in [header] opens on that side too.
@@ -250,7 +272,7 @@ fun RaftAppRail(
 ) {
     val colors = RaftTheme.colors
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
-    val metrics = raftAppRailMetrics(compact ?: raftAppRailCompact(windowHeight))
+    val metrics = if (compact != null) raftAppRailMetrics(compact) else raftAppRailMetricsFor(windowHeight)
     val hasFooter = footer != null || footerItems.isNotEmpty()
     Row(modifier.fillMaxHeight().raftKeepsEdgeTouches()) {
         Column(

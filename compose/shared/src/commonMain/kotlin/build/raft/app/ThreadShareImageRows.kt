@@ -178,8 +178,10 @@ internal fun ThreadShareImageWidthPicker(
                 onValueChange = { onChoiceChange(choice.copy(customWidthDp = it)) },
                 valueRange = ThreadShareImageCustomMinWidthDp..ThreadShareImageCustomMaxWidthDp,
                 step = ThreadShareImageCustomStepDp,
-                // The width already reads in the header row above.
+                // The width already reads in the header row above (no second valueText header);
+                // a screen reader still hears it as the slider's value, e.g. "620".
                 contentDescription = label,
+                stateDescription = choice.widthDp.toString(),
             )
         }
     }

@@ -147,6 +147,8 @@ fun RaftMessageQuotedPreview(
     attachments: List<String> = emptyList(),
     onClick: (() -> Unit)? = null,
     onClickLabel: String? = null,
+    /** False when [channel] is a place that is not a `#` channel (an agent's Lounge): no `#` glyph. */
+    channelGlyph: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -165,7 +167,7 @@ fun RaftMessageQuotedPreview(
                 ) {
                     if (channel != null) {
                         Row(Modifier.align(Alignment.CenterVertically).heightIn(min = RaftMessageQuotedPreviewDefaults.HeaderLineHeight), verticalAlignment = Alignment.CenterVertically) {
-                            if (!direct) {
+                            if (!direct && channelGlyph) {
                                 RaftGlyphIcon(RaftGlyph.Hash, size = 14.dp, color = colors.foregroundHint)
                                 Box(Modifier.width(4.dp))
                             }

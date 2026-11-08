@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +25,8 @@ internal fun SettingsDetailShell(
     subtitle: String,
     iconName: RaftLucideIconName? = null,
     applyTopSafeArea: Boolean = true,
-    headerHeight: Dp = RaftAppSize.PageHeaderHeight,
+    // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+    headerHeight: Dp = RaftTheme.controls.headHeight,
     onBack: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
     /** In place of the title (and subtitle) column, e.g. a title with its counts beside it. */

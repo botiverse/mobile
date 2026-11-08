@@ -4639,6 +4639,11 @@ internal class SharedHomeStore(
         if (finalState == previousState) return false
         (finalState.content as? SharedHomeContentState.Content)?.let { content ->
             updateConversationIdentity(content.baseSnapshot)
+            RaftAgentLounges.bindAccount(content.baseSnapshot.currentMember.id.value)
+            RaftAgentLounges.rememberDirectMessages(
+                content.baseSnapshot.server.id.value,
+                content.baseSnapshot.directMessages
+            )
             contentByServer[content.baseSnapshot.server.id] = content
             content.baseSnapshot.sidebarOrder?.let { sidebarOrder ->
                 sidebarOrderByServer[content.baseSnapshot.server.id] = sidebarOrder

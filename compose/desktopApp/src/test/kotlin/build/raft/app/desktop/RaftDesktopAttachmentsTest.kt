@@ -8,6 +8,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
@@ -175,6 +176,34 @@ class RaftDesktopAttachmentsTest {
         )!!
         assertEquals("download_failed", failed["status"]!!.jsonPrimitive.content)
         assertEquals("HTTP 403", failed["message"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `the share image is copied where the user picks and its cache PNG deleted`() {
+        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
+        val cached = File(snapshots, "raft-message-share-a.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val target = File(root, "picked.png")
+        val attachments = RaftDesktopAttachments(FakeDialogs(save = { target }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
+        val response = call { attachments.saveThreadShareImage(params("path" to cached.absolutePath), it) }
+        assertEquals("ok", response["status"]!!.jsonPrimitive.content)
+        assertTrue(target.readBytes().contentEquals(byteArrayOf(1, 2, 3)))
+        assertFalse(cached.exists(), "the cache PNG is deleted once copied")
+    }
+
+    @Test fun `a cancelled share image save deletes its cache PNG too`() {
+        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
+        val cached = File(snapshots, "raft-message-share-b.png").apply { writeBytes(byteArrayOf(1)) }
+        val attachments = RaftDesktopAttachments(FakeDialogs(save = { null }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
+        val response = call { attachments.saveThreadShareImage(params("path" to cached.absolutePath), it) }
+        assertEquals("cancelled", response["status"]!!.jsonPrimitive.content)
+        assertFalse(cached.exists(), "the cache PNG is deleted on cancel")
+    }
+
+    @Test fun `a share image outside the PNG cache is never deleted`() {
+        val snapshots = File(root, "raft_snapshots").apply { mkdirs() }
+        val elsewhere = File(root, "mine.png").apply { writeBytes(byteArrayOf(1)) }
+        val attachments = RaftDesktopAttachments(FakeDialogs(save = { null }), CoroutineScope(Dispatchers.IO), snapshotsDir = { snapshots })
+        call { attachments.saveThreadShareImage(params("path" to elsewhere.absolutePath), it) }
+        assertTrue(elsewhere.exists())
     }
 
     @Test fun `save panel names drop paths and control characters`() {

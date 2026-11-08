@@ -165,6 +165,9 @@ import build.raft.app.data.HomeParentThreadUnread
 import build.raft.app.data.SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
+import build.raft.app.data.agentLoungeEnabled
+import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.foldThreadUnreadByParent
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerState
@@ -8280,6 +8283,18 @@ private fun RaftAppShellReadyContent(
                                         SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
                                     )
                             }
+                        // agent_lounge_v0 (web useAgentLoungeEnabled): flag on and not a Guest.
+                        val homeAgentLoungeEnabled =
+                            remember(homeListServerId, homeFeatureFlagRevision, homeState) {
+                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
+                                val role =
+                                    (homeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.server?.role
+                                flagServerId != null &&
+                                    agentLoungeEnabled(
+                                        sharedStores.serverFeatureFlags.isEnabled(ServerId(flagServerId), AGENT_LOUNGE_FEATURE_FLAG_KEY),
+                                        role
+                                    )
+                            }
                         // drafts_section_v0 (web DRAFTS_SECTION_FLAG_KEY): the Drafts row under Saved.
                         val homeDraftsSource =
                             remember(homeListServerId, homeFeatureFlagRevision, appShellNetworkClient) {
@@ -8327,6 +8342,7 @@ private fun RaftAppShellReadyContent(
                                 searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive),
                                 threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
                                 sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
+                                agentLoungeEnabled = homeAgentLoungeEnabled,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
@@ -11285,6 +11301,8 @@ private fun SharedHomeScreen(
     threadUnreadBadgeEnabled: Boolean = false,
     /** Server flag `sidebar_mark_all_read_v0`: with the thread badge on, rows offer "Mark All as Read". */
     sidebarMarkAllReadEnabled: Boolean = false,
+    /** Server flag `agent_lounge_v0` and not a Guest: agent DM rows carry their Lounge's sub-row. */
+    agentLoungeEnabled: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -11599,20 +11617,27 @@ private fun SharedHomeScreen(
                         emptyMap<ChannelId, HomeParentThreadUnread>()
                     }
                 }
+            // Agent Lounge v0: a Lounge joined here (your first post) shows its row without a Home reload.
+            val knownAgentLounges by RaftAgentLounges.lounges.collectAsState()
             val conversationRowProjector =
                 remember(
                     conversationDirectoryProjections,
                     draftProjection,
                     restoredRowHints,
                     threadUnreadByParent,
-                    snapshot.markedUnreadIds
+                    snapshot.markedUnreadIds,
+                    agentLoungeEnabled,
+                    snapshot.server.id,
+                    knownAgentLounges,
                 ) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,
                         draftProjection = draftProjection,
                         restoredRowHints = restoredRowHints,
                         threadUnreadByParent = threadUnreadByParent,
-                        markedUnreadIds = snapshot.markedUnreadIds
+                        markedUnreadIds = snapshot.markedUnreadIds,
+                        agentLoungeEnabled = agentLoungeEnabled,
+                        agentLoungeServerId = snapshot.server.id.value,
                     )
                 }
             val servers =
@@ -11813,7 +11838,17 @@ private fun SharedHomeScreen(
                 },
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]
-                    if (conversation == null) {
+                    // Agent Lounge v0: a Lounge's sub-row opens a conversation no list holds.
+                    val loungeIdentity =
+                        if (conversation == null) {
+                            agentLoungeConversationIdentityOrNull(snapshot.server.id.value, threadId, snapshot.directMessages)
+                        } else {
+                            null
+                        }
+                    if (loungeIdentity != null) {
+                        onOpenConversation(loungeIdentity)
+                        onIntent(SharedHomeIntent.SelectConversation(threadId))
+                    } else if (conversation == null) {
                         bridge.toast(conversationUnavailableMessage)
                     } else {
                         onOpenConversation(conversation.toThreadLaunchConversationIdentity())
@@ -12816,7 +12851,8 @@ internal fun SharedHomeSearchPanel(
                 if (!tabHead) SharedHomeSearchDivider()
                 RaftAppShellBodyTopBanner()
                 if (onExpandToSearchTab != null) {
-                    channelFilters.firstOrNull { it.id == state.selectedChannelId }?.let { scope ->
+                    (channelFilters.firstOrNull { it.id == state.selectedChannelId }
+                        ?: agentLoungeSearchScopeOrNull(state.selectedChannelId))?.let { scope ->
                         SharedHomeSearchScopeRow(
                             scopeLabel = scope.searchScopeLabel(),
                             onExpand = {
@@ -13453,7 +13489,8 @@ private fun SharedHomeSearchControlsRow(
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
                 .padding(top = topSafeAreaPadding)
-                .height(56.dp)
+                // A head: 56 with a finger, 44 under a mouse or trackpad (sizing v12).
+                .height(RaftTheme.controls.headHeight)
                 .raftSafeAreaHorizontalPadding()
                 .padding(start = startPadding, end = SearchHeadHorizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -14037,8 +14074,10 @@ private fun SharedHomeSavedResultCard(
     val source =
         when {
             item.kind == InboxItemKind.DirectMessage -> item.channelName.takeIf { it.isNotBlank() }?.let { "@$it" }
-            item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
-            else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
+            item.kind == InboxItemKind.Thread ->
+                agentLoungeLabelOrNull(item.parentChannelId?.value)
+                    ?: item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
+            else -> agentLoungeLabelOrNull(item.channelId.value) ?: item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
     val contentAnchor = remember(openGestureKey) { RaftLiveRootAnchorRef(identity = openGestureKey) }
     fun dispatchSavedGesture(owner: SharedHomeSavedGestureOwner, source: String) {
@@ -14934,7 +14973,17 @@ private fun searchResultSourceLabel(item: InboxItem): String {
         } else {
             item.channelName
         }
-    return if (item.kind == InboxItemKind.DirectMessage) "@$name" else "#$name"
+    if (item.kind == InboxItemKind.DirectMessage) return "@$name"
+    // Agent Lounge v0: a hit in a Lounge (or a thread in one) names the Lounge, never `#<agent>-lounge`.
+    val placeId = if (item.kind == InboxItemKind.Thread) item.parentChannelId ?: item.channelId else item.channelId
+    return agentLoungeLabelOrNull(placeId.value) ?: "#$name"
+}
+
+/** Agent Lounge v0: a search scoped to a Lounge (no channel list holds it) reads "{Name}'s Lounge". */
+internal fun agentLoungeSearchScopeOrNull(channelId: String?): SearchChannelFilterItem? {
+    val id = channelId?.takeIf { it.isNotBlank() } ?: return null
+    val label = agentLoungeLabelOrNull(id) ?: return null
+    return SearchChannelFilterItem(id = id, label = label, icon = RaftLucideIconName.Users)
 }
 
 /** The raft-ui search hit spans; [RaftSearchHitText] draws the sticker behind them. */
@@ -15903,7 +15952,10 @@ internal data class SharedHomeConversationRowProjector(
      */
     val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap(),
     /** [HomeSnapshot.markedUnreadIds]: rows marked unread with no count (botiverse/slock #11795). */
-    val markedUnreadIds: Set<String> = emptySet()
+    val markedUnreadIds: Set<String> = emptySet(),
+    /** Agent Lounge v0 gate (flag on, not a Guest): agent DM rows get their Lounge's sub-row. */
+    val agentLoungeEnabled: Boolean = false,
+    val agentLoungeServerId: String? = null,
 ) {
     fun project(conversation: HomeConversationRow): RaftHomeConversationItem {
         // Only channel rows carry the followed-thread segment (web `SidebarChannelItem`).
@@ -15920,6 +15972,9 @@ internal data class SharedHomeConversationRowProjector(
                     // A known count (read prediction, realtime) is newer than anything restored.
                     restoredRowHints[conversation.threadId.value]?.takeIf { !conversation.unreadCountKnown }
                 )
+        ).copy(
+            agentLounge =
+                (conversation as? HomeDirectMessageRow)?.agentLoungeSidebarRow(agentLoungeEnabled, agentLoungeServerId)
         )
     }
 

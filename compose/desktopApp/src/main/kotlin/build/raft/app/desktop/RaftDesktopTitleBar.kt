@@ -32,7 +32,8 @@ import kotlinx.serialization.json.JsonPrimitive
  * Two ways, picked at start:
  * - JetBrains Runtime (the packaged app's runtime: the Gradle daemon JVM is JBR 21, and Compose
  *   packages the daemon's JDK): its custom title bar ([WindowDecorations.CustomTitleBar]), as tall
- *   as the top bar ([RaftTopBarDefaults.Height]), so the traffic lights are centred in it. The
+ *   as the top bar under a mouse or trackpad ([RaftTopBarDefaults.FineHeight], 44 since sizing
+ *   v12; a Mac has no touch screen), so the traffic lights are centred in it. The
  *   system drags the window from it and double-clicks it per the macOS setting (zoom / minimize)
  *   wherever the app lets it: [RaftDesktopTitleBarHitTest] tells it, per mouse event, whether a
  *   control of the app took the event.
@@ -77,7 +78,7 @@ internal class RaftDesktopTitleBar private constructor(
             if (!JBR.isAvailable() || !JBR.isWindowDecorationsSupported()) return null
             val decorations = JBR.getWindowDecorations()
             val titleBar = decorations.createCustomTitleBar()
-            titleBar.height = RaftTopBarDefaults.Height.value
+            titleBar.height = RaftTopBarDefaults.FineHeight.value
             decorations.setCustomTitleBar(window, titleBar)
             // The window keeps its title (Window menu, Mission Control); the title bar draws none.
             window.rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
@@ -114,7 +115,7 @@ internal fun raftDesktopTitleBarMetrics(
     reportedControlsWidth: Dp,
 ): RaftDesktopTitleBarMetrics {
     if (fullscreen) return RaftDesktopTitleBarMetrics(band = 0.dp, controlsStart = 0.dp)
-    val band = if (customTitleBar) RaftTopBarDefaults.Height else RaftDesktopStandardTitleBarHeight
+    val band = if (customTitleBar) RaftTopBarDefaults.FineHeight else RaftDesktopStandardTitleBarHeight
     val controls = if (customTitleBar && reportedControlsWidth > 0.dp) reportedControlsWidth else RaftDesktopDefaultControlsWidth
     return RaftDesktopTitleBarMetrics(band = band, controlsStart = controls)
 }

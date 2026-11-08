@@ -205,7 +205,9 @@ internal object RaftAppSize {
     val MinTouchTarget = 48.dp
     val IconButton = 44.dp
     val HeaderIcon = 36.dp
-    // raft panel heads are 56px (48px under 600px window height).
+    // raft panel heads are 56px (48px under 600px window height). This is the touch head; the
+    // heads themselves read RaftTheme.controls.headHeight, 44 under a mouse or trackpad (sizing
+    // v12, raft-ui 0.65 desktop density).
     val PageHeaderHeight = 56.dp
     val PageHeaderContentHeight = PageHeaderHeight - RaftAppStroke.Default
     // raft-ui MobileNav bar, without the safe-area inset.

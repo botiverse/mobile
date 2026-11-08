@@ -13,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -150,19 +149,18 @@ class ThreadShareImageScreenshotTest {
         )
 
     private fun captureOffscreen(name: String, cardWidthDp: Int) {
-        var rendered: ImageBitmap? = null
         val image =
             RaftRobolectricScreenshot.render(
                 appearance = RaftAppAppearance.Light,
                 activities = activities,
-                interact = { drawActivityWindow() },
+                interact = { drawActivityWindowAndAwaitImage() },
                 content = { activity ->
                     hostActivity = activity
                     ShareImageHost {
                         ShareImageRenderer(cardWidthDp) { rendered = it }
                     }
                 },
-            ) { _, _ -> assertNotNull(rendered, "no share image").asAndroidBitmap() }
+            ) { _, _ -> assertNotNull(rendered, "no share image").image.asAndroidBitmap() }
         // The whole card is the picked width at the image's scale (xxhdpi: 3), whatever the screen.
         assertEquals(cardWidthDp * 3, image.width)
         RaftRobolectricScreenshot.verifyOrRecord(name, image, File("build/reports/thread-screenshots"))
@@ -175,12 +173,15 @@ class ThreadShareImageScreenshotTest {
             reportDir = "build/reports/thread-screenshots",
             activities = activities,
             root = { activity -> dialogFittedToItsWindow() ?: activity.window.decorView },
-            interact = { drawActivityWindow() },
+            interact = { drawActivityWindowAndAwaitImage() },
         ) { activity ->
             hostActivity = activity
             ShareImageHost {
-                var image by remember { mutableStateOf<ImageBitmap?>(null) }
-                ShareImageRenderer(choice.widthDp) { image = it }
+                var image by remember { mutableStateOf<ThreadShareRenderedImage?>(null) }
+                ShareImageRenderer(choice.widthDp) {
+                    rendered = it
+                    image = it
+                }
                 ThreadSharePreviewModal(
                     messages = listOf(ThreadShareImageWideTableVisualMessage),
                     image = null,
@@ -208,7 +209,7 @@ class ThreadShareImageScreenshotTest {
     }
 
     @Composable
-    private fun ShareImageRenderer(cardWidthDp: Int, onRendered: (ImageBitmap?) -> Unit) {
+    private fun ShareImageRenderer(cardWidthDp: Int, onRendered: (ThreadShareRenderedImage?) -> Unit) {
         ThreadShareImageOffscreenRenderer(
             cardWidthDp = cardWidthDp,
             rowCount = 1,
@@ -235,6 +236,7 @@ class ThreadShareImageScreenshotTest {
     }
 
     private var hostActivity: androidx.activity.ComponentActivity? = null
+    @Volatile private var rendered: ThreadShareRenderedImage? = null
     private val rowsRecorded = CompletableDeferred<Unit>()
 
     /** Draws the activity's compose root once (records the off-screen rows' layers), then lets the renderer go on. */
@@ -246,6 +248,21 @@ class ThreadShareImageScreenshotTest {
             scratch.recycle()
         }
         rowsRecorded.complete(Unit)
+    }
+
+    /**
+     * [drawActivityWindow], then the main looper run until the image is back: it is rasterised on
+     * Dispatchers.Default (a real thread), which the looper's own idling does not wait for.
+     */
+    private fun drawActivityWindowAndAwaitImage() {
+        drawActivityWindow()
+        val looper = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+        val deadline = System.nanoTime() + 30_000_000_000L
+        while (rendered == null && System.nanoTime() < deadline) {
+            looper.idleFor(java.time.Duration.ofMillis(16))
+            Thread.sleep(5)
+        }
+        assertNotNull(rendered, "the share image was not rasterised")
     }
 
     /** As [AnnouncementModalScreenshotTest]: the dialog window, its content measured to the window. */

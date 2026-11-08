@@ -58,6 +58,14 @@ class RaftPaneGridTest {
         assertEquals(321f, raftPaneGridStackMinHeightDp(2))
     }
 
+    /** Under a fine pointer a folded cell is the 44dp head (sizing v12, raft-ui 0.65 desktop density). */
+    @Test
+    fun aStackFoldsToThePointerHead() {
+        val tasksFolded = raftPaneGridStack(600f, listOf(0.6f, 0.4f), listOf(true, false), headDp = 44f)
+        assertEquals(listOf(44f, 556f), tasksFolded.heights)
+        assertEquals(listOf(44f, 44f), raftPaneGridStack(600f, listOf(0.6f, 0.4f), listOf(true, true), headDp = 44f).heights)
+    }
+
     @Test
     fun aSeamDragKeepsEachCardAt160() {
         val none = listOf(false, false)

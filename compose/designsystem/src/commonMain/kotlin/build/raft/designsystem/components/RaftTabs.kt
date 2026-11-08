@@ -335,7 +335,9 @@ private fun RaftUnderlineTab(
     Row(
         modifier
             .raftPointerHover(source)
-            .heightIn(min = 44.dp)
+            // 44 with a finger; the shared 34dp row height under a fine pointer (sizing v12,
+            // raft-ui 0.65 desktop density).
+            .heightIn(min = RaftTheme.controls.rowHeight ?: 44.dp)
             .raftFocusRing(focused, 0.dp, colors)
             .drawWithContent {
                 drawContent()
@@ -357,7 +359,8 @@ private fun RaftUnderlineTab(
 
 /**
  * The item of default [RaftTabs], [RaftSegmentedControl] and [RaftToggleGroup] (their
- * recipes are the same): 32dp, control radius, 12dp padding inside a 1.5dp edge that is
+ * recipes are the same): 32dp (the shared 34dp row height under a fine pointer, sizing v12,
+ * raft-ui 0.65 desktop density), control radius, 12dp padding inside a 1.5dp edge that is
  * transparent at rest, 6dp gap, a `text-callout` semibold `foreground-muted` label; when
  * [active], the yellow sticker with a bold `sticker-ink` label. A [count] follows in
  * Space Mono `text-mono-meta`, regular weight.
@@ -388,13 +391,14 @@ internal fun RaftStickerItem(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val typography = RaftTheme.typography
+    val height = RaftTheme.controls.rowHeight ?: 32.dp
     if (iconsOnly && icon != null) {
         // raft-ui `data-icons-only`: a 32dp square with only its icon; the label (and count)
         // stays the accessible name, given by the caller's semantics.
         Box(
             modifier
                 .raftPointerHover(source)
-                .size(32.dp)
+                .size(height)
                 .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors, overlay = overlay),
             contentAlignment = Alignment.Center,
         ) {
@@ -408,7 +412,7 @@ internal fun RaftStickerItem(
         modifier
             .raftPointerHover(source)
             // A minimum: a large font scale grows the item instead of clipping its label.
-            .heightIn(min = 32.dp)
+            .heightIn(min = height)
             .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors, overlay = overlay)
             .padding(horizontal = 12.dp + RaftStroke.Control, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),

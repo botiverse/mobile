@@ -19,8 +19,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -36,17 +40,23 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownFitWidth
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.ceil
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /*
  * The share image laid out again, off screen, at a width the user picks (artin, 2026-11-06):
  * the selected messages are composed once more at the image's own width, every wide block made to
- * fit it (no sideways scrolling: [LocalRaftMarkdownFitWidth]), and rasterised row by row into the
- * card [renderThreadShareImageRows] draws. The web caps its share image at 768px and forces
+ * fit it (no sideways scrolling: [LocalRaftMarkdownFitWidth]), recorded row by row into the
+ * card [recordThreadShareImageRows] draws, and rasterised off the main thread. The web caps its share image at 768px and forces
  * tables to fit (slock `selectScreenshot.ts`); mobile offers that and narrower / wider widths.
  *
  * Android and desktop render this way. iOS still exports the image from its native screenshot of
@@ -122,6 +132,105 @@ internal fun threadShareImageScale(
     return scale
 }
 
+/**
+ * The scale to lay the rows out again at, or null when the card drawn from [rowSizes] (laid out at
+ * [scale]) may be drawn as it is. First the plan in dp ([threadShareImageScale]); then the card's
+ * real size in px ([threadShareImageWidthPx], [threadShareImageHeightPx]): every row, frame and gap
+ * rounds to whole pixels, which over many rows can still take it past [budget] pixels or
+ * [maxSidePx] a side, so the scale steps down again until the real card fits.
+ */
+internal fun threadShareImageRelayoutScale(
+    cardWidthDp: Int,
+    rowSizes: List<IntSize>,
+    scale: Float,
+    preferredScale: Float,
+    budget: Long = ThreadShareImagePixelBudget,
+    maxSidePx: Int = ThreadShareImageMaxSidePx,
+): Float? {
+    if (rowSizes.isEmpty()) return null
+    val rowsHeightDp = rowSizes.sumOf { it.height } / scale
+    val planned =
+        threadShareImageScale(
+            cardWidthDp = cardWidthDp.toFloat(),
+            cardHeightDp = rowsHeightDp + threadShareImageChromeHeightDp(rowSizes.size),
+            preferredScale = preferredScale,
+            budget = budget,
+        )
+    if (planned < scale * 0.98f) return planned
+    val widthPx = threadShareImageWidthPx(rowSizes.maxOf { it.width }, scale).toLong()
+    val heightPx = threadShareImageHeightPx(rowSizes.map { it.height }, scale).toLong()
+    val longestPx = maxOf(widthPx, heightPx)
+    if (widthPx * heightPx <= budget && longestPx <= maxSidePx) return null
+    // Past the floor the rows are a smear anyway: draw what there is (an out-of-memory comes back as no image).
+    if (scale <= ThreadShareImageMinScale) return null
+    val factor =
+        min(
+            sqrt(budget.toDouble() / (widthPx.toDouble() * heightPx)).toFloat(),
+            maxSidePx.toFloat() / longestPx,
+        )
+    // A little under the exact factor: the next layout rounds again.
+    return (scale * min(factor, 1f) * 0.99f).coerceAtLeast(ThreadShareImageMinScale)
+}
+
+/** The lowest scale the share image is laid out at. */
+internal const val ThreadShareImageMinScale = 0.05f
+
+/**
+ * The share image and the copy Share preview shows: [preview] is [image] scaled down to the
+ * preview's width at the screen's density (or [image] itself when it is already that small), so
+ * the preview never draws a bitmap above the GPU's texture limit.
+ */
+internal class ThreadShareRenderedImage(val image: ImageBitmap, val preview: ImageBitmap)
+
+/** The preview is about this wide (the share preview dialog's content width, with room to spare). */
+internal const val ThreadShareImagePreviewWidthDp = 400
+
+/** The longest side of the preview's copy: 4096 px, the smallest max texture size the app meets. */
+internal const val ThreadShareImagePreviewMaxSidePx = 4096
+
+/**
+ * The size of the preview's copy of a [width] x [height] image: at most [maxWidthPx] wide and
+ * [maxSidePx] on either side, keeping the image's aspect; never larger than the image.
+ */
+internal fun threadShareImagePreviewSize(
+    width: Int,
+    height: Int,
+    maxWidthPx: Int,
+    maxSidePx: Int = ThreadShareImagePreviewMaxSidePx,
+): IntSize {
+    if (width <= 0 || height <= 0) return IntSize(width.coerceAtLeast(0), height.coerceAtLeast(0))
+    val factor =
+        minOf(
+            1.0,
+            maxWidthPx.coerceAtLeast(1).toDouble() / width,
+            maxSidePx.toDouble() / width,
+            maxSidePx.toDouble() / height,
+        )
+    if (factor >= 1.0) return IntSize(width, height)
+    return IntSize((width * factor).roundToInt().coerceAtLeast(1), (height * factor).roundToInt().coerceAtLeast(1))
+}
+
+/**
+ * [image] scaled to [size] for the preview: halved while it is more than twice the target (a
+ * single bilinear step that far would drop whole text strokes), then drawn at [size]. Any thread.
+ */
+internal fun downscaleThreadShareImage(image: ImageBitmap, size: IntSize): ImageBitmap {
+    if (size.width == image.width && size.height == image.height) return image
+    var current = image
+    while (current.width / 2 >= size.width && current.height / 2 >= size.height && current.width >= 2 && current.height >= 2) {
+        current = drawThreadShareImageScaled(current, IntSize(current.width / 2, current.height / 2))
+    }
+    return if (current.width == size.width && current.height == size.height) current else drawThreadShareImageScaled(current, size)
+}
+
+private fun drawThreadShareImageScaled(source: ImageBitmap, size: IntSize): ImageBitmap {
+    val target = ImageBitmap(size.width, size.height)
+    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(target), Size(size.width.toFloat(), size.height.toFloat())) {
+        drawImage(source, dstSize = size, filterQuality = FilterQuality.High)
+    }
+    return target
+}
+
 /** Waits for the off-screen rows to settle (avatars, status dots, Markdown layout) before the snapshot. */
 internal val ThreadShareImageDefaultSettle: suspend () -> Unit = {
     repeat(4) { withFrameNanos {} }
@@ -131,12 +240,13 @@ internal val ThreadShareImageDefaultSettle: suspend () -> Unit = {
 /**
  * Composes [rowCount] rows ([row]) off screen as the share image's rows for a card
  * [cardWidthDp] wide, and hands the finished image to [onRendered] (null when it could not be
- * made); [onRendering] says a new one is on its way. It takes no room and draws nothing where it
+ * made, with the copy Share preview shows); [onRendering] says a new one is on its way. It takes no room and draws nothing where it
  * sits; put it in the conversation's composition, so the rows read the same theme, text size
  * and resolvers as the live ones.
  *
  * The rows are laid out at the image's scale (the screen's, 2 to 3 px per dp, lowered to keep
- * the image within [ThreadShareImagePixelBudget]); [renderKey] changing renders again.
+ * the image within [ThreadShareImagePixelBudget]); [renderKey] changing renders again. The rows
+ * are recorded on the main thread and rasterised on [rasterContext].
  */
 @Composable
 internal fun ThreadShareImageOffscreenRenderer(
@@ -145,12 +255,14 @@ internal fun ThreadShareImageOffscreenRenderer(
     renderKey: Any?,
     background: Color,
     onRendering: () -> Unit,
-    onRendered: (ImageBitmap?) -> Unit,
+    onRendered: (ThreadShareRenderedImage?) -> Unit,
     settle: suspend () -> Unit = ThreadShareImageDefaultSettle,
+    rasterContext: CoroutineContext = Dispatchers.Default,
     row: @Composable (index: Int) -> Unit,
 ) {
     val screenDensity = LocalDensity.current
     val preferredScale = threadShareImagePreferredScale(screenDensity.density)
+    val previewMaxWidthPx = (ThreadShareImagePreviewWidthDp * screenDensity.density).roundToInt()
     var scale by remember(cardWidthDp, rowCount, renderKey, preferredScale) { mutableStateOf(preferredScale) }
     val renderDensity = remember(scale, screenDensity.fontScale) { Density(scale, screenDensity.fontScale) }
     val layers = remember { mutableStateMapOf<Int, GraphicsLayer>() }
@@ -159,7 +271,7 @@ internal fun ThreadShareImageOffscreenRenderer(
     val currentOnRendering by rememberUpdatedState(onRendering)
     val currentOnRendered by rememberUpdatedState(onRendered)
     val currentBackground by rememberUpdatedState(background)
-    LaunchedEffect(cardWidthDp, rowCount, renderKey, scale) {
+    LaunchedEffect(cardWidthDp, rowCount, renderKey, scale, previewMaxWidthPx) {
         currentOnRendering()
         if (rowCount <= 0) {
             currentOnRendered(null)
@@ -171,16 +283,17 @@ internal fun ThreadShareImageOffscreenRenderer(
             currentOnRendered(null)
             return@LaunchedEffect
         }
-        val rowsHeightDp = sizes.sumOf { it!!.height } / scale
-        val planned =
-            threadShareImageScale(
-                cardWidthDp = cardWidthDp.toFloat(),
-                cardHeightDp = rowsHeightDp + threadShareImageChromeHeightDp(rowCount),
+        val measured = sizes.map { it!! }
+        val relayout =
+            threadShareImageRelayoutScale(
+                cardWidthDp = cardWidthDp,
+                rowSizes = measured,
+                scale = scale,
                 preferredScale = preferredScale,
             )
-        if (planned < scale * 0.98f) {
+        if (relayout != null) {
             // Too many pixels: lay the rows out again at the lower scale (this effect restarts).
-            scale = planned
+            scale = relayout
             return@LaunchedEffect
         }
         // The header's 12px domain is a fixed size, as on the web; the rows keep the user's text size.
@@ -189,14 +302,32 @@ internal fun ThreadShareImageOffscreenRenderer(
         val image =
             try {
                 val rowLayers = (0 until rowCount).map { index -> layers[index] ?: error("share image row $index has no layer") }
-                // Each row's layer is drawn into the card's software bitmap (a GraphicsLayer re-runs
-                // its recording on a software canvas): no row bitmap is held on its own.
-                renderThreadShareImageRows(
-                    rowSizes = sizes.map { it!! },
-                    density = imageDensity,
-                    measurer = measurer,
-                    background = currentBackground,
-                ) { index -> drawLayer(rowLayers[index]) }
+                // Main thread: each row's layer re-runs its drawing into the recording (a GraphicsLayer
+                // reads the composition's state there), so only the commands are captured here.
+                val recording =
+                    recordThreadShareImageRows(
+                        rowSizes = measured,
+                        density = imageDensity,
+                        measurer = measurer,
+                        background = currentBackground,
+                    ) { index -> drawLayer(rowLayers[index]) }
+                if (recording == null) {
+                    null
+                } else {
+                    try {
+                        // The pixels (up to the 16M px budget) and the preview's copy, off the main thread.
+                        // A new width cancels this effect; the bands stop at the next check.
+                        withContext(rasterContext) {
+                            val job = coroutineContext[Job]
+                            val full = recording.rasterise(checkCancelled = { job?.ensureActive() })
+                            ensureActive()
+                            val previewSize = threadShareImagePreviewSize(full.width, full.height, maxWidthPx = previewMaxWidthPx)
+                            ThreadShareRenderedImage(image = full, preview = downscaleThreadShareImage(full, previewSize))
+                        }
+                    } finally {
+                        recording.release()
+                    }
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {

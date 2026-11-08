@@ -96,6 +96,11 @@ internal fun raftLinkHoverLabel(
             ?.trim()
             ?.takeIf(String::isNotEmpty)
     if (permalink == null || name == null) return RaftLinkHoverLabel(text = open.url, external = false)
+    val kindTerm = if (permalink.threadParentMessageId != null) terms.thread else terms.message
+    // Agent Lounge v0: "{Name}'s Lounge · message", never `#<agent>-lounge`.
+    build.raft.app.agentLoungeLabelOrNull(permalink.channelId.value)?.let { lounge ->
+        return RaftLinkHoverLabel(text = "$lounge · $kindTerm", external = false)
+    }
     val prefix = if (permalink.routeKind == ConversationKind.DirectMessage) "@" else "#"
     val kind = if (permalink.threadParentMessageId != null) terms.thread else terms.message
     return RaftLinkHoverLabel(text = "$prefix$name · $kind", external = false)

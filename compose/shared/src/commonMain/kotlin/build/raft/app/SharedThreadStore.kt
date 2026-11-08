@@ -16610,7 +16610,9 @@ private fun ThreadSnapshot.toRaftThreadPayload(
         tasks = tasks.map { task -> task.toRaftThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
-        joined = conversation.joined,
+        // Agent Lounge v0 (web ChatPanel `joined = isDM || isThread || isLounge ? true : ...`): a
+        // Lounge has no Join step; the first post joins, and its permissions say whether you may post.
+        joined = conversation.joined || (surfaceKind == RaftThreadSurfaceKind.Channel && !conversation.loungeAgentId.isNullOrBlank()),
         canSend = conversation.permissions.canSend,
         membersCount = conversation.memberCount ?: base.membersCount,
         errorCode = null,
