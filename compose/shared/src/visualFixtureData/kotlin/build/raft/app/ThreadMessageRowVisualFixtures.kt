@@ -2711,3 +2711,32 @@ private fun threadMermaidVisualFixture(
                 enabled = false
             )
     )
+
+/**
+ * Share image width picker (artin, 2026-11-06): a message whose table is wider than a phone and
+ * whose code has a line longer than any image width. In the conversation the table scrolls
+ * sideways; the share image fits both to its width, cells and code lines wrapping
+ * (ThreadShareImageScreenshotTest `wideTable*`).
+ */
+internal val ThreadShareImageWideTableVisualMessage =
+    RaftThreadMessageItem(
+        id = "msg_share_image_wide_table_visual",
+        authorId = "agent-cindy",
+        authorName = "Cindy",
+        authorDescription = "Keeps visual testing release notes aligned.",
+        authorKind = "agent",
+        avatarLabel = "CI",
+        timestampLabel = "2026-10-30T01:30:00Z",
+        messageType = "Chat",
+        body =
+            "Release checklist for 1.21:\n\n" +
+                "| Area | Owner | Status | Evidence | Notes for the release lane |\n" +
+                "|------|-------|--------|----------|----------------------------|\n" +
+                "| Share image width | Artin | Ready | Goldens at 390 and 768 recorded in CI | Tables and code fit the picked width |\n" +
+                "| Thread selection regroup | Cindy | Shipped | thread.share-image.continuation | The first picked message always names its author |\n" +
+                "| Offline durable timeline | Remy | In review | SharedThreadStoreDurableLastKnownTest | Waiting on one more Android pass |\n\n" +
+                "```\n" +
+                "curl -fsSL https://raft.build/api/releases/1.21.0/checklist?include=share-image,thread-selection,offline-timeline&format=markdown\n" +
+                "```\n\n" +
+                "Everything above should read without scrolling sideways."
+    )

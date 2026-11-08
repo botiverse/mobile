@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,6 +97,13 @@ internal fun threadShareImageRowOrigins(rowHeightsPx: List<Int>, density: Float)
     }
 }
 
+/** The card's height, in dp, around rows [rowsHeightDp] tall in total ([rowCount] of them). */
+internal fun threadShareImageChromeHeightDp(rowCount: Int): Float =
+    (ThreadShareImageHeaderPaddingVertical * 2 + ThreadShareImageLogoHeight + ThreadShareImageHeaderBorder).value +
+        ThreadShareImageContentPaddingTop.value +
+        rowCount * (2 * ThreadShareImageRowFrame.value + ThreadShareImageRowGap.value) +
+        ThreadShareImageContentPaddingBottom.value
+
 /**
  * Draws the share image for [rows] (each one message, captured at [density] from the
  * conversation) over [background], the conversation surface the rows were captured on (web:
@@ -122,6 +130,37 @@ internal fun renderThreadShareImage(
         drawThreadShareImageHeader(width = width, scale = scale, measurer = measurer, domain = domain)
         threadShareImageRowOrigins(rowHeights, scale).forEachIndexed { index, origin ->
             drawImage(rows[index], topLeft = Offset(origin.x.toFloat(), origin.y.toFloat()))
+        }
+    }
+    return bitmap
+}
+
+/**
+ * [renderThreadShareImage] for rows drawn straight into the card: [rowSizes] are the rows' sizes
+ * in px at [density], and [drawRow] draws row `index` with its top left at the origin (the
+ * offscreen share image draws each row's recorded layer, so no row is held as a bitmap of its own).
+ */
+internal fun renderThreadShareImageRows(
+    rowSizes: List<IntSize>,
+    density: Density,
+    measurer: TextMeasurer,
+    background: Color,
+    domain: String = ThreadShareImageDomain,
+    drawRow: DrawScope.(index: Int) -> Unit,
+): ImageBitmap? {
+    if (rowSizes.isEmpty()) return null
+    val scale = density.density
+    val rowHeights = rowSizes.map { it.height }
+    val width = threadShareImageWidthPx(rowSizes.maxOf { it.width }, scale)
+    val height = threadShareImageHeightPx(rowHeights, scale)
+    if (width <= 0 || height <= 0) return null
+    val bitmap = ImageBitmap(width, height)
+    val canvas = Canvas(bitmap)
+    CanvasDrawScope().draw(density, LayoutDirection.Ltr, canvas, Size(width.toFloat(), height.toFloat())) {
+        drawRect(background)
+        drawThreadShareImageHeader(width = width, scale = scale, measurer = measurer, domain = domain)
+        threadShareImageRowOrigins(rowHeights, scale).forEachIndexed { index, origin ->
+            translate(left = origin.x.toFloat(), top = origin.y.toFloat()) { drawRow(index) }
         }
     }
     return bitmap

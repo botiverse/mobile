@@ -43,6 +43,7 @@ class RaftDesktopBridgeTransport(
             "cancelCompressThreadImage" -> attachments.cancelCompressThreadImage(params)
             "saveAttachment" -> attachments.saveAttachment(params, callback)
             "cancelAttachmentExport" -> attachments.cancelAttachmentExport(params)
+            "saveThreadShareImage" -> attachments.saveThreadShareImage(params, callback)
             // TODO(desktop): app badge, shortcuts and performance markers have no desktop surface.
             "appBadge", "syncDesktopShortcuts", "performanceScene", "performanceMarker" -> Unit
             else -> {

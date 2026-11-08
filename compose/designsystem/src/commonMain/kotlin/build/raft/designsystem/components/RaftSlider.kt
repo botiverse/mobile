@@ -1,0 +1,222 @@
+package build.raft.designsystem.components
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiPalette
+import kotlin.math.roundToInt
+
+/**
+ * A slider: picks a whole number from [valueRange] by dragging, tapping the track, or the arrow
+ * keys (one [step]). raft-ui has no slider; this one is built from the parts it does have:
+ * - the [RaftProgressBar] header row: [label] (footnote semibold, ink) at the start and
+ *   [valueText] (Space Mono meta, `foreground-hint`) at the end;
+ * - a 6dp `fill-muted` track (sticker radius) whose filled part is the `selected` (yellow)
+ *   sticker with its 1.5dp `sticker-ink` inset edge, as a Progress fill;
+ * - the [RaftSwitch] knob as the thumb: a 22dp `sticker-paper` circle in a 1.5dp `sticker-ink`
+ *   ring, with the focus ring under keyboard focus.
+ * The touch target is 44dp tall. Disabled greys the fill and the thumb's ring.
+ *
+ * [onValueChange] fires on every move (a drag reports as it goes); a caller that does heavy work
+ * per value debounces it. Semantics: a range with its value ([valueText] as its state), adjustable
+ * through `setProgress`, named by [label] or [contentDescription].
+ */
+@Composable
+fun RaftSlider(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    valueRange: IntRange,
+    modifier: Modifier = Modifier,
+    step: Int = 1,
+    enabled: Boolean = true,
+    label: String? = null,
+    valueText: String? = null,
+    contentDescription: String? = label,
+    interactionSource: MutableInteractionSource? = null,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    // Read unconditionally: a composable read inside `&&` gets no group of its own (#3356).
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
+    val first = valueRange.first
+    val last = maxOf(valueRange.last, first + 1)
+    val current = value.coerceIn(first, last)
+    val fraction = (current - first).toFloat() / (last - first)
+    val latestValue by rememberUpdatedState(current)
+    val latestChange by rememberUpdatedState(onValueChange)
+    fun snap(raw: Float): Int {
+        val stepped = first + (((raw - first) / step).roundToInt() * step)
+        return stepped.coerceIn(first, last)
+    }
+    fun emit(next: Int) {
+        if (next != latestValue) latestChange(next)
+    }
+    val fill = if (enabled) RaftUiPalette.selected else colors.foregroundDisabled
+    val edge = if (enabled) RaftUiPalette.stickerInk else colors.foregroundDisabled
+    Column(
+        modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        if (label != null || valueText != null) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RaftText(
+                    text = label.orEmpty(),
+                    modifier = Modifier.weight(1f),
+                    style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (enabled) colors.foreground else colors.foregroundDisabled,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (valueText != null) {
+                    RaftText(text = valueText, style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
+                }
+            }
+        }
+        BoxWithConstraints(
+            Modifier
+                .fillMaxWidth()
+                .height(RaftSliderTouchHeight)
+                .semantics(mergeDescendants = true) {
+                    progressBarRangeInfo = ProgressBarRangeInfo(current.toFloat(), first.toFloat()..last.toFloat(), steps = 0)
+                    contentDescription?.let { this.contentDescription = it }
+                    valueText?.let { stateDescription = it }
+                    if (enabled) {
+                        setProgress { target ->
+                            emit(snap(target))
+                            true
+                        }
+                    }
+                }
+                .then(
+                    if (enabled) {
+                        Modifier
+                            .raftKeepsHorizontalDrags()
+                            .onKeyEvent { event ->
+                                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                                when (event.key) {
+                                    Key.DirectionLeft, Key.DirectionDown -> emit((latestValue - step).coerceIn(first, last)).let { true }
+                                    Key.DirectionRight, Key.DirectionUp -> emit((latestValue + step).coerceIn(first, last)).let { true }
+                                    Key.MoveHome -> emit(first).let { true }
+                                    Key.MoveEnd -> emit(last).let { true }
+                                    else -> false
+                                }
+                            }
+                            .focusable(interactionSource = source)
+                    } else {
+                        Modifier
+                    },
+                ),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            val thumb = RaftSliderThumbSize
+            val travel = (maxWidth - thumb).coerceAtLeast(0.dp)
+            val trackPointer =
+                if (enabled) {
+                    Modifier
+                        .pointerInput(first, last, step) {
+                            val inset = thumb.toPx() / 2f
+                            val span = (size.width - thumb.toPx()).coerceAtLeast(1f)
+                            fun valueAt(x: Float): Int = snap(first + ((x - inset) / span).coerceIn(0f, 1f) * (last - first))
+                            detectTapGestures { offset -> emit(valueAt(offset.x)) }
+                        }
+                        .pointerInput(first, last, step) {
+                            val inset = thumb.toPx() / 2f
+                            val span = (size.width - thumb.toPx()).coerceAtLeast(1f)
+                            fun valueAt(x: Float): Int = snap(first + ((x - inset) / span).coerceIn(0f, 1f) * (last - first))
+                            detectHorizontalDragGestures(
+                                onDragStart = { offset -> emit(valueAt(offset.x)) },
+                            ) { change, _ ->
+                                change.consume()
+                                emit(valueAt(change.position.x))
+                            }
+                        }
+                } else {
+                    Modifier
+                }
+            Box(Modifier.fillMaxWidth().height(RaftSliderTouchHeight).then(trackPointer), contentAlignment = Alignment.CenterStart) {
+                Canvas(Modifier.fillMaxWidth().height(RaftSliderTrackHeight)) {
+                    val radius = CornerRadius(RaftRadius.Sticker.toPx())
+                    drawRoundRect(color = colors.fillMuted, cornerRadius = radius)
+                    // The fill reaches the thumb's centre.
+                    val fillWidth = thumb.toPx() / 2f + travel.toPx() * fraction
+                    if (fillWidth > 0f) {
+                        drawRoundRect(color = fill, size = Size(fillWidth, size.height), cornerRadius = radius)
+                        val stroke = RaftStroke.Control.toPx()
+                        if (fillWidth > stroke * 2f) {
+                            val half = stroke / 2f
+                            drawRoundRect(
+                                color = edge,
+                                topLeft = Offset(half, half),
+                                size = Size(fillWidth - stroke, size.height - stroke),
+                                cornerRadius = CornerRadius((radius.x - half).coerceAtLeast(0f)),
+                                style = Stroke(width = stroke),
+                            )
+                        }
+                    }
+                }
+                Box(
+                    Modifier
+                        .offset(x = travel * fraction)
+                        .size(thumb)
+                        .raftFocusRing(focused, thumb / 2, colors)
+                        .raftOuterRing(edge, RaftStroke.Control, thumb / 2)
+                        .background(if (enabled) RaftUiPalette.stickerPaper else colors.fillMuted, CircleShape),
+                )
+            }
+        }
+    }
+}
+
+/** The slider's touch target height (the 44dp minimum). */
+private val RaftSliderTouchHeight = 44.dp
+private val RaftSliderTrackHeight = 6.dp
+private val RaftSliderThumbSize = 22.dp

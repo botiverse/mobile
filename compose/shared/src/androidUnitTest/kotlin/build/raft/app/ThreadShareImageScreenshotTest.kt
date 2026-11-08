@@ -6,8 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -17,9 +24,15 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.PagerManager
+import build.raft.app.compat.pager.IModuleCreator
+import build.raft.app.base.BridgeModule
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,6 +43,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
 
 /**
  * The share image Share preview's Copy / Download hands out, as the Android export draws it
@@ -47,6 +61,18 @@ import org.robolectric.annotation.GraphicsMode
 class ThreadShareImageScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
+
+    // A code block's copy button reaches the page's bridge, so the off-screen cases need a live page.
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "thread-share-image-screenshot"
+            pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
     @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
@@ -89,6 +115,159 @@ class ThreadShareImageScreenshotTest {
             suppressRepeatedAuthor = suppress,
             timestampLabel = "4:21 PM",
         )
+    }
+
+    /**
+     * The off-screen share image (Android, desktop) of a message whose table is wider than a phone
+     * and whose code has a line longer than any image: laid out again at the picked width, the
+     * table fits it (cells wrap, header included) and the code wraps; nothing is cut at the edge.
+     * The viewport is a phone either way: the image no longer depends on the screen's width.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
+    fun wideTablePhone() = captureOffscreen("thread.share-image.wide-table.390", cardWidthDp = 390)
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
+    fun wideTableWide() = captureOffscreen("thread.share-image.wide-table.768", cardWidthDp = 768)
+
+    /** Share preview with its width picker: Phone (the default), Wide (the web's 768), Custom with its slider. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
+    fun previewPhone() = capturePreview("thread.share-preview.width-phone", ThreadShareImageWidthChoice())
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
+    fun previewWide() =
+        capturePreview("thread.share-preview.width-wide", ThreadShareImageWidthChoice(preset = ThreadShareImageWidth.Wide))
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
+    fun previewCustom() =
+        capturePreview(
+            "thread.share-preview.width-custom",
+            ThreadShareImageWidthChoice(preset = ThreadShareImageWidth.Custom, customWidthDp = 560),
+        )
+
+    private fun captureOffscreen(name: String, cardWidthDp: Int) {
+        var rendered: ImageBitmap? = null
+        val image =
+            RaftRobolectricScreenshot.render(
+                appearance = RaftAppAppearance.Light,
+                activities = activities,
+                interact = { drawActivityWindow() },
+                content = { activity ->
+                    hostActivity = activity
+                    ShareImageHost {
+                        ShareImageRenderer(cardWidthDp) { rendered = it }
+                    }
+                },
+            ) { _, _ -> assertNotNull(rendered, "no share image").asAndroidBitmap() }
+        // The whole card is the picked width at the image's scale (xxhdpi: 3), whatever the screen.
+        assertEquals(cardWidthDp * 3, image.width)
+        RaftRobolectricScreenshot.verifyOrRecord(name, image, File("build/reports/thread-screenshots"))
+    }
+
+    private fun capturePreview(name: String, choice: ThreadShareImageWidthChoice) {
+        RaftRobolectricScreenshot.capture(
+            name,
+            RaftAppAppearance.Light,
+            reportDir = "build/reports/thread-screenshots",
+            activities = activities,
+            root = { activity -> dialogFittedToItsWindow() ?: activity.window.decorView },
+            interact = { drawActivityWindow() },
+        ) { activity ->
+            hostActivity = activity
+            ShareImageHost {
+                var image by remember { mutableStateOf<ImageBitmap?>(null) }
+                ShareImageRenderer(choice.widthDp) { image = it }
+                ThreadSharePreviewModal(
+                    messages = listOf(ThreadShareImageWideTableVisualMessage),
+                    image = null,
+                    onDismiss = {},
+                    onCopyMarkdown = {},
+                    onDownloadImage = {},
+                    offscreen =
+                        ThreadSharePreviewOffscreen(
+                            image = image,
+                            rendering = image == null,
+                            choice = choice,
+                            onChoiceChange = {},
+                        ),
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun ShareImageHost(content: @Composable () -> Unit) {
+        CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
+            // The window's size, as a page: a 0x0 root is never drawn, so its rows never recorded.
+            RaftDesignSystemTheme { Box(Modifier.fillMaxSize()) { content() } }
+        }
+    }
+
+    @Composable
+    private fun ShareImageRenderer(cardWidthDp: Int, onRendered: (ImageBitmap?) -> Unit) {
+        ThreadShareImageOffscreenRenderer(
+            cardWidthDp = cardWidthDp,
+            rowCount = 1,
+            renderKey = ThreadShareImageWideTableVisualMessage,
+            background = RaftColor.Canvas,
+            onRendering = {},
+            onRendered = onRendered,
+            // Frames, then the activity window drawn once (drawActivityWindow): on a device the
+            // window draws every frame and records the rows; Robolectric draws only on request.
+            // No coroutine delay: Robolectric's clock moves with the looper, a delay does not.
+            settle = {
+                repeat(4) { withFrameNanos {} }
+                rowsRecorded.await()
+                repeat(2) { withFrameNanos {} }
+            },
+        ) {
+            ThreadShareImageMessageRow(
+                message = ThreadShareImageWideTableVisualMessage,
+                messageBodyTextStyle = raftMessageBodyTextStyle("md"),
+                compactConsecutiveMessages = true,
+                suppressRepeatedAuthor = false,
+            )
+        }
+    }
+
+    private var hostActivity: androidx.activity.ComponentActivity? = null
+    private val rowsRecorded = CompletableDeferred<Unit>()
+
+    /** Draws the activity's compose root once (records the off-screen rows' layers), then lets the renderer go on. */
+    private fun drawActivityWindow() {
+        val root = hostActivity?.window?.decorView?.let(::findCompose)
+        if (root != null && root.width > 0 && root.height > 0) {
+            val scratch = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+            root.draw(android.graphics.Canvas(scratch))
+            scratch.recycle()
+        }
+        rowsRecorded.complete(Unit)
+    }
+
+    /** As [AnnouncementModalScreenshotTest]: the dialog window, its content measured to the window. */
+    private fun dialogFittedToItsWindow(): android.view.View? {
+        val decor = ShadowDialog.getLatestDialog()?.window?.decorView ?: return null
+        val content = findCompose(decor) ?: return decor
+        val parent = content.parent as? android.view.View ?: return decor
+        val exactly = android.view.View.MeasureSpec.EXACTLY
+        content.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(parent.width, exactly),
+            android.view.View.MeasureSpec.makeMeasureSpec(parent.height, exactly),
+        )
+        content.layout(0, 0, parent.width, parent.height)
+        return decor
+    }
+
+    private fun findCompose(view: android.view.View): android.view.View? {
+        if (view is androidx.compose.ui.platform.ViewRootForTest) return view
+        if (view is android.view.ViewGroup) {
+            for (index in 0 until view.childCount) findCompose(view.getChildAt(index))?.let { return it }
+        }
+        return null
     }
 
     private fun capture(
