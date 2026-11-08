@@ -7,7 +7,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -103,10 +107,11 @@ class ArtifactsHomeUiTest {
         show(loaded(rows = listOf(row("pt_a", "Launch plan.html", author = assistant, news = ArtifactsHomeNews(mentioned = true, newComments = 2)), row("pt_b", "Metrics"))))
 
         onAllNodesWithTag(ArtifactsHomeTags.Row).assertCountEquals(2)
-        onNodeWithText("Launch plan").assertExists() // the old `.html` left off
-        onAllNodesWithText("#proj-workspace · v2 · 4 comments").assertCountEquals(2)
-        onNodeWithText("Ottie for you").assertExists()
-        onNodeWithText("Mentions you · 2 new comments").assertExists()
+        // One name per row (review M4), its parts cleared: the old `.html` left off.
+        onNode(hasContentDescription("Launch plan, #proj-workspace, v2, 4 comments, Ottie for you, Updated ", substring = true)).assertExists()
+        onNode(hasContentDescription("Mentions you · 2 new comments", substring = true)).assertExists()
+        onNode(hasContentDescription("Metrics, #proj-workspace, v2, 4 comments, Kirby, Updated ", substring = true)).assertExists()
+        onAllNodesWithText("Ottie for you").assertCountEquals(0)
         onNodeWithTag(ArtifactsHomeTags.Count).assertExists()
         onNodeWithText("24 Artifacts").assertExists()
     }
@@ -115,7 +120,7 @@ class ArtifactsHomeUiTest {
     fun aRowOpensTheViewerAndLoadMoreAsksForTheNextPage() = runRobolectricComposeUiTest {
         show(loaded(rows = listOf(row("pt_a", "Launch plan")), nextCursor = "c1"))
 
-        onNodeWithText("Launch plan").performClick()
+        onAllNodesWithTag(ArtifactsHomeTags.Row)[0].performClick()
         assertEquals(listOf("pt_a"), opened)
 
         onNodeWithTag(ArtifactsHomeTags.More).performClick()
@@ -126,8 +131,13 @@ class ArtifactsHomeUiTest {
     fun theFilterBarSendsItsIntents() = runRobolectricComposeUiTest {
         show(loaded(rows = listOf(row("pt_a", "Launch plan"))))
 
+        // A switch (review M3), named by its filter.
+        onNodeWithTag(ArtifactsHomeTags.Relevant).assertIsOff()
         onNodeWithTag(ArtifactsHomeTags.Relevant).performClick()
         assertEquals(ArtifactsHomeIntent.SetRelevant(true), intents.last())
+        onNodeWithTag(ArtifactsHomeTags.Conversation).assert(hasContentDescription("By conversation"))
+        onNodeWithTag(ArtifactsHomeTags.Sort).assert(hasContentDescription("Sort: Recently opened"))
+        onNodeWithTag(ArtifactsHomeTags.Search, useUnmergedTree = true).assert(hasContentDescription("Search Artifacts by title"))
 
         onNodeWithTag(ArtifactsHomeTags.Conversation).performClick()
         assertEquals(ArtifactsHomeIntent.OpenChoices(ArtifactsHomeChoiceKind.Conversation), intents.last())
@@ -163,8 +173,9 @@ class ArtifactsHomeUiTest {
         )
 
         onAllNodesWithTag(ArtifactsHomeTags.Sort).assertCountEquals(0)
-        onNodeWithText("#proj").assertExists()
-        onNodeWithText("Pat").assertExists()
+        onNodeWithTag(ArtifactsHomeTags.Relevant).assertIsOn()
+        onNodeWithTag(ArtifactsHomeTags.Conversation).assert(hasContentDescription("Conversation: #proj"))
+        onNodeWithTag(ArtifactsHomeTags.Author).assert(hasContentDescription("Author: Pat"))
         onNodeWithTag(ArtifactsHomeTags.Clear).performClick()
         assertEquals(ArtifactsHomeIntent.ClearFilters, intents.last())
     }
@@ -222,7 +233,17 @@ class ArtifactsHomeUiTest {
         onNodeWithTag(ArtifactsHomeTags.ViewList).performClick()
         assertEquals(listOf(ArtifactsHomeView.List), views)
         onAllNodesWithTag(ArtifactsHomeTags.Row).assertCountEquals(2)
-        onAllNodesWithText("Launch plan").assertCountEquals(1)
+        onAllNodes(hasContentDescription("Launch plan, ", substring = true)).assertCountEquals(1)
+    }
+
+    /** Review M1: Russian counts take their few / many forms (files/plurals/ru.json). */
+    @Test
+    fun russianNewCommentCountsTakeTheirOwnForms() = runRobolectricComposeUiTest {
+        StringDesc.localeType = AppLocale.Russian.stringDescLocaleType
+        show(loaded(rows = listOf(row("pt_a", "A", news = ArtifactsHomeNews(newComments = 3)), row("pt_b", "B", news = ArtifactsHomeNews(newComments = 5)), row("pt_c", "C", news = ArtifactsHomeNews(newComments = 21)))))
+        onNode(hasContentDescription("3 новых комментария", substring = true)).assertExists()
+        onNode(hasContentDescription("5 новых комментариев", substring = true)).assertExists()
+        onNode(hasContentDescription("21 новый комментарий", substring = true)).assertExists()
     }
 
     private val assistant =

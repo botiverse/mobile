@@ -6604,6 +6604,14 @@ private fun RaftAppShellReadyContent(
         remember(serverMenuModel?.currentServer?.id, artifactsFlagRevision) {
             appShellArtifactsShown(sharedStores.serverFeatureFlags, serverMenuModel?.currentServer?.id)
         }
+    // Artifacts off for this server (or the flag turned off): its inline page closes and the wide
+    // history's arrows never reopen it (review L1).
+    LaunchedEffect(serverMenuArtifactsShown, readyServerId) {
+        if (serverMenuArtifactsShown) return@LaunchedEffect
+        val serverId = readyServerId ?: return@LaunchedEffect
+        wideNavHistories = wideNavHistories.withoutSurface(serverId, AppShellRailArtifactsKey)
+        if (railInlineSecondaryDestination == AppShellRailArtifactsKey) railInlineSecondaryDestination = null
+    }
 
     // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
     // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.

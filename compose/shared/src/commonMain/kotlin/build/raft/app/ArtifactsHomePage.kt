@@ -1,6 +1,14 @@
 package build.raft.app
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.LocalPlatformContext
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -194,8 +202,30 @@ private fun ArtifactsHomeTileCover(row: ArtifactsHomeRow) {
     val summary = row.summary
     val excerpt = summary.excerpt
     when {
-        summary.screenshot != null -> ArtifactCardScreenshot(rememberArtifactCardScreenshot(summary))
-        excerpt != null -> ArtifactCardExcerpt(excerpt)
+        summary.screenshot != null ->
+            ArtifactsHomeTileCoverFrame {
+                // A screenshot still read, or one that can't be, is the empty box: no spinner, no error.
+                val view = rememberArtifactCardScreenshot(summary)
+                if (view is ArtifactCardScreenshotView.Shown) {
+                    val context = LocalPlatformContext.current
+                    val request =
+                        remember(view.cardId, view.fileId, view.bytes, context) {
+                            ImageRequest.Builder(context)
+                                .data(view.bytes)
+                                .memoryCacheKey("artifact-screenshot|${view.cardId}|${view.fileId}")
+                                .build()
+                        }
+                    // `object-cover object-top`: cut from the bottom.
+                    Image(
+                        painter = rememberAsyncImagePainter(request),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        alignment = Alignment.TopCenter,
+                    )
+                }
+            }
+        excerpt != null -> ArtifactsHomeTileCoverFrame(Alignment.TopCenter) { ArtifactCardExcerpt(excerpt) }
         else -> ArtifactsHomeTilePlaceholder(summary.kind)
     }
 }
