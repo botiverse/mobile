@@ -81,6 +81,12 @@ class AgentLoungeRulesTest {
         val opened = unjoined.withAgentLoungeAccess(lounge)
         assertTrue(opened.joined && opened.canSend && opened.composer.enabled)
         assertFalse(unjoined.withAgentLoungeAccess(lounge.copy(canPost = false)).canSend)
+        // A terminal access state the store closed stays closed: a Lounge never reopens it.
+        for (closed in listOf(ThreadAccessResolution.NoPermission, ThreadAccessResolution.Error)) {
+            assertEquals(unjoined, unjoined.withAgentLoungeAccess(lounge, closed))
+        }
+        val failed = unjoined.copy(errorCode = "http_500")
+        assertEquals(failed, failed.withAgentLoungeAccess(lounge))
         assertEquals(unjoined, unjoined.withAgentLoungeAccess(null))
         assertEquals("lounge-bugen", unjoined.agentLoungeLookupChannelId())
         assertEquals(
@@ -145,6 +151,26 @@ class AgentLoungeRulesTest {
                 .activityConversationRowModel(context, InboxFilter.All).lounge,
             "an ordinary channel keeps its # tile",
         )
+    }
+
+    @Test
+    fun activityFollowsLoungesKnownById() {
+        val known = mapOf("lounge-bugen" to lounge)
+        val context = ActivityConversationListContext().withKnownLounges(known)
+        assertEquals("Bugen", context.loungesByChannelId["lounge-bugen"]?.agentName)
+        // What the DM row carries wins over the registry.
+        val carried = ActivityConversationListContext(loungesByChannelId = mapOf("lounge-bugen" to ActivityConversationLounge("agent-bugen", "Bugen B.")))
+        assertEquals("Bugen B.", carried.withKnownLounges(known).loungesByChannelId["lounge-bugen"]?.agentName)
+        assertEquals(carried, carried.withKnownLounges(null))
+    }
+
+    @Test
+    fun theHomeSubRowAppearsOnceTheFirstPostJoins() {
+        val notJoined = AgentLoungeSummary(ChannelId("lounge-bugen"), joined = false)
+        RaftAgentLounges.rememberDirectMessages("server-1", listOf(agentDm(notJoined)))
+        assertNull(agentDm(notJoined).agentLoungeSidebarRow(enabled = true, serverId = "server-1"))
+        RaftAgentLounges.markJoined("server-1", "lounge-bugen")
+        assertEquals("lounge-bugen", agentDm(notJoined).agentLoungeSidebarRow(enabled = true, serverId = "server-1")?.channelId)
     }
 
     @Test

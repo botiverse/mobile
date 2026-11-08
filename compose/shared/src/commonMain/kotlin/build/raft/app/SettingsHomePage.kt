@@ -167,6 +167,7 @@ import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
 import build.raft.app.data.agentLoungeEnabled
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.foldThreadUnreadByParent
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerState
@@ -11616,6 +11617,8 @@ private fun SharedHomeScreen(
                         emptyMap<ChannelId, HomeParentThreadUnread>()
                     }
                 }
+            // Agent Lounge v0: a Lounge joined here (your first post) shows its row without a Home reload.
+            val knownAgentLounges by RaftAgentLounges.lounges.collectAsState()
             val conversationRowProjector =
                 remember(
                     conversationDirectoryProjections,
@@ -11625,6 +11628,7 @@ private fun SharedHomeScreen(
                     snapshot.markedUnreadIds,
                     agentLoungeEnabled,
                     snapshot.server.id,
+                    knownAgentLounges,
                 ) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,

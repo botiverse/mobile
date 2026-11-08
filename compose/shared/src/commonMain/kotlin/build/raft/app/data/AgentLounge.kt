@@ -37,9 +37,14 @@ data class AgentLoungeSummary(
     val mentionCount: Int = 0,
 )
 
-/** The server has Lounges on and this person is not a Guest (web `useAgentLoungeEnabled`). Unknown: off. */
-fun agentLoungeEnabled(flagEnabled: Boolean, serverRole: String?): Boolean =
-    flagEnabled && !serverRole.equals("guest", ignoreCase = true)
+/**
+ * The server has Lounges on and this person is not a Guest (web `useAgentLoungeEnabled`). Unknown
+ * (the flag unresolved, or the role not loaded yet): off.
+ */
+fun agentLoungeEnabled(flagEnabled: Boolean, serverRole: String?): Boolean {
+    val role = serverRole?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return flagEnabled && !role.equals("guest", ignoreCase = true)
+}
 
 /**
  * Whether an agent's profile offers its Lounge (web `agentOffersLounge` plus the profile's bounded
@@ -183,8 +188,25 @@ class AgentLoungeApi(private val networkClient: RaftNetworkClient) {
                 serverIdOverride = serverId,
             )
         if (!response.isSuccessful) {
+            val wireError = response.agentLoungeWireErrorOrNull()
+            if (response.code == 403) {
+                return DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = wireError?.code?.takeIf { it.isNotBlank() } ?: "http_403",
+                        requiredCapability = "archiveChannels",
+                        serverMessage = wireError?.error,
+                        traceId = response.traceId,
+                    )
+                )
+            }
             return DataResult.Error(
-                ScreenError(code = "http_${response.code}", retryable = response.code >= 500, traceId = response.traceId)
+                ScreenError(
+                    code = "http_${response.code}",
+                    retryable = response.code >= 500,
+                    serverMessage = wireError?.error,
+                    serverCode = wireError?.code,
+                    traceId = response.traceId,
+                )
             )
         }
         val row = response.bodyText?.let(::parseSharedChannelRowResult)?.takeIf { it.channelId == channelId }
@@ -202,17 +224,7 @@ internal fun agentLoungeOpenResponse(response: HomeNetworkResponse, agentId: Str
         return parsed?.let { DataResult.Content(it) }
             ?: DataResult.Error(ScreenError(code = "agent_lounge_contract_mismatch", retryable = false, traceId = response.traceId))
     }
-    val errorBody = (response.errorBodyText ?: response.bodyText)?.takeIf { it.isNotBlank() }
-    val wireError =
-        errorBody?.let {
-            try {
-                agentLoungeJson.decodeFromString(AgentLoungeErrorWireDto.serializer(), it)
-            } catch (_: SerializationException) {
-                null
-            } catch (_: IllegalArgumentException) {
-                null
-            }
-        }
+    val wireError = response.agentLoungeWireErrorOrNull()
     return when (response.code) {
         403 ->
             DataResult.NoPermission(
@@ -241,6 +253,17 @@ internal fun agentLoungeOpenResponse(response: HomeNetworkResponse, agentId: Str
                     traceId = response.traceId,
                 )
             )
+    }
+}
+
+private fun HomeNetworkResponse.agentLoungeWireErrorOrNull(): AgentLoungeErrorWireDto? {
+    val body = (errorBodyText ?: bodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return try {
+        agentLoungeJson.decodeFromString(AgentLoungeErrorWireDto.serializer(), body)
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
     }
 }
 
@@ -323,9 +346,14 @@ object RaftAgentLounges {
         }
     }
 
-    /** The Lounge was unarchived (or archived) here. */
+    /**
+     * The Lounge was unarchived (or archived) here. The open answer's `canPost` was computed from
+     * `archivedAt` too, so unarchiving forgets it (absent = may post) until the next open says otherwise.
+     */
     fun markArchived(serverId: String, channelId: String, archived: Boolean) {
-        remember(serverId, channelId) { previous -> previous?.copy(archived = archived) }
+        remember(serverId, channelId) { previous ->
+            previous?.copy(archived = archived, canPost = if (archived) previous.canPost else null)
+        }
     }
 
     /** Your first post joined it. */
@@ -333,10 +361,30 @@ object RaftAgentLounges {
         remember(serverId, channelId) { previous -> previous?.copy(joined = true) }
     }
 
-    /** Test hook and sign-out: forget every Lounge. */
+    /** Sign-out (and test hook): forget every Lounge, and the account they were known for. */
     fun clear() {
         byServer.value = emptyMap()
+        boundAccountId.value = null
     }
+
+    /** Removed from (or deleted) server [serverId]: its Lounges go. */
+    fun forgetServer(serverId: String) {
+        byServer.update { all -> if (serverId in all) all - serverId else all }
+    }
+
+    /**
+     * The signed-in account the Lounges are known for. Another account's joined / canPost / archived
+     * state must never show: a different account forgets every Lounge first.
+     */
+    fun bindAccount(accountId: String?) {
+        val clean = accountId?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val previous = boundAccountId.value
+        if (previous == clean) return
+        if (previous != null) byServer.value = emptyMap()
+        boundAccountId.value = clean
+    }
+
+    private val boundAccountId = MutableStateFlow<String?>(null)
 
     private fun remember(serverId: String, channelId: String, transform: (RaftAgentLounge?) -> RaftAgentLounge?) {
         byServer.update { all ->

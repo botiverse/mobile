@@ -300,7 +300,10 @@ fun parseRaftHome(
     val channelsWithUnread = channels.applyChannelUnreadCounts(unreadCounts, mentioned)
     val dmsWithUnread = directMessages.applyDirectMessageUnreadCounts(unreadCounts, mentioned)
         .applyAgentLoungeUnreadCounts(unreadCounts, mentioned)
-    val channelUnreadTotal = channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount }
+    // Lounges are unread like any channel (the server's own total counts them).
+    val channelUnreadTotal =
+        channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount } +
+            dmsWithUnread.sumOf { it.lounge?.unreadCount ?: 0 }
     val serverUnreadTotal =
         payload.serverUnreadSummary
             .firstOrNull { it.serverId == currentServer.id.value }
@@ -624,11 +627,14 @@ private fun List<HomeDirectMessageRow>.applyAgentLoungeUnreadCounts(
 ): List<HomeDirectMessageRow> =
     map { conversation ->
         val lounge = conversation.lounge ?: return@map conversation
-        val count = counts[lounge.channelId] ?: return@map conversation
+        val count = counts[lounge.channelId]
+        val mention = lounge.channelId in mentioned
+        // A mention keeps its @ even when the summary carries no count for the Lounge.
+        if (count == null && !mention) return@map conversation
         conversation.copy(
             lounge = lounge.copy(
-                unreadCount = count.coerceAtLeast(0),
-                mentionCount = if (lounge.channelId in mentioned) 1 else 0
+                unreadCount = (count ?: 0).coerceAtLeast(0),
+                mentionCount = if (mention) 1 else 0
             )
         )
     }

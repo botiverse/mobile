@@ -599,6 +599,43 @@ class HomeParserTest {
         assertEquals(false, ordinary?.permissions?.canSend)
     }
 
+    @Test
+    fun aChannelMerelyNamedLikeALoungeStaysAnOrdinaryListedChannel() {
+        for (loungeAgentId in listOf(null, "")) {
+            val named = HomeChannelWireDto(id = "x-lounge", name = "x-lounge", type = "channel", joined = false, loungeAgentId = loungeAgentId)
+            val result = parseRaftHome(payload = homePayload(channels = listOf(named)), session = sampleSession())
+            assertTrue(result is DataResult.Content)
+            val row = result.data.channels.single()
+            assertNull(row.loungeAgentId)
+            assertEquals(false, row.permissions.canSend, "unjoined: Join, not the composer")
+        }
+        val detail = parseRaftChannelDetail("""{"id":"x-lounge","name":"x-lounge","type":"channel","joined":false,"loungeAgentId":null}""")
+        assertNull(detail?.loungeAgentId)
+        assertEquals(false, detail?.permissions?.canSend)
+    }
+
+    @Test
+    fun aMentionInALoungeKeepsItsMarkWithoutACount() {
+        val result =
+            parseRaftHome(
+                payload =
+                    homePayload(
+                        directMessages =
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-bugen", name = "bugen", type = "dm", peerType = "agent",
+                                    peerId = "agent-bugen", peerName = "bugen",
+                                    lounge = HomeAgentLoungeWireDto(channelId = "lounge-bugen", joined = false),
+                                )
+                            ),
+                    ).copy(mentionedChannelIds = setOf(ChannelId("lounge-bugen"))),
+                session = sampleSession(),
+            )
+        assertTrue(result is DataResult.Content)
+        assertEquals(1, result.data.directMessages.single().lounge?.mentionCount)
+        assertEquals(0, result.data.directMessages.single().lounge?.unreadCount)
+    }
+
     private fun homePayload(
         serverId: ServerId = ServerId("server-1"),
         channels: List<HomeChannelWireDto> = emptyList(),

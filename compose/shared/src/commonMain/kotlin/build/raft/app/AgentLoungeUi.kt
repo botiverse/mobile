@@ -29,7 +29,6 @@ import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftNetworkClient
-import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.agentLoungeEnabled
 import build.raft.app.data.rememberServerFeatureLatched
@@ -263,22 +262,21 @@ internal fun AgentLoungeArchivedNotice(
 }
 
 /**
- * Open an agent's Lounge (POST /agents/:id/lounge makes it the first time): remember it, and
- * subscribe to its realtime room the way the app does for any conversation it opens (web
- * `joinRealtimeChannel` after `openLounge`). The caller navigates on success and shows the
- * openFailed toast (with the trace id) on any failure.
+ * Open an agent's Lounge (POST /agents/:id/lounge makes it the first time) and remember it. Its
+ * realtime room is joined by the conversation page it opens, which holds the room lease for as
+ * long as it shows (web `joinRealtimeChannel` after `openLounge`); joining here as well would
+ * leave the room joined when the navigation does not happen. The caller navigates on success and
+ * shows the openFailed toast (with the trace id) on any failure.
  */
 internal suspend fun openAgentLounge(
     networkClient: RaftNetworkClient,
     serverId: String,
     agentId: String,
     agentName: String?,
-    realtimeEvents: RaftRealtimeEvents?,
 ): DataResult<AgentLoungeOpenResult> {
     val result = AgentLoungeApi(networkClient).openLounge(ServerId(serverId), agentId)
     if (result is DataResult.Content) {
         RaftAgentLounges.rememberRow(serverId, result.data.channel, canPost = result.data.canPost, agentName = agentName)
-        realtimeEvents?.joinChannel(result.data.channel.channelId.value, serverId)
     }
     return result
 }
@@ -291,7 +289,6 @@ internal fun AgentLoungeOpenResult.conversationIdentity(): ThreadLaunchConversat
 internal class AgentLoungeOpener(
     private val scope: kotlinx.coroutines.CoroutineScope,
     private val networkClient: RaftNetworkClient,
-    private val realtimeEvents: RaftRealtimeEvents?,
     private val openFailedMessage: () -> String,
     private val onError: (message: String, traceId: String?) -> Unit,
 ) {
@@ -311,7 +308,7 @@ internal class AgentLoungeOpener(
         scope.launch {
             val result =
                 try {
-                    openAgentLounge(networkClient, cleanServerId, agentId, agentName, realtimeEvents)
+                    openAgentLounge(networkClient, cleanServerId, agentId, agentName)
                 } finally {
                     pending.value = pending.value - agentId
                 }
@@ -336,7 +333,6 @@ internal fun rememberAgentLoungeOpener(
         AgentLoungeOpener(
             scope = scope,
             networkClient = stores.networkClient(storeScope),
-            realtimeEvents = RaftRealtimeEvents(stores.eventBus),
             openFailedMessage = { latestOpenFailed },
             onError = { message, traceId -> bridge.errorToast(message, traceId) },
         )
@@ -405,7 +401,7 @@ internal fun rememberThreadPageLounge(
     val opening by opener.opening.collectAsState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var unarchiving by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val unarchiveFailed = stringResource(Res.string.agent_lounge_open_failed)
+    val errorStrings = localizedErrorPresentationStrings()
     val dmAgentId = payload.agentLoungeDmAgentId()
     val dmAgentName = payload.title.trim().removePrefix("@")
     return ThreadPageLounge(
@@ -427,8 +423,12 @@ internal fun rememberThreadPageLounge(
                         } finally {
                             unarchiving = false
                         }
-                    if (result !is DataResult.Content) {
-                        bridge.errorToast(unarchiveFailed, (result as? DataResult.Error)?.error?.traceId)
+                    // The server's own reason, as the web's LoungeUnarchiveAction shows it.
+                    when (result) {
+                        is DataResult.Error -> bridge.errorToast(result.error.userFacingMessage(errorStrings), result.error.traceId)
+                        is DataResult.NoPermission ->
+                            bridge.errorToast(result.blocker.userFacingMessage(errorStrings), result.blocker.traceId)
+                        else -> Unit
                     }
                 }
             }
@@ -452,8 +452,20 @@ internal fun rememberThreadPageLounge(
  * A Lounge's page: no Join step (the first post joins), and posting follows what the Lounge says
  * ([RaftAgentLounge.postable]: not archived, not refused by the open answer). Unchanged elsewhere.
  */
-internal fun RaftThreadScreenPayload.withAgentLoungeAccess(lounge: RaftAgentLounge?): RaftThreadScreenPayload {
+internal fun RaftThreadScreenPayload.withAgentLoungeAccess(
+    lounge: RaftAgentLounge?,
+    accessResolution: ThreadAccessResolution = ThreadAccessResolution.Resolved,
+): RaftThreadScreenPayload {
     if (lounge == null || surfaceKind != RaftThreadSurfaceKind.Channel) return this
+    // The store closed writes for a terminal access state (NoPermission / Error): a Lounge never
+    // reopens them.
+    if (
+        accessResolution == ThreadAccessResolution.NoPermission ||
+        accessResolution == ThreadAccessResolution.Error ||
+        errorCode != null
+    ) {
+        return this
+    }
     val postable = lounge.postable
     if (joined && canSend == postable && composer.enabled == postable) return this
     return copy(joined = true, canSend = postable, composer = composer.copy(enabled = postable))

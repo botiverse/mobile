@@ -10663,6 +10663,11 @@ private fun SharedThreadRouteContentContent(
                         SharedHomeIntent.OwnMessagesSent(sendProvenance.serverId, ownSentChannelIds)
                     )
                 }
+                // Agent Lounge v0: your first post in a Lounge joins it (no Join step), so its row
+                // shows under the agent's DM right away.
+                if (sendRoute.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                    RaftAgentLounges.markJoined(sendProvenance.serverId, context.channelId)
+                }
                 bridge.performanceMarker(
                     phase = "composer_send",
                     routeName = "kuikly_thread",
@@ -17053,7 +17058,10 @@ private fun ThreadPageContentContent(
     // Agent Lounge v0: the Lounge this page is, or a reply thread is in (null elsewhere).
     val pageLounge = data.lounge?.lounge
     val conversationLounge = pageLounge?.takeIf { data.payload.surfaceKind == RaftThreadSurfaceKind.Channel }
-    val payload = remember(data.payload, conversationLounge) { data.payload.withAgentLoungeAccess(conversationLounge) }
+    val payload =
+        remember(data.payload, conversationLounge, data.accessResolution) {
+            data.payload.withAgentLoungeAccess(conversationLounge, data.accessResolution)
+        }
     val messageBodyTextStyle = data.messageBodyTextStyle
     val timelineSlice = data.timelineSlice
     // In the assistant's panel: a card from it still waiting here gives the otter its confirm mood.
@@ -18882,6 +18890,7 @@ private fun ThreadPageContentContent(
                 if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || conversationLounge != null) {
                     ThreadDirectMessageSettingsDrawer(
                         name = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) } ?: headerDisplay.title,
+                        directMessageTag = conversationLounge == null,
                         activityMuteState = activityMuteState,
                         section = channelSettingsPanel?.section,
                         sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
@@ -39210,11 +39219,13 @@ internal fun ThreadDirectMessageSettingsDrawer(
     onCreateSection: (name: String, emoji: String?) -> Unit,
     // A phone: a pushed page with Back in place of the drawer's × (ThreadSettingsPage.kt).
     asPage: Boolean = false,
+    /** False for an agent's Lounge, which uses this DM-mode drawer but is not a DM. */
+    directMessageTag: Boolean = true,
 ) {
     ThreadSettingsSurface(
         asPage = asPage,
         title = name,
-        titleTrailing = threadSettingsDirectMessageTag(),
+        titleTrailing = if (directMessageTag) threadSettingsDirectMessageTag() else null,
         closeLabel = stringResource(Res.string.thread_dm_settings_close),
         onDismiss = onDismiss
     ) {

@@ -158,6 +158,8 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import build.raft.app.data.RaftAgentLounges
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.runningFold
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.delay
@@ -387,6 +389,8 @@ internal fun SharedHomeActivityScreen(
                         .runningFold(initial) { previous, content ->
                             nextActivityConversationListContext(previous, content, serverId)
                         }
+                        // Agent Lounge v0: Lounges known by id rename their rows as they become known.
+                        .combine(RaftAgentLounges.lounges) { context, lounges -> context?.withKnownLounges(lounges[serverId]) }
                         .distinctUntilChanged()
             }
         }
@@ -2857,7 +2861,7 @@ internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap(
             if (channelKind == ConversationKind.DirectMessage) {
                 "@${channelName.ifBlank { channelId.value }}"
             } else {
-                "#${channelName.ifBlank { channelId.value }}"
+                agentLoungeLabelOrNull(channelId.value) ?: "#${channelName.ifBlank { channelId.value }}"
             }
         InboxItemKind.Channel, InboxItemKind.System ->
             agentLoungeLabelOrNull(channelId.value) ?: "#${channelName.ifBlank { channelId.value }}"

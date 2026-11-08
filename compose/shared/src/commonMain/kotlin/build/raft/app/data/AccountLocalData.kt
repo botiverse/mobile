@@ -59,6 +59,8 @@ internal class AccountLocalData(
         replyWindowCache?.clearMemory()
         threadPayloadStore.clearAll()
         clearViewerMemoryCaches()
+        // Agent Lounge v0: Lounges are known per server only; another account must not see this one's.
+        RaftAgentLounges.clear()
     }
 
     /**
@@ -68,6 +70,7 @@ internal class AccountLocalData(
      */
     suspend fun onServerAccessLost(serverId: String, accountId: String?, messagePartition: DurablePartitionKey) {
         offlineResourceCache.wipeServer(serverId, accountId)
+        RaftAgentLounges.forgetServer(serverId)
         homeRowHints.dropServer(serverId, accountId)
         activityFirstPages.dropServer(serverId, accountId)
         notificationPreferences.dropServer(serverId, accountId)

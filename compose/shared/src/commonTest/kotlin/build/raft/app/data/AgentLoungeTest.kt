@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ThreadId
+import build.raft.app.model.ServerId
+import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,12 +35,13 @@ class AgentLoungeTest {
         for ((flag, role, expected) in listOf(
             Triple(true, "member", true),
             Triple(true, "owner", true),
-            Triple(true, null, true),
+            Triple(true, null, false),
+            Triple(true, "", false),
             Triple(true, "guest", false),
             Triple(true, "Guest", false),
             Triple(false, "member", false),
         )) {
-            assertEquals(expected, agentLoungeEnabled(flag, role), "flag=$flag role=$role")
+            assertEquals(expected, agentLoungeEnabled(flag, role), "flag=$flag role=$role (unknown role: off until it loads)")
         }
     }
 
@@ -131,6 +134,109 @@ class AgentLoungeTest {
 
         val broken = agentLoungeOpenResponse(HomeNetworkResponse(200, """{"ok":true}"""), "a")
         assertIs<DataResult.Error>(broken)
+    }
+
+    private fun loungeRow(archived: Boolean = false) =
+        HomeChannelRow(
+            threadId = ThreadId("lounge-bugen"),
+            channelId = ChannelId("lounge-bugen"),
+            name = "bugen-lounge",
+            joined = true,
+            archived = archived,
+            loungeAgentId = "agent-bugen",
+        )
+
+    /** Records requests and answers each with [answer]. */
+    private class FakeNetwork(private val answer: (path: String) -> HomeNetworkResponse) : RaftNetworkClient {
+        val paths = mutableListOf<String>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?,
+        ): HomeNetworkResponse {
+            paths += "$method $path"
+            return answer(path)
+        }
+    }
+
+    @Test
+    fun unarchivingALoungeOpenedWhileArchivedMakesItPostableAgain() = runTest {
+        // POST /agents/:id/lounge on an archived Lounge answers canPost=false (computed from archivedAt).
+        val opened =
+            agentLoungeOpenResponse(
+                HomeNetworkResponse(
+                    200,
+                    """{"channel":{"id":"lounge-bugen","name":"bugen-lounge","type":"channel","archivedAt":"2026-11-02T00:00:00.000Z",""" +
+                        """"loungeAgentId":"agent-bugen","joined":true},"joined":true,"canPost":false}""",
+                ),
+                "agent-bugen",
+            )
+        assertIs<DataResult.Content<AgentLoungeOpenResult>>(opened)
+        RaftAgentLounges.rememberRow("server-1", opened.data.channel, canPost = opened.data.canPost)
+        assertEquals(false, RaftAgentLounges.lounge("server-1", "lounge-bugen")?.postable)
+
+        val network =
+            FakeNetwork {
+                HomeNetworkResponse(200, """{"id":"lounge-bugen","name":"bugen-lounge","type":"channel","archivedAt":null,"loungeAgentId":"agent-bugen"}""")
+            }
+        val result = AgentLoungeApi(network).unarchive(ServerId("server-1"), ChannelId("lounge-bugen"))
+        assertIs<DataResult.Content<HomeChannelRow>>(result)
+        assertEquals(listOf("POST channels/lounge-bugen/unarchive"), network.paths)
+        val lounge = RaftAgentLounges.lounge("server-1", "lounge-bugen")
+        assertEquals(false, lounge?.archived)
+        assertNull(lounge?.canPost, "the archived answer's canPost is forgotten")
+        assertEquals(true, lounge?.postable)
+    }
+
+    @Test
+    fun aRefusedUnarchiveKeepsTheServersReason() = runTest {
+        RaftAgentLounges.rememberRow("server-1", loungeRow(archived = true), canPost = false)
+        val refused =
+            AgentLoungeApi(FakeNetwork { HomeNetworkResponse(403, null, """{"error":"Only admins can unarchive","code":"forbidden"}""") })
+                .unarchive(ServerId("server-1"), ChannelId("lounge-bugen"))
+        assertIs<DataResult.NoPermission>(refused)
+        assertEquals("Only admins can unarchive", refused.blocker.serverMessage)
+        val failed =
+            AgentLoungeApi(FakeNetwork { HomeNetworkResponse(500, null, """{"error":"Database unavailable"}""") })
+                .unarchive(ServerId("server-1"), ChannelId("lounge-bugen"))
+        assertIs<DataResult.Error>(failed)
+        assertEquals("Database unavailable", failed.error.serverMessage)
+        assertEquals(true, RaftAgentLounges.lounge("server-1", "lounge-bugen")?.archived, "still archived")
+    }
+
+    @Test
+    fun loungesNeverOutliveTheAccountOrTheServerTheyWereKnownFor() {
+        RaftAgentLounges.bindAccount("user-a")
+        RaftAgentLounges.rememberRow("server-1", loungeRow(), canPost = true)
+        RaftAgentLounges.rememberRow("server-2", loungeRow().copy(channelId = ChannelId("lounge-2"), threadId = ThreadId("lounge-2")))
+
+        RaftAgentLounges.forgetServer("server-1")
+        assertNull(RaftAgentLounges.lounge("server-1", "lounge-bugen"), "removed from the server: its Lounges go")
+        assertEquals("lounge-2", RaftAgentLounges.lounge("server-2", "lounge-2")?.channelId?.value)
+
+        RaftAgentLounges.bindAccount("user-a")
+        assertEquals("lounge-2", RaftAgentLounges.lounge("server-2", "lounge-2")?.channelId?.value, "same account keeps them")
+        RaftAgentLounges.bindAccount("user-b")
+        assertNull(RaftAgentLounges.lounge("server-2", "lounge-2"), "another account never sees user-a's Lounges")
+
+        RaftAgentLounges.rememberRow("server-2", loungeRow())
+        RaftAgentLounges.clear() // AccountLocalData.onSignOut
+        assertTrue(RaftAgentLounges.lounges.value.isEmpty())
+    }
+
+    @Test
+    fun yourFirstPostJoinsTheLounge() {
+        RaftAgentLounges.rememberRow("server-1", loungeRow().copy(joined = false))
+        assertNull(agentLoungeSidebarEntry(AgentLoungeSummary(ChannelId("lounge-bugen")), RaftAgentLounges.lounge("server-1", "lounge-bugen")))
+        RaftAgentLounges.markJoined("server-1", "lounge-bugen")
+        assertEquals(
+            ChannelId("lounge-bugen"),
+            agentLoungeSidebarEntry(AgentLoungeSummary(ChannelId("lounge-bugen")), RaftAgentLounges.lounge("server-1", "lounge-bugen"))?.channelId,
+        )
     }
 
     @Test

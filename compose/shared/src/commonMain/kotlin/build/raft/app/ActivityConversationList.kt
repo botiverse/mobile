@@ -213,24 +213,32 @@ internal data class ActivityConversationLounge(
     val avatarWireValue: String? = null,
 )
 
-/** The Lounges this server's DM rows carry, and those the client knows by id. */
-internal fun HomeSnapshot.activityLoungesByChannelId(): Map<String, ActivityConversationLounge> {
-    val known =
-        RaftAgentLounges.lounges.value[server.id.value].orEmpty().mapValues { (_, lounge) ->
-            ActivityConversationLounge(agentId = lounge.agentId, agentName = lounge.displayAgentName)
-        }
-    val carried =
-        directMessages.mapNotNull { dm ->
-            val lounge = dm.lounge ?: return@mapNotNull null
-            val agentId = dm.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            lounge.channelId.value to
-                ActivityConversationLounge(
-                    agentId = agentId,
-                    agentName = dm.name.ifBlank { known[lounge.channelId.value]?.agentName.orEmpty() },
-                    avatarWireValue = dm.directMessagePeerAvatarWireValue,
-                )
-        }
-    return known + carried
+/** The Lounges this server's DM rows carry (see [withKnownLounges] for those known by id). */
+internal fun HomeSnapshot.activityLoungesByChannelId(): Map<String, ActivityConversationLounge> =
+    directMessages.mapNotNull { dm ->
+        val lounge = dm.lounge ?: return@mapNotNull null
+        val agentId = dm.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        lounge.channelId.value to
+            ActivityConversationLounge(
+                agentId = agentId,
+                agentName = dm.name,
+                avatarWireValue = dm.directMessagePeerAvatarWireValue,
+            )
+    }.toMap()
+
+/**
+ * This context with the Lounges the client knows by id ([RaftAgentLounges], e.g. one just opened
+ * or loaded from Activity) added; what the DM rows carry wins. Follows the registry, so a Lounge
+ * becoming known renames its rows without waiting for Home.
+ */
+internal fun ActivityConversationListContext.withKnownLounges(
+    known: Map<String, build.raft.app.data.RaftAgentLounge>?,
+): ActivityConversationListContext {
+    if (known.isNullOrEmpty()) return this
+    val fromRegistry =
+        known.mapValues { (_, lounge) -> ActivityConversationLounge(agentId = lounge.agentId, agentName = lounge.displayAgentName) }
+    val merged = fromRegistry + loungesByChannelId
+    return if (merged == loungesByChannelId) this else copy(loungesByChannelId = merged)
 }
 
 /** The Home sidebar's glyph per channel id ([homeChannelSymbol]), for Activity's channel icons. */
