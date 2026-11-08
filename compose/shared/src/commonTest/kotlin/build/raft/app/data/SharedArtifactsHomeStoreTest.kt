@@ -1,9 +1,12 @@
 package build.raft.app.data
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -58,7 +61,7 @@ class SharedArtifactsHomeStoreTest {
         val chosen = mutableListOf<ArtifactsHomeSort>()
         val store = started(api, onSortChosen = { chosen += it })
         val events = mutableListOf<ArtifactsHomeEvent>()
-        backgroundScope.launch { store.events.toList(events) }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.events.toList(events) }
 
         api.answer = { _, _ -> ArtifactsHomeLoad.Failed(ScreenError("x")) }
         store.dispatch(ArtifactsHomeIntent.SetSort(ArtifactsHomeSort.Updated))
@@ -279,7 +282,9 @@ class SharedArtifactsHomeStoreTest {
     }
 
     private fun TestScope.store(api: FakeDashboardApi, onSortChosen: (ArtifactsHomeSort) -> Unit = {}) =
-        SharedArtifactsHomeStore(api, backgroundScope, onSortChosen = onSortChosen)
+        // Not backgroundScope: advanceUntilIdle runs only foreground work. A scope of no job on the test's
+        // scheduler runs with the test's clock and is never waited for when the test ends.
+        SharedArtifactsHomeStore(api, CoroutineScope(StandardTestDispatcher(testScheduler)), onSortChosen = onSortChosen)
 
     private fun TestScope.started(api: FakeDashboardApi, onSortChosen: (ArtifactsHomeSort) -> Unit = {}): SharedArtifactsHomeStore {
         val store = store(api, onSortChosen)
