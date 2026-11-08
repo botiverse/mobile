@@ -171,7 +171,33 @@ internal fun raftAppLoginVerificationLinkResumes(
     isWaitingFor: (String) -> Boolean,
 ): Boolean = raftAppLoginVerificationLinkRequest(url, configuredWebUrl, appHosts)?.let(isWaitingFor) == true
 
-private fun isRaftLinkIdentifier(value: String): Boolean =
+/** The path and fragment of a link on one of Raft's own web origins ([raftOwnWebLinkPath]). */
+internal data class RaftOwnWebLinkPath(
+    /** The path as written, `/` first; empty for a bare origin. */
+    val path: String,
+    /** What follows `#`, or null when there is none. */
+    val fragment: String?,
+)
+
+/**
+ * The path of [url] when it is on an origin [parseRaftMessageLink] trusts (production hosts, the
+ * client config's [appHosts], exactly the Developer environment's [configuredWebUrl]); null for
+ * any other URL, which the caller leaves to the browser.
+ */
+internal fun raftOwnWebLinkPath(
+    url: String,
+    configuredWebUrl: String? = null,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): RaftOwnWebLinkPath? {
+    val parsed = url.toRaftLinkUrl() ?: return null
+    if (!parsed.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
+    return RaftOwnWebLinkPath(
+        path = parsed.path,
+        fragment = url.trim().substringAfter('#', missingDelimiterValue = "").takeIf { '#' in url },
+    )
+}
+
+internal fun isRaftLinkIdentifier(value: String): Boolean =
     value.length in 1..128 && value.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' }
 
 private data class RaftLinkUrl(
