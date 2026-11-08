@@ -84,7 +84,7 @@ internal val SettingsWideWebDetailKeys: Set<String> =
  * Whether Settings > Feedback is the ticket web page: only on a host that cannot submit Hands
  * feedback itself (the Compose desktop app). Android and iOS open the native submit form (artin,
  * 1.22.0: the ticket web page goes back out; the ticket list is rewritten natively). No server
- * flag. `feedback:submit` cards and "View in Settings" on a done card still open the web page.
+ * flag. `feedback:submit` cards follow the same rule ([raftFeedbackCardEntryEnabled]).
  */
 internal fun settingsFeedbackUsesWebPage(
     nativeSubmit: Boolean = raftPlatformSupportsHandsFeedbackSubmit(),
