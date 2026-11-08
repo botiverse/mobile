@@ -30,12 +30,13 @@ class RaftApplication : Application() {
     override fun attachBaseContext(base: Context) {
         installCoroutineWorkerKeepAlive()
         super.attachBaseContext(base)
+        // Before ContentProvider init and onCreate, so an ANR anywhere in startup still
+        // records which build hung (RaftAnrReporter).
+        RaftAnrReporter.stampProcess(base, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong())
     }
 
     override fun onCreate() {
         super.onCreate()
-        // First, so an ANR anywhere in startup still records which build hung (RaftAnrReporter).
-        RaftAnrReporter.stampProcess(this, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong())
         // Page routing: every :shared page renders through RaftPageRegistry; debug builds also
         // admit the debug-only :ui-cmp pages.
         RaftCmpRouter.configure(debugBuild = BuildConfig.DEBUG)

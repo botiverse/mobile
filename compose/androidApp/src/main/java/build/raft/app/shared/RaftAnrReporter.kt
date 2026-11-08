@@ -188,7 +188,7 @@ internal object RaftAnrReporter {
         val byKey = infos.associateBy { it.pid to it.timestamp }
         val pending = selectPending(infos.map { AnrExit(it.pid, it.timestamp, it.reason) }, watermark, now)
         if (pending.isEmpty()) {
-            if (watermark == null) prefs.edit().putLong(KEY_WATERMARK, now - FIRST_RUN_LOOKBACK_MS).apply()
+            if (watermark == null) advanceWatermark(prefs, sdkPrefs, now - FIRST_RUN_LOOKBACK_MS)
             return
         }
         // The ticket build comes from each exit's stamp (extras override the SDK's
@@ -241,8 +241,23 @@ internal object RaftAnrReporter {
                 return
             }
             if (error != null) Log.w(TAG, "ANR ${exit.pid}@${exit.timestamp} rejected; skipping", error)
-            prefs.edit().putLong(KEY_WATERMARK, exit.timestamp).apply()
+            advanceWatermark(prefs, sdkPrefs, exit.timestamp)
         }
+    }
+
+    /**
+     * Moves our watermark and keeps the SDK's in step (never backwards), so turning the SDK's
+     * own ANR pass back on (this reporter removed, or a rollback) does not re-send exits
+     * already filed here.
+     */
+    private fun advanceWatermark(
+        prefs: android.content.SharedPreferences,
+        sdkPrefs: android.content.SharedPreferences,
+        timestamp: Long,
+    ) {
+        prefs.edit().putLong(KEY_WATERMARK, timestamp).apply()
+        val sdk = sdkPrefs.getLong(SDK_KEY_WATERMARK, Long.MIN_VALUE)
+        if (timestamp > sdk) sdkPrefs.edit().putLong(SDK_KEY_WATERMARK, timestamp).apply()
     }
 
     private fun persistTrace(info: ApplicationExitInfo, destination: File): String? {

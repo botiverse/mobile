@@ -148,6 +148,11 @@ ruby -e '
   raise "symbol attach does not attach Android native symbols" unless attach_run.include?("--kind native-symbols --platform android") &&
     attach_step.fetch("env").fetch("SYMBOL_ARCHIVE") == "${{ steps.native-symbols.outputs.archive }}"
   raise "symbol attach helper is not workflow-owned" unless stage_run.include?("scripts/lib/hands_retry.sh")
+  # A Hands/npm failure in the attach must never cost the run its workflow artifacts.
+  mapping_artifact_index = release_steps.index { |step| step["name"] == "Upload R8 mapping as workflow artifact" }
+  raise "symbol attach runs before the workflow artifacts are saved" unless mapping_artifact_index && attach_index > mapping_artifact_index
+  raise "symbol attach no longer fails on a missing R8 mapping" unless attach_run.include?("R8 mapping missing for minified variant") &&
+    attach_run.match?(/R8 mapping missing[^\n]*\n\s*exit 1/)
   raise "repair dispatch can schedule normal build" unless resolve_job.fetch("if").include?("inputs.aab_signing_repair == " + 39.chr + 39.chr)
   repair = jobs.fetch("sign_existing_aab")
   raise "repair is not dispatch-only" unless repair.fetch("if").include?("github.event_name == " + 39.chr + "workflow_dispatch" + 39.chr)
