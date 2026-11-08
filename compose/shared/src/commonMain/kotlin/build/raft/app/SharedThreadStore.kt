@@ -1165,22 +1165,38 @@ internal class SharedThreadPayloadStore(
                             }
                             result
                         }
-                        .also {
-                            taskConversationRefFlights[key] = it
+                        .also { created ->
+                            taskConversationRefFlights[key] = created
                             started = true
                         }
             }
-        if (started) flight.start()
-        return try {
-            flight.await()
-        } finally {
-            if (flight.isCompleted) {
+        if (started) {
+            // Completed, failed or cancelled: the flight leaves the map either way, so the map holds
+            // only fetches still running.
+            flight.invokeOnCompletion {
                 synchronized(taskConversationRefLock) {
                     if (taskConversationRefFlights[key] === flight) taskConversationRefFlights.remove(key)
                 }
             }
+            flight.start()
         }
+        return flight.await()
     }
+
+    /** Session / account boundary: refs and running ref fetches leave with the account. */
+    private fun clearTaskConversationRefs(matching: (SharedTaskConversationRefKey) -> Boolean) {
+        val cancelled =
+            synchronized(taskConversationRefLock) {
+                taskConversationRefs.keys.removeAll(matching)
+                val flights = taskConversationRefFlights.filterKeys(matching)
+                flights.keys.forEach(taskConversationRefFlights::remove)
+                flights.values
+            }
+        cancelled.forEach { it.cancel() }
+    }
+
+    internal fun taskConversationRefFlightCountForTest(): Int =
+        synchronized(taskConversationRefLock) { taskConversationRefFlights.size }
 
     suspend fun joinOrStartReplyThreadAccessFlight(
         key: SharedReplyThreadAccessFlightKey,
@@ -1242,6 +1258,7 @@ internal class SharedThreadPayloadStore(
      */
     fun retireAccount(environmentId: String, principalId: String) {
         if (environmentId.isBlank() || principalId.isBlank()) return
+        clearTaskConversationRefs { key -> key.environmentId == environmentId && key.principalId == principalId }
         val prefix = sharedThreadTimelineAccountScopePrefix(environmentId, principalId)
         val retired = freshnessLedger.retireOwnersMatching { owner -> owner.startsWith(prefix) }
         if (retired.isEmpty()) return
@@ -1293,6 +1310,7 @@ internal class SharedThreadPayloadStore(
      * Every owner generation is retired so a late producer cannot re-commit afterwards.
      */
     fun clearAll() {
+        clearTaskConversationRefs { true }
         freshnessLedger.retireOwnersMatching { true }
         synchronized(recencyLock) {
             payloads.value = emptyMap()
@@ -4517,6 +4535,11 @@ internal class SharedThreadDataSource(
          * final, but its conversation access is server truth the caller may act on right away.
          */
         onSupersededCanonicalResult: (suspend (DataResult<RaftThreadScreenPayload>) -> Unit)? = null,
+        /**
+         * Called when the stale-generation refetch hit its cap: the returned result is superseded
+         * content (not cached here) that the caller must not present as final.
+         */
+        onCanonicalRefetchCapped: (() -> Unit)? = null,
     ): DataResult<RaftThreadScreenPayload> {
         if (!isCurrentReplyCacheProvenanceForLocalSend(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
@@ -4535,6 +4558,7 @@ internal class SharedThreadDataSource(
             onFocusedContextPage = onFocusedContextPage,
             onEnteredPage = onEnteredPage,
             onSupersededCanonicalResult = onSupersededCanonicalResult,
+            onCanonicalRefetchCapped = onCanonicalRefetchCapped,
         )
     }
 
@@ -4547,6 +4571,7 @@ internal class SharedThreadDataSource(
         onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null,
         onEnteredPage: ((ThreadDurableEnteredPage) -> Unit)? = null,
         onSupersededCanonicalResult: (suspend (DataResult<RaftThreadScreenPayload>) -> Unit)? = null,
+        onCanonicalRefetchCapped: (() -> Unit)? = null,
     ): DataResult<RaftThreadScreenPayload> {
         val resolutionScope = replyResolutionScope ?: readReplyResolutionScope() ?: return authSessionRequiredResult()
         val session = resolutionScope.session
@@ -4698,12 +4723,14 @@ internal class SharedThreadDataSource(
                     onSupersededCanonicalResult?.invoke(result)
                 }
                 if (extraRound >= SharedThreadStaleCanonicalRefetchMaxExtraRounds) {
-                    // Accept the latest result as the page's content, but leave
-                    // canonicalRequestGeneration null: it is not cached or recorded under a generation
-                    // it does not match. The live timeline folds the realtime events that moved it.
+                    // Stop refetching. canonicalRequestGeneration stays null, so this superseded
+                    // result is neither cached nor recorded under a generation it does not match, and
+                    // the caller is told it is not final (a delete / edit that landed mid-fetch may be
+                    // missing from it); the store keeps its visible content and refreshes once more.
                     diagnosticsLogger(
                         "thread_canonical_refetch_capped threadId=$resolvedThreadId rounds=${extraRound + 1}"
                     )
+                    onCanonicalRefetchCapped?.invoke()
                     return result
                 }
                 extraRound++
@@ -7592,6 +7619,8 @@ private const val SharedThreadFirstFrameDelayMillis = 16L
  */
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
+/** Upper bound of a task conversation's late initial-access lookup (after the 1 s first pass). */
+private const val ThreadInitialAccessLateLookupTimeoutMillis = 15_000L
 
 /**
  * A canonical fetch whose freshness generation moved while it ran (a realtime event landed) is
@@ -7604,6 +7633,8 @@ private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
  */
 internal const val SharedThreadStaleCanonicalRefetchMaxExtraRounds = 2
 internal const val SharedThreadStaleCanonicalRefetchBackoffMillis = 150L
+/** After a capped refetch the store refreshes once more after this pause, instead of committing it. */
+internal const val SharedThreadCappedRefreshFollowUpDelayMillis = 1_000L
 private const val SharedThreadTaskConversationRefCacheLimit = 256
 
 /** A task conversation ref, per environment, account, server and conversation. */
@@ -7621,6 +7652,12 @@ internal data class SharedThreadState(
     val highlightedMentions: Set<String> = emptySet(),
     val accessResolution: ThreadAccessResolution = ThreadAccessResolution.Loading,
     val canonicalAccessResolved: Boolean = false,
+    /**
+     * Access was taken from a canonical result whose content generation was superseded (see
+     * `applySupersededCanonicalAccess`). Server truth, so a Home candidate cannot override it, but
+     * provisional: the refresh's final result still records its own access, positive or negative.
+     */
+    val provisionalCanonicalAccess: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
     /**
@@ -8083,6 +8120,7 @@ internal class SharedThreadStore(
     private var secondaryTimelineRefreshJob: Job? = null
     private var focusedOriginHydrationJob: Job? = null
     private var initialAccessResolutionJob: Job? = null
+    private var cappedRefreshFollowUpJob: Job? = null
     private var homeContextHydrationJob: Job? = null
     private var taskConversationTitleJob: Job? = null
     private var taskConversationTitleJobKey: String? = null
@@ -8186,6 +8224,8 @@ internal class SharedThreadStore(
                 if (intent is SharedThreadIntent.Start) {
                     initialAccessResolutionJob?.cancel()
                     initialAccessResolutionJob = null
+                    cappedRefreshFollowUpJob?.cancel()
+                    cappedRefreshFollowUpJob = null
                 }
                 secondaryTimelineRefreshJob?.cancel()
                 secondaryTimelineRefreshJob = null
@@ -8362,6 +8402,8 @@ internal class SharedThreadStore(
         focusedOriginHydrationJob = null
         initialAccessResolutionJob?.cancel()
         initialAccessResolutionJob = null
+        cappedRefreshFollowUpJob?.cancel()
+        cappedRefreshFollowUpJob = null
         homeContextHydrationJob?.cancel()
         homeContextHydrationJob = null
         taskConversationTitleJob?.cancel()
@@ -8998,6 +9040,7 @@ internal class SharedThreadStore(
                             latest.copy(
                                 accessResolution = ThreadAccessResolution.Loading,
                                 canonicalAccessResolved = false,
+                                provisionalCanonicalAccess = false,
                                 initialHomeAccessLookupComplete = false,
                                 initialHomeAccessCandidate = null
                             )
@@ -9097,6 +9140,7 @@ internal class SharedThreadStore(
         // Capture the raw page only when it can be written (a writer that took a ticket, or will after the request).
         val onEnteredPage: ((ThreadDurableEnteredPage) -> Unit)? =
             if (enteredTicket != null || resolvesItsStream) { page -> enteredPage = page } else null
+        var refetchCapped = false
         val result =
             try {
                 dataSource.fetchThreadPayloadForContext(
@@ -9110,8 +9154,11 @@ internal class SharedThreadStore(
                     onSupersededCanonicalResult = { superseded ->
                         applySupersededCanonicalAccess(basePayload, staleToken, refreshProvenance, superseded)
                     },
+                    onCanonicalRefetchCapped = { refetchCapped = true },
                 )
             } finally {
+                // Superseded content is not a durable baseline either.
+                if (refetchCapped) enteredPage = null
                 launchEnteredPagePersist(enteredTicket, enteredStamp, enteredPage, basePayload, refreshProducerContext)
             }
         val latest = _state.value.payload
@@ -9132,6 +9179,20 @@ internal class SharedThreadStore(
                     "result=${result.threadDiagnosticsResult()} ignored=true reason=stale_route " +
                     "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
             )
+            return
+        }
+        if (refetchCapped && result is DataResult.Content) {
+            // The capped result is superseded: a delete or edit that landed mid-fetch may be missing
+            // from it, and the stable-timeline merge would let it win over the live timeline. Keep the
+            // visible content (the loading shell if there is none), commit and cache nothing, and
+            // refresh once more after a pause; access may already be provisional from the first round.
+            abortRepliesRebaseline()
+            diagnosticsLogger?.invoke(
+                "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
+                    "result=${result.threadDiagnosticsResult()} ignored=true reason=superseded_capped " +
+                    "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            launchCappedRefreshFollowUp(basePayload, staleToken)
             return
         }
         val repliesProjectedResult =
@@ -9258,6 +9319,7 @@ internal class SharedThreadStore(
                                     .withInitialHomeConversationAccessFallbackUnlessCanonical(
                                         canonicalAccessResolved =
                                             currentState.canonicalAccessResolved ||
+                                                currentState.provisionalCanonicalAccess ||
                                                 (resolvingInitialAccess && result is DataResult.Content),
                                         candidate = currentState.initialHomeAccessCandidate,
                                     )
@@ -9287,6 +9349,8 @@ internal class SharedThreadStore(
                                         payload = authorityProjectedPayload,
                                         accessResolution = projectedAccessResolution,
                                         canonicalAccessResolved = canonicalAccessResolved,
+                                        provisionalCanonicalAccess =
+                                            currentState.provisionalCanonicalAccess && !canonicalAccessResolved,
                                         lastRefreshResultReason = result.diagnosticsResultReason(),
                                         conversationAccessLost =
                                             currentState.conversationAccessLost ||
@@ -9713,7 +9777,11 @@ internal class SharedThreadStore(
         initialAccessResolutionJob?.cancel()
         initialAccessResolutionJob =
             scope.launch {
-                suspend fun applyResolution(homeResolution: ThreadHomeContextResolution?, late: Boolean) {
+                suspend fun applyResolution(
+                    homeResolution: ThreadHomeContextResolution?,
+                    late: Boolean,
+                    lateProvenance: ReplyCacheProvenance? = null,
+                ) {
                     if (homeResolution?.ownerCurrent == false) {
                         diagnosticsLogger?.invoke(
                             "thread_access_resolution_stale_drop " +
@@ -9743,7 +9811,18 @@ internal class SharedThreadStore(
                         ) {
                             return@withLock
                         }
-                        if (late && currentState.accessResolution != ThreadAccessResolution.Loading) {
+                        // The late pass re-checks everything that may have changed while the ref was
+                        // in flight: the session owner, the route (above), and any terminal answer.
+                        if (
+                            late &&
+                            (
+                                lateProvenance == null ||
+                                    !dataSource.isCurrentReplyCacheProvenanceForLocalSend(lateProvenance) ||
+                                    currentState.accessResolution != ThreadAccessResolution.Loading ||
+                                    currentState.conversationAccessLost ||
+                                    currentPayload.status == "error"
+                            )
+                        ) {
                             return@withLock
                         }
                         val projectedPayload =
@@ -9754,7 +9833,8 @@ internal class SharedThreadStore(
                                     } ?: payload
                                 }
                                 .withInitialHomeConversationAccessFallbackUnlessCanonical(
-                                    canonicalAccessResolved = currentState.canonicalAccessResolved,
+                                    canonicalAccessResolved =
+                                        currentState.canonicalAccessResolved || currentState.provisionalCanonicalAccess,
                                     candidate = candidate,
                                 )
                                 .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
@@ -9778,6 +9858,10 @@ internal class SharedThreadStore(
                                     currentState.canonicalAccessResolved ->
                                     ThreadAccessResolution.Error
                                 currentState.canonicalAccessResolved ->
+                                    ThreadAccessResolution.Resolved
+                                // A superseded canonical result already attested write authority.
+                                currentState.provisionalCanonicalAccess &&
+                                    (currentPayload.status == "content" || currentPayload.status == "empty") ->
                                     ThreadAccessResolution.Resolved
                                 // Task #1141 + reply-thread parity: a POSITIVE access candidate
                                 // (joined + canSend) is the same write authority the canonical fetch
@@ -9863,16 +9947,35 @@ internal class SharedThreadStore(
                 // left access Loading although the ref landed ~1 s later, and the composer waited
                 // for the whole canonical load). The lookup is a child of this job, so a newer
                 // resolution or a route change still cancels it.
+                val lookupProvenance = dataSource.captureReplyCacheProducerContext()?.provenance
                 val pendingLookup = async { lookup() }
                 val homeResolution = raceInitialAccessLookupDeadline { pendingLookup.await() }
                 applyResolution(homeResolution, late = false)
                 if (homeResolution == null) {
-                    val lateResolution = pendingLookup.await()
+                    // Bounded: a ref that has not answered by then is left to the canonical load.
+                    val lateResolution =
+                        withTimeoutOrNull(ThreadInitialAccessLateLookupTimeoutMillis) { pendingLookup.await() }
+                    pendingLookup.cancel()
                     diagnosticsLogger?.invoke(
                         "thread_initial_task_access_late threadId=${routePayload.sourceThreadId.orEmpty()} " +
                             "candidate=${lateResolution?.accessCandidate != null}"
                     )
-                    applyResolution(lateResolution, late = true)
+                    applyResolution(lateResolution, late = true, lateProvenance = lookupProvenance)
+                }
+            }
+    }
+
+    /** One more refresh after a capped (superseded) one; see [SharedThreadCappedRefreshFollowUpDelayMillis]. */
+    private fun launchCappedRefreshFollowUp(basePayload: RaftThreadScreenPayload, staleToken: MviStaleToken) {
+        cappedRefreshFollowUpJob?.cancel()
+        cappedRefreshFollowUpJob =
+            scope.launch {
+                delay(SharedThreadCappedRefreshFollowUpDelayMillis)
+                if (
+                    staleTokenStillCurrent(staleToken, "thread_refresh", "capped_follow_up", basePayload) &&
+                    routeStillCurrent(basePayload, "thread_refresh", "capped_follow_up")
+                ) {
+                    refresh(basePayload, staleToken)
                 }
             }
     }
@@ -9908,21 +10011,22 @@ internal class SharedThreadStore(
                 }
                 if (
                     currentState.canonicalAccessResolved ||
+                    currentState.provisionalCanonicalAccess ||
+                    currentState.conversationAccessLost ||
                     currentState.accessResolution == ThreadAccessResolution.NoPermission ||
                     currentState.accessResolution == ThreadAccessResolution.Error
                 ) {
                     return@withCurrentReplyCacheProvenanceForLocalSend
                 }
                 val projectedPayload = currentPayload.withCanonicalConversationAccessFrom(canonical)
+                // Like a positive Home candidate: it resolves the footer over renderable content; the
+                // final result still records itself (canonicalAccessResolved stays false).
                 val nextResolution =
-                    currentState.accessResolution.afterRefreshResult(
-                        result = result,
-                        canonicalAccessResolved = true,
-                        homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                        homeAccessCandidate = currentState.initialHomeAccessCandidate,
-                        requiresParentAccessCandidate = false,
-                        hasReadableCanonicalReplyContent = false,
-                    )
+                    if (currentPayload.status == "content" || currentPayload.status == "empty") {
+                        ThreadAccessResolution.Resolved
+                    } else {
+                        currentState.accessResolution
+                    }
                 diagnosticsLogger?.invoke(
                     "thread_superseded_canonical_access threadId=${routePayload.sourceThreadId.orEmpty()} " +
                         "accessResolution=$nextResolution"
@@ -9931,7 +10035,7 @@ internal class SharedThreadStore(
                     currentState.copy(
                         payload = projectedPayload,
                         accessResolution = nextResolution,
-                        canonicalAccessResolved = true,
+                        provisionalCanonicalAccess = true,
                         writeActionsEnabled =
                             projectedPayload.hasWriteAuthorityForAccess(
                                 accessResolution = nextResolution,

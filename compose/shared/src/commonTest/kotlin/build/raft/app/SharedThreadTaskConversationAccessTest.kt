@@ -15,6 +15,7 @@ import build.raft.app.SharedThreadStoreTestFixtures.unjoinedHomeSnapshot
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemoryRaftAuthSessionStore
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -23,6 +24,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -144,16 +147,21 @@ class SharedThreadTaskConversationAccessTest {
             taskId = TaskId("task-1"),
         )
 
-    private fun taskConversationThreadResult(): DataResult.Content<build.raft.app.data.ThreadSnapshot> =
+    private fun taskConversationThreadResult(
+        joined: Boolean = true,
+        body: String = "network body",
+    ): DataResult.Content<build.raft.app.data.ThreadSnapshot> =
         DataResult.Content(
             threadSnapshot(
                 threadId = conversationId,
-                body = "network body",
+                body = body,
                 conversation =
                     conversationSummary(conversationId).copy(
                         kind = ConversationKind.Task,
                         channelType = RaftTaskConversationChannelKind,
-                        joined = true,
+                        joined = joined,
+                        permissions =
+                            build.raft.app.model.ConversationPermissions(canSend = joined, canAttach = joined),
                     ),
             )
         )
@@ -174,10 +182,13 @@ class SharedThreadTaskConversationAccessTest {
             payloadStore = payloadStore,
         ).also { it.cachePayloadForTest(contentPayloadForRoute(taskRoute(), "cached body")) }
 
-    private fun TestScope.openTaskConversation(dataSource: SharedThreadDataSource): Pair<SharedThreadStore, CoroutineScope> {
+    private fun TestScope.openTaskConversation(
+        dataSource: SharedThreadDataSource,
+        route: RaftThreadScreenPayload = taskRoute(),
+    ): Pair<SharedThreadStore, CoroutineScope> {
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.dispatch(SharedThreadIntent.Start(taskRoute()))
+        store.dispatch(SharedThreadIntent.Start(route))
         return store to scope
     }
 
@@ -233,7 +244,9 @@ class SharedThreadTaskConversationAccessTest {
         assertTrue(state.composerReady(), "state=$state")
         // Resolved by the first (superseded) fetch, while its refetch is still backing off.
         assertEquals(1, repository.getThreadRequests.size)
-        assertTrue(state.canonicalAccessResolved)
+        // Provisional: the final generation-current result still records its own access.
+        assertTrue(state.provisionalCanonicalAccess)
+        assertFalse(state.canonicalAccessResolved)
         // The superseded content is not shown: the page still shows its cached frame.
         assertEquals(listOf("cached body"), state.payload.messages.map { it.body })
         scope.cancel()
@@ -293,5 +306,195 @@ class SharedThreadTaskConversationAccessTest {
         assertTrue(state.composerReady(), "state=$state")
         assertEquals(listOf(ChannelId(conversationId)), repository.taskConversationRefRequests)
         secondScope.cancel()
+    }
+
+    // --- Review of b18ff291 ---
+
+    /** An early (superseded) positive is provisional: a negative final result still closes the composer. */
+    @Test
+    fun negativeFinalResultAfterASupersededPositiveClosesTheComposer() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, foregroundLoadGate = virtualForegroundLoadGate())
+        val repository = FakeConversationRepository(threadResult = taskConversationThreadResult())
+        val dataSource = taskDataSource(repository, joinedHomeSnapshot(), payloadStore)
+        val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
+        var calls = 0
+        repository.threadDelayMillis = 2_000
+        repository.threadResultProvider = { _, _, _ ->
+            if (calls++ == 0) {
+                // A realtime event lands during the first fetch, which still says "joined".
+                payloadStore.freshnessLedger.advance("server-1", conversationId, ownerScopeId)
+                taskConversationThreadResult(joined = true)
+            } else {
+                // Removed from the task channel meanwhile: the generation-current answer is negative.
+                taskConversationThreadResult(joined = false)
+            }
+        }
+        val (store, scope) = openTaskConversation(dataSource)
+        advanceTimeBy(2_100)
+        runCurrent()
+        assertTrue(store.state.value.composerReady(), "state=${store.state.value}")
+        assertTrue(store.state.value.payload.composer.enabled)
+
+        advanceTimeBy(3_000)
+        runCurrent()
+        val state = store.state.value
+        assertEquals(2, repository.getThreadRequests.size)
+        assertTrue(state.canonicalAccessResolved)
+        assertFalse(state.provisionalCanonicalAccess)
+        // The page mounts the composer only for a joined conversation (ThreadPage `mountComposer`).
+        assertFalse(state.payload.joined, "state=$state")
+        assertFalse(state.payload.canSend)
+        scope.cancel()
+    }
+
+    /** (c) at the store: capped superseded content is not shown or cached as final; one more refresh lands. */
+    @Test
+    fun cappedRefetchKeepsVisibleContentAndRefreshesOnceMore() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, foregroundLoadGate = virtualForegroundLoadGate())
+        val repository = FakeConversationRepository(threadResult = taskConversationThreadResult())
+        val dataSource = taskDataSource(repository, joinedHomeSnapshot(), payloadStore)
+        val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
+        var calls = 0
+        repository.threadDelayMillis = 10
+        repository.threadResultProvider = { _, _, _ ->
+            val call = ++calls
+            // Every fetch of the first refresh is superseded; the follow-up's fetch is current.
+            if (call <= 3) payloadStore.freshnessLedger.advance("server-1", conversationId, ownerScopeId)
+            taskConversationThreadResult(body = if (call <= 3) "superseded body" else "network body")
+        }
+        val (store, scope) = openTaskConversation(dataSource)
+        while (repository.getThreadRequests.size < 3) advanceTimeBy(10)
+        advanceTimeBy(100)
+        runCurrent()
+
+        assertEquals(3, repository.getThreadRequests.size)
+        assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
+        // Nothing was cached from the superseded rounds.
+        val cachedBodies =
+            payloadStore
+                .get("server-1", conversationId, TestThreadEnvironmentId, TestThreadPrincipalId, ownerScopeId)
+                ?.messages
+                ?.map { it.body }
+                .orEmpty()
+        assertFalse("superseded body" in cachedBodies, "cached=$cachedBodies")
+        assertTrue(store.state.value.composerReady(), "access is provisional from the first round")
+
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(4, repository.getThreadRequests.size)
+        assertEquals(listOf("network body"), store.state.value.payload.messages.map { it.body })
+        scope.cancel()
+    }
+
+    /** The late lookup is bounded: a ref answering after 15 s is left to the canonical load. */
+    @Test
+    fun lateRefLookupGivesUpAfterItsBound() = runTest {
+        val repository =
+            FakeConversationRepository(threadResult = taskConversationThreadResult()).apply {
+                getThreadStarted = CompletableDeferred()
+                releaseGetThread = CompletableDeferred()
+                taskConversationRefs = mapOf(ChannelId(conversationId) to taskRef())
+                taskConversationRefDelayMillis = 20_000
+            }
+        val (store, scope) = openTaskConversation(taskDataSource(repository, joinedHomeSnapshot()))
+        repository.getThreadStarted?.await()
+        advanceTimeBy(21_000)
+        runCurrent()
+        assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
+        assertFalse(store.state.value.writeActionsEnabled)
+        scope.cancel()
+    }
+
+    /** A late ref never applies to the route the page moved to. */
+    @Test
+    fun lateRefDoesNotApplyAfterARouteChange() = runTest {
+        val otherId = "task-conv-2"
+        val repository =
+            FakeConversationRepository(threadResult = taskConversationThreadResult()).apply {
+                getThreadStarted = CompletableDeferred()
+                releaseGetThread = CompletableDeferred()
+                taskConversationRefs = mapOf(ChannelId(conversationId) to taskRef())
+                taskConversationRefDelayMillis = 1_900
+            }
+        val (store, scope) = openTaskConversation(taskDataSource(repository, joinedHomeSnapshot()))
+        repository.getThreadStarted?.await()
+        advanceTimeBy(1_200)
+        runCurrent()
+        val otherRoute =
+            taskRoute().copy(
+                instanceId = "shared-shell-thread-$otherId",
+                sourceThreadId = otherId,
+                streamChannelId = otherId,
+            )
+        store.dispatch(SharedThreadIntent.Start(otherRoute))
+        advanceTimeBy(1_500)
+        runCurrent()
+
+        val state = store.state.value
+        assertEquals(otherId, state.payload.sourceThreadId)
+        assertEquals(ThreadAccessResolution.Loading, state.accessResolution, "state=$state")
+        assertFalse(state.writeActionsEnabled)
+        scope.cancel()
+    }
+
+    /** A late ref never reopens access after the canonical load answered NoPermission. */
+    @Test
+    fun lateRefDoesNotApplyAfterCanonicalNoPermission() = runTest {
+        val repository =
+            FakeConversationRepository(threadResult = DataResult.NoPermission(PermissionBlocker("channel_forbidden"))).apply {
+                taskConversationRefs = mapOf(ChannelId(conversationId) to taskRef())
+                taskConversationRefDelayMillis = 1_900
+                threadDelayMillis = 1_200
+            }
+        val (store, scope) = openTaskConversation(taskDataSource(repository, joinedHomeSnapshot()))
+        advanceTimeBy(1_500)
+        runCurrent()
+        assertEquals(ThreadAccessResolution.NoPermission, store.state.value.accessResolution)
+
+        advanceTimeBy(1_000)
+        runCurrent()
+        val state = store.state.value
+        assertEquals(ThreadAccessResolution.NoPermission, state.accessResolution, "state=$state")
+        assertFalse(state.writeActionsEnabled)
+        assertFalse(state.payload.composer.enabled)
+        scope.cancel()
+    }
+
+    /** Sign-out / account retirement drops cached refs; other accounts keep theirs. */
+    @Test
+    fun cachedRefsLeaveWithTheSessionAndTheAccount() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, foregroundLoadGate = virtualForegroundLoadGate())
+        fun key(principal: String) =
+            SharedTaskConversationRefKey(TestThreadEnvironmentId, principal, "server-1", conversationId)
+        payloadStore.taskConversationRef(key("user-1")) { DataResult.Content(taskRef()) }
+        payloadStore.taskConversationRef(key("user-2")) { DataResult.Content(taskRef()) }
+        assertNotNull(payloadStore.cachedTaskConversationRef(key("user-1")))
+
+        payloadStore.retireAccount(TestThreadEnvironmentId, "user-1")
+        assertNull(payloadStore.cachedTaskConversationRef(key("user-1")))
+        assertNotNull(payloadStore.cachedTaskConversationRef(key("user-2")))
+
+        payloadStore.clearAll()
+        assertNull(payloadStore.cachedTaskConversationRef(key("user-2")))
+    }
+
+    /** Finished, failed and cleared ref fetches all leave the flight map. */
+    @Test
+    fun refFlightsLeaveTheMapWhenTheyEnd() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, foregroundLoadGate = virtualForegroundLoadGate())
+        fun key(id: String) = SharedTaskConversationRefKey(TestThreadEnvironmentId, "user-1", "server-1", id)
+        payloadStore.taskConversationRef(key("a")) { DataResult.Content(taskRef()) }
+        payloadStore.taskConversationRef(key("b")) { DataResult.Error(build.raft.app.data.ScreenError(code = "x", retryable = true)) }
+        assertEquals(0, payloadStore.taskConversationRefFlightCountForTest())
+
+        val waiter = async { payloadStore.taskConversationRef(key("c")) { CompletableDeferred<Nothing>().await() } }
+        runCurrent()
+        assertEquals(1, payloadStore.taskConversationRefFlightCountForTest())
+        waiter.cancel() // the caller stops waiting; the shared fetch keeps running
+        runCurrent()
+        assertEquals(1, payloadStore.taskConversationRefFlightCountForTest())
+        payloadStore.clearAll()
+        runCurrent()
+        assertEquals(0, payloadStore.taskConversationRefFlightCountForTest())
     }
 }
