@@ -10,12 +10,12 @@ rollout: full
 
 ## zh-CN
 
-设置里的“反馈”现在会列出你提交过的反馈。你可以看到回复，直接回复，或者关闭反馈。从反馈卡片打开时也是同一个页面。
+点反馈卡片会打开反馈页面，可以看到回复、直接回复或关闭反馈。设置里的“反馈”仍然是原来的提交表单。
 
 ## en
 
-Feedback in Settings now lists the feedback you have sent, so you can see replies, reply and close it. A feedback card opens the same page.
+Tapping a feedback card opens the feedback page, where you can see replies, reply and close the feedback. Feedback in Settings is still the submit form.
 
 ## ja
 
-設定の「フィードバック」に、送信したフィードバックが一覧表示されるようになりました。返信を確認したり、返信したり、クローズしたりできます。フィードバックカードからも同じページが開きます。
+フィードバックカードをタップするとフィードバックページが開き、返信の確認、返信、クローズができます。設定の「フィードバック」は引き続き送信フォームです。

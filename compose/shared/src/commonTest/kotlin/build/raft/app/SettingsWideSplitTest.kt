@@ -42,16 +42,30 @@ class SettingsWideSplitTest {
     }
 
     @Test
-    fun settingsFeedbackIsTheTicketWebPageInThePaneWithNoServerFlag() {
-        // artin (1.22): no flag. Settings > Feedback is always the ticket web page, opened in the pane.
-        val scope = RaftShellStoreScope.create("shell-wide-feedback")
-        assertTrue(SettingsDestinationHandsFeedback in SettingsWideDetailKeys)
-        assertEquals(SettingsWidePick.Detail(SettingsDestinationHandsFeedback), settingsWidePick(SettingsDestinationHandsFeedback))
-        assertEquals(SettingsDestinationHandsFeedback, settingsWideDetailKey(SettingsDestinationHandsFeedback, rows))
-        assertTrue(settingsWideBackReturnsToDefault(SettingsDestinationHandsFeedback, rows))
-        val page = settingsWideDetailPage(SettingsDestinationHandsFeedback, scope)
-        assertEquals(SETTINGS_WEB_VIEW_PAGE, page?.first)
-        assertEquals(SettingsWebViewSurface.Feedback, page?.second?.let(::settingsWebViewSurfaceFromPageData))
+    fun feedbackOpensInThePaneOnlyAsTheWebPage() {
+        assertEquals(SettingsWidePick.Push, settingsWidePick(SettingsDestinationHandsFeedback, feedbackWeb = false))
+        assertEquals(SettingsDestinationAccount, settingsWideDetailKey(SettingsDestinationHandsFeedback, rows, feedbackWeb = false))
+        assertEquals(
+            SettingsWidePick.Detail(SettingsDestinationHandsFeedback),
+            settingsWidePick(SettingsDestinationHandsFeedback, feedbackWeb = true),
+        )
+        assertEquals(SettingsDestinationHandsFeedback, settingsWideDetailKey(SettingsDestinationHandsFeedback, rows, feedbackWeb = true))
+    }
+
+    @Test
+    fun feedbackIsTheWebPageOnlyOnAHostWithoutNativeHandsSubmit() {
+        // artin (1.22.0): Android and iOS open the native submit form again (no server flag); the
+        // Compose desktop app (artin 11-01) cannot send natively, so it keeps the web page, in the pane.
+        assertTrue(settingsFeedbackUsesWebPage(nativeSubmit = false))
+        assertFalse(settingsFeedbackUsesWebPage(nativeSubmit = true))
+        assertEquals(
+            SettingsWidePick.Detail(SettingsDestinationHandsFeedback),
+            settingsWidePick(SettingsDestinationHandsFeedback, settingsFeedbackUsesWebPage(nativeSubmit = false)),
+        )
+        assertEquals(
+            SettingsWidePick.Push,
+            settingsWidePick(SettingsDestinationHandsFeedback, settingsFeedbackUsesWebPage(nativeSubmit = true)),
+        )
     }
 
     @Test
@@ -79,6 +93,11 @@ class SettingsWideSplitTest {
             assertEquals(SETTINGS_WEB_VIEW_PAGE, page?.first, key)
             assertEquals(surface, page?.second?.let(::settingsWebViewSurfaceFromPageData), key)
         }
+        assertNull(settingsWideDetailPage(SettingsDestinationHandsFeedback, scope, feedbackWeb = false))
+        assertEquals(
+            SettingsWebViewSurface.Feedback,
+            settingsWideDetailPage(SettingsDestinationHandsFeedback, scope, feedbackWeb = true)?.second?.let(::settingsWebViewSurfaceFromPageData),
+        )
     }
 
     @Test

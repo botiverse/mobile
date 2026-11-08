@@ -73,8 +73,8 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // cleaned up: android_reused_h2_recovery_v0 (NetworkKMM reused-HTTP/2 watchdog), mobile_doh_fallback_v0
 // (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
 // sync_core_messages_v1 is no longer read either (2026-10-30): the sync-core message line is always on.
-// product_feedback_multi_app is no longer read from 1.22 (artin): Settings > Feedback and feedback cards
-// always open the ticket web page.
+// product_feedback_multi_app is no longer read from 1.22 (artin): feedback cards always open the ticket
+// web page; Settings > Feedback is the native submit form on Android / iOS (settingsFeedbackUsesWebPage).
 // Gogo removes the server flag row after old clients are checked.
 
 /**
