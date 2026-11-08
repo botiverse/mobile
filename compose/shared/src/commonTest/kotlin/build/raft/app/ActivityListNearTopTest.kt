@@ -51,7 +51,7 @@ class ActivityListNearTopTest {
         InboxItem(key = key, kind = InboxItemKind.Channel, channelId = ChannelId(key), channelName = key, lastMessageAt = at)
 
     @Test
-    fun `the head signature changes when a new day heading leads, though the head row is the same`() {
+    fun `the head signature changes when a new day heading leads even when the head row is the same`() {
         val yesterday = listOf(row("a", "2026-11-04T20:00:00Z"), row("b", "2026-11-04T19:00:00Z"))
         val aMovedToToday = listOf(row("a", "2026-11-05T11:00:00Z"), row("b", "2026-11-04T19:00:00Z"))
         assertNotEquals(activityListHeadSignature(yesterday, timeContext), activityListHeadSignature(aMovedToToday, timeContext))
