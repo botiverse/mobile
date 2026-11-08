@@ -17220,7 +17220,7 @@ private fun ThreadPageContentContent(
     // Android / desktop: the share image laid out off screen at the picked width (threadShareImageRendersOffscreen).
     var shareImageWidthChoice by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageWidthChoice()) }
     var shareImageRenderWidthDp by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageDefaultWidthDp) }
-    var shareImageBitmap by remember(threadInstanceKey) { mutableStateOf<ImageBitmap?>(null) }
+    var shareImageBitmap by remember(threadInstanceKey) { mutableStateOf<ThreadShareRenderedImage?>(null) }
     var shareImageRendering by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareImageSaving by remember(threadInstanceKey) { mutableStateOf(false) }
     val sharePngWriter = rememberRaftPngFileWriter()
@@ -17230,6 +17230,15 @@ private fun ThreadPageContentContent(
             // A drag of the custom slider lays the image out again once it pauses.
             if (shareImageWidthChoice.preset == ThreadShareImageWidth.Custom) delay(ThreadShareImageWidthDebounceMs)
             shareImageRenderWidthDp = widthDp
+        }
+    }
+    // The share image (up to 16M px) is held only while Share preview is open: however it closes
+    // (dismiss, saved, another modal), the bitmap goes with it.
+    val sharePreviewOpen = activeModal == "sharePreview"
+    LaunchedEffect(sharePreviewOpen) {
+        if (!sharePreviewOpen) {
+            shareImageBitmap = null
+            shareImageRendering = false
         }
     }
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -18602,7 +18611,8 @@ private fun ThreadPageContentContent(
                     shareImageRendering = false
                     diagnosticsLogger(
                         "thread_share_offscreen_rendered width=$shareImageRenderWidthDp " +
-                            "ok=${image != null} px=${image?.width ?: 0}x${image?.height ?: 0}"
+                            "ok=${image != null} px=${image?.image?.width ?: 0}x${image?.image?.height ?: 0} " +
+                            "preview=${image?.preview?.width ?: 0}x${image?.preview?.height ?: 0}"
                     )
                 },
             ) { index ->
@@ -18973,7 +18983,7 @@ private fun ThreadPageContentContent(
                             null
                         },
                     onDownloadImage = {
-                        val offscreenImage = shareImageBitmap
+                        val offscreenImage = shareImageBitmap?.image
                         if (threadShareImageRendersOffscreen) {
                             if (offscreenImage != null && !shareImageSaving) {
                                 shareImageSaving = true
@@ -38697,7 +38707,7 @@ private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName, size: Dp) {
  * failed), whether a new layout is [rendering], and the width picker's change.
  */
 internal data class ThreadSharePreviewOffscreen(
-    val image: ImageBitmap?,
+    val image: ThreadShareRenderedImage?,
     val rendering: Boolean,
     val choice: ThreadShareImageWidthChoice,
     val onChoiceChange: (ThreadShareImageWidthChoice) -> Unit,
@@ -38731,7 +38741,7 @@ internal fun ThreadSharePreviewModal(
                         detail = stringResource(Res.string.thread_share_export_failed_detail)
                     )
                 } else {
-                    ThreadShareImagePreview(image = offscreen.image, rendering = offscreen.rendering)
+                    ThreadShareImagePreview(image = offscreen.image?.preview, rendering = offscreen.rendering)
                 }
                 RaftDialogFooter {
                     RaftModalActionButton(

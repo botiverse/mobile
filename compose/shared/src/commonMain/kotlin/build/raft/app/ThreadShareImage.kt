@@ -136,35 +136,66 @@ internal fun renderThreadShareImage(
 }
 
 /**
- * [renderThreadShareImage] for rows drawn straight into the card: [rowSizes] are the rows' sizes
- * in px at [density], and [drawRow] draws row `index` with its top left at the origin (the
- * offscreen share image draws each row's recorded layer, so no row is held as a bitmap of its own).
+ * The card [renderThreadShareImage] draws for rows drawn straight into it, recorded (not yet
+ * rasterised): [rowSizes] are the rows' sizes in px at [density], and [drawRow] draws row `index`
+ * with its top left at the origin (the offscreen share image draws each row's recorded layer, so
+ * no row is held as a bitmap of its own). Call it on the main thread: a row's layer re-runs its
+ * drawing on the recording canvas. [ThreadShareImageRecording.rasterise] may then run on any thread.
  */
-internal fun renderThreadShareImageRows(
+internal fun recordThreadShareImageRows(
     rowSizes: List<IntSize>,
     density: Density,
     measurer: TextMeasurer,
     background: Color,
     domain: String = ThreadShareImageDomain,
     drawRow: DrawScope.(index: Int) -> Unit,
-): ImageBitmap? {
+): ThreadShareImageRecording? {
     if (rowSizes.isEmpty()) return null
     val scale = density.density
     val rowHeights = rowSizes.map { it.height }
     val width = threadShareImageWidthPx(rowSizes.maxOf { it.width }, scale)
     val height = threadShareImageHeightPx(rowHeights, scale)
     if (width <= 0 || height <= 0) return null
-    val bitmap = ImageBitmap(width, height)
-    val canvas = Canvas(bitmap)
-    CanvasDrawScope().draw(density, LayoutDirection.Ltr, canvas, Size(width.toFloat(), height.toFloat())) {
-        drawRect(background)
-        drawThreadShareImageHeader(width = width, scale = scale, measurer = measurer, domain = domain)
-        threadShareImageRowOrigins(rowHeights, scale).forEachIndexed { index, origin ->
-            translate(left = origin.x.toFloat(), top = origin.y.toFloat()) { drawRow(index) }
+    return recordThreadShareImage(width, height) { canvas ->
+        CanvasDrawScope().draw(density, LayoutDirection.Ltr, canvas, Size(width.toFloat(), height.toFloat())) {
+            drawRect(background)
+            drawThreadShareImageHeader(width = width, scale = scale, measurer = measurer, domain = domain)
+            threadShareImageRowOrigins(rowHeights, scale).forEachIndexed { index, origin ->
+                translate(left = origin.x.toFloat(), top = origin.y.toFloat()) { drawRow(index) }
+            }
         }
     }
-    return bitmap
 }
+
+/**
+ * The share image drawn as a recording of draw commands, made on the main thread (where the
+ * rows' layers can re-run their drawing) and turned into pixels by [rasterise] on any thread
+ * (Android `android.graphics.Picture`, Skia `PictureRecorder`).
+ */
+internal interface ThreadShareImageRecording {
+    val width: Int
+    val height: Int
+
+    /**
+     * Draws the recording into a new [width] x [height] bitmap, in horizontal bands of
+     * [ThreadShareImageRasterBandPx]; [checkCancelled] runs between bands (throw to stop).
+     * Safe off the main thread.
+     */
+    fun rasterise(checkCancelled: () -> Unit = {}): ImageBitmap
+
+    /** Frees the recording; call once [rasterise] has returned. */
+    fun release()
+}
+
+/** Records [draw] (on a canvas [width] x [height] px) for [ThreadShareImageRecording.rasterise]. */
+internal expect fun recordThreadShareImage(width: Int, height: Int, draw: (Canvas) -> Unit): ThreadShareImageRecording
+
+/** How tall a band [ThreadShareImageRecording.rasterise] draws between cancellation checks. */
+internal const val ThreadShareImageRasterBandPx = 2048
+
+/** The bands, as `top until bottom` px, that rasterise a [height] px image. */
+internal fun threadShareImageRasterBands(height: Int, bandPx: Int = ThreadShareImageRasterBandPx): List<IntRange> =
+    (0 until height step bandPx.coerceAtLeast(1)).map { top -> top until minOf(height, top + bandPx) }
 
 private fun DrawScope.drawThreadShareImageHeader(
     width: Int,
