@@ -8,12 +8,14 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.AtomicFile
+import android.webkit.MimeTypeMap
 import build.raft.app.data.RaftExternalShareEnvelopeHost
 import build.raft.app.data.RaftExternalShareEnvelopeHostItem
 import build.raft.app.data.RaftExternalShareEnvelopeHostMutationResult
 import build.raft.app.data.RaftExternalShareEnvelopeHostProvider
 import build.raft.app.data.RaftExternalShareEnvelopeHostReadResult
 import build.raft.app.data.RaftExternalShareEnvelopeHostRecord
+import build.raft.app.downloads.RaftShareFileName
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -366,7 +368,7 @@ internal class AndroidExternalShareInbox(
             val target = File(directory, "item-${index + 1}-${displayName.replace(UnsafeStorageCharacters, "_")}")
             val size = copyBounded(ref, target, totalBytes)
             totalBytes += size
-            CopiedItem(target, displayName, sanitizeMimeType(metadata.mimeType), size)
+            CopiedItem(target, displayName, resolveMimeType(displayName, metadata.mimeType), size)
         }
     }
 
@@ -480,6 +482,20 @@ internal class AndroidExternalShareInbox(
             return normalized.takeIf { it.isNotBlank() && it != "." && it != ".." }
                 ?: "shared-item-${index + 1}"
         }
+
+        /** [sanitizeMimeType], except that a missing/generic type defers to [displayName]'s extension. */
+        internal fun resolveMimeType(
+            displayName: String,
+            value: String,
+            typeForExtension: (String) -> String? = { extension ->
+                runCatching { MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) }.getOrNull()
+            }
+        ): String =
+            if (RaftShareFileName.isGenericMimeType(value)) {
+                RaftShareFileName.resolveMimeType(displayName, value, typeForExtension)
+            } else {
+                sanitizeMimeType(value)
+            }
 
         internal fun sanitizeMimeType(value: String): String =
             value.substringBefore(';').trim().lowercase()

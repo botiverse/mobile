@@ -2371,7 +2371,9 @@ internal open class RaftCmpActivity :
             compressImages: Boolean = false,
     ): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
-        val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+        // A provider that reports nothing or a generic type (octet-stream) for invoice.pdf would
+        // upload it untyped; the display name's extension decides then.
+        val mimeType = androidAttachmentShareMimeType(fileName, contentResolver.getType(uri))
         val shouldCompress = compressImages && isImageAttachment(uri, fileName, mimeType, imageOnly)
         val cachedFile =
                 if (shouldCompress) {
@@ -7935,9 +7937,12 @@ internal class RaftBridgeModule(
             privateSourceFile: File? = null
     ): AndroidAttachmentOpenResult {
         val share = request.optBoolean("share", false)
-        if (share) {
-            // Hand receivers a copy named after the attachment: WeChat/QQ read the URI's last
-            // segment, which for the open cache is the extension-less hash name.
+        val packageArchive = !share && isAndroidPackageArchive(source.displayName, source.mimeType)
+        if (!packageArchive) {
+            // Share and Open with hand receivers a file named after the attachment: WeChat/QQ and
+            // many viewers read the URI's last segment, which for the open cache is the
+            // extension-less hash name (and for a public download a MediaStore row id). The
+            // package installer reads the archive itself, so Install keeps the cache URI.
             val attachmentId = request.optString("attachmentId").ifBlank { "attachment" }
             val shareMimeType = androidAttachmentShareMimeType(source.displayName, source.mimeType)
             val staged =
@@ -7946,7 +7951,11 @@ internal class RaftBridgeModule(
                                 shareRoot = androidAttachmentShareRoot(appContext),
                                 displayName = source.displayName,
                                 mimeType = shareMimeType,
-                                expectedSizeBytes = source.sizeBytes
+                                expectedSizeBytes = source.sizeBytes,
+                                linkFrom =
+                                        privateSourceFile.takeIf {
+                                            source.kind == AndroidAttachmentOpenSourceKind.PrivateCache
+                                        }
                         ) {
                             appContext.contentResolver.openInputStream(Uri.parse(source.contentUri))
                                     ?: error("Attachment source is unavailable")
@@ -7954,7 +7963,7 @@ internal class RaftBridgeModule(
                     }.getOrElse { throwable ->
                         RaftAppLog.record(
                                 "SlockAttachmentOpen",
-                                "attachmentId=${attachmentId.take(8)} phase=share_stage status=failed source=${source.kind.diagnosticName} type=${throwable::class.java.simpleName}"
+                                "attachmentId=${attachmentId.take(8)} phase=handoff_stage status=failed share=$share source=${source.kind.diagnosticName} type=${throwable::class.java.simpleName}"
                         )
                         return AndroidAttachmentOpenResult.storageFailed()
                     }

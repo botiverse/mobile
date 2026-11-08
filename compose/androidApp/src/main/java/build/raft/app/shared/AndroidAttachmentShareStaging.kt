@@ -3,111 +3,51 @@ package build.raft.app.shared
 import android.content.Context
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import build.raft.app.downloads.RaftShareFileName
 import java.io.File
 import java.io.InputStream
-import java.util.Locale
 import java.util.UUID
 
 /**
- * Share (ACTION_SEND) staging.
+ * Hand-off staging for Share (ACTION_SEND) and Open with (ACTION_VIEW).
  *
  * The private open cache stores attachments as `<principal>-<identity hash>` with no extension, and
- * the FileProvider URI's last path segment is that cache name. Receivers such as WeChat/QQ name and
- * type the received file from `Uri.lastPathSegment` and ignore OpenableColumns.DISPLAY_NAME, so a
- * shared PDF arrived as an extension-less hex name with an unknown ("?") type. Share therefore copies
- * the exact bytes the viewer reads into `cache/slock-share-files/<uuid>/<sanitised display name>`,
- * so the URI's last segment, DISPLAY_NAME and the received file name are all the clean name.
+ * the FileProvider URI's last path segment is that cache name (a public Downloads source is a
+ * MediaStore URI ending in a numeric row id). Receivers such as WeChat/QQ name and type the received
+ * file from `Uri.lastPathSegment` and ignore OpenableColumns.DISPLAY_NAME, so a shared PDF arrived
+ * as an extension-less hex name with an unknown ("?") type. Hand-offs therefore expose the exact
+ * bytes the viewer reads as `cache/slock-share-files/<uuid>/<sanitised display name>` (a hard link
+ * to the private cache file when possible, else a copy), so the URI's last segment, DISPLAY_NAME
+ * and the received file name are all the clean name.
  */
 internal const val ANDROID_ATTACHMENT_SHARE_DIR_NAME = "slock-share-files"
 internal const val ANDROID_ATTACHMENT_SHARE_MAX_AGE_MS = 24L * 60L * 60L * 1_000L
 internal const val ANDROID_ATTACHMENT_SHARE_MAX_ENTRIES = 16
-private const val ANDROID_ATTACHMENT_SHARE_NAME_MAX_BYTES = 200
-private const val ANDROID_ATTACHMENT_SHARE_FALLBACK_NAME = "attachment"
 private val AndroidAttachmentShareEntryPattern = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
-/** Server or upload types that say nothing about the content; the file extension is a better answer. */
-private val AndroidAttachmentGenericMimeTypes =
-    setOf(
-        "application/octet-stream",
-        "binary/octet-stream",
-        "application/binary",
-        "application/unknown",
-        "application/x-download",
-        "application/force-download",
-        "application/download"
-    )
+private fun androidMimeTypeForExtension(extension: String): String? =
+    runCatching { MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) }.getOrNull()
+
+private fun androidExtensionForMimeType(mimeType: String): String? =
+    runCatching { MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) }.getOrNull()
 
 /**
  * The MIME type a receiver should see: parameters (`; charset=...`) dropped, lower-cased, and a
  * generic/unknown type replaced by the extension's type from [MimeTypeMap].
  */
-internal fun androidAttachmentShareMimeType(displayName: String, mimeType: String?): String {
-    val normalized =
-        mimeType
-            ?.substringBefore(';')
-            ?.trim()
-            ?.lowercase(Locale.US)
-            ?.takeIf { it.contains('/') && !it.startsWith('/') && !it.endsWith('/') }
-    if (normalized != null && normalized !in AndroidAttachmentGenericMimeTypes) return normalized
-    val extension = displayName.substringAfterLast('.', missingDelimiterValue = "").lowercase(Locale.US)
-    val fromExtension =
-        extension.takeIf(String::isNotEmpty)?.let { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) }
-    return fromExtension ?: normalized ?: "application/octet-stream"
-}
+internal fun androidAttachmentShareMimeType(
+    displayName: String,
+    mimeType: String?,
+    typeForExtension: (String) -> String? = ::androidMimeTypeForExtension
+): String = RaftShareFileName.resolveMimeType(displayName, mimeType, typeForExtension)
 
-/**
- * A single safe path segment for [displayName]: no separators, control or reserved characters,
- * no leading dots, bounded UTF-8 length with the extension kept, and an extension derived from
- * [mimeType] when the name has none.
- */
+/** [RaftShareFileName.sanitize] with the extension of [mimeType] (when specific) as the fallback. */
 internal fun sanitizeAndroidAttachmentShareFileName(displayName: String, mimeType: String?): String {
-    val leaf = displayName.substringAfterLast('/').substringAfterLast('\\')
-    val cleaned =
-        buildString {
-            leaf.forEach { char ->
-                append(
-                    when {
-                        char.isISOControl() -> '_'
-                        char in "<>:\"|?*" -> '_'
-                        else -> char
-                    }
-                )
-            }
-        }
-            .trim()
-            .trimStart('.')
-            .trimEnd('.', ' ')
-    var name = cleaned.ifBlank { ANDROID_ATTACHMENT_SHARE_FALLBACK_NAME }
-    if (!name.contains('.')) {
-        val normalized = mimeType?.substringBefore(';')?.trim()?.lowercase(Locale.US)
-        val extension =
-            normalized
-                ?.takeIf { it !in AndroidAttachmentGenericMimeTypes }
-                ?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
-        if (!extension.isNullOrBlank()) name = "$name.$extension"
-    }
-    return name.truncateUtf8KeepingExtension(ANDROID_ATTACHMENT_SHARE_NAME_MAX_BYTES)
-}
-
-private fun String.truncateUtf8KeepingExtension(maxBytes: Int): String {
-    if (toByteArray(Charsets.UTF_8).size <= maxBytes) return this
-    val dot = lastIndexOf('.')
-    val extension = if (dot > 0 && length - dot <= 16) substring(dot) else ""
-    val stem = if (extension.isEmpty()) this else substring(0, dot)
-    val budget = maxBytes - extension.toByteArray(Charsets.UTF_8).size
-    val out = StringBuilder()
-    var used = 0
-    var index = 0
-    while (index < stem.length) {
-        val codePoint = stem.codePointAt(index)
-        val chars = Character.toChars(codePoint)
-        val bytes = String(chars).toByteArray(Charsets.UTF_8).size
-        if (used + bytes > budget) break
-        out.append(chars)
-        used += bytes
-        index += chars.size
-    }
-    return out.toString().trimEnd('.', ' ').ifEmpty { ANDROID_ATTACHMENT_SHARE_FALLBACK_NAME } + extension
+    val fallbackExtension =
+        RaftShareFileName.normalizedMimeType(mimeType)
+            ?.takeUnless { RaftShareFileName.isGenericMimeType(it) }
+            ?.let(::androidExtensionForMimeType)
+    return RaftShareFileName.sanitize(displayName, fallbackExtension)
 }
 
 /**
@@ -135,8 +75,11 @@ internal fun sweepAndroidAttachmentShareStaging(
 }
 
 /**
- * Copies [openInput]'s bytes into a fresh `<shareRoot>/<uuid>/<sanitised name>` file and returns it.
- * The copy must be exactly [expectedSizeBytes] long (when known) or it is removed and an error raised.
+ * Exposes the source bytes as a fresh `<shareRoot>/<uuid>/<sanitised name>` file and returns it:
+ * a hard link to [linkFrom] (same filesystem, no extra space or copy time for large videos) when
+ * that works, else a copy of [openInput]. The result must be exactly [expectedSizeBytes] long (when
+ * known) or it is removed and an error raised. The private cache publishes downloads by atomic
+ * rename, so a later re-download never rewrites a linked inode in place.
  */
 internal fun stageAndroidAttachmentShareFile(
     shareRoot: File,
@@ -144,6 +87,10 @@ internal fun stageAndroidAttachmentShareFile(
     mimeType: String?,
     expectedSizeBytes: Long,
     nowMillis: Long = System.currentTimeMillis(),
+    linkFrom: File? = null,
+    linkFile: (source: File, target: File) -> Unit = { source, target ->
+        android.system.Os.link(source.absolutePath, target.absolutePath)
+    },
     openInput: () -> InputStream
 ): File {
     sweepAndroidAttachmentShareStaging(shareRoot, nowMillis)
@@ -151,7 +98,18 @@ internal fun stageAndroidAttachmentShareFile(
     check(entry.mkdirs() || entry.isDirectory) { "Share staging unavailable" }
     val target = File(entry, sanitizeAndroidAttachmentShareFileName(displayName, mimeType))
     try {
-        val copied = openInput().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+        val linked =
+            linkFrom != null &&
+                linkFrom.isFile &&
+                runCatching { linkFile(linkFrom, target) }.isSuccess &&
+                target.isFile
+        val copied =
+            if (linked) {
+                target.length()
+            } else {
+                target.delete()
+                openInput().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+            }
         check(copied > 0L && (expectedSizeBytes <= 0L || copied == expectedSizeBytes)) {
             "Share copy size mismatch"
         }

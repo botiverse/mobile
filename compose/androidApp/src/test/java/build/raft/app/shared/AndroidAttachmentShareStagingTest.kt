@@ -120,6 +120,93 @@ class AndroidAttachmentShareStagingTest {
     }
 
     @Test
+    fun openWithViewIntentCarriesTheCleanNameAndType() {
+        val cached = viewerCacheFile()
+        val privateSource =
+            checkNotNull(androidAttachmentPrivateOpenSource(context, cached, "发票 2026.pdf", "application/octet-stream"))
+        val mime = androidAttachmentShareMimeType(privateSource.displayName, privateSource.mimeType)
+        val staged = stageShare(privateSource, mime)
+        val source = androidAttachmentShareSource(context, staged, mime)
+        val intents =
+            androidAttachmentOpenIntents(
+                context = context,
+                spec = androidAttachmentOpenLaunchSpec(source, packageArchive = false),
+                chooserTitle = "Open with"
+            )
+        val target = intents.targetIntent
+        assertEquals(Intent.ACTION_VIEW, target.action)
+        assertEquals("application/pdf", target.type)
+        assertEquals("发票 2026.pdf", target.data?.lastPathSegment)
+        assertTrue(target.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+        assertEquals(target.data, intents.launchIntent.clipData?.getItemAt(0)?.uri)
+        context.contentResolver.query(target.data!!, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null).use { cursor ->
+            checkNotNull(cursor)
+            assertTrue(cursor.moveToFirst())
+            assertEquals("发票 2026.pdf", cursor.getString(0))
+        }
+        val bytes = checkNotNull(context.contentResolver.openInputStream(target.data!!)).use { it.readBytes() }
+        assertArrayEquals(cached.readBytes(), bytes)
+    }
+
+    @Test
+    fun aPrivateCacheSourceIsHardLinkedInsteadOfCopied() {
+        val cached = viewerCacheFile()
+        var opened = false
+        var linkedFrom: File? = null
+        val staged =
+            stageAndroidAttachmentShareFile(
+                shareRoot = androidAttachmentShareRoot(context),
+                displayName = "clip.mp4",
+                mimeType = "video/mp4",
+                expectedSizeBytes = cached.length(),
+                linkFrom = cached,
+                linkFile = { source, target ->
+                    linkedFrom = source
+                    source.copyTo(target)
+                }
+            ) {
+                opened = true
+                cached.inputStream()
+            }
+        assertEquals(cached, linkedFrom)
+        assertFalse(opened)
+        assertEquals("clip.mp4", staged.name)
+        assertArrayEquals(cached.readBytes(), staged.readBytes())
+    }
+
+    @Test
+    fun aFailedLinkFallsBackToACopy() {
+        val cached = viewerCacheFile()
+        val staged =
+            stageAndroidAttachmentShareFile(
+                shareRoot = androidAttachmentShareRoot(context),
+                displayName = "invoice.pdf",
+                mimeType = "application/pdf",
+                expectedSizeBytes = cached.length(),
+                linkFrom = cached,
+                linkFile = { _, _ -> throw java.io.IOException("EXDEV") }
+            ) { cached.inputStream() }
+        assertArrayEquals(cached.readBytes(), staged.readBytes())
+    }
+
+    @Test
+    fun sharedIntoRaftAndPickedFilesWithAGenericTypeAreTypedFromTheirName() {
+        assertEquals("application/pdf", build.raft.app.AndroidExternalShareInbox.resolveMimeType("invoice.pdf", ""))
+        assertEquals(
+            "application/pdf",
+            build.raft.app.AndroidExternalShareInbox.resolveMimeType("invoice.pdf", "application/octet-stream")
+        )
+        assertEquals("image/png", build.raft.app.AndroidExternalShareInbox.resolveMimeType("invoice.pdf", "IMAGE/PNG"))
+        assertEquals(
+            "application/octet-stream",
+            build.raft.app.AndroidExternalShareInbox.resolveMimeType("blob", "application/octet-stream")
+        )
+        // The picker resolves its upload type with the same rule.
+        assertEquals("application/pdf", androidAttachmentShareMimeType("invoice.pdf", null))
+        assertEquals("video/mp4", androidAttachmentShareMimeType("clip.mp4", "application/octet-stream"))
+    }
+
+    @Test
     fun eachShareGetsItsOwnEntrySoTwoSharesNeverCollide() {
         val cached = viewerCacheFile()
         val source = checkNotNull(androidAttachmentPrivateOpenSource(context, cached, "invoice.pdf", "application/pdf"))
