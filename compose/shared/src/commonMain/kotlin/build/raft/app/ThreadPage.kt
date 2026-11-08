@@ -250,7 +250,6 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedReferenceFailure
 import build.raft.app.data.SharedReferenceResolver
 import build.raft.app.data.sharedReferenceFailure
-import build.raft.app.data.isFetching
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
@@ -8041,9 +8040,11 @@ private fun SharedThreadRouteContentContent(
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     // Reference-chip opens are single-flight in their store (ignored repeat taps). The busy chip is
     // the reference resolver's fetch phase: a local hit never shows it, a fetch shows it throughout.
-    val markdownRefOpenStore = remember(threadInstanceKey) { ThreadMarkdownRefOpenStore(coroutineScope) }
+    val markdownRefOpenStore =
+        remember(threadInstanceKey, dataSource) {
+            ThreadMarkdownRefOpenStore(coroutineScope, fetches = dataSource.referenceResolver.inFlight)
+        }
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
-    val markdownReferenceFetches by dataSource.referenceResolver.inFlight.collectAsState()
     fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? =
         markdownRefOpenStore.begin(actionId)
     fun finishMarkdownReferencePending(token: ThreadMarkdownReferencePendingToken?) {
@@ -13312,8 +13313,7 @@ private fun SharedThreadRouteContentContent(
             },
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-            markdownReferencePendingActionId =
-                markdownReferencePending.busyActionId(markdownReferenceFetches::isFetching),
+            markdownReferencePendingActionId = markdownReferencePending.busyActionId,
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,

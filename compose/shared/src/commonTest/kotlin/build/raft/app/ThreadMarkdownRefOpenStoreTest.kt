@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -16,7 +17,7 @@ import kotlinx.coroutines.test.runTest
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadMarkdownRefOpenStoreTest {
-    private fun TestScope.store() = ThreadMarkdownRefOpenStore(this, settleMillis = 600L)
+    private fun TestScope.store() = ThreadMarkdownRefOpenStore(backgroundScope, settleMillis = 600L)
 
     @Test
     fun anOpenDropsEveryOtherTapUntilItSettles() = runTest {
@@ -42,19 +43,31 @@ class ThreadMarkdownRefOpenStoreTest {
 
     @Test
     fun theChipIsBusyOnlyWhileTheResolverFetchesForThisListsOpen() = runTest {
-        val store = store()
-        assertNull(store.state.value.busyActionId { it == "message-a:thread" }, "no open, no busy chip")
+        val resolver = build.raft.app.data.SharedReferenceResolver()
+        val store = ThreadMarkdownRefOpenStore(backgroundScope, fetches = resolver.inFlight, settleMillis = 600L)
+        runCurrent()
+        assertNull(store.state.value.busyActionId, "no open, no busy chip")
 
         val token = assertNotNull(store.begin("message-a:thread"))
-        assertNull(store.state.value.busyActionId { false }, "a local hit (no fetch) shows no spinner")
-        assertEquals("message-a:thread", store.state.value.busyActionId { it == "message-a:thread" })
-        assertNull(
-            store.state.value.busyActionId { it == "message-z:thread" },
-            "another list's fetch never marks this list's chip"
-        )
+        assertNull(store.state.value.busyActionId, "a local hit (no fetch) shows no spinner")
+
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val fetch = launch { resolver.fetchPhase("message-a:thread") { gate.await() } }
+        runCurrent()
+        assertEquals("message-a:thread", store.state.value.busyActionId, "busy for exactly its own fetch")
+
+        // Another page's fetch never marks this list's chip, and outlives this one.
+        val otherGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val other = launch { resolver.fetchPhase("message-z:thread") { otherGate.await() } }
+        runCurrent()
+        gate.complete(Unit)
+        fetch.join()
+        runCurrent()
+        assertNull(store.state.value.busyActionId, "the fetch ended: the chip is restored")
 
         store.finish(token)
-        assertNull(store.state.value.busyActionId { false }, "the fetch ended: the chip is restored")
+        otherGate.complete(Unit)
+        other.join()
     }
 
     @Test
