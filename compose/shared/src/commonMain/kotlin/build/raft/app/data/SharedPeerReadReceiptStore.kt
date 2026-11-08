@@ -129,6 +129,23 @@ class SharedPeerReadReceiptStore internal constructor(
         }
     }
 
+    /**
+     * Web `readReceiptStore.refreshFollowState`: `thread:followers-updated` for [scopeId]. Who stopped
+     * following comes only with the detail (no read frame carries it), so load it again. A load still
+     * in flight may have read before the change: this one runs after it. A per-agent scope only; a
+     * scope never hydrated (or a summary) loads on its own terms.
+     */
+    fun refreshFollowState(owner: PeerReadReceiptOwner, scopeId: String) {
+        val current = state.value
+        if (current.owner != owner || scopeId.isBlank()) return
+        val key = owner to scopeId
+        synchronized(lock) {
+            val running = inFlight[key]?.takeIf { it.isActive }
+            if (running == null && current.scopes[scopeId] !is PeerReadReceiptScope.Peers) return
+            inFlight[key] = launchHydrate(owner, scopeId, after = running)
+        }
+    }
+
     private fun launchHydrate(owner: PeerReadReceiptOwner, scopeId: String, after: Job?): Job =
         scope.launch {
             after?.join()

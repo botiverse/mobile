@@ -21876,6 +21876,15 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
+    // agent_read_progress_v0 (web AgentReadStatusLine): the agents' read status under the viewer's latest reply.
+    val agentReadStatus =
+        remember(peerReadReceipts, renderPayload.messages, renderPayload.canLoadMoreAfter, agentTyping) {
+            peerReadReceipts?.threadAgentReadStatus(
+                messages = renderPayload.messages,
+                hasNewer = renderPayload.canLoadMoreAfter,
+                workingAgentIds = agentTyping?.agents?.map { it.agentId }.orEmpty(),
+            )
+        }
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -25341,6 +25350,14 @@ private fun ThreadMessagesListContent(
                     if (message.id == dmReadStatusMessageId && peerReadReceipts?.showsDmReadStatus(displayMessage) == true) {
                         // The card already ends in its 8dp bottom padding, which stands in for web `mt-1`.
                         ThreadDmReadStatusRow(
+                            Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web option C, AgentReadStatusLine): in a thread, the agents'
+                    // read status under the viewer's latest reply. The @mention read badges stay, as on web.
+                    if (agentReadStatus != null && message.id == agentReadStatus.messageId) {
+                        ThreadAgentReadStatusRow(
+                            agentReadStatus,
                             Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
                         )
                     }

@@ -7,7 +7,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 
 /**
@@ -26,6 +29,9 @@ import kotlinx.serialization.json.jsonObject
  *  - Only agents are exposed (`listExposedReadPeers`): a human's read state never leaves the server.
  *    The viewer itself is excluded. Above `READ_RECEIPT_PEER_STATE_LIMIT` (50) peers the hydrate
  *    degrades to the anonymous summary (so LIMIT + 1 agents is already a summary).
+ *  - slock #13497 (staging ecc7b14): in a thread, a `peerReadStates[]` agent that stopped following it
+ *    carries `stoppedFollowing: true` (only when true). It is not a read move: `thread:followers-updated`
+ *    to the thread's room says load the detail again ([SharedPeerReadReceiptStore.refreshFollowState]).
  *  - Realtime `scope_read:updated` to room `channel:{scopeId}`: `{ scopeId, peerKind, peerId,
  *    maxReadSeq }` when an agent's read cursor advances, or `{ scopeId, summaryChanged: true }`
  *    once the scope has more than LIMIT exposed peers (the client then re-fetches the hydrate).
@@ -41,6 +47,11 @@ internal data class PeerReadStateWire(
     val peerKind: String,
     val peerId: String,
     val maxReadSeq: Long,
+    /**
+     * slock #13497: in a thread, this agent stopped following it. Only `true` counts (web
+     * `item.stoppedFollowing === true`); anything else, or absent, is unknown and never breaks the row.
+     */
+    val stoppedFollowing: JsonElement? = null,
 )
 
 /** `peerReadSummary.readCountAtSeq[]` row. */
@@ -71,6 +82,12 @@ data class PeerReadState(
     val peerKind: ReadReceiptPeerKind,
     val peerId: String,
     val maxReadSeq: Long,
+    /**
+     * Web `PeerReadState.stoppedFollowing` (slock #13497, `readReceiptService.withStoppedFollowing`): in a
+     * thread, an agent that stopped following it (in a joint thread, only when no server's projection
+     * still follows it). False is "not known to have", never "follows".
+     */
+    val stoppedFollowing: Boolean = false,
 )
 
 data class PeerReadCountAtSeq(val seq: Long, val count: Int)
@@ -128,7 +145,7 @@ private fun decodePeerReadReceiptHydrate(root: JsonObject): PeerReadReceiptScope
                 val kind = readReceiptPeerKindFromWire(wire.peerKind) ?: return null
                 if (wire.peerId.isEmpty() || wire.maxReadSeq < 0) return null
                 if (!seen.add(kind to wire.peerId)) return null
-                PeerReadState(kind, wire.peerId, wire.maxReadSeq)
+                PeerReadState(kind, wire.peerId, wire.maxReadSeq, stoppedFollowing = wire.stoppedFollowing.isJsonTrue())
             }
         return PeerReadReceiptScope.Peers(peers)
     }
@@ -147,6 +164,9 @@ private fun decodePeerReadReceiptHydrate(root: JsonObject): PeerReadReceiptScope
         }
     return PeerReadReceiptScope.Summary(PeerReadSummary(wire.peerCount, rows))
 }
+
+private fun JsonElement?.isJsonTrue(): Boolean =
+    this is JsonPrimitive && !isString && booleanOrNull == true
 
 /** web `normalizeScopeReadUpdated`: a peer advance, `summaryChanged`, or null (dropped). */
 internal fun ScopeReadUpdatedWire.toScopeReadUpdated(): ScopeReadUpdated? {
