@@ -2064,6 +2064,7 @@
     <string name="member_hosted_runtime_state_failed">Setup failed</string>
     <string name="member_hosted_runtime_state_deleting">Removing</string>
     <string name="member_hosted_runtime_state_deleted">Removed</string>
+    <string name="members_agent_group_no_computer">external &amp; cloud</string>
     <string name="member_hosted_runtime_location">Runs in the cloud</string>
     <string name="member_hosted_runtime_free">Free for a limited time</string>
     <string name="member_hosted_runtime_last_error">Last error (%1$s): %2$s</string>

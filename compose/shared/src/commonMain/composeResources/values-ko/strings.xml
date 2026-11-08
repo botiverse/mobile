@@ -2061,6 +2061,7 @@
     <string name="member_hosted_runtime_state_failed">설정 실패</string>
     <string name="member_hosted_runtime_state_deleting">제거 중</string>
     <string name="member_hosted_runtime_state_deleted">제거됨</string>
+    <string name="members_agent_group_no_computer">외부 및 클라우드</string>
     <string name="member_hosted_runtime_location">클라우드에서 실행</string>
     <string name="member_hosted_runtime_free">한시적 무료</string>
     <string name="member_hosted_runtime_last_error">마지막 오류 (%1$s): %2$s</string>

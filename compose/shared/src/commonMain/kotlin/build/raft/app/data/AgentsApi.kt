@@ -181,6 +181,9 @@ internal interface RaftAgentsApi {
     /** `POST /agents/:id/hosted-runtime/retry`: provision a cloud agent again. */
     suspend fun retryHostedRuntime(agentId: MemberId, body: String): HomeNetworkResponse =
         error("retryHostedRuntime is not implemented")
+    /** `GET /agents/:id/hosted-runtime/model`: what a cloud agent's next turn runs on (web `AgentHostedRuntimeModel`). */
+    suspend fun agentHostedRuntimeModel(agentId: MemberId): HomeNetworkResponse =
+        error("agentHostedRuntimeModel is not implemented")
     // #89 React parity: agent permissions (scope grants) per React
     // `AgentScopesPanel.tsx`. Mirrors `GET / PUT /api/agents/:id/scopes`.
     // `updateAgentScopes` body is `{ scopes: AgentGrantableScope[] }`;
@@ -327,6 +330,12 @@ internal class RaftAgentsNetworkApi(
             path = "agents/${agentId.value}/hosted-runtime/retry",
             method = "POST",
             bodyText = body
+        )
+
+    override suspend fun agentHostedRuntimeModel(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "agents/${agentId.value}/hosted-runtime/model"
         )
 
     override suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse =
@@ -579,6 +588,27 @@ internal class RaftAgentsApiClient(
             HostedRuntimeRetryWireDto.serializer(),
             diagnosticsLogger = diagnosticsLogger
         ) { Unit }
+
+    /**
+     * Web `AgentHostedRuntimeModel`'s load. A 4xx (not hosted, not provisioned yet, no permission)
+     * is a non-Content result: the profile shows no Model row then, as on the web.
+     */
+    suspend fun agentHostedRuntimeModel(agentId: MemberId): DataResult<HostedAgentModelView> =
+        transport.agentHostedRuntimeModel(agentId).mapAgentsBody(
+            "agent_hosted_runtime_model_contract_mismatch",
+            HostedAgentModelWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire ->
+            HostedAgentModelView(
+                models = wire.models.map { HostedRuntimeModelOption(it.id, it.label) },
+                defaultLabel = wire.defaultLabel?.takeIf { it.isNotBlank() },
+                model = wire.model?.takeIf { it.isNotBlank() },
+                label = wire.label?.takeIf { it.isNotBlank() },
+                source = wire.source,
+                locked = wire.locked,
+                picker = wire.picker
+            )
+        }
 
     suspend fun issueAgentLoginToken(agentId: MemberId, body: String = "{}"): DataResult<AgentLoginTokenSummary> =
         transport.issueAgentCredential(agentId, body).mapAgentsBody(
@@ -1027,6 +1057,21 @@ private data class ExternalAgentStatusWireDto(
     val credentialLastUsedAt: String? = null,
     val lastActivityAt: String? = null,
     val hostedRuntime: AgentHostedRuntimeWireDto? = null
+)
+
+@Serializable
+private data class HostedAgentModelOptionWireDto(val id: String, val label: String)
+
+/** Web shared `HostedAgentModelView`. */
+@Serializable
+private data class HostedAgentModelWireDto(
+    val models: List<HostedAgentModelOptionWireDto> = emptyList(),
+    val defaultLabel: String? = null,
+    val model: String? = null,
+    val label: String? = null,
+    val source: String? = null,
+    val locked: Boolean = false,
+    val picker: Boolean? = null
 )
 
 @Serializable

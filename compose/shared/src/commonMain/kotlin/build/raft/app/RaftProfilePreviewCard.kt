@@ -128,7 +128,7 @@ internal fun raftProfilePreviewCardModel(
         description = if (appBot != null) null else profile.description?.trim()?.takeIf { it.isNotBlank() },
         appBot = appBot,
         status = if (isAgent && appBot == null) status else null,
-        runtimeLabel = if (isAgent && appBot == null) runtimeId?.let { runtimeCatalogDisplayName(it, profile.serverId?.value) } else null,
+        runtimeLabel = if (isAgent && appBot == null) runtimeId?.let { runtimeIdentityDisplayName(it, profile.serverId?.value) } else null,
         runtimeId = if (isAgent && appBot == null) runtimeId else null,
         modelLabel = if (isAgent && appBot == null) profile.modelLabel() else null,
         computer =
