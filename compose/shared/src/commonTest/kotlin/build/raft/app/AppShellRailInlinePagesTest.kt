@@ -28,6 +28,8 @@ class AppShellRailInlinePagesTest {
         assertEquals(settingsWideDetailPage(SettingsDestinationComputers, scope)?.first, appShellRailInlinePage(AppShellRailComputersKey, scope)?.first)
         assertEquals(SETTINGS_COMPUTERS_PAGE, appShellRailInlinePage(AppShellRailComputersKey, scope)?.first)
         assertEquals(SETTINGS_WEB_VIEW_PAGE, appShellRailInlinePage(AppShellRailAppsKey, scope)?.first)
+        // The Artifacts home beside the rail, as the web LeftRail's Artifacts tab.
+        assertEquals(ARTIFACTS_HOME_PAGE, appShellRailInlinePage(AppShellRailArtifactsKey, scope)?.first)
         assertNull(appShellRailInlinePage(AppShellRailSearchKey, scope))
         assertNull(appShellRailInlinePage(null, scope))
     }
@@ -36,6 +38,11 @@ class AppShellRailInlinePagesTest {
     fun theInlinePageIsTheSelectedRailEntry() {
         val tabs = appShellRailTabs(selectedTab = "home", labelFor = { it }, inlinePageRailId = appShellRailInlinePageRailId(AppShellRailComputersKey))
         assertEquals(listOf("computers"), tabs.filter { it.selected }.map { it.key })
+        // Artifacts only behind workspace_artifacts_v0 (web `useArtifactsRailShown`), after Tasks.
+        assertFalse(tabs.any { it.key == "artifacts" })
+        val withArtifacts = appShellRailTabs(selectedTab = "home", labelFor = { it }, artifacts = true, inlinePageRailId = appShellRailInlinePageRailId(AppShellRailArtifactsKey))
+        assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), withArtifacts.map { it.key })
+        assertEquals(listOf("artifacts"), withArtifacts.filter { it.selected }.map { it.key })
         val footer = appShellRailFooterTabs(selectedTab = "", labelFor = { it }, helpOpen = false)
         assertFalse(footer.any { it.selected })
         assertNull(appShellRailInlinePageRailId(AppShellRailSearchKey))

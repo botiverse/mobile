@@ -122,10 +122,15 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
         }
     val state by viewModel.state.collectAsState()
     val session by produceState(ArtifactsHomeSession(storeScope.initialServerId, null, null), authStore) {
-        val read = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
-        if (read != null) {
-            value = ArtifactsHomeSession(read.currentServerId?.takeIf { it.isNotBlank() }, read.currentServerSummary()?.name, read.user.id.takeIf { it.isNotBlank() })
+        suspend fun read() {
+            val read = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull() ?: return
+            val next = ArtifactsHomeSession(read.currentServerId?.takeIf { it.isNotBlank() }, read.currentServerSummary()?.name, read.user.id.takeIf { it.isNotBlank() })
+            if (next != value) value = next
         }
+        read()
+        // A server switch while the page shows (the wide rail's inline page): another server's list.
+        val events = (authStore as? build.raft.app.data.RaftAuthSessionEventSource)?.authSessionEvents ?: return@produceState
+        events.collect { read() }
     }
     val serverId = session.serverId
     // workspace_artifacts_v0, live (web `useServerFeatureFlag`): unknown while it loads.
