@@ -364,14 +364,22 @@ internal const val ThreadNewMessagesBelowMaxBatch = 5
  *  - rows appended after the previous newest message, at most [ThreadNewMessagesBelowMaxBatch]
  *    at once, add to it while the reader is away;
  *  - with newer messages not loaded ([canLoadMoreAfter]) appends are newer pages, not arrivals;
- *  - a list whose previous newest message is gone (replaced, reloaded) rebases without counting.
+ *  - a list whose previous newest message is gone (replaced, reloaded) rebases without counting;
+ *  - while the list's layout has not yet measured [messages] ([viewportMeasured] false) nothing
+ *    changes: [awayFromBottom] is read from that stale layout. In the composition where a message
+ *    arrives, the newest row is not laid out yet, so the pill reads hidden for that one frame;
+ *    reducing then cleared the count and moved the frontier past the arrival, and the pill came
+ *    back saying "Back to Bottom" with no count. The next reduction, once the layout has caught
+ *    up, counts the arrival against the unchanged frontier.
  */
 internal fun reduceThreadNewMessagesBelow(
     state: ThreadNewMessagesBelow,
     messages: List<ThreadJumpArrival>,
     awayFromBottom: Boolean,
     canLoadMoreAfter: Boolean,
+    viewportMeasured: Boolean = true,
 ): ThreadNewMessagesBelow {
+    if (!viewportMeasured) return state
     // Task #78: the reader's own local sends (sending / failed) are not arrivals and must not hide
     // the server messages that land around them, so the frontier is the newest countable message
     // (the loaded tail only when every row is local).

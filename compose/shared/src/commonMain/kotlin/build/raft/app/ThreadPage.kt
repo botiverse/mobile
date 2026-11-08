@@ -5117,8 +5117,10 @@ private fun ThreadPageScreen(
             wide = adaptivePaneState.layout == RaftAdaptivePaneLayout.DualPane,
             onBack = rootBack,
         )
+    val threadOutlineApi = remember(networkClient) { build.raft.app.data.NetworkRaftThreadOutlineApi(networkClient) }
     CompositionLocalProvider(
         LocalConversationUnavailableNav provides conversationUnavailableNav,
+        LocalThreadOutlineApi provides threadOutlineApi,
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
@@ -13625,6 +13627,17 @@ private fun SharedThreadRouteContentContent(
                             )
                         )
                     }
+                    action == ThreadOutlineJumpAction && !itemId.isNullOrBlank() -> {
+                        // The thread timeline (botiverse/slock #13534): focus the message as a search
+                        // hit does, loading around it first when it isn't loaded; top-aligned.
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.JumpToMessage(
+                                messageId = itemId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                                unreadThreadPill = false,
+                            )
+                        )
+                    }
                     action == "openAttachmentComments" && !attachmentId.isNullOrBlank() -> {
                         openAttachmentComments(attachmentId)
                     }
@@ -18173,6 +18186,17 @@ private fun ThreadPageContentContent(
     }
     val composerSuggestionPortal =
         remember(threadInstanceKey) { ThreadComposerSuggestionPortalState() }
+    // The thread timeline (botiverse/slock #13534): the reply thread's outline, read on opening the
+    // thread and on coming back to it, as the rail and the ⋯ menu's Timeline both need its count.
+    val threadOutline =
+        rememberThreadOutlineState(
+            (timelineSlice.historyChannelId ?: timelineSlice.sourceThreadId).takeIf { timelineSlice.replyThreadSurface }
+        )
+    val threadOutlineActive = routeActive && hostForeground
+    LaunchedEffect(threadOutline, threadOutlineActive) {
+        if (threadOutlineActive) threadOutline?.loadNewest()
+    }
+    CompositionLocalProvider(LocalThreadOutlineState provides threadOutline) {
     scaffold(
         ThreadRouteScaffoldSlots(
             scaffoldPlan = ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan(),
@@ -18200,6 +18224,12 @@ private fun ThreadPageContentContent(
                         originReplyMetadata = originReplyMetadata
                     )
                 ThreadPageHeader(
+                    onOpenTimeline =
+                        threadOutline?.openTimelineAction(
+                            leadingMessageId = timelineSlice.parentMessageId ?: timelineSlice.originMessage?.id,
+                            origin = timelineSlice.originMessage,
+                            messages = timelineSlice.messages,
+                        ),
                     agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
                     headerDisplay = headerDisplay,
@@ -19147,6 +19177,7 @@ private fun ThreadPageContentContent(
             }
         )
     )
+    }
 }
 
 @Composable
@@ -19190,6 +19221,8 @@ internal fun ThreadPageHeader(
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
     /** Task v2: the Tasks / Files card toggles between Search and Settings (null: none). */
     sideCardToggles: ThreadHeaderSideCardToggles? = null,
+    /** The thread timeline's sheet (web ThreadOverflowMenu Timeline); null where the ⋯ doesn't offer it. */
+    onOpenTimeline: (() -> Unit)? = null,
     /** Agent Lounge v0: the Lounge this page is (or is in), and an agent DM's Lounge toggle. */
     lounge: ThreadPageLounge? = null,
 ) {
@@ -19288,6 +19321,7 @@ internal fun ThreadPageHeader(
                         onMarkThreadUnread = onMarkThreadUnread,
                         onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                         sideCardToggles = sideCardToggles,
+                        onOpenTimeline = onOpenTimeline,
                     )
                 } else {
                     emptyList()
@@ -19312,6 +19346,7 @@ internal fun ThreadPageHeader(
                 onToggleThreadFollow = onToggleThreadFollow,
                 onMarkThreadUnread = onMarkThreadUnread,
                 onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+                onOpenTimeline = onOpenTimeline,
             )
         } else {
             emptyList()
@@ -19571,7 +19606,7 @@ internal fun ThreadPageHeader(
                     val toggleFocus = onToggleFocusMode
                     val hasPanelMenu =
                         toggleFocus != null || onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
-                            replyThreadSearch != null || replyThreadViewInChannel != null
+                            replyThreadSearch != null || replyThreadViewInChannel != null || onOpenTimeline != null
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
                             focused = focusModeActive,
@@ -19581,6 +19616,7 @@ internal fun ThreadPageHeader(
                             onMarkUnread = onMarkThreadUnread,
                             focusEnabled = focusModeActive || toggleFocus != null,
                             onSearchInTask = onOpenSearch.takeIf { taskConversation } ?: replyThreadSearch,
+                            onTimeline = onOpenTimeline,
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation } ?: replyThreadViewInChannel,
                             taskFollowLabels = taskConversation,
                             drawLocally = toggleFocus == null,
@@ -19653,7 +19689,9 @@ private fun threadHeaderSideColumnActions(
     onMarkThreadUnread: (() -> Unit)?,
     onViewTaskInChannel: (() -> Unit)?,
     sideCardToggles: ThreadHeaderSideCardToggles? = null,
+    onOpenTimeline: (() -> Unit)? = null,
 ): List<RaftSideAction> {
+    val timelineLabel = stringResource(Res.string.thread_outline_list_title)
     val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
     val searchLabel = stringResource(Res.string.thread_action_search)
     val settingsLabel = stringResource(Res.string.settings_title)
@@ -19715,6 +19753,10 @@ private fun threadHeaderSideColumnActions(
                     systemSymbol = "gearshape".takeIf { systemSymbols },
                 )
             )
+        }
+        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
+        if (onOpenTimeline != null) {
+            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
         }
         if (payload.threadHeaderOpenInParentActionVisible()) {
             add(raftSideColumnLucideAction("thread-open-in-channel", viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
@@ -20488,6 +20530,8 @@ private fun ThreadHeaderFocusModeMenu(
     focusEnabled: Boolean = true,
     /** Web ThreadOverflowMenu: Search in Task (a task) or Search in Thread (a reply thread), after Focus mode. */
     onSearchInTask: (() -> Unit)? = null,
+    /** Web ThreadOverflowMenu Timeline (botiverse/slock #13534): the thread timeline's sheet, after Search. */
+    onTimeline: (() -> Unit)? = null,
     /** View in Channel: a task's message in its channel, or a reply thread's parent message. */
     onViewInChannel: (() -> Unit)? = null,
     /** Task v2: the follow row reads Follow / Unfollow Task. */
@@ -20532,6 +20576,16 @@ private fun ThreadHeaderFocusModeMenu(
                         id = SEARCH_IN_TASK_MENU_ITEM_ID,
                         label = stringResource(if (taskFollowLabels) Res.string.task_conversation_search else Res.string.thread_action_search_in_thread),
                         icon = RaftLucideIconName.Search,
+                        enabled = true
+                    )
+                )
+            }
+            if (onTimeline != null) {
+                add(
+                    RaftUiMenuItem(
+                        id = THREAD_TIMELINE_MENU_ITEM_ID,
+                        label = stringResource(Res.string.thread_outline_list_title),
+                        icon = RaftLucideIconName.List,
                         enabled = true
                     )
                 )
@@ -20629,6 +20683,7 @@ private fun ThreadHeaderFocusModeMenu(
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
                     MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
+                    THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                     else -> Unit // dismissed
@@ -20708,6 +20763,7 @@ private fun ThreadHeaderFocusModeMenu(
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
                     MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
+                    THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                 }
@@ -20733,6 +20789,7 @@ internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
 internal const val MARK_THREAD_UNREAD_MENU_ITEM_ID = "thread-mark-unread"
 internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 internal const val SEARCH_IN_TASK_MENU_ITEM_ID = "task-search"
+internal const val THREAD_TIMELINE_MENU_ITEM_ID = "thread-timeline"
 internal const val VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID = "task-view-in-channel"
 internal const val NOTIFICATION_LEVEL_MENU_ITEM_ID = "thread-notification-level"
 
@@ -23259,6 +23316,8 @@ private fun ThreadMessagesListContent(
     }
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
+    var outlineOriginJumpRequest by remember(threadInstanceKey) { mutableStateOf(0) }
+    var outlineOriginJumpConsumed by remember(threadInstanceKey) { mutableStateOf(0) }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
         if (!consumeThreadHeaderScrollToTopRequest(
                 request = headerScrollToTopRequest,
@@ -23281,6 +23340,45 @@ private fun ThreadMessagesListContent(
             "thread_header_scroll_to_top request=$headerScrollToTopRequest " +
                 "firstVisible=${listState.firstVisibleItemIndex} totalItems=$lazyItemCount"
         )
+    }
+    // The thread timeline's jump to the thread's first message (web `jumpToParent`): its row is the
+    // list's first, so the thread's start is loaded first (older pages until there are none), then
+    // the list pins its top and the row is located, as a focused message is.
+    LaunchedEffect(
+        threadInstanceKey,
+        outlineOriginJumpRequest,
+        renderPayload.canLoadMoreBefore,
+        renderPayload.olderMessagesStatus,
+        renderPayload.originStatus,
+        lazyItemCount
+    ) {
+        val step =
+            threadOutlineOriginJumpStep(
+                request = outlineOriginJumpRequest,
+                consumed = outlineOriginJumpConsumed,
+                canLoadMoreBefore = renderPayload.canLoadMoreBefore,
+                olderMessagesStatus = renderPayload.olderMessagesStatus,
+                originRowShown = renderPayload.hasThreadOriginItem() && renderPayload.originMessage != null,
+            )
+        when (step) {
+            ThreadOutlineOriginJumpStep.Idle, ThreadOutlineOriginJumpStep.Wait -> Unit
+            ThreadOutlineOriginJumpStep.LoadOlder -> onThreadEvent("loadOlder", null, null, null)
+            ThreadOutlineOriginJumpStep.GiveUp -> outlineOriginJumpConsumed = outlineOriginJumpRequest
+            ThreadOutlineOriginJumpStep.Pin -> {
+                outlineOriginJumpConsumed = outlineOriginJumpRequest
+                pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
+                    scrollInterruptedFocusedMessageAnchorIdentity = pendingIdentity
+                }
+                latestLocalSendBottomAnchorActiveKey = null
+                pendingKeyboardBottomAnchor = false
+                allowBottomAutoAnchor = false
+                initialBottomAnchorReady = true
+                userScrollGeneration.value += 1
+                dispatchViewportEvent(LazyViewportEvent.PinTop)
+                activeFocusedMessageId = renderPayload.originMessage?.id
+                diagnosticsLogger("thread_outline_origin_jump request=$outlineOriginJumpRequest totalItems=$lazyItemCount")
+            }
+        }
     }
     LaunchedEffect(
         threadInstanceKey,
@@ -25130,7 +25228,11 @@ private fun ThreadMessagesListContent(
                     ),
                 verticalArrangement = Arrangement.Bottom,
                 contentPadding =
-                    PaddingValues(top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp),
+                    PaddingValues(
+                        top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp,
+                        // The thread timeline's rail keeps clear of message content (web `--message-rail-inset`).
+                        end = if (LocalThreadOutlineState.current?.railShown == true) ThreadOutlineRailInset else 0.dp,
+                    ),
             ) {
             val threadListSegments = mutableListOf<LazyListScope.() -> Unit>()
             threadListSegments += {
@@ -25786,8 +25888,16 @@ private fun ThreadMessagesListContent(
         // One line whenever an input of the "Back to bottom" pill changes (not on every scroll frame),
         // with the raw list position at that moment: reversed lists left the pill on after a local send
         // (HuaTuo, #raft-mobile-reconcile:6dbbf8b9) and the pill's inputs were not logged anywhere.
+        val bottomJumpCount =
+            threadBottomJumpCount(
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                conversationUnreadCount = jumpInputs.conversationUnreadCount,
+                newMessagesBelow = newMessagesBelow.count,
+            )
         val backToBottomPillInputs =
-            "visible=$shouldShowBackToBottomButton reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
+            "visible=$shouldShowBackToBottomButton count=$bottomJumpCount newBelow=${newMessagesBelow.count} " +
+                "laidOut=${backToBottomViewportSignals.latestItemLaidOut} " +
+                "reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
                 "canScrollForward=${backToBottomViewportSignals.canScrollTowardBottom} " +
                 "latestItemOffBottom=${backToBottomViewportSignals.latestItemOffBottom} " +
                 "tailMissing=${renderPayload.canLoadMoreAfter} kbd=$pendingKeyboardBottomAnchor " +
@@ -25876,26 +25986,20 @@ private fun ThreadMessagesListContent(
             }
         }
         // Web ChatPanel `newMessageCount`: arrivals below while the Back to Bottom pill shows.
-        val newMessagesTailSignature = renderPayload.messages.size to renderPayload.messages.lastOrNull()?.id
-        LaunchedEffect(threadInstanceKey, newMessagesTailSignature, shouldShowBackToBottomButton, renderPayload.canLoadMoreAfter) {
-            val next =
-                reduceThreadNewMessagesBelow(
-                    state = newMessagesBelow,
-                    messages =
-                        renderPayload.messages.map { message ->
-                            ThreadJumpArrival(messageId = message.id, countable = !message.hasLocalSendState())
-                        },
-                    awayFromBottom = shouldShowBackToBottomButton,
-                    canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                )
-            if (next != newMessagesBelow) newMessagesBelow = next
-        }
-        val bottomJumpCount =
-            threadBottomJumpCount(
-                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                conversationUnreadCount = jumpInputs.conversationUnreadCount,
-                newMessagesBelow = newMessagesBelow.count,
-            )
+        ThreadNewMessagesBelowEffect(
+            instanceKey = threadInstanceKey,
+            tailSignature = renderPayload.messages.size to renderPayload.messages.lastOrNull()?.id,
+            awayFromBottom = shouldShowBackToBottomButton,
+            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+            viewportMeasured = backToBottomViewportSignals.latestItemLaidOut,
+            current = { newMessagesBelow },
+            onChange = { newMessagesBelow = it },
+            arrivals = {
+                renderPayload.messages.map { message ->
+                    ThreadJumpArrival(messageId = message.id, countable = !message.hasLocalSendState())
+                }
+            },
+        )
         val unreadThreadJumpActive =
             jumpInputs.unreadThreadPillEnabled &&
                 routeActive &&
@@ -25955,6 +26059,52 @@ private fun ThreadMessagesListContent(
             ThreadMessageListEndFade(
                 typingLineShown = agentTypingLineShown,
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
+            )
+        }
+        if (renderPayload.replyThreadSurface && !shareSelectionActive && !shareSelectionCaptureActive) {
+            // The thread timeline (web ConversationOutline): the rail in a wide window, the ⋯ menu's
+            // Timeline sheet elsewhere; see ThreadOutline.kt.
+            // Built on first read only: the viewport is read while the rail or the sheet shows, so a
+            // phone without the sheet open never maps its rows.
+            val outlineKeyToMessageId =
+                remember(renderPayload.messages, renderPayload.originMessage?.id, duplicateMessageRandomIds) {
+                    lazy {
+                        buildMap {
+                            renderPayload.originMessage?.id?.let { put(ThreadOriginListItemKey, it) }
+                            renderPayload.messages.forEach { put(it.messageListItemKey(duplicateMessageRandomIds), it.id) }
+                        }
+                    }
+                }
+            val outlineViewport =
+                remember(listState, reverseLayout, outlineKeyToMessageId) {
+                    {
+                        val visible = listState.raw.layoutInfo.visibleItemsInfo
+                        val topFirst = if (reverseLayout) visible.sortedByDescending { it.offset } else visible.sortedBy { it.offset }
+                        val keys = outlineKeyToMessageId.value
+                        ThreadOutlineViewport(topFirst.mapNotNull { keys[it.key] })
+                    }
+                }
+            val outlineOriginId = renderPayload.originMessage?.id
+            ThreadOutlineHost(
+                state = LocalThreadOutlineState.current,
+                leadingMessageId = renderPayload.parentMessageId ?: outlineOriginId,
+                origin = renderPayload.originMessage,
+                messages = renderPayload.messages,
+                viewport = outlineViewport,
+                jumpTargetId = renderPayload.focusedMessageId,
+                jumpNonce = renderPayload.focusedMessageRequestNonce,
+                listWidth = maxWidth,
+                formatTime = { value -> renderConfig.formatTimestampLabel(value) },
+                onJump = { messageId ->
+                    // The thread's first message heads the list and isn't among the replies the
+                    // page focuses: scroll to its row (web `jumpToParent`); a reply is focused.
+                    if (messageId == (renderPayload.parentMessageId ?: outlineOriginId)) {
+                        outlineOriginJumpRequest += 1
+                    } else {
+                        onThreadEvent(ThreadOutlineJumpAction, messageId, null, null)
+                    }
+                },
+                modifier = Modifier.zIndex(ThreadJumpControlsZIndex),
             )
         }
         if (agentTyping != null && agentTypingLineShown) {
@@ -28527,7 +28677,13 @@ internal fun threadRepliesFocusedItemScrollOffset(
 
 internal data class ThreadBackToBottomViewportSignals(
     val canScrollTowardBottom: Boolean,
-    val latestItemOffBottom: Boolean
+    val latestItemOffBottom: Boolean,
+    /**
+     * The layout has measured row `latestItemIndex`, i.e. the current list. False for the
+     * composition in which rows were appended (the layout still holds the previous list), when
+     * [latestItemOffBottom] reads false whatever the scroll position.
+     */
+    val latestItemLaidOut: Boolean = true
 )
 
 /**
@@ -28543,10 +28699,41 @@ internal fun rememberThreadBackToBottomViewportSignals(
         derivedStateOf {
             ThreadBackToBottomViewportSignals(
                 canScrollTowardBottom = listState.canScrollForward,
-                latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
+                latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
+                latestItemLaidOut = latestItemIndex <= 0 || listState.layoutInfo.totalItemsCount > latestItemIndex
             )
         }
     }
+
+/**
+ * Web ChatPanel `newMessageCount`: reduces the arrivals below while the Back to Bottom pill shows
+ * ([reduceThreadNewMessagesBelow]), once per change of the list's tail or the pill's inputs.
+ * [arrivals] is read only when it runs, not on every composition.
+ */
+@Composable
+internal fun ThreadNewMessagesBelowEffect(
+    instanceKey: Any?,
+    tailSignature: Any?,
+    awayFromBottom: Boolean,
+    canLoadMoreAfter: Boolean,
+    viewportMeasured: Boolean,
+    current: () -> ThreadNewMessagesBelow,
+    onChange: (ThreadNewMessagesBelow) -> Unit,
+    arrivals: () -> List<ThreadJumpArrival>,
+) {
+    LaunchedEffect(instanceKey, tailSignature, awayFromBottom, canLoadMoreAfter, viewportMeasured) {
+        val state = current()
+        val next =
+            reduceThreadNewMessagesBelow(
+                state = state,
+                messages = arrivals(),
+                awayFromBottom = awayFromBottom,
+                canLoadMoreAfter = canLoadMoreAfter,
+                viewportMeasured = viewportMeasured,
+            )
+        if (next != state) onChange(next)
+    }
+}
 
 private fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
@@ -28607,6 +28794,9 @@ internal fun threadRenderedBottomScrollOffset(
 
 /** The action the unread-thread pill sends: focus that parent message. */
 internal const val ThreadJumpToUnreadThreadParentAction = "focusUnreadThreadParent"
+
+/** The thread timeline's row or tick: focus that message (ThreadOutline.kt). */
+internal const val ThreadOutlineJumpAction = "focusThreadOutlineMessage"
 
 /** The pill's thread has its parent past the history window and replies inside it: open the thread. */
 internal const val ThreadOpenUnreadThreadPastHistoryAction = "openUnreadThreadPastHistory"

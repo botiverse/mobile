@@ -4,6 +4,7 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.RaftThreadMessageItem
 import build.raft.app.seedThreadAuthorProfiles
 import build.raft.app.raftScopedAgentStatusResolver
+import build.raft.app.membersPageMergedMembers
 import build.raft.app.model.*
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesReadModel
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -2155,6 +2157,37 @@ class SharedServerMembersStoreTest {
         assertIs<DataResult.Content<AgentLifecycleActionResult>>(result)
         assertEquals(1, repository.deleteAgentCalls)
         assertEquals(listOf("u1"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+    }
+
+    @Test
+    fun archivingAnAgentTakesItOffTheMembersPageIncludingAJustCreatedRow() = runTest {
+        // A cloud agent created from the app sits on the Members page as the page's own row until
+        // the roster refresh lands; archiving it must take it off the list at once (web
+        // `deleteAgent` marks it and every list drops it), not only after a reload.
+        val repository = FakeMemberRepository()
+        val buildAgent = member("agent-1", "Build Agent").copy(handle = "build-agent", kind = MemberKind.Agent)
+        repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), buildAgent)
+        val store = SharedServerMembersStore(repository)
+        val serverId = ServerId("server-1")
+        store.refreshMembers(serverId)
+        val justCreated = member("cloud-1", "Cloud Agent").copy(handle = "cloud-agent", kind = MemberKind.Agent, isExternal = true)
+        assertEquals(emptySet(), store.deletedAgentIdsFlow(serverId).first())
+        assertEquals(
+            listOf("u1", "agent-1", "cloud-1"),
+            membersPageMergedMembers(store.currentServerMembers(serverId), listOf(justCreated), store.deletedAgentIds(serverId)).map { it.id.value }
+        )
+
+        assertIs<DataResult.Content<AgentLifecycleActionResult>>(store.deleteAgent(serverId, MemberId("cloud-1")))
+        assertIs<DataResult.Content<AgentLifecycleActionResult>>(store.deleteAgent(serverId, MemberId("agent-1")))
+
+        val archived = store.deletedAgentIdsFlow(serverId).first()
+        assertEquals(setOf("cloud-1", "agent-1"), archived)
+        assertEquals(archived, store.deletedAgentIds(serverId))
+        assertEquals(emptySet(), store.deletedAgentIdsFlow(ServerId("server-2")).first(), "per server")
+        assertEquals(
+            listOf("u1"),
+            membersPageMergedMembers(store.currentServerMembers(serverId), listOf(justCreated), archived).map { it.id.value }
+        )
     }
 
     @Test

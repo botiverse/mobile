@@ -836,6 +836,8 @@ internal object ProcessAndroidAttachmentPublicDownloads {
                     recoverAndroidAttachmentPrivateStaging(
                         File(appContext.cacheDir, ANDROID_ATTACHMENT_PRIVATE_STAGING_DIR_NAME)
                     )
+                // Share copies are swept by age only: a receiver may still be reading one.
+                runCatching { sweepAndroidAttachmentShareStaging(androidAttachmentShareRoot(appContext)) }
                 val preparedRecovered = resolved.recoverPrepared()
                 recoverySucceeded = privateStagingCleared && preparedRecovered
             } finally {

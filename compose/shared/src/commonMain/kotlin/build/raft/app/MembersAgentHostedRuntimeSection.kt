@@ -22,6 +22,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentHostedRuntimeSnapshot
 import build.raft.app.data.DataResult
+import build.raft.app.data.HostedAgentModelView
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.createAgentFallbackErrorText
 import build.raft.app.model.MemberId
@@ -33,6 +34,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
@@ -209,6 +211,74 @@ internal fun MembersAgentHostedRuntimeSection(
                 }
             )
             retryError?.let { HostedRuntimeWarning(it) }
+        }
+    }
+    if (summary.state == "active") {
+        MembersAgentHostedRuntimeModel(agentId = agentId, agentsApiClient = agentsApiClient)
+    }
+}
+
+/** What the hosted Model row says (web `AgentHostedRuntimeModel`). */
+internal sealed interface HostedAgentModelLabel {
+    /** A model is named: the pick, an administrator's, or the locked one. */
+    data class Named(val text: String) : HostedAgentModelLabel
+
+    /** Nothing picked: "Default ([defaultLabel])", or "Provider default" when the provider names none. */
+    data class Default(val defaultLabel: String?) : HostedAgentModelLabel
+}
+
+/**
+ * Web `AgentHostedRuntimeModel`, read only: null where the web shows no Model section (the server
+ * may not pick, `picker: false`). Locked shows `label ?? model`; otherwise the combobox shows the
+ * default choice for `source: "default"`, else the picked option's label (the raw id when the
+ * list doesn't name it).
+ */
+internal fun hostedAgentModelLabel(view: HostedAgentModelView): HostedAgentModelLabel? {
+    if (view.picker == false) return null
+    val named = view.label ?: view.models.firstOrNull { it.id == view.model }?.label ?: view.model
+    return when {
+        view.locked -> named?.let(HostedAgentModelLabel::Named) ?: HostedAgentModelLabel.Default(view.defaultLabel)
+        view.source == "default" || named == null -> HostedAgentModelLabel.Default(view.defaultLabel)
+        else -> HostedAgentModelLabel.Named(named)
+    }
+}
+
+/**
+ * A running cloud agent's Model (web: `hostedRuntime.state === "active"`, managers only, as the
+ * section above). Its runtime and model fields are the "external" placeholders, so the model is
+ * read from the provider (`GET /agents/:id/hosted-runtime/model`). Read only: the app has no
+ * picker. Hidden until it loads, and when the server answers anything else (web: 4xx hides it).
+ */
+@Composable
+private fun MembersAgentHostedRuntimeModel(agentId: MemberId, agentsApiClient: RaftAgentsApiClient?) {
+    var view by remember(agentId) { mutableStateOf<HostedAgentModelView?>(null) }
+    LaunchedEffect(agentId, agentsApiClient) {
+        view =
+            try {
+                (agentsApiClient?.agentHostedRuntimeModel(agentId) as? DataResult.Content)?.data
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                // A transport without the endpoint (an older fake): no row, as on a failed load.
+                null
+            }
+    }
+    val label = view?.let(::hostedAgentModelLabel) ?: return
+    val text =
+        when (label) {
+            is HostedAgentModelLabel.Named -> label.text
+            is HostedAgentModelLabel.Default ->
+                label.defaultLabel?.let { stringResource(Res.string.agent_create_hosted_model_default, it) }
+                    ?: stringResource(Res.string.agent_create_hosted_model_default_unnamed)
+        }
+    MembersProfileSection(title = stringResource(Res.string.member_label_model)) {
+        RaftText(text = text, style = RaftTheme.typography.callout, color = RaftTheme.colors.foreground)
+        if (view?.locked == true) {
+            RaftText(
+                stringResource(Res.string.agent_create_hosted_model_locked),
+                style = RaftTheme.typography.caption,
+                color = RaftTheme.colors.foregroundHint
+            )
         }
     }
 }

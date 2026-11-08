@@ -239,6 +239,13 @@ internal expect fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean
 internal expect fun raftFeedbackWebViewClientKind(): String
 
 /**
+ * Whether the composer can take a photo with a camera. The desktop app has no capture path (the
+ * web's desktop composer has no camera either), so its camera button would only fail with an
+ * upload error (artin, Mac app 11-08).
+ */
+internal expect fun raftComposerCameraAvailable(): Boolean
+
+/**
  * task #232: start-edge region (in dp) a [build.raft.app.components.TabPager]
  * must leave to the platform's own edge gesture. iOS injects its interactive
  * edge-back width; platforms without a competing start-edge gesture return 0.

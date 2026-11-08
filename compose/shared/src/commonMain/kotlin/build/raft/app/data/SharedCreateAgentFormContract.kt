@@ -19,6 +19,21 @@ internal data class HostedRuntimeModels(
     val picker: Boolean = true
 )
 
+/**
+ * Web shared `HostedAgentModelView` (`GET /agents/:id/hosted-runtime/model`): the models the
+ * provider offers and what a cloud agent's next turn runs on. [source] is `default` (nothing
+ * picked), `chosen` or `admin`; [picker] false = Raft decides and no Model row is shown.
+ */
+internal data class HostedAgentModelView(
+    val models: List<HostedRuntimeModelOption>,
+    val defaultLabel: String?,
+    val model: String?,
+    val label: String?,
+    val source: String?,
+    val locked: Boolean = false,
+    val picker: Boolean? = null
+)
+
 internal data class SharedCreateAgentRuntimeCatalog(
     val machineId: String,
     val options: List<SharedCreateAgentRuntimeOption>

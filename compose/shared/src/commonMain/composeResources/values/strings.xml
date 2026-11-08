@@ -1027,6 +1027,12 @@
     <string name="thread_agent_typing_agent_fallback">Agent</string>
     <string name="thread_jump_new_messages_one">1 new message</string>
     <string name="thread_jump_new_messages_many">%1$d new messages</string>
+    <string name="thread_outline_label">Thread timeline</string>
+    <string name="thread_outline_row_label">%1$s, %2$s, %3$s</string>
+    <string name="thread_outline_attachments_one">1 attachment</string>
+    <string name="thread_outline_attachments_many">%1$d attachments</string>
+    <string name="thread_outline_no_text">No text</string>
+    <string name="thread_outline_list_title">Timeline</string>
     <string name="thread_jump_next_unread_thread">Next Unread Thread (%1$d)</string>
     <string name="thread_jump_earliest_unread_thread">Earliest Unread Thread (%1$d)</string>
     <string name="thread_jump_unread_thread_dismiss">Dismiss</string>
@@ -2058,6 +2064,7 @@
     <string name="member_hosted_runtime_state_failed">Setup failed</string>
     <string name="member_hosted_runtime_state_deleting">Removing</string>
     <string name="member_hosted_runtime_state_deleted">Removed</string>
+    <string name="members_agent_group_no_computer">external &amp; cloud</string>
     <string name="member_hosted_runtime_location">Runs in the cloud</string>
     <string name="member_hosted_runtime_free">Free for a limited time</string>
     <string name="member_hosted_runtime_last_error">Last error (%1$s): %2$s</string>

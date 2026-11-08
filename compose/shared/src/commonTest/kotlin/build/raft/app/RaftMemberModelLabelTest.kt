@@ -53,6 +53,19 @@ class RaftMemberModelLabelTest {
         assertEquals("gpt-6-astra", profile.modelLabel())
     }
 
+    @Test
+    fun anExternalOrCloudAgentShowsWhatTheWebShows() {
+        // Web ProfilePreviewCardContent: Model = getModelLabel(runtime, model), which falls back to
+        // the raw id, so an external/cloud agent's card reads "external"; its Runtime row names the
+        // sentinel "External agent" (formatRuntimeLabelWithStatus). MessageItem's agentModelLabel
+        // likewise gives "external" (the cloud wording needs `hostedRuntime`, not on MemberProfile).
+        val external = memberProfile(kind = MemberKind.Agent, roleDescription = "external", model = "external")
+        assertEquals("external", external.modelLabel())
+        val card = raftProfilePreviewCardModel(external.copy(isExternal = true))
+        assertEquals("external", card.modelLabel)
+        assertEquals("External agent", card.runtimeLabel, "the runtime row names the sentinel, never the raw id")
+    }
+
     private fun memberProfile(
         kind: MemberKind,
         roleDescription: String? = null,

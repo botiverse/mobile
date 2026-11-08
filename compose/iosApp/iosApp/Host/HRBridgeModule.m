@@ -2260,20 +2260,83 @@ void RaftIosInstallHandsReporting(void) {
     });
 }
 
+// One path component named after the attachment (Save to Files, picker uploads, Open/Share
+// hand-off). Unicode is kept (发票.pdf stays 发票.pdf; this used to be ASCII-only, so non-Latin
+// names became "__.pdf"); only separators, control and filesystem-reserved characters are
+// replaced. Shared with Android through RaftShareFileName (commonMain).
 static NSString *RaftAttachmentExportFileName(NSString *value) {
-    NSString *source = RaftBridgeString(value).lastPathComponent;
-    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._- "];
-    NSMutableString *result = [NSMutableString string];
-    for (NSUInteger index = 0; index < source.length; index++) {
-        unichar character = [source characterAtIndex:index];
-        if ([allowed characterIsMember:character]) {
-            [result appendFormat:@"%C", character];
-        } else {
-            [result appendString:@"_"];
+    return [SharedRaftShareFileName.shared sanitizeDisplayName:RaftBridgeString(value) fallbackExtension:nil];
+}
+
+static NSString *RaftAttachmentPreferredExtensionForMIMEType(NSString *mimeType) {
+    if ([SharedRaftShareFileName.shared isGenericMimeTypeMimeType:mimeType]) {
+        return nil;
+    }
+    NSString *normalized = [SharedRaftShareFileName.shared normalizedMimeTypeMimeType:mimeType];
+    return normalized.length > 0 ? [UTType typeWithMIMEType:normalized].preferredFilenameExtension : nil;
+}
+
+static NSString *const RaftAttachmentHandoffDirectoryName = @"raft-share";
+static const NSTimeInterval RaftAttachmentHandoffMaxAge = 24.0 * 60.0 * 60.0;
+
+static NSURL *RaftAttachmentHandoffRoot(void) {
+    return [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:RaftAttachmentHandoffDirectoryName]
+                      isDirectory:YES];
+}
+
+// Hand-off entries are removed by age only: the receiving app may still be reading one after the
+// share sheet closes.
+static void RaftAttachmentSweepHandoffDirectory(void) {
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSURL *root = RaftAttachmentHandoffRoot();
+    NSArray<NSURL *> *entries =
+        [fileManager contentsOfDirectoryAtURL:root
+                   includingPropertiesForKeys:@[ NSURLContentModificationDateKey ]
+                                      options:0
+                                        error:nil];
+    NSDate *now = NSDate.date;
+    for (NSURL *entry in entries) {
+        NSDate *modified = nil;
+        [entry getResourceValue:&modified forKey:NSURLContentModificationDateKey error:nil];
+        if (!modified || [now timeIntervalSinceDate:modified] > RaftAttachmentHandoffMaxAge) {
+            [fileManager removeItemAtURL:entry error:nil];
         }
     }
-    NSString *trimmed = [result stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    return trimmed.length > 0 ? trimmed : @"attachment";
+}
+
+// UIActivityViewController and the receiving app name (and type) the file from the URL's last
+// path component. The attachment cache file is named from a filtered copy of the name, which may
+// differ from the display name (or lack an extension), so present a per-hand-off
+// `tmp/raft-share/<uuid>/<display name>` hard link (copy as fallback) of the exact cached bytes.
+// Falls back to the cache URL itself if staging fails.
+static NSURL *RaftAttachmentHandoffURL(NSURL *fileURL, NSString *displayName, NSString *mimeType) {
+    if (!fileURL.isFileURL) {
+        return fileURL;
+    }
+    NSString *requested = RaftBridgeString(displayName).length > 0 ? displayName : fileURL.lastPathComponent;
+    NSString *name = [SharedRaftShareFileName.shared sanitizeDisplayName:requested
+                                                       fallbackExtension:RaftAttachmentPreferredExtensionForMIMEType(mimeType)];
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    RaftAttachmentSweepHandoffDirectory();
+    NSURL *directory = [RaftAttachmentHandoffRoot() URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+    if (![fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil]) {
+        return fileURL;
+    }
+    NSURL *target = [directory URLByAppendingPathComponent:name isDirectory:NO];
+    if (![fileManager linkItemAtURL:fileURL toURL:target error:nil] &&
+        ![fileManager copyItemAtURL:fileURL toURL:target error:nil]) {
+        [fileManager removeItemAtURL:directory error:nil];
+        return fileURL;
+    }
+    NSNumber *sourceSize = nil;
+    NSNumber *targetSize = nil;
+    [fileURL getResourceValue:&sourceSize forKey:NSURLFileSizeKey error:nil];
+    [target getResourceValue:&targetSize forKey:NSURLFileSizeKey error:nil];
+    if (!sourceSize || ![sourceSize isEqualToNumber:targetSize ?: @(-1)]) {
+        [fileManager removeItemAtURL:directory error:nil];
+        return fileURL;
+    }
+    return target;
 }
 
 static UTType *RaftPreferredPickedMediaType(NSItemProvider *provider) {
@@ -4912,7 +4975,15 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     }
 
     if ([status[@"cached"] boolValue]) {
-        [self raft_presentShareItems:@[ [NSURL fileURLWithPath:cachedPath] ] attempt:1];
+        // Present the file that is actually cached (the cache directory's file, which may have
+        // been stored under an older name) under the attachment's display name.
+        NSURL *statusURL = [NSURL URLWithString:status[@"uri"] ?: @""];
+        NSURL *cachedURL = statusURL.isFileURL && statusURL.path.length > 0
+            ? statusURL
+            : [NSURL fileURLWithPath:cachedPath];
+        [self raft_presentShareItems:@[ RaftAttachmentHandoffURL(
+                                            cachedURL, fileName, RaftBridgeString(params[@"mimeType"])) ]
+                             attempt:1];
         callback(@{ @"status" : @"opened", @"cached" : @YES, @"uri" : status[@"uri"] ?: @"" });
         return;
     }
@@ -5367,7 +5438,11 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
             // do NOT call raft_finishAttachmentExport (it deletes the parent dir) or the
             // save-to-files picker. Clear state and report success, keeping the file.
             RaftBridgeCallback openCallback = strongSelf.raft_attachmentExportCallback;
-            [strongSelf raft_presentShareItems:@[ targetURL ] attempt:1];
+            [strongSelf raft_presentShareItems:@[ RaftAttachmentHandoffURL(
+                                                    targetURL,
+                                                    strongSelf.raft_attachmentExportFileName,
+                                                    strongSelf.raft_attachmentExportMimeType) ]
+                                       attempt:1];
             strongSelf.raft_attachmentExportCallback = nil;
             strongSelf.raft_attachmentExportRequestId = nil;
             strongSelf.raft_attachmentExportDownloadId = nil;
@@ -5937,6 +6012,11 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     NSNumber *fileSize = nil;
     [targetURL getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil];
     NSString *resolvedMimeType = compressImages && isImage ? @"image/jpeg" : mimeType;
+    // A missing or generic provider type (octet-stream) defers to the name's extension, so an
+    // uploaded invoice.pdf is typed application/pdf.
+    if ([SharedRaftShareFileName.shared isGenericMimeTypeMimeType:resolvedMimeType]) {
+        resolvedMimeType = nil;
+    }
     if (resolvedMimeType.length == 0 && extension.length > 0) {
         resolvedMimeType = [UTType typeWithFilenameExtension:extension].preferredMIMEType;
     }

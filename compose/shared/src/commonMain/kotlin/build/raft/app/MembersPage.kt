@@ -2448,16 +2448,19 @@ internal fun MembersPageContent(
                 ?: SharedServerMembersEntry(serverId = serverId)
         }
     )
+    // An agent archived from its profile leaves the roster in the store; a row this page added
+    // itself (a just-created agent) must leave with it, or it stays until a reload.
+    val archivedAgentIds by remember(serverMembersStore, serverId) {
+        val cleanServerId = serverId.trim()
+        if (cleanServerId.isBlank()) flowOf(emptySet()) else serverMembersStore.deletedAgentIdsFlow(ServerId(cleanServerId))
+    }.collectAsState(
+        remember(serverMembersStore, serverId) {
+            serverId.trim().takeIf { it.isNotBlank() }?.let { serverMembersStore.deletedAgentIds(ServerId(it)) }.orEmpty()
+        }
+    )
     val localMembers =
-        remember(serverMembersEntry.members, optimisticMembers) {
-            val merged = LinkedHashMap<String, MemberProfile>()
-            serverMembersEntry.members.forEach { member ->
-                member.id.value.trim().takeIf { it.isNotBlank() }?.let { merged[it] = member }
-            }
-            optimisticMembers.forEach { member ->
-                member.id.value.trim().takeIf { it.isNotBlank() && it !in merged }?.let { merged[it] = member }
-            }
-            merged.values.toList()
+        remember(serverMembersEntry.members, optimisticMembers, archivedAgentIds) {
+            membersPageMergedMembers(serverMembersEntry.members, optimisticMembers, archivedAgentIds)
         }
     val currentAgentCount = localMembers.count { it.kind == MemberKind.Agent }
     LaunchedEffect(networkClient, serverId) {
@@ -5945,6 +5948,8 @@ internal fun MembersListContent(
         }
     }
     val agents = groupedMembers[payload.labels.agents].orEmpty()
+    // Web `layout.sidebar.noMachineGroupLabel`: external and cloud agents share this group.
+    val noComputerGroupLabel = stringResource(Res.string.members_agent_group_no_computer)
     val humans = groupedMembers[payload.labels.humans].orEmpty()
     var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
     var humansExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.humansExpanded) }
@@ -6097,7 +6102,11 @@ internal fun MembersListContent(
                     )
                 }
                 if (agentsExpanded) {
-                    groupedAgentMembers(agents, machineOrder = createAgentMachines.map { it.id }) { machineId ->
+                    groupedAgentMembers(
+                        agents,
+                        machineOrder = createAgentMachines.map { it.id },
+                        noComputerLabel = noComputerGroupLabel
+                    ) { machineId ->
                         createAgentMachines.firstOrNull { it.id == machineId }?.name
                     }.forEach { group ->
                         item("group_${group.key}") {
@@ -9733,7 +9742,7 @@ private fun MembersAgentInfoField(
  * column's own spacing.
  */
 @Composable
-private fun MembersProfileSection(
+internal fun MembersProfileSection(
     title: String,
     modifier: Modifier = Modifier,
     titleAction: (@Composable () -> Unit)? = null,
@@ -10900,6 +10909,14 @@ internal fun MembersAgentComputerInfoRows(
 }
 
 /**
+ * Web AgentProfileInfo `!isExternalAgent` (`agent.external === true || isExternalAgentRuntime(runtime)`):
+ * whether the profile shows the Runtime config section. An external agent, a cloud (hosted) one
+ * included, has none: its stored runtime and model are both the literal "external".
+ */
+internal fun membersAgentProfileShowsRuntimeConfig(member: MemberProfile, summary: AgentDetailSummary?): Boolean =
+    !(member.isExternal || summary?.isExternal == true || isExternalAgentRuntime(summary?.runtime))
+
+/**
  * RUNTIME CONFIG section of the agent detail tab: read-only rows plus the shared runtime-config
  * editor dialog and its save flow (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
  */
@@ -10913,6 +10930,10 @@ private fun MembersAgentRuntimeConfigSection(
     createAgentFormStore: SharedCreateAgentFormStore?,
     onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean
 ) {
+    // Web AgentProfileInfo renders this section only `!isExternalAgent`: an external or cloud
+    // agent's runtime and model are the "external" placeholders (a cloud agent's model is its own
+    // row under the hosted status, [MembersAgentHostedRuntimeSection]).
+    if (!membersAgentProfileShowsRuntimeConfig(member, summary)) return
     val canEdit = edit.canEdit
     val agentProfileEditAuthority = edit.agentProfileEditAuthority
     val agentDetailActions = edit.agentDetailActions
@@ -15071,6 +15092,7 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
 internal fun groupedAgentMembers(
     members: List<MemberProfile>,
     machineOrder: List<String> = emptyList(),
+    noComputerLabel: String = membersNoComputerGroupLabel,
     machineName: (machineId: String) -> String? = { null }
 ): List<MembersAgentGroup> {
     val groups = members
@@ -15086,7 +15108,7 @@ internal fun groupedAgentMembers(
                 label = machineId?.let(machineName)?.takeIf { it.isNotBlank() }
                     ?: groupedMembers.firstNotNullOfOrNull { it.membersComputerName }
                     ?: machineId
-                    ?: membersNoComputerGroupLabel,
+                    ?: noComputerLabel,
                 members = groupedMembers
             )
         }
@@ -15106,7 +15128,35 @@ internal fun groupedAgentMembers(
         .map { it.value }
 }
 
-internal const val membersNoComputerGroupLabel = "no computer"
+/**
+ * Web `layout.sidebar.noMachineGroupLabel` ("external & cloud"): the one group of every agent without
+ * a computer -- external agents and cloud (hosted) agents alike. The web keeps them together on
+ * purpose (SidebarMembersRail): `hostedRuntime` reaches managers only, so splitting on it would put
+ * the same agent in different groups for different viewers. Localized at the render site
+ * (`members_agent_group_no_computer`); this is the English default for non-UI callers.
+ */
+internal const val membersNoComputerGroupLabel = "external & cloud"
+
+/**
+ * The Members page's list: the store's roster, then the rows this page added for just-created
+ * agents that the roster doesn't have yet. An agent archived in this process ([archivedAgentIds],
+ * `SharedServerMembersStore.deletedAgentIdsFlow`) is left out, whichever list it came from.
+ */
+internal fun membersPageMergedMembers(
+    storeMembers: List<MemberProfile>,
+    optimisticMembers: List<MemberProfile>,
+    archivedAgentIds: Set<String>
+): List<MemberProfile> {
+    val merged = LinkedHashMap<String, MemberProfile>()
+    storeMembers.forEach { member ->
+        member.id.value.trim().takeIf { it.isNotBlank() }?.let { merged[it] = member }
+    }
+    optimisticMembers.forEach { member ->
+        member.id.value.trim().takeIf { it.isNotBlank() && it !in merged }?.let { merged[it] = member }
+    }
+    if (archivedAgentIds.isEmpty()) return merged.values.toList()
+    return merged.values.filterNot { it.kind == MemberKind.Agent && it.id.value.trim() in archivedAgentIds }
+}
 
 /**
  * The members row for an agent that was just created, shown until the members refresh lands. It

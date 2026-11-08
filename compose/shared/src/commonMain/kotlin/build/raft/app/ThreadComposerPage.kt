@@ -3252,6 +3252,7 @@ internal fun ThreadComposerContentLeaf(
                                 horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                             ) {
                                 if (state.attachmentActionsEnabled) {
+                                    val cameraAvailable = remember { raftComposerCameraAvailable() }
                                     // Gallery / camera / file, in that order (artin, task #1096). Camera
                                     // used to exist only as this button's long-press, which meant nobody
                                     // found it; the long-press stays so existing muscle memory keeps
@@ -3260,33 +3261,37 @@ internal fun ThreadComposerContentLeaf(
                                         icon = RaftLucideIconName.ImagePlus,
                                         enabled = composerEnabled,
                                         contentDescription = stringResource(Res.string.composer_add_image),
-                                        longClickLabel = stringResource(Res.string.composer_take_photo),
-                                        onLongClick = {
-                                            onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                        longClickLabel = if (cameraAvailable) stringResource(Res.string.composer_take_photo) else null,
+                                        onLongClick = if (cameraAvailable) {
+                                            { onEvent(threadComposerImageAction(longPress = true), null, null, null) }
+                                        } else {
+                                            null
                                         },
                                         onClick = {
                                             onEvent(threadComposerImageAction(longPress = false), null, null, null)
                                         }
                                     )
-                                    ComposerIconButton(
-                                        icon = RaftLucideIconName.Camera,
-                                        enabled = composerEnabled,
-                                        contentDescription = stringResource(Res.string.composer_take_photo),
-                                        onClick = {
-                                            // longPress = true is what makes this the camera: it emits
-                                            // captureImage, so capture keeps its existing confirm/cancel
-                                            // editor step and nothing reaches the pending tray until the
-                                            // user confirms. Flipping it to false silently turns this
-                                            // button into a second gallery entry.
-                                            //
-                                            // No test covers this call site. commonTest cannot drive
-                                            // Compose and the composer has no visual host, so nothing in
-                                            // the repo can reach ComposerIconButton. The helper's mapping
-                                            // is tested (ThreadPayloadTest), but the argument passed here
-                                            // is not -- do not read that test as guarding this line.
-                                            onEvent(threadComposerImageAction(longPress = true), null, null, null)
-                                        }
-                                    )
+                                    if (cameraAvailable) {
+                                        ComposerIconButton(
+                                            icon = RaftLucideIconName.Camera,
+                                            enabled = composerEnabled,
+                                            contentDescription = stringResource(Res.string.composer_take_photo),
+                                            onClick = {
+                                                // longPress = true is what makes this the camera: it emits
+                                                // captureImage, so capture keeps its existing confirm/cancel
+                                                // editor step and nothing reaches the pending tray until the
+                                                // user confirms. Flipping it to false silently turns this
+                                                // button into a second gallery entry.
+                                                //
+                                                // No test covers this call site. commonTest cannot drive
+                                                // Compose and the composer has no visual host, so nothing in
+                                                // the repo can reach ComposerIconButton. The helper's mapping
+                                                // is tested (ThreadPayloadTest), but the argument passed here
+                                                // is not -- do not read that test as guarding this line.
+                                                onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                            }
+                                        )
+                                    }
                                     ComposerIconButton(
                                         icon = RaftLucideIconName.Paperclip,
                                         enabled = composerEnabled,

@@ -153,6 +153,8 @@ internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = true
 
 internal actual fun raftFeedbackWebViewClientKind(): String = "ios"
 
+internal actual fun raftComposerCameraAvailable(): Boolean = true
+
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 
 /** Native pop arbitration yields to paging while it can consume the drag. */
