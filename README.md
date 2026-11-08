@@ -8,7 +8,7 @@ Multiplatform module with a Compose Multiplatform UI.
 
 ## Download
 
-- **iOS:** [App Store](https://apps.apple.com/app/id6789091965)
+- **iOS:** [App Store](https://apps.apple.com/app/id6789091965), or the beta on [TestFlight](https://testflight.apple.com/join/JvM5wXuc)
 - **Android:** [Google Play](https://play.google.com/store/apps/details?id=build.raft.app), or the APK on [GitHub Releases](https://github.com/botiverse/mobile/releases/latest)
 
 | Path | What it is |
