@@ -169,6 +169,14 @@ class SharedActivityStore internal constructor(
     private var diagnosticsLogger: (String) -> Unit = {},
     /** Realtime-triggered refetch throttle window (leading + trailing); user loads are never throttled. */
     private val realtimeBackgroundRefreshIntervalMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
+    /**
+     * The same window while the Activity surface is hidden ([SharedActivityIntent.SurfaceHidden]: another
+     * tab, a pushed conversation). Null keeps [realtimeBackgroundRefreshIntervalMillis]. The process host
+     * passes [ActivityHiddenRealtimeBackgroundRefreshIntervalMillis]: nobody sees the list then, and the
+     * entry Refresh reads it anyway (feedback fb-52cc0499: 183 of 201 background re-reads of the 141 KB
+     * first page ran while a conversation covered Activity).
+     */
+    private val hiddenRealtimeBackgroundRefreshIntervalMillis: Long? = null,
     /** Monotonic clock for the throttle window and the local Done/read hold; injectable for virtual time. */
     private val nowMillis: () -> Long = activityMonotonicClock(),
     /**
@@ -308,6 +316,12 @@ class SharedActivityStore internal constructor(
      */
     private var resumeFoldLoads: Long? = null
     private var resumeNotBeforeMillis: Long? = null
+    /**
+     * [resetLoadsStarted] at the latest reconcile ask made while the surface was hidden; null once a
+     * visible ask came. A reset load started after it (the entry Refresh) answers those asks, the same
+     * way [resumeFoldLoads] folds the asks made in the background into the return's read.
+     */
+    private var hiddenFoldLoads: Long? = null
 
     init {
         scope.launch {
@@ -1473,6 +1487,7 @@ class SharedActivityStore internal constructor(
             return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
         }
         realtimeBackgroundReconcileDirty = true
+        hiddenFoldLoads = if (activitySurfaceHidden) resetLoadsStarted else null
         realtimeBackgroundReconcileJob?.let { return it }
         // Leading + trailing throttle (web requestInboxBackgroundRefresh): the
         // first request after a quiet window fetches immediately; requests inside
@@ -1482,12 +1497,17 @@ class SharedActivityStore internal constructor(
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 while (true) {
-                    val waitMillis =
-                        synchronized(realtimeOwnerLock) {
-                            val resumeWait = resumeNotBeforeMillis?.let { it - nowMillis() } ?: 0L
-                            maxOf(realtimeBackgroundRefreshWaitMillisLocked(), resumeWait)
-                        }
-                    if (waitMillis > 0L) delay(waitMillis)
+                    // Waits in steps of the visible window, so a hidden (longer) wait ends soon after
+                    // the surface shows again.
+                    while (true) {
+                        val waitMillis =
+                            synchronized(realtimeOwnerLock) {
+                                val resumeWait = resumeNotBeforeMillis?.let { it - nowMillis() } ?: 0L
+                                maxOf(realtimeBackgroundRefreshWaitMillisLocked(), resumeWait)
+                            }
+                        if (waitMillis <= 0L) break
+                        delay(minOf(waitMillis, realtimeBackgroundRefreshIntervalMillis.coerceAtLeast(1L)))
+                    }
                     val shouldReconcile =
                         synchronized(realtimeOwnerLock) {
                             if (realtimeBackgroundReconcileDirty) {
@@ -1525,6 +1545,13 @@ class SharedActivityStore internal constructor(
                                         returnRead = true
                                         ReconcileStep.Load
                                     }
+                                // Asked only while hidden, and the entry Refresh (a reset load) started
+                                // since: that read was it.
+                                hiddenFoldLoads?.let { fold -> resetLoadsStarted > fold } == true -> {
+                                    hiddenFoldLoads = null
+                                    realtimeBackgroundReconcileDirty = false
+                                    ReconcileStep.Again
+                                }
                                 realtimeBackgroundRefreshWaitMillisLocked() > 0L -> {
                                     // A load started while we waited; fetch on that window's trailing edge.
                                     realtimeBackgroundReconcileDirty = true
@@ -1554,7 +1581,13 @@ class SharedActivityStore internal constructor(
 
     private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
         val lastStartedAt = lastResetLoadStartedAtMillis ?: return 0L
-        return (lastStartedAt + realtimeBackgroundRefreshIntervalMillis - nowMillis()).coerceAtLeast(0L)
+        val interval =
+            if (activitySurfaceHidden) {
+                hiddenRealtimeBackgroundRefreshIntervalMillis ?: realtimeBackgroundRefreshIntervalMillis
+            } else {
+                realtimeBackgroundRefreshIntervalMillis
+            }
+        return (lastStartedAt + interval - nowMillis()).coerceAtLeast(0L)
     }
 
     private suspend fun awaitCurrentLoadIdle() {

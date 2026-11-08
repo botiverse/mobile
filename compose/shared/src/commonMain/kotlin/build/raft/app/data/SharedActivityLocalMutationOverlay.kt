@@ -32,6 +32,21 @@ internal const val ActivityLocalMutationRequestTimeoutMillis: Long = 30_000L
 internal const val ActivityRealtimeBackgroundRefreshIntervalMillis: Long = 2_500L
 
 /**
+ * The Activity list's realtime refetch window while the Activity surface is hidden (a conversation
+ * pushed over it, another tab). The entry Refresh reads the list anyway; this only keeps the
+ * Activity unread summary's facts from going quiet for long (feedback fb-52cc0499).
+ */
+internal const val ActivityHiddenRealtimeBackgroundRefreshIntervalMillis: Long = 30_000L
+
+/**
+ * The Activity unread summary's (badge, `channels/inbox?limit=1`) minimum gap between reads that only
+ * realtime events asked for. A burst of messages costs one read per window instead of one per
+ * [ActivityRealtimeBackgroundRefreshIntervalMillis]; reads the person caused (their own read, a
+ * return, a server switch) keep the short window (feedback fb-52cc0499: 453 badge reads in 28 min).
+ */
+internal const val ActivityUnreadRealtimeMinIntervalMillis: Long = 10_000L
+
+/**
  * #triage 84d44d75: after a realtime-triggered Activity read answers behind the newest
  * `message:new` seq (the warehouse view lags the write by ~1-2 s), re-read after these waits, at
  * most once each, then stop.

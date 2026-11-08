@@ -114,6 +114,14 @@ internal class ProcessActivityUnreadStore(
      * requested inside the window collapse into ONE trailing read at its end.
      */
     private val throttleMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
+    /**
+     * The window for a read only realtime events asked for (`invalidate:realtime:*`,
+     * `invalidate:activity:*`, `fact_reconcile`), measured from the last read like [throttleMillis].
+     * Any other ask in the same round (the person's read, a route attach, a return) keeps
+     * [throttleMillis]. Null keeps [throttleMillis] for every read. The process host passes
+     * [ActivityUnreadRealtimeMinIntervalMillis] (feedback fb-52cc0499).
+     */
+    private val realtimeMinIntervalMillis: Long? = null,
     /** Monotonic clock for the throttle window; injectable for virtual time. */
     private val nowMillis: () -> Long = activityMonotonicClock(),
     /**
@@ -407,6 +415,7 @@ internal class ProcessActivityUnreadStore(
                     return@withLock
                 }
                 entry.pendingReason = reason
+                if (!reason.isRealtimeOnlySummaryAsk()) entry.pendingUrgent = true
                 if (entry.active) {
                     entry.pending = true
                     entry.projection =
@@ -450,15 +459,27 @@ internal class ProcessActivityUnreadStore(
     private suspend fun runRefreshLoop(owner: ProcessActivityUnreadOwner) {
         while (true) {
             // Throttle: a read starts at once after a quiet window; inside it the loop waits for the
-            // window's end, and every request made meanwhile folds into the one pending read.
-            val waitMillis =
-                mutex.withLock {
-                    entries[owner]?.lastAttemptStartedAtMillis
-                        ?.let { startedAt -> throttleMillis - (nowMillis() - startedAt) }
-                        ?.coerceAtLeast(0L)
-                        ?: 0L
-                }
-            if (waitMillis > 0L) delay(waitMillis)
+            // window's end, and every request made meanwhile folds into the one pending read. A round
+            // only realtime asked for waits the longer realtime window; the wait is taken in steps of
+            // the short one, so a person's ask arriving meanwhile is not held behind it.
+            while (true) {
+                val waitMillis =
+                    mutex.withLock {
+                        val entry = entries[owner]
+                        val window =
+                            if (entry?.pendingUrgent == false && realtimeMinIntervalMillis != null) {
+                                maxOf(realtimeMinIntervalMillis, throttleMillis)
+                            } else {
+                                throttleMillis
+                            }
+                        entry?.lastAttemptStartedAtMillis
+                            ?.let { startedAt -> window - (nowMillis() - startedAt) }
+                            ?.coerceAtLeast(0L)
+                            ?: 0L
+                    }
+                if (waitMillis <= 0L) break
+                delay(minOf(waitMillis, throttleMillis.coerceAtLeast(1L)))
+            }
             val attempt =
                 mutex.withLock {
                     val entry = entries[owner] ?: return
@@ -466,6 +487,7 @@ internal class ProcessActivityUnreadStore(
                         // Went to the background while a read was queued: stop; the return reads once.
                         entry.active = false
                         entry.pending = false
+                        entry.pendingUrgent = false
                         entry.pendingEventMarkers = emptySet()
                         entry.projection =
                             entry.projection.copy(
@@ -481,6 +503,7 @@ internal class ProcessActivityUnreadStore(
                     }
                     entry.lastAttemptStartedAtMillis = nowMillis()
                     entry.pending = false
+                    entry.pendingUrgent = false
                     entry.canonicalDirty = false
                     entry.requestGeneration += 1L
                     // This attempt covers every event admitted so far; later ones open the next round.
@@ -719,6 +742,8 @@ internal class ProcessActivityUnreadStore(
         var active: Boolean = false,
         var pending: Boolean = false,
         var pendingReason: String = "unspecified",
+        // The round holds an ask other than realtime's: it keeps the short throttle window.
+        var pendingUrgent: Boolean = false,
         var acceptedForegroundEpoch: Long = 0L,
         var lastAttemptStartedAtMillis: Long? = null,
         var lastVisibilityRequestAtMillis: Long? = null,
@@ -736,6 +761,10 @@ internal class ProcessActivityUnreadStore(
         var lastServerTotal: Int? = null
     )
 }
+
+/** An ask only realtime made (`invalidate:realtime:*`, `invalidate:activity:*`, `fact_reconcile`). */
+private fun String.isRealtimeOnlySummaryAsk(): Boolean =
+    activityUnreadSummaryFetchReason(this) == InboxFetchReason.RealtimeFallback
 
 private fun DataResult<ActivityUnreadSummarySnapshot>.resultLabel(): String =
     when (this) {

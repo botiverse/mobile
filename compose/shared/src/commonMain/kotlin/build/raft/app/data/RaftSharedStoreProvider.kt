@@ -2481,6 +2481,7 @@ internal class RaftSharedStoreProvider private constructor(
                 onSummaryFact = activityUnreadSummaryStore::submitFact,
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),
+                hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()
@@ -3110,6 +3111,7 @@ internal class RaftSharedStoreProvider private constructor(
                     ownerFlowResolver = resolveActivityUnreadOwnerFlow,
                     projectionCache = processActivityUnreadProjectionCache,
                     scope = CoroutineScope(SupervisorJob()),
+                    realtimeMinIntervalMillis = ActivityUnreadRealtimeMinIntervalMillis,
                     logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread")
                 ).also { store -> store.followAppLifecycle() }
             // ONE sink instance shared by the legacy and every scoped realtime
