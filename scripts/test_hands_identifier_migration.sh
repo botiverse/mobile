@@ -65,6 +65,8 @@ token = "secrets.#{ARGV.fetch(0)}_BEARER_TOKEN"
 expression = "${{ " + token + " }}"
 expected = {
   ["jobs", "build_android_release", "steps", "hands-artifacts", "env", "HANDS_BEARER_TOKEN"] => expression,
+  # Attaches the same build's R8 mapping + native symbols (Play-lane builds skip create_hands_draft).
+  ["jobs", "build_android_release", "steps", "hands-symbols", "env", "HANDS_AUTH_TOKEN"] => expression,
   ["jobs", "create_hands_draft", "env", "HANDS_BEARER_TOKEN"] => expression,
   ["jobs", "create_hands_draft", "env", "HANDS_AUTH_TOKEN"] => expression,
   ["jobs", "sign_existing_aab", "steps", "Download exact sealed AAB and APK", "env", "HANDS_BEARER_TOKEN"] => expression,

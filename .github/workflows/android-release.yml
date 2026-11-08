@@ -725,6 +725,7 @@ jobs:
       # the mapping (BUNDLE-METADATA/.../proguard.map), so Play gets it from the bundle.
       # CLI >= 0.5.40 for --platform: older attach-symbols labels native symbols "ios".
       - name: Attach R8 mapping + native symbols to the Hands build
+        id: hands-symbols
         if: ${{ steps.hands-artifacts.outputs.build_id != '' }}
         env:
           HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
