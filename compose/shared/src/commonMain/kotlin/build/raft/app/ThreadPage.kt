@@ -19429,25 +19429,20 @@ private fun threadHeaderSideColumnActions(
 
 @Composable
 private fun ThreadActivityMutedBadge() {
-    // raft-ui `PanelStatus`: a bare attribute (no edge, no fill), caption medium in
-    // source case on foreground-hint.
-    Row(
+    // Header space is tight (name, status, actions), so muted shows as the bell-off icon alone
+    // (artin, 11-08); screen readers still hear "Muted".
+    val mutedLabel = stringResource(Res.string.member_label_muted)
+    Box(
         modifier =
             Modifier
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .clearAndSetSemantics { contentDescription = mutedLabel },
+        contentAlignment = Alignment.Center
     ) {
         RaftLucideIcon(
             RaftLucideIconName.BellOff,
-            Modifier.size(11.dp),
+            Modifier.size(14.dp),
             color = raftArgbHex(RaftColor.ForegroundHint)
-        )
-        Text(
-            text = stringResource(Res.string.member_label_muted),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
-            color = RaftColor.ForegroundHint,
-            maxLines = 1
         )
     }
 }
