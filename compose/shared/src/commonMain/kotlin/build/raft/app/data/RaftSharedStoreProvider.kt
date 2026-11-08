@@ -1624,6 +1624,11 @@ internal class RaftSharedStoreProvider private constructor(
             return false
         }
         val serverId = ServerId(provenance.serverId)
+        // Agent Lounge v0: a Lounge loaded by id (GET /channels/:id) is known from here on, though no
+        // channel list holds it.
+        if (!detail.loungeAgentId.isNullOrBlank()) {
+            RaftAgentLounges.rememberRow(provenance.serverId, detail.toHomeChannelRow())
+        }
         val projection = detail.toCanonicalConversationDirectoryProjection(serverId) ?: return false
         val published =
             conversationIdentityHub(scope).publishCanonical(

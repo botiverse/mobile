@@ -162,6 +162,7 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.NetworkRaftTasksApi
@@ -2815,7 +2816,9 @@ internal fun channelJoinedHomeIntent(
             payload.takeIf {
                 it.surfaceKind == RaftThreadSurfaceKind.Channel &&
                     it.joinChannelTargetId() == channelId &&
-                    it.title.isNotBlank()
+                    it.title.isNotBlank() &&
+                    // Agent Lounge v0: a Lounge is never listed, joined or not.
+                    RaftAgentLounges.lounge(serverId, channelId.value) == null
             }?.let {
                 HomeChannelRow(
                     threadId = ThreadId(channelId.value),

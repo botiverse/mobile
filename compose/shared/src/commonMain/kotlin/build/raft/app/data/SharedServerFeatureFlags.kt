@@ -210,6 +210,14 @@ const val MESSAGE_CARDS_FEATURE_FLAG_KEY: String = "message_cards"
  */
 const val ACCOUNT_DELETION_FEATURE_FLAG_KEY: String = "account_deletion_v0"
 
+/**
+ * Agent Lounge v0 (botiverse/slock `packages/shared/src/featureFlags.ts` `AGENT_LOUNGE_FEATURE_FLAG_KEY`, web
+ * `AGENT_LOUNGE_FLAG_KEY`): per server, default off. On, and not a Guest ([agentLoungeEnabled]), an agent's
+ * profile and DM header open its Lounge, and a Lounge you joined or were mentioned in has a row under the
+ * agent's DM. Off (or unresolved), no Lounge is offered; `POST /agents/:id/lounge` answers 404.
+ */
+const val AGENT_LOUNGE_FEATURE_FLAG_KEY: String = "agent_lounge_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -238,6 +246,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
     ACCOUNT_DELETION_FEATURE_FLAG_KEY,
+    AGENT_LOUNGE_FEATURE_FLAG_KEY,
 )
 
 /**
