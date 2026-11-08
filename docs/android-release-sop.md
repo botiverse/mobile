@@ -202,7 +202,8 @@ added, and performance was not specially benchmarked for this release.
 Expected workflow output:
 
 - signed, aligned APK with a verified SHA-256;
-- workflow APK and R8 mapping artifacts;
+- workflow APK and R8 mapping artifacts (the mapping and native symbols are also
+  attached to every Hands build the run creates);
 - the signed AAB with its verification receipt and `build-identity.json`
   (`<artifact_name>-aab`, kept 90 days for every non-debug build);
 - a Hands **draft** release and optional temporary share page;
@@ -234,7 +235,11 @@ For each release, dispatch the Android Release workflow from the clean remote
 `upload_android_artifacts=true` and its own versionCode. CI builds, signs and
 verifies the AAB (and the matching Play APK), keeps them as workflow artifacts
 and uploads both to Hands as a sealed build; `create_hands_draft` stays `false`
-for this carrier. The job summary prints the next command. As a signed-in Hands
+for this carrier. The same job attaches that run's R8 mapping and native symbols
+to the Hands build, so crash and ANR reports from the Play build decode on Hands;
+no manual `hands builds attach-symbols` is needed. Google Play receives the R8
+mapping inside the AAB (`BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`);
+the AAB carries no native debug symbols. The job summary prints the next command. As a signed-in Hands
 publisher, run:
 
 ```bash

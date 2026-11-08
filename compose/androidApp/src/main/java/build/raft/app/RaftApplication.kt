@@ -13,6 +13,7 @@ import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
+import build.raft.app.shared.RaftAnrReporter
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
@@ -29,6 +30,9 @@ class RaftApplication : Application() {
     override fun attachBaseContext(base: Context) {
         installCoroutineWorkerKeepAlive()
         super.attachBaseContext(base)
+        // Before ContentProvider init and onCreate, so an ANR anywhere in startup still
+        // records which build hung (RaftAnrReporter).
+        RaftAnrReporter.stampProcess(base, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong())
     }
 
     override fun onCreate() {
@@ -116,9 +120,18 @@ class RaftApplication : Application() {
             versionCode = BuildConfig.VERSION_CODE.toLong(),
             channel = BuildConfig.HANDS_CHANNEL,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
+            // The SDK files ANRs without a version; RaftAnrReporter files them with the hung build.
+            captureAnrs = false,
             extraContext = {
                 RaftAndroidLocalDiagnostics.exportRecentDiagnosticsText(this)
             }
+        )
+        RaftAnrReporter.start(
+            context = this,
+            baseUrl = BuildConfig.HANDS_BASE_URL,
+            appSlug = BuildConfig.HANDS_APP_SLUG,
+            channel = BuildConfig.HANDS_CHANNEL,
+            clientKey = BuildConfig.HANDS_CLIENT_KEY,
         )
     }
 }
