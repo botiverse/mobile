@@ -107,4 +107,13 @@ class ThreadShareImageRecordingTest {
         assertEquals(blue.toArgb(), pixels[150, 800].toArgb())
         assertSame(source, downscaleThreadShareImage(source, IntSize(1000, 3000)), "no copy when nothing shrinks")
     }
+
+    @Test
+    fun theGpuFallbackStaysWithinTheTextureLimit() {
+        kotlin.test.assertTrue(threadShareImageGpuFallbackFits(1170, 4096))
+        kotlin.test.assertTrue(threadShareImageGpuFallbackFits(4096, 4096))
+        kotlin.test.assertFalse(threadShareImageGpuFallbackFits(1170, 4097), "a tall image would come back blank from the GPU")
+        kotlin.test.assertFalse(threadShareImageGpuFallbackFits(4097, 100))
+        kotlin.test.assertFalse(threadShareImageGpuFallbackFits(0, 100))
+    }
 }

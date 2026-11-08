@@ -18605,7 +18605,12 @@ private fun ThreadPageContentContent(
                 rowCount = selectedShareMessages.size,
                 renderKey = selectedShareMessages,
                 background = RaftColor.Canvas,
-                onRendering = { shareImageRendering = true },
+                onRendering = {
+                    shareImageRendering = true
+                    // Keep only the old preview on screen while the next image renders: the full
+                    // bitmap (up to 64 MB) can go before the new one is allocated. Download waits.
+                    shareImageBitmap = shareImageBitmap?.let { ThreadShareRenderedImage(image = it.preview, preview = it.preview) }
+                },
                 onRendered = { image ->
                     shareImageBitmap = image
                     shareImageRendering = false
@@ -18985,7 +18990,7 @@ private fun ThreadPageContentContent(
                     onDownloadImage = {
                         val offscreenImage = shareImageBitmap?.image
                         if (threadShareImageRendersOffscreen) {
-                            if (offscreenImage != null && !shareImageSaving) {
+                            if (offscreenImage != null && !shareImageSaving && !shareImageRendering) {
                                 shareImageSaving = true
                                 shareExportScope.launch {
                                     val result =

@@ -35,7 +35,7 @@ private class AndroidThreadShareImageRecording(
             // A hardware bitmap (an avatar Coil decoded to the GPU) cannot play back on a software
             // canvas; the platform renders such a picture through the GPU and copies the pixels back.
             checkCancelled()
-            return Bitmap.createBitmap(picture, width, height, Bitmap.Config.ARGB_8888).asImageBitmap()
+            return rasteriseOnGpu()
         }
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
@@ -49,6 +49,36 @@ private class AndroidThreadShareImageRecording(
         return bitmap.asImageBitmap()
     }
 
+    /**
+     * The GPU fallback: one hardware bitmap the size of the image, copied to a software one. The
+     * GPU draws nothing past its texture limit (and says nothing), so a larger image fails here
+     * with its reason in the log rather than coming back blank.
+     */
+    private fun rasteriseOnGpu(): ImageBitmap {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) error("share image GPU fallback needs API 28")
+        if (!threadShareImageGpuFallbackFits(width, height)) {
+            val reason = "share image ${width}x$height needs the GPU (hardware bitmap) and is past its ${ThreadShareImageGpuMaxSidePx}px texture limit"
+            raftLogWarn(ThreadShareImageLogTag, reason)
+            error(reason)
+        }
+        raftLogInfo(ThreadShareImageLogTag, "share image ${width}x$height rasterised on the GPU (hardware bitmap in its rows)")
+        val hardware = Bitmap.createBitmap(picture, width, height, Bitmap.Config.HARDWARE)
+        try {
+            return checkNotNull(hardware.copy(Bitmap.Config.ARGB_8888, false)) { "share image GPU copy failed" }.asImageBitmap()
+        } finally {
+            hardware.recycle()
+        }
+    }
+
     // A Picture holds no handle that needs closing; the GC frees it.
     override fun release() = Unit
 }
+
+/** The largest side the GPU fallback draws: 4096 px, the smallest max texture size the app meets. */
+internal const val ThreadShareImageGpuMaxSidePx = 4096
+
+/** Whether a [width] x [height] share image may use the GPU fallback (both sides within its texture limit). */
+internal fun threadShareImageGpuFallbackFits(width: Int, height: Int): Boolean =
+    width in 1..ThreadShareImageGpuMaxSidePx && height in 1..ThreadShareImageGpuMaxSidePx
+
+private const val ThreadShareImageLogTag = "RaftShareImage"
