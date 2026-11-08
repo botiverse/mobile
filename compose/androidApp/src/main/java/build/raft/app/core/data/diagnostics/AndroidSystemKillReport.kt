@@ -7,7 +7,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsFeedbackException
-import build.raft.app.shared.RaftAnrReporter
+import build.raft.app.shared.RaftBuildStamp
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +21,7 @@ internal enum class SystemKillDecision(val label: String, val report: Boolean) {
     SkipUserInitiated("user_initiated", false),
     /** An install or package change; not a failure. */
     SkipPackageChange("package_change", false),
-    /** Java/native crashes go through HandsCrash, ANRs through RaftAnrReporter. */
+    /** Java/native crashes go through HandsCrash, ANRs through HandsCrash's ANR pass. */
     SkipReportedElsewhere("reported_elsewhere", false),
     /** Killed while no activity was visible: routine memory/power management. */
     SkipNotImportant("not_important", false),
@@ -88,8 +88,8 @@ internal data class SystemKillExit(
     val importance: Int,
     val pssKb: Long,
     val rssKb: Long,
-    /** The build the exited process stamped ([RaftAnrReporter.stampProcess]); null if none. */
-    val build: RaftAnrReporter.StampedBuild?,
+    /** The build the exited process stamped ([RaftBuildStamp.stampProcess]); null if none. */
+    val build: RaftBuildStamp.StampedBuild?,
 ) {
     fun toSnapshot(): HistoricalProcessExitSnapshot =
         HistoricalProcessExitSnapshot(
@@ -182,7 +182,7 @@ internal fun systemKillExtras(
     buildMap {
         val reason = historicalProcessExitReasonLabel(exit.reasonCode)
         // The exited process's own build; nothing when it carried no stamp (never this install's).
-        putAll(RaftAnrReporter.versionExtras(exit.build))
+        putAll(RaftBuildStamp.versionExtras(exit.build))
         put("crash_type", "system_kill")
         put("crash_reason", reason)
         put("crash_exception_class", "SystemKill")
@@ -371,7 +371,7 @@ internal object AndroidSystemKillReporter {
             importance = importance,
             pssKb = pss,
             rssKb = rss,
-            build = RaftAnrReporter.decodeStamp(processStateSummary),
+            build = RaftBuildStamp.decodeStamp(processStateSummary),
         )
 }
 
