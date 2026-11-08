@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night twin of values/themes.xml Base.Theme.Raft: picked whenever the configuration is
+         night, which RaftAndroidNightMode makes follow the app's own choice (Settings >
+         Appearance: Dark, or System on a dark device). The dark Material parent makes
+         android:isLightTheme false, so WebViews report prefers-color-scheme: dark, and
+         AlertDialogs and pickers render dark. Theme.Raft (values/) adds the shared items on
+         top; the window background is night-qualified (values-night/colors.xml). -->
+    <style name="Base.Theme.Raft" parent="android:Theme.Material.NoActionBar">
+        <!-- Light bar icons on the dark canvas from the first frame (dialog windows too);
+             RaftDialogWindowPolicy and the page's onSystemBarsResolved still refine them. -->
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

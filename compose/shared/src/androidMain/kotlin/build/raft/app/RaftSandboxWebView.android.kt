@@ -129,6 +129,13 @@ internal class RaftAndroidSandboxWebView(
     /** [RaftWebViewConfig.keepAliveKey]: parked past its page instead of destroyed. */
     internal var keepAliveKey: String? = null
         private set
+    /**
+     * The app's light/dark mode the WebView was built in. Its page reads `prefers-color-scheme`
+     * from the construction context's theme, which follows the app's choice (androidApp
+     * RaftAndroidNightMode); keep-alive does not hand a view of the other mode to a page.
+     */
+    internal var builtDark: Boolean = RaftAppThemeState.isDark
+        private set
     internal val isDestroyed: Boolean get() = destroyed
     private var currentUrl: String = ""
     private var currentTitle: String = ""
@@ -242,6 +249,7 @@ internal class RaftAndroidSandboxWebView(
         lastLoadFailureReason = ""
         pendingRuntimeJavaScript = ""
         webView = WebView(context)
+        builtDark = RaftAppThemeState.isDark
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()

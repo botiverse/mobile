@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- raft-design dark `layer-canvas`: the window and splash behind the first frame when the
-         OS is dark. RaftCmpActivity repaints it from the app's own theme choice in onCreate. -->
+    <!-- raft-design dark `layer-canvas`: the window and splash behind the first frame in the
+         dark mode, which follows the app's own choice (RaftAndroidNightMode; the OS under
+         System), so a dark cold start has no light flash. RaftCmpActivity then paints the
+         resolved canvas of the server theme in onCreate. -->
     <color name="raft_window_background">#FF1B1B19</color>
 </resources>

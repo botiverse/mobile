@@ -14,6 +14,7 @@ import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
+import build.raft.app.shared.RaftAndroidNightMode
 import build.raft.app.shared.RaftBuildStamp
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
@@ -81,6 +82,9 @@ class RaftApplication : Application() {
         // Settings > Appearance > Theme, applied before any page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(resources.configuration.uiMode))
         RaftAppAppearanceRuntime.ensureLoaded()
+        // The window theme follows that choice (DayNight Theme.Raft): WebViews, system dialogs,
+        // pickers and bar icons match the app, not just the OS.
+        RaftAndroidNightMode.install(this)
         // The font picker is gone (the design system fixes the faces); drop its stored choice.
         raftClearLegacyFontPreference()
         installAndroidAppScopePlatformFileResolver(this)

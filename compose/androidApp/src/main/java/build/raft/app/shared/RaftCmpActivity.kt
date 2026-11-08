@@ -959,7 +959,8 @@ internal open class RaftCmpActivity :
                 )
             }
         onBackPressedDispatcher.addCallback(this, hostSystemBackCallback)
-        // Seed the OS light/dark setting before anything is drawn. Later OS switches arrive
+        // Seed the light/dark mode before anything is drawn: the resources carry the app's own
+        // choice (RaftAndroidNightMode; the OS setting under System). Later switches arrive
         // through onConfigurationChanged (uiMode is a handled config change, see the manifest).
         RaftAppAppearanceRuntime.onSystemDarkChanged(androidSystemDark())
         RaftAppAppearanceRuntime.ensureLoaded()
@@ -1426,15 +1427,18 @@ internal open class RaftCmpActivity :
     }
 
     /**
-     * uiMode is a handled config change (manifest), so an OS light/dark switch no longer
-     * recreates the host: the page keeps its tab, pushed pages and scroll positions. Compose
-     * follows the new [Configuration] by itself (isSystemInDarkTheme in RaftTheme); report the
-     * setting to the process-wide theme too, so native host surfaces (window canvas, bar icons)
-     * switch on the same frame under System appearance.
+     * uiMode is a handled config change (manifest), so a light/dark switch (the OS's, or the
+     * app's own choice, which RaftAndroidNightMode puts into the configuration) does not recreate
+     * the host: the page keeps its tab, pushed pages and scroll positions. Compose follows the new
+     * [Configuration] by itself; report the mode to the process-wide theme too, so native host
+     * surfaces (window canvas, bar icons) switch on the same frame under System appearance.
+     * Read from the resources after super: on API 29-30 RaftAndroidNightMode puts the app
+     * choice's night bits back there (a listener of super) when the system rebuilt them from the
+     * OS setting.
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(newConfig.uiMode))) {
+        if (RaftAppAppearanceRuntime.onSystemDarkChanged(androidSystemDark())) {
             applyHostCanvasColor(RaftAppAppearanceRuntime.canvasArgb)
             // Bar icons: the page reports them on its next frame (onSystemBarsResolved), from
             // what it paints under the bars; the mode alone would be wrong on a dark light-mode
