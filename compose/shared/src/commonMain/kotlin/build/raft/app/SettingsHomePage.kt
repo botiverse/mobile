@@ -7194,6 +7194,80 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    // raft-design #712: on the phone Settings is a pushed page titled Settings, opened
+    // from the server panel, with Back (Members and Computers are on the panel now,
+    // so they no longer lead it); its rows keep their attention dots. The wide rail
+    // keeps its Settings page as before.
+    val openSettingsRow: (String) -> Unit = { key ->
+        prewarmAdmissionGate.invalidate("settings_open_page:$key")
+        settingsHeaderTaps.reset()
+        when (key) {
+            SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
+            SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
+            SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
+            SettingsDestinationDocumentation -> bridge.openUrl(RaftDocumentationUrl, inBrowser = true)
+            SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
+            SettingsDestinationComputers -> {
+                if (!navRailActive) {
+                    RaftProductEvents.navEntrySelected(
+                        destination = RaftNavDestination.Computers,
+                        surface = RaftNavSurface.MobileMore,
+                        wasActive = false,
+                    )
+                }
+                openComputersPage()
+            }
+            SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
+            SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
+            SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
+            // Always the ticket web page; its `integration-unavailable` event falls back to the
+            // native page (SettingsStandaloneWebViewHost).
+            SettingsDestinationHandsFeedback -> pager.openSettingsFeedbackWebViewPage(storeScope)
+            else -> {
+                val page = SettingsNativeDetailPage.fromKey(key)
+                if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
+                    bridge.logWarn("settings_native_detail_rejected page=$key")
+                }
+            }
+        }
+    }
+
+    // A link to Raft's own web Settings (an announcement's "Choose a theme"): the in-app page, on
+    // the server the link names, as the Settings rows open it; the Settings home for a tab the
+    // app has no page of its own for.
+    fun openSettingsFromLink(link: RaftSettingsLink, target: RaftSettingsLinkTarget, source: String) {
+        serverMenuState.dismiss()
+        target.switchToServerId?.let { serverId ->
+            readySession
+                ?.withAppShellSelectedServer(serverId)
+                ?.let { switched -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(switched)) }
+            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(serverId)))
+        }
+        val key = target.destinationKey
+        bridge.log(
+            "settings_link_open source=$source tab=${link.webTab ?: "home"} page=${key ?: "home"} " +
+                "section=${link.section != null} switched=${target.switchToServerId != null}"
+        )
+        if (navRailActive) {
+            // The wide rail's Settings: the section beside the list, or a page over it.
+            selectAppShellTab("settings", directChildSwitch = true, source = AppShellTabSwitchSource.User)
+            retainedAppShellTabs = retainedAppShellTabs + "settings"
+            when {
+                key == null -> settingsWidePicked = null
+                settingsWidePick(key) is SettingsWidePick.Detail -> settingsWidePicked = key
+                else -> openSettingsRow(key)
+            }
+        } else if (key != null) {
+            openSettingsRow(key)
+        } else if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
+            pager.openAppShellServerStackPage(AppShellServerTabKey)
+        } else {
+            selectAppShellTab(AppShellServerTabKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
+            retainedAppShellTabs = retainedAppShellTabs + AppShellServerTabKey
+        }
+    }
+
     fun onServerMenuPick(pick: RaftServerMenuPick) {
         when (pick) {
             // A held press let go over a server while a switch is pending: the list takes none.
@@ -8670,43 +8744,6 @@ private fun RaftAppShellReadyContent(
                                 },
                         )
                     }
-                    // raft-design #712: on the phone Settings is a pushed page titled Settings, opened
-                    // from the server panel, with Back (Members and Computers are on the panel now,
-                    // so they no longer lead it); its rows keep their attention dots. The wide rail
-                    // keeps its Settings page as before.
-                    val openSettingsRow: (String) -> Unit = { key ->
-                        prewarmAdmissionGate.invalidate("settings_open_page:$key")
-                        settingsHeaderTaps.reset()
-                        when (key) {
-                            SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
-                            SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
-                            SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
-                            SettingsDestinationDocumentation -> bridge.openUrl(RaftDocumentationUrl, inBrowser = true)
-                            SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
-                            SettingsDestinationComputers -> {
-                                if (!navRailActive) {
-                                    RaftProductEvents.navEntrySelected(
-                                        destination = RaftNavDestination.Computers,
-                                        surface = RaftNavSurface.MobileMore,
-                                        wasActive = false,
-                                    )
-                                }
-                                openComputersPage()
-                            }
-                            SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
-                            SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
-                            SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
-                            // Always the ticket web page; its `integration-unavailable` event falls back to the
-                            // native page (SettingsStandaloneWebViewHost).
-                            SettingsDestinationHandsFeedback -> pager.openSettingsFeedbackWebViewPage(storeScope)
-                            else -> {
-                                val page = SettingsNativeDetailPage.fromKey(key)
-                                if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
-                                    bridge.logWarn("settings_native_detail_rejected page=$key")
-                                }
-                            }
-                        }
-                    }
                     val settingsSession = (authGateState as? SharedAuthGateState.Ready)?.session
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         // IM Bridges row: the server's slack_bridge_v0, live like the web
@@ -9118,11 +9155,20 @@ private fun RaftAppShellReadyContent(
                         },
                         onOpenUrl = { url ->
                             if (announcementOwner == latestAnnouncementOwner) {
-                                resolveAnnouncementLink(
-                                    url,
-                                    announcementWebBase,
-                                    readySession?.servers?.firstOrNull { it.id == readyServerId }?.slug,
-                                )?.let { linkNavigator.open(it) }
+                                when (
+                                    val action =
+                                        announcementLinkAction(
+                                            href = url,
+                                            webBaseUrl = announcementWebBase,
+                                            currentServerId = readyServerId,
+                                            servers = readySession?.servers.orEmpty(),
+                                        )
+                                ) {
+                                    is AnnouncementLinkAction.OpenSettings ->
+                                        openSettingsFromLink(action.link, action.target, source = "announcement")
+                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url)
+                                    null -> Unit
+                                }
                             }
                         }
                     )
