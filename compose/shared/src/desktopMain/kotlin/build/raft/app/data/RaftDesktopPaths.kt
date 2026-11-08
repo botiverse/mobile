@@ -39,6 +39,12 @@ object RaftDesktopPaths {
     val cacheDir: File get() = File(dataDir, "cache").apply { mkdirs() }
 
     /**
+     * Where the page writes PNGs it hands to the host (`rememberRaftPngFileWriter`: the share
+     * image); the host deletes each once it has copied it (`saveThreadShareImage`).
+     */
+    val snapshotsDir: File get() = File(cacheDir, "raft_snapshots").apply { mkdirs() }
+
+    /**
      * The app's log files ([build.raft.app.RaftDesktopFileLog]): `~/Library/Logs/Raft` on macOS
      * (where Console.app and "Reveal logs" look), `%LOCALAPPDATA%\Raft\Logs` on Windows,
      * `$XDG_STATE_HOME/raft/logs` (or `~/.local/state/raft/logs`) elsewhere, and `<dataDir>/logs`

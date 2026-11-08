@@ -92,8 +92,7 @@ internal actual fun rememberRaftPngFileWriter(): RaftPngFileWriter =
                     skiaImage.close()
                 }
             if (bytes == null || bytes.isEmpty()) return@RaftPngFileWriter null
-            val dir = File(RaftDesktopPaths.cacheDir, "raft_snapshots").apply { mkdirs() }
-            val file = File(dir, "$namePrefix${UUID.randomUUID()}.png")
+            val file = File(RaftDesktopPaths.snapshotsDir, "$namePrefix${UUID.randomUUID()}.png")
             file.writeBytes(bytes)
             file.toURI().toString()
         }
