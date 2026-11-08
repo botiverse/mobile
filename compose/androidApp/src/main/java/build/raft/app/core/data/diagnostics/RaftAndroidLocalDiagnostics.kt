@@ -30,6 +30,8 @@ object RaftAndroidLocalDiagnostics {
     private const val MaxQueuedMessageLength = 8_192
     private const val MaxQueuedThreadNameLength = 128
 
+    private val coalescer = RaftDiagnosticsCoalescer()
+
     private val dispatchQueue =
         RaftDiagnosticsDispatchQueue(processor = ::processPendingLog)
 
@@ -129,7 +131,22 @@ object RaftAndroidLocalDiagnostics {
         if (authEvent != null) {
             RaftAuthCriticalJournal.record(sanitized, authEvent)
         } else if (RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
-            RaftGeneralLogRing.record(sanitized)
+            // Logcat above still gets every line; only the persistent ring is rate limited.
+            val admission =
+                coalescer.admit(sanitized.level, sanitized.tag, sanitized.message, sanitized.timestampMillis)
+            admission.summaries.forEach { summary ->
+                RaftGeneralLogRing.record(
+                    sanitized.copy(level = "info", tag = RaftDiagnosticsCoalescer.SummaryTag, message = summary)
+                )
+            }
+            if (admission.persist) RaftGeneralLogRing.record(sanitized)
+        }
+    }
+
+    /** Writes the counts of lines the coalescer is still holding back, before an export reads the ring. */
+    private fun drainCoalescedSummaries() {
+        coalescer.drain(System.currentTimeMillis()).forEach { summary ->
+            recordLog("info", RaftDiagnosticsCoalescer.SummaryTag, summary)
         }
     }
 
@@ -146,6 +163,7 @@ object RaftAndroidLocalDiagnostics {
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
         val appContext = context.applicationContext
+        drainCoalescedSummaries()
         check(flush()) { "diagnostics_flush_timeout operation=prepare_archive" }
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
         pruneFeedbackArchives(feedbackDir)
@@ -202,6 +220,7 @@ object RaftAndroidLocalDiagnostics {
 
     fun exportRecentDiagnosticsText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
         val appContext = context.applicationContext
+        drainCoalescedSummaries()
         if (!flush()) {
             return "Diagnostics snapshot unavailable because pending logs did not flush."
         }
