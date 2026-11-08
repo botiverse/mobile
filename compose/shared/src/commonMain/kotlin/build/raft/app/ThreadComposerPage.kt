@@ -3533,6 +3533,7 @@ private fun ThreadComposerSurface.localizedMentionScopeChannelLabel(): String =
 @Composable
 private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
     val normalized = rawPlaceholder.trim()
+    val loungeName = LocalAgentLoungeComposerName.current
     return when {
         normalized == "Message" -> stringResource(Res.string.thread_composer_placeholder_message)
         normalized == "Reply in thread" -> stringResource(Res.string.thread_composer_placeholder_reply)
@@ -3542,6 +3543,9 @@ private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
                 Res.string.thread_composer_placeholder_dm,
                 normalized.removePrefix("Message @")
             )
+        // Agent Lounge v0: "Message {Name}'s Lounge", never the raw `#<agent>-lounge`.
+        normalized.startsWith("Message #") && loungeName != null ->
+            stringResource(Res.string.thread_composer_placeholder_named, loungeName)
         normalized.startsWith("Message #") ->
             stringResource(
                 Res.string.thread_composer_placeholder_channel,
@@ -3644,8 +3648,18 @@ internal fun RaftPendingAttachmentItem.canOpenComposerAttachmentPreview(composer
                 (status == "queued" && source == "external_share" && !previewUri.isNullOrBlank())
         )
 
+/**
+ * Agent Lounge v0 (botiverse/slock messageService `lounge_agent_excluded`): another agent mentioned
+ * in an agent's Lounge can only read there. Never deliverable: no Notify or Add, whatever the
+ * answer lists; only Ignore.
+ */
+internal const val PendingMentionReasonLoungeAgentExcluded = "lounge_agent_excluded"
+
+internal fun RaftPendingMentionActionItem.isLoungeAgentExcluded(): Boolean =
+    reason == PendingMentionReasonLoungeAgentExcluded
+
 internal fun RaftPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
-    availableActions.any { action ->
+    !isLoungeAgentExcluded() && availableActions.any { action ->
         when (verb) {
             "notify" -> action == "notify" || action == "notify_only"
             "invite" -> action == "invite" || action == "add"
@@ -3700,6 +3714,9 @@ internal fun RaftPendingMentionActionItem.pendingMentionActionDescription(
     localState: String? = null
 ): String {
     val target = targetLabel()
+    if (isLoungeAgentExcluded()) {
+        return "$target won't be notified: other agents can only read this chat."
+    }
     if (localState == "added") {
         return "$target was added to $channelLabel"
     }
@@ -3726,6 +3743,9 @@ private fun RaftPendingMentionActionItem.localizedPendingMentionActionDescriptio
     localState: String?
 ): String {
     val target = targetLabel()
+    if (isLoungeAgentExcluded()) {
+        return stringResource(Res.string.thread_composer_mention_lounge_agent_excluded, target)
+    }
     if (localState == "added") {
         return stringResource(Res.string.thread_composer_mention_added, target, channelLabel)
     }
@@ -4619,7 +4639,12 @@ private fun PendingMentionActionCompactRow(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = stringResource(Res.string.thread_composer_mention_batch_row_status, channelLabel),
+                text =
+                    if (action.isLoungeAgentExcluded()) {
+                        stringResource(Res.string.thread_composer_mention_lounge_agent_excluded, action.targetLabel())
+                    } else {
+                        stringResource(Res.string.thread_composer_mention_batch_row_status, channelLabel)
+                    },
                 style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = RaftColor.TextMutedGray.copy(alpha = contentAlpha),
                 maxLines = 1,

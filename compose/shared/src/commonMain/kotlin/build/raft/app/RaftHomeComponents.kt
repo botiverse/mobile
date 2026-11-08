@@ -454,7 +454,20 @@ data class RaftHomeConversationItem(
      * Marked unread with nothing countable (botiverse/slock #11795, [build.raft.app.data.HomeSnapshot.markedUnreadIds]):
      * with no count the row shows the quiet unread dot (web `QuietUnreadDot`); a count wins over it.
      */
-    val markedUnread: Boolean = false
+    val markedUnread: Boolean = false,
+    /**
+     * Agent Lounge v0: an agent DM row's Lounge sub-row (web `AgentLoungeRow`), present only when
+     * Lounges are on here, not a Guest, and the Lounge was joined or mentions you.
+     */
+    val agentLounge: RaftHomeAgentLoungeRow? = null
+)
+
+/** The Lounge sub-row under an agent's DM row: its channel, unread and @ marker. */
+@Serializable
+data class RaftHomeAgentLoungeRow(
+    val channelId: String,
+    val unreadCount: Int = 0,
+    val mentioned: Boolean = false,
 )
 
 data class RaftHomeServerDrawerSection(
@@ -3219,6 +3232,8 @@ private fun RaftStructuralHomeShellContent(
                                             items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
                                                 val dm = displayedDirectMessages[index]
                                                 val dmSelected = sidebarSelection.conversationId == dm.id
+                                                // Agent Lounge v0: the Lounge's row right under its agent's DM row.
+                                                Column {
                                                 HomeSidebarDirectMessageRow(
                                                     interactionIdentity = homeSidebarInteractionIdentity("dm", dm.id),
                                                     name = dm.name,
@@ -3244,6 +3259,18 @@ private fun RaftStructuralHomeShellContent(
                                                         pinMenuAnchor = anchor
                                                     }) else null
                                                 )
+                                                dm.agentLounge?.let { lounge ->
+                                                    HomeSidebarAgentLoungeSubRow(
+                                                        dm = dm,
+                                                        lounge = lounge,
+                                                        cacheServerId = currentServerId,
+                                                        memberAvatarResolver = memberAvatarResolver,
+                                                        selected = sidebarSelection.conversationId == lounge.channelId,
+                                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
+                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(lounge.channelId) }) else null,
+                                                    )
+                                                }
+                                                }
                                             }
                                         }
                                         if (directMessagesExpanded && loadingSkeletonRowsShown) {

@@ -90,6 +90,23 @@ data class HomeChannelWireDto(
     val maxReadSeq: Long? = null,
     val readStateVersion: Long? = null,
     val channelCapabilities: WireChannelCapabilities? = null,
+    /**
+     * Agent Lounge v0 (botiverse/slock packages/server/src/routes/channels.ts GET `/:id`,
+     * routes/agents.ts POST `/:id/lounge`): the agent this channel is the Lounge of; absent or null
+     * for every other channel. `GET /channels` never lists a Lounge.
+     */
+    val loungeAgentId: String? = null,
+)
+
+/**
+ * Agent Lounge v0: the `lounge` an agent DM row carries in `GET /channels/dm`
+ * (botiverse/slock packages/server/src/services/agentLoungeService.ts `loungeSummariesForAgents`),
+ * present only once that agent's Lounge exists.
+ */
+@Serializable
+data class HomeAgentLoungeWireDto(
+    val channelId: String,
+    val joined: Boolean = false,
 )
 
 @Serializable
@@ -112,6 +129,8 @@ data class HomeDirectMessageWireDto(
     val readStateVersion: Long? = null,
     val lastMessagePreview: String? = null,
     val lastMessageSenderName: String? = null,
+    /** Agent Lounge v0: this agent's Lounge (see [HomeAgentLoungeWireDto]). */
+    val lounge: HomeAgentLoungeWireDto? = null,
 )
 
 @Serializable
@@ -153,6 +172,8 @@ private data class HomeChannelDetailWireDto(
     val lastMessagePreview: String? = null,
     val lastMessageSenderName: String? = null,
     val channelCapabilities: WireChannelCapabilities? = null,
+    /** See [HomeChannelWireDto.loungeAgentId]. */
+    val loungeAgentId: String? = null,
 )
 
 /** Wire shape of `channelCapabilities` on channel records (web parity:
@@ -244,6 +265,7 @@ internal fun parseRaftChannelDetail(
             maxReadSeq = wire.maxReadSeq,
             readStateVersion = wire.readStateVersion,
             channelCapabilities = wire.channelCapabilities,
+            loungeAgentId = wire.loungeAgentId,
         ).toChannelRow()
     }
 }
@@ -261,7 +283,7 @@ fun parseRaftHome(
     val currentMember = session.user.toMemberProfile()
 
     val channels = payload.channels
-        .filter { it.archivedAt == null }
+        .filter { it.archivedAt == null && !it.isAgentLoungeWire() }
         .map { it.toChannelRow() }
         .dedupeHomeChannels()
 
@@ -277,7 +299,11 @@ fun parseRaftHome(
     val mentioned = payload.mentionedChannelIds
     val channelsWithUnread = channels.applyChannelUnreadCounts(unreadCounts, mentioned)
     val dmsWithUnread = directMessages.applyDirectMessageUnreadCounts(unreadCounts, mentioned)
-    val channelUnreadTotal = channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount }
+        .applyAgentLoungeUnreadCounts(unreadCounts, mentioned)
+    // Lounges are unread like any channel (the server's own total counts them).
+    val channelUnreadTotal =
+        channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount } +
+            dmsWithUnread.sumOf { it.lounge?.unreadCount ?: 0 }
     val serverUnreadTotal =
         payload.serverUnreadSummary
             .firstOrNull { it.serverId == currentServer.id.value }
@@ -337,7 +363,7 @@ fun parseSharedChannelSnapshot(
     ChannelSnapshot(
         server = server,
         channels = homeJson.decodeFromString(ListSerializer(HomeChannelWireDto.serializer()), bodyText)
-            .filter { it.archivedAt == null }
+            .filter { it.archivedAt == null && !it.isAgentLoungeWire() }
             .map { it.toChannelRow() }
             .dedupeHomeChannels(),
     )
@@ -428,7 +454,7 @@ fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): Chan
 internal fun HomeChannelBridgeWireDto?.normalizedBridgeProviderOrNull(): String? =
     this?.provider?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 
-private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
+internal fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
     val isJoint =
         type.equals("joint", ignoreCase = true) ||
             jointChannelId?.isNotBlank() == true ||
@@ -461,14 +487,24 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
                 muteFromSeq = muteFromSeq,
                 activityMuteSupported = activityMuteSupported
             ),
-        permissions = ConversationPermissions(
-            canSend = joined,
-            canAttach = joined,
-            canCreateTask = joined
-        ),
-        channelCapabilities = channelCapabilities?.toModel()
+        permissions = if (isAgentLoungeWire()) {
+            // Agent Lounge v0: no Join step; any non-guest member may post (the first post joins),
+            // until it is archived. POST /agents/:id/lounge's `canPost` narrows it further.
+            ConversationPermissions(canSend = archivedAt == null, canAttach = archivedAt == null, canCreateTask = archivedAt == null)
+        } else {
+            ConversationPermissions(
+                canSend = joined,
+                canAttach = joined,
+                canCreateTask = joined
+            )
+        },
+        channelCapabilities = channelCapabilities?.toModel(),
+        loungeAgentId = loungeAgentId?.takeIf { it.isNotBlank() }
     )
 }
+
+/** Agent Lounge v0: a channel row that is an agent's Lounge (web `channelDomain.isLoungeChannel`). */
+internal fun HomeChannelWireDto.isAgentLoungeWire(): Boolean = !loungeAgentId.isNullOrBlank()
 
 private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) -> Unit): HomeDirectMessageRow {
     val displayName =
@@ -498,7 +534,10 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
                 activityMuted = activityMuted,
                 muteFromSeq = muteFromSeq,
                 activityMuteSupported = activityMuteSupported
-            )
+            ),
+        lounge = lounge
+            ?.takeIf { peerType.equals("agent", ignoreCase = true) && it.channelId.isNotBlank() }
+            ?.let { AgentLoungeSummary(channelId = ChannelId(it.channelId), joined = it.joined) }
     )
 }
 
@@ -578,6 +617,26 @@ private fun List<HomeDirectMessageRow>.applyDirectMessageUnreadCounts(
                 mentionCountKnown = true
             )
         }
+    }
+
+// Agent Lounge v0: the server has no unread on the DM row's `lounge`; it comes from the unread
+// summary by the Lounge's channel id, as for any channel (web channelService.listDMChannels).
+private fun List<HomeDirectMessageRow>.applyAgentLoungeUnreadCounts(
+    counts: Map<ChannelId, Int>,
+    mentioned: Set<ChannelId>
+): List<HomeDirectMessageRow> =
+    map { conversation ->
+        val lounge = conversation.lounge ?: return@map conversation
+        val count = counts[lounge.channelId]
+        val mention = lounge.channelId in mentioned
+        // A mention keeps its @ even when the summary carries no count for the Lounge.
+        if (count == null && !mention) return@map conversation
+        conversation.copy(
+            lounge = lounge.copy(
+                unreadCount = (count ?: 0).coerceAtLeast(0),
+                mentionCount = if (mention) 1 else 0
+            )
+        )
     }
 
 private fun List<HomeChannelRow>.dedupeHomeChannels(): List<HomeChannelRow> {

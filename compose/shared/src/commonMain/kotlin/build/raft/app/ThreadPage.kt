@@ -164,6 +164,7 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.NetworkRaftTasksApi
@@ -2826,7 +2827,9 @@ internal fun channelJoinedHomeIntent(
             payload.takeIf {
                 it.surfaceKind == RaftThreadSurfaceKind.Channel &&
                     it.joinChannelTargetId() == channelId &&
-                    it.title.isNotBlank()
+                    it.title.isNotBlank() &&
+                    // Agent Lounge v0: a Lounge is never listed, joined or not.
+                    RaftAgentLounges.lounge(serverId, channelId.value) == null
             }?.let {
                 HomeChannelRow(
                     threadId = ThreadId(channelId.value),
@@ -4078,7 +4081,7 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
         }
     }
 
-private fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
+internal fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
     tag.kind == ThreadMarkdownTagKind.Task
 
 internal fun RaftThreadScreenPayload.resolveTaskAssigneeDisplayName(
@@ -7101,12 +7104,17 @@ private fun SharedThreadRouteContentContent(
     // parent row whenever it appears/changes so the store re-evaluates
     // event-driven; the store fences every hint by route, account state and
     // current authority status, so redundant dispatches are cheap no-ops.
+    // Agent Lounge v0: a Lounge is in no Home list; once it is known (opened, its DM row, or the
+    // parent detail this reply load reads by id) it is the parent row. No Join: replying before
+    // joining is allowed, as in the Lounge itself; a Lounge you may only read stays read-only.
+    val knownLounges by RaftAgentLounges.lounges.collectAsState()
     LaunchedEffect(
         payload.surfaceKind,
         payload.parentChannelId,
         payload.parentMessageId,
         payload.originParentMessageId,
         sharedHomeState,
+        knownLounges,
     ) {
         if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return@LaunchedEffect
         val parentChannelId =
@@ -7120,6 +7128,20 @@ private fun SharedThreadRouteContentContent(
         val parentRow =
             snapshot?.channels?.firstOrNull { it.channelId?.value == parentChannelId }
                 ?: snapshot?.directMessages?.firstOrNull { it.channelId?.value == parentChannelId }
+        val parentLounge = if (parentRow == null) RaftAgentLounges.loungeAnyServer(parentChannelId) else null
+        if (parentLounge != null) {
+            threadViewModel.dispatch(
+                SharedThreadIntent.ApplyParentDirectoryHint(
+                    parentChannelId = parentChannelId,
+                    parentMessageId = parentMessageId,
+                    present = true,
+                    joined = parentLounge.postable,
+                    canSend = parentLounge.postable,
+                    authoritative = true,
+                )
+            )
+            return@LaunchedEffect
+        }
         threadViewModel.dispatch(
             SharedThreadIntent.ApplyParentDirectoryHint(
                 parentChannelId = parentChannelId,
@@ -10652,6 +10674,11 @@ private fun SharedThreadRouteContentContent(
                         SharedHomeIntent.OwnMessagesSent(sendProvenance.serverId, ownSentChannelIds)
                     )
                 }
+                // Agent Lounge v0: your first post in a Lounge joins it (no Join step), so its row
+                // shows under the agent's DM right away.
+                if (sendRoute.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                    RaftAgentLounges.markJoined(sendProvenance.serverId, context.channelId)
+                }
                 bridge.performanceMarker(
                     phase = "composer_send",
                     routeName = "kuikly_thread",
@@ -13183,8 +13210,41 @@ private fun SharedThreadRouteContentContent(
                     onMissingScope = { bridge.logWarn("thread_settings_page_open_skip reason=missing_scope") },
                 )
         }
+        // Agent Lounge v0: this page as (or inside) an agent's Lounge, and an agent DM's Lounge toggle.
+        val loungeAssistantAnswers by
+            remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }.answers.collectAsState()
+        val threadLounge =
+            rememberThreadPageLounge(
+                payload = renderedThread,
+                bridge = bridge,
+                storeScope = storeScope,
+                flags = sharedStores.serverFeatureFlags,
+                serverId = currentServerId,
+                serverRole = currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
+                memberAvatarResolver = memberAvatarResolver,
+                personalAssistantAgentIds =
+                    remember(loungeAssistantAnswers) {
+                        loungeAssistantAnswers.values.mapNotNull { it.assistant?.agentId }.toSet()
+                    },
+                onOpenConversation = { identity ->
+                    buildAppShellThreadPayload(
+                        conversation = identity,
+                        timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
+                        alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                        compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                        onWarn = bridge::logWarn
+                    )?.let(onOpenThreadPayload)
+                        ?: bridge.logWarn("agent_lounge_open_rejected reason=identity_unresolved")
+                },
+                onOpenAgentProfile = { agentId ->
+                    memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
+                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
+                    }
+                },
+            )
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
+                lounge = threadLounge,
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
                 // task #180: forwarded from the route scope, which owns the workspace store.
                 onToggleFocusMode = threadFocusModeToggle,
@@ -16657,6 +16717,7 @@ private class ThreadEventHandler(
  * un-minified giant composable frame on API 34/36 builds).
  */
 private data class ThreadPageContentData(
+    val lounge: ThreadPageLounge? = null,
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
@@ -16774,6 +16835,8 @@ private class ThreadPageContentCallbacks(
 
 private @Composable
 fun ThreadPageContent(
+    /** Agent Lounge v0 (see [ThreadPageLounge]); null on pages that never show one. */
+    lounge: ThreadPageLounge? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
@@ -16888,6 +16951,7 @@ fun ThreadPageContent(
         focusModeActive = focusModeActive,
         data =
             ThreadPageContentData(
+                lounge = lounge,
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
                 taskConversationChrome = taskConversationChrome,
@@ -17010,7 +17074,13 @@ private fun ThreadPageContentContent(
     val threadInstanceKey = data.threadInstanceKey
     val routeActive = data.routeActive
     val hostForeground = data.hostForeground
-    val payload = data.payload
+    // Agent Lounge v0: the Lounge this page is, or a reply thread is in (null elsewhere).
+    val pageLounge = data.lounge?.lounge
+    val conversationLounge = pageLounge?.takeIf { data.payload.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val payload =
+        remember(data.payload, conversationLounge, data.accessResolution) {
+            data.payload.withAgentLoungeAccess(conversationLounge, data.accessResolution)
+        }
     val messageBodyTextStyle = data.messageBodyTextStyle
     val timelineSlice = data.timelineSlice
     // In the assistant's panel: a card from it still waiting here gives the otter its confirm mood.
@@ -17228,6 +17298,30 @@ private fun ThreadPageContentContent(
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
+    // Android / desktop: the share image laid out off screen at the picked width (threadShareImageRendersOffscreen).
+    var shareImageWidthChoice by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageWidthChoice()) }
+    var shareImageRenderWidthDp by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageDefaultWidthDp) }
+    var shareImageBitmap by remember(threadInstanceKey) { mutableStateOf<ThreadShareRenderedImage?>(null) }
+    var shareImageRendering by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareImageSaving by remember(threadInstanceKey) { mutableStateOf(false) }
+    val sharePngWriter = rememberRaftPngFileWriter()
+    LaunchedEffect(shareImageWidthChoice) {
+        val widthDp = shareImageWidthChoice.widthDp
+        if (widthDp != shareImageRenderWidthDp) {
+            // A drag of the custom slider lays the image out again once it pauses.
+            if (shareImageWidthChoice.preset == ThreadShareImageWidth.Custom) delay(ThreadShareImageWidthDebounceMs)
+            shareImageRenderWidthDp = widthDp
+        }
+    }
+    // The share image (up to 16M px) is held only while Share preview is open: however it closes
+    // (dismiss, saved, another modal), the bitmap goes with it.
+    val sharePreviewOpen = activeModal == "sharePreview"
+    LaunchedEffect(sharePreviewOpen) {
+        if (!sharePreviewOpen) {
+            shareImageBitmap = null
+            shareImageRendering = false
+        }
+    }
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var shareCaptureAnchorBeforeTarget by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -17474,6 +17568,8 @@ private fun ThreadPageContentContent(
         selectedShareBounds.clear()
         sharePreviewImage = null
         sharePreviewLoading = false
+        shareImageBitmap = null
+        shareImageRendering = false
         shareCaptureMode = false
         shareCaptureTargetMessageId = null
         shareCaptureAnchorBeforeTarget = false
@@ -18137,8 +18233,11 @@ private fun ThreadPageContentContent(
                     onShowMembers = {
                         onThreadEvent("openMembersPager", null, null, null)
                     },
+                    lounge = data.lounge,
                     onShowSettings = {
-                        if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
+                        if (conversationLounge != null) {
+                            activeModal = "settings"
+                        } else if (threadSettingsUsesStandalonePage(payload.surfaceKind, newDesignSettingsEnabled())) {
                             onThreadEvent("openChannelSettings", null, null, null)
                         } else if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) {
                             // A wide window, or a page that could not open: the drawer.
@@ -18292,6 +18391,10 @@ private fun ThreadPageContentContent(
                         },
                 )
             }
+            // Agent Lounge v0: who is here, always on top of the conversation (web lounge-audience-notice).
+            if (conversationLounge != null) {
+                AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
             // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
@@ -18400,9 +18503,18 @@ private fun ThreadPageContentContent(
                         )
                     )
                 }
+            } else if (agentLoungeFooterKind(conversationLounge, pageLounge) != null) {
+                // Agent Lounge v0: an archived Lounge says so (Unarchive only for a viewer whose server
+                // role may archive channels), and one you may only read has the read-only composer;
+                // never a Join.
+                AgentLoungeFooter(
+                    kind = agentLoungeFooterKind(conversationLounge, pageLounge),
+                    inputs = data.lounge,
+                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+                )
             } else if (!writeActionsEnabled) {
                 Unit
-            } else if (!payload.joined) {
+            } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
@@ -18447,7 +18559,18 @@ private fun ThreadPageContentContent(
                             }
                         },
                         onExportImage = {
-                            if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
+                            if (threadShareImageRendersOffscreen && selectedShareMessages.isNotEmpty()) {
+                                // Laid out again off screen at the picked width (the renderer in `overlays`).
+                                diagnosticsLogger(
+                                    "thread_share_export_click selected=${selectedShareMessages.size} " +
+                                        "offscreen=true width=${shareImageWidthChoice.widthDp}"
+                                )
+                                sharePreviewImage = null
+                                shareImageBitmap = null
+                                shareImageRendering = true
+                                shareImageRenderWidthDp = shareImageWidthChoice.widthDp
+                                activeModal = "sharePreview"
+                            } else if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 diagnosticsLogger(
                                     "thread_share_export_click selected=${selectedShareMessages.size} " +
                                         "scopeActive=${shareExportScope.coroutineContext[Job]?.isActive == true}"
@@ -18524,7 +18647,8 @@ private fun ThreadPageContentContent(
                         )
                 ) {
                     CompositionLocalProvider(
-                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal
+                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
+                        LocalAgentLoungeComposerName provides conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
                     ) {
                         ThreadComposerRoute(
                             baseComposerState = baseComposerState,
@@ -18564,6 +18688,87 @@ private fun ThreadPageContentContent(
             },
             overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
+        if (threadShareImageRendersOffscreen && activeModal == "sharePreview" && selectedShareMessages.isNotEmpty()) {
+            val shareImageAuthorSuppression =
+                remember(selectedShareMessages, timelineSlice.messages, timelineSlice.compactConsecutiveMessages, timelineRenderConfig) {
+                    threadShareImageSuppressesAuthor(
+                        timeline = timelineSlice.messages,
+                        selected = selectedShareMessages,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        localOffsetMinutes = timelineRenderConfig.timeContext.localOffsetMinutes,
+                    )
+                }
+            ThreadShareImageOffscreenRenderer(
+                cardWidthDp = shareImageRenderWidthDp,
+                rowCount = selectedShareMessages.size,
+                renderKey = selectedShareMessages,
+                background = RaftColor.Canvas,
+                onRendering = {
+                    shareImageRendering = true
+                    // Keep only the old preview on screen while the next image renders: the full
+                    // bitmap (up to 64 MB) can go before the new one is allocated. Download waits.
+                    shareImageBitmap = shareImageBitmap?.let { ThreadShareRenderedImage(image = it.preview, preview = it.preview) }
+                },
+                onRendered = { image ->
+                    shareImageBitmap = image
+                    shareImageRendering = false
+                    diagnosticsLogger(
+                        "thread_share_offscreen_rendered width=$shareImageRenderWidthDp " +
+                            "ok=${image != null} px=${image?.image?.width ?: 0}x${image?.image?.height ?: 0} " +
+                            "preview=${image?.preview?.width ?: 0}x${image?.preview?.height ?: 0}"
+                    )
+                },
+            ) { index ->
+                val message = selectedShareMessages[index]
+                val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
+                val replyInThread =
+                    threadMessageIsReplyInThread(timelineSlice.replyThreadSurface, timelineSlice.originMessage?.id, message.id)
+                val sourceTasks =
+                    remember(message.id, linkedTasksProjection, replyInThread) {
+                        if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
+                    }
+                val displayMessage =
+                    remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
+                        message.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
+                    }
+                val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                val actionCard = if (contentExtrasVisible) remember(message.id, message.metadata) { message.threadActionCard() } else null
+                if (isSystemMessage && actionCard == null) {
+                    ThreadSystemMessageRow(message = displayMessage, timestampValue = message.timestampLabel)
+                } else {
+                    ThreadShareImageMessageRow(
+                        message = displayMessage,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        suppressRepeatedAuthor = shareImageAuthorSuppression.getOrElse(index) { false },
+                        timestampLabel = message.timestampLabel,
+                        compactTimestampLabel = timelineRenderConfig.formatCompactTimestampLabel(message),
+                        replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
+                        sourceTasks = sourceTasks,
+                        actionCard = actionCard,
+                        actionCardExecutedTimeLabel =
+                            timelineRenderConfig.formatActionCardExecutedTimeLabel(
+                                actionCard?.executedAt,
+                                currentRaftTimeContextProvider?.todayEpochDay
+                            ),
+                        resolvedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName(),
+                        highlightedMentions = highlightedMentions,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
+                        inlineReplyParticipantsById = inlineReplyParticipantsById,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        alignOwnMessageRight = timelineSlice.alignOwnMessagesRight && message.isOwn,
+                        messageAlignmentModeEnabled = timelineSlice.alignOwnMessagesRight,
+                        currentServerSlug = currentServerSlug,
+                        richContentEnabled = contentExtrasVisible,
+                    )
+                }
+            }
+        }
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
         val forwardPickerBottomSafeArea = raftBottomSafeAreaPadding()
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
@@ -18817,9 +19022,12 @@ private fun ThreadPageContentContent(
         }
         when (activeModal) {
             "settings" -> {
-                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                // Agent Lounge v0: a Lounge's overflow is the DM's (mute, section, collapse): no
+                // members, settings or edit (the server refuses rename, visibility and other agents).
+                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage || conversationLounge != null) {
                     ThreadDirectMessageSettingsDrawer(
-                        name = headerDisplay.title,
+                        name = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) } ?: headerDisplay.title,
+                        directMessageTag = conversationLounge == null,
                         activityMuteState = activityMuteState,
                         section = channelSettingsPanel?.section,
                         sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
@@ -18869,7 +19077,50 @@ private fun ThreadPageContentContent(
                             onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
                         }
                     },
+                    offscreen =
+                        if (threadShareImageRendersOffscreen) {
+                            ThreadSharePreviewOffscreen(
+                                image = shareImageBitmap,
+                                rendering = shareImageRendering || shareImageSaving,
+                                choice = shareImageWidthChoice,
+                                onChoiceChange = { shareImageWidthChoice = it },
+                            )
+                        } else {
+                            null
+                        },
                     onDownloadImage = {
+                        val offscreenImage = shareImageBitmap?.image
+                        if (threadShareImageRendersOffscreen) {
+                            if (offscreenImage != null && !shareImageSaving && !shareImageRendering) {
+                                shareImageSaving = true
+                                shareExportScope.launch {
+                                    val result =
+                                        try {
+                                            val fileRef =
+                                                withContext(Dispatchers.Default) {
+                                                    runCatching { sharePngWriter.writePng(offscreenImage, ThreadShareImageFilePrefix) }.getOrNull()
+                                                }
+                                            val path = fileRef?.let(::threadShareImageFilePath)
+                                            if (path.isNullOrBlank()) null else runCatching { onSaveShareImage(path) }.getOrNull()
+                                        } finally {
+                                            shareImageSaving = false
+                                        }
+                                    val status = result?.optString("status")
+                                    if (status == "cancelled") return@launch
+                                    val saved = status == "ok"
+                                    if (saved) {
+                                        activeModal = null
+                                    }
+                                    onThreadEvent(
+                                        if (saved) "shareSelectionImageSaved" else "shareSelectionExportFailed",
+                                        result?.optString("message")?.takeIf { it.isNotBlank() },
+                                        null,
+                                        null
+                                    )
+                                }
+                            }
+                            return@ThreadSharePreviewModal
+                        }
                         val imagePath = sharePreviewImage?.path
                         if (!imagePath.isNullOrBlank()) {
                             shareExportScope.launch {
@@ -18939,7 +19190,16 @@ internal fun ThreadPageHeader(
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
     /** Task v2: the Tasks / Files card toggles between Search and Settings (null: none). */
     sideCardToggles: ThreadHeaderSideCardToggles? = null,
+    /** Agent Lounge v0: the Lounge this page is (or is in), and an agent DM's Lounge toggle. */
+    lounge: ThreadPageLounge? = null,
 ) {
+    // Agent Lounge v0 (web ChatPanel `lounge-header`): a Lounge is headed "{Name}'s Lounge" with its
+    // agent's face and the Lounge mark; no # tile, no description. A thread in it names the Lounge.
+    val headerLounge = lounge?.takeIf { it.lounge != null }
+    val loungeHeader = headerLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val loungeTitle = headerLounge?.let { agentLoungeTitle(it.agentName) }
+    val dmLoungeToggle = lounge?.onOpenDmAgentLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage }
+    val loungeLabel = stringResource(Res.string.agent_lounge_label)
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
@@ -18960,9 +19220,15 @@ internal fun ThreadPageHeader(
             originReplyCount == 1 -> stringResource(Res.string.thread_inline_reply_count_one)
             else -> stringResource(Res.string.thread_inline_reply_count_many, originReplyCount)
         }
-    val headerSubtitle = replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
+    val headerSubtitle =
+        when {
+            loungeHeader != null -> null
+            headerLounge != null && headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ->
+                replyThreadHeaderSubtitle(loungeTitle, replyThreadReplyCountLabel)
+            else -> replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
+        }
     val localizedHeaderTitle =
-        replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
+        loungeTitle?.takeIf { loungeHeader != null } ?: replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
             title = headerDisplay.title,
             surfaceKind = headerDisplay.surfaceKind,
             localizedReplyThread = stringResource(Res.string.thread_reply_title),
@@ -19062,7 +19328,7 @@ internal fun ThreadPageHeader(
             emptyList()
         } else {
             buildList {
-                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage) {
+                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage && loungeHeader == null) {
                     add(
                         RaftNativeNavBarAction(
                             "members",
@@ -19073,6 +19339,9 @@ internal fun ThreadPageHeader(
                             priority = Int.MAX_VALUE,
                         )
                     )
+                }
+                if (dmLoungeToggle != null) {
+                    add(RaftNativeNavBarAction("lounge", loungeLabel, "person.2", dmLoungeToggle))
                 }
                 addAll(nativeSideActions.toRaftNativeNavBarActions())
                 if (nativeLevelTarget != null) {
@@ -19097,6 +19366,14 @@ internal fun ThreadPageHeader(
             RaftNativeNavBarTitleExtras(
                 leading =
                     when {
+                        loungeHeader != null ->
+                            RaftNativeNavBarTitleLeading.Avatar(
+                                label = loungeHeader.agentName,
+                                imageUrl =
+                                    loungeHeader.agentAvatarWireValue
+                                        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+                                fillArgb = raftArgbHex(raftAvatarFallbackFill(MemberKind.Agent)),
+                            )
                         headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
                             RaftNativeNavBarTitleLeading.Avatar(
                                 label = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
@@ -19129,7 +19406,25 @@ internal fun ThreadPageHeader(
             if (showsBack && !controlsInColumn) {
                 RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             }
-            if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+            if (loungeHeader != null) {
+                // The face is decorative for screen readers; its tap opens the agent's profile.
+                Box(
+                    modifier =
+                        Modifier
+                            .padding(end = ThreadHeaderChannelTitleGapExtra)
+                            .then(
+                                loungeHeader.onOpenAgentProfile?.let { open -> Modifier.clickable(onClick = open) } ?: Modifier
+                            )
+                ) {
+                    RaftLoungeAvatar(
+                        agentId = loungeHeader.lounge?.agentId,
+                        avatarWireValue = loungeHeader.agentAvatarWireValue,
+                        label = loungeHeader.agentName,
+                        cacheServerId = loungeHeader.cacheServerId,
+                        avatarSize = 35.dp,
+                    )
+                }
+            } else if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
                     // The peer's name (the header title): initials come from its words.
@@ -19164,9 +19459,11 @@ internal fun ThreadPageHeader(
                 modifier =
                     Modifier
                         .weight(1f)
+                        .then(if (loungeHeader != null) Modifier.testTag(AgentLoungeTestTags.Header) else Modifier)
                         // A long press copies the channel / DM name; the tap (scroll to top) stays.
                         .raftCopyable(
-                            threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind).takeIf { replyThreadPreviewTitle == null },
+                            (loungeTitle?.takeIf { loungeHeader != null }
+                                ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind)).takeIf { replyThreadPreviewTitle == null },
                             onClick = onTitleClick,
                         ),
                 // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
@@ -19181,7 +19478,7 @@ internal fun ThreadPageHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
                         RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
                     }
                     if (activityMutedIndicatorVisible) {
@@ -19198,7 +19495,7 @@ internal fun ThreadPageHeader(
                 // Web #10285: a reply thread's channel name does what Open in Channel does (the
                 // parent message in its channel), under a View in Channel tooltip.
                 val channelLinkLabel =
-                    headerDisplay.subtitle?.takeIf {
+                    (loungeTitle ?: headerDisplay.subtitle)?.takeIf {
                         it.isNotBlank() &&
                             headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                             payload.threadHeaderOpenInParentActionVisible()
@@ -19239,6 +19536,17 @@ internal fun ThreadPageHeader(
                     val replyThreadMenu = headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread
                     if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
+                    }
+                    // Agent Lounge v0 (web useChannelHeadToggles): an agent DM's Lounge, between Search and Settings.
+                    if (dmLoungeToggle != null) {
+                        Box(Modifier.testTag(AgentLoungeTestTags.DmHeaderToggle)) {
+                            ConversationHeaderToggle(
+                                icon = RaftLucideIconName.Users,
+                                selected = false,
+                                label = loungeLabel,
+                                onClick = dmLoungeToggle
+                            )
+                        }
                     }
                     sideCardToggles?.let { toggles ->
                         // web ChannelTasksToggle / ChannelFilesToggle: no count on either.
@@ -28685,8 +28993,10 @@ internal fun ThreadQuotedPermalinkCard(
             val item = state.message.item
             val direct = target?.routeKind == ConversationKind.DirectMessage
             val resolvedChannel = target?.let { LocalRaftMessagePermalinkLabelResolver.current(it) }
+            // Agent Lounge v0: a quote from a Lounge names the Lounge, without the # glyph.
+            val loungeLabel = if (direct) null else agentLoungeLabelOrNull(target?.channelId?.value)
             val channel =
-                resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
+                loungeLabel ?: resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
                     ?: if (direct) {
                         stringResource(Res.string.thread_quoted_permalink_direct_message)
                     } else {
@@ -28705,6 +29015,7 @@ internal fun ThreadQuotedPermalinkCard(
                 // A resolved DM title names the peer; without one the fallback reads as a place.
                 channel = channel,
                 direct = direct && resolvedChannel != null,
+                channelGlyph = loungeLabel == null,
                 threadLabel =
                     if (target?.threadParentMessageId != null) {
                         stringResource(Res.string.thread_quoted_permalink_thread)
@@ -38557,13 +38868,27 @@ private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName, size: Dp) {
     RaftLucideIcon(icon, modifier = Modifier.size(size), color = raftArgbHex(ink))
 }
 
+/**
+ * Share preview's off-screen image (Android, desktop; see [ThreadShareImageOffscreenRenderer]):
+ * the image laid out at [choice]'s width ([image] null until the first one is ready, or when it
+ * failed), whether a new layout is [rendering], and the width picker's change.
+ */
+internal data class ThreadSharePreviewOffscreen(
+    val image: ThreadShareRenderedImage?,
+    val rendering: Boolean,
+    val choice: ThreadShareImageWidthChoice,
+    val onChoiceChange: (ThreadShareImageWidthChoice) -> Unit,
+)
+
 @Composable
 internal fun ThreadSharePreviewModal(
     messages: List<RaftThreadMessageItem>,
     image: ThreadSharePreviewImage?,
     onDismiss: () -> Unit,
     onCopyMarkdown: () -> Unit,
-    onDownloadImage: () -> Unit
+    onDownloadImage: () -> Unit,
+    /** Non-null: the image is laid out off screen at a width the user picks (iOS: null, the native export). */
+    offscreen: ThreadSharePreviewOffscreen? = null,
 ) {
     RaftUnifiedDialog(
         title = stringResource(Res.string.thread_share_preview_title),
@@ -38575,6 +38900,32 @@ internal fun ThreadSharePreviewModal(
         contentSpacing = 12.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (offscreen != null) {
+                ThreadShareImageWidthPicker(choice = offscreen.choice, onChoiceChange = offscreen.onChoiceChange)
+                if (offscreen.image == null && !offscreen.rendering) {
+                    ThreadModalEmptyState(
+                        title = stringResource(Res.string.thread_share_export_failed),
+                        detail = stringResource(Res.string.thread_share_export_failed_detail)
+                    )
+                } else {
+                    ThreadShareImagePreview(image = offscreen.image?.preview, rendering = offscreen.rendering)
+                }
+                RaftDialogFooter {
+                    RaftModalActionButton(
+                        label = stringResource(Res.string.thread_share_copy_markdown),
+                        icon = RaftLucideIconName.Copy,
+                        onClick = onCopyMarkdown,
+                        enabled = messages.isNotEmpty()
+                    )
+                    RaftModalActionButton(
+                        label = stringResource(Res.string.thread_share_download),
+                        icon = RaftLucideIconName.Download,
+                        onClick = onDownloadImage,
+                        enabled = offscreen.image != null && !offscreen.rendering
+                    )
+                }
+                return@Column
+            }
             if (image?.uri.isNullOrBlank()) {
                 ThreadModalEmptyState(
                     title = stringResource(Res.string.thread_share_export_failed),
@@ -39119,11 +39470,13 @@ internal fun ThreadDirectMessageSettingsDrawer(
     onCreateSection: (name: String, emoji: String?) -> Unit,
     // A phone: a pushed page with Back in place of the drawer's × (ThreadSettingsPage.kt).
     asPage: Boolean = false,
+    /** False for an agent's Lounge, which uses this DM-mode drawer but is not a DM. */
+    directMessageTag: Boolean = true,
 ) {
     ThreadSettingsSurface(
         asPage = asPage,
         title = name,
-        titleTrailing = threadSettingsDirectMessageTag(),
+        titleTrailing = if (directMessageTag) threadSettingsDirectMessageTag() else null,
         closeLabel = stringResource(Res.string.thread_dm_settings_close),
         onDismiss = onDismiss
     ) {

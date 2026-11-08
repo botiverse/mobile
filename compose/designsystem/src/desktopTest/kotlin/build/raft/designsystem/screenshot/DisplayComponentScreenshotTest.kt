@@ -131,6 +131,7 @@ import build.raft.designsystem.components.RaftMeterSize
 import build.raft.designsystem.components.RaftProgressBar
 import build.raft.designsystem.components.RaftProgressBarSize
 import build.raft.designsystem.components.RaftProgressBarVariant
+import build.raft.designsystem.components.RaftSlider
 import build.raft.designsystem.components.raftSticker
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
@@ -769,6 +770,21 @@ class DisplayComponentScreenshotTest {
                 )
                 RaftProgressBar(value = 1f, label = "Downloaded", valueText = "100%")
                 RaftProgressBar(value = null, label = "Waiting for the server", animated = false)
+            }
+        }
+
+    /** The slider: at its start, part way with a header, at its end, keyboard focus, disabled. */
+    @Test
+    fun slider() =
+        capture("slider") {
+            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftSlider(value = 320, onValueChange = {}, valueRange = 320..1080, contentDescription = "Start")
+                RaftSlider(value = 560, onValueChange = {}, valueRange = 320..1080, label = "Image width", valueText = "560 dp")
+                RaftSlider(value = 1080, onValueChange = {}, valueRange = 320..1080, label = "Image width", valueText = "1080 dp")
+                CompositionLocalProvider(LocalRaftFocusedPreview provides true) {
+                    RaftSlider(value = 700, onValueChange = {}, valueRange = 320..1080, contentDescription = "Focused")
+                }
+                RaftSlider(value = 600, onValueChange = {}, valueRange = 320..1080, enabled = false, label = "Off", valueText = "600 dp")
             }
         }
 
