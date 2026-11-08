@@ -5,39 +5,33 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
-/** artin 10-29: reference-chip opens are single-flight with a busy chip (virtual time). */
+/**
+ * artin 10-29: reference-chip opens are single-flight (virtual time). The busy chip is the
+ * reference resolver's fetch phase (artin 11-07), drawn only for this list's own open.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ThreadMarkdownRefOpenStoreTest {
-    private fun TestScope.store() = ThreadMarkdownRefOpenStore(this, revealDelayMillis = 120L, settleMillis = 600L)
+    private fun TestScope.store() = ThreadMarkdownRefOpenStore(backgroundScope, settleMillis = 600L)
 
     @Test
-    fun slowOpenShowsTheBusyChipAndDropsEveryOtherTapUntilItSettles() = runTest {
+    fun anOpenDropsEveryOtherTapUntilItSettles() = runTest {
         val store = store()
         val token = assertNotNull(store.begin("message-a:thread"))
-
-        // A lookup still running past the reveal delay: that chip, and only it, is busy.
-        advanceTimeBy(119L)
-        runCurrent()
-        assertNull(store.state.value.busyActionId, "an open under the reveal delay shows no spinner")
-        advanceTimeBy(1L)
-        runCurrent()
-        assertEquals("message-a:thread", store.state.value.busyActionId)
 
         // Repeat taps on the same chip or any other ref in the list start nothing.
         assertNull(store.begin("message-a:thread"))
         assertNull(store.begin("message-b:channel"))
         assertEquals(token, store.state.value.active)
 
-        // Navigation dispatched (or failed): the chip is restored at once ...
         store.finish(token)
-        assertNull(store.state.value.busyActionId)
         assertEquals(token, store.state.value.active)
-        // ... and the list still ignores taps while the page transition starts.
+        // The list still ignores taps while the page transition starts.
         advanceTimeBy(599L)
         runCurrent()
         assertNull(store.begin("message-a:thread"), "a tap inside the settle window must not open twice")
@@ -48,30 +42,42 @@ class ThreadMarkdownRefOpenStoreTest {
     }
 
     @Test
-    fun instantOpenNeverShowsTheSpinnerButStillGuardsADoubleTap() = runTest {
-        val store = store()
-        // Navigation dispatched within the tap (no lookup).
-        val token = assertNotNull(store.begin("message-a:channel"))
-        store.finish(token)
-        assertNull(store.begin("message-a:channel"), "the double tap of an instant open is dropped")
-
-        advanceTimeBy(1_000L)
+    fun theChipIsBusyOnlyWhileTheResolverFetchesForThisListsOpen() = runTest {
+        val resolver = build.raft.app.data.SharedReferenceResolver()
+        val store = ThreadMarkdownRefOpenStore(backgroundScope, fetches = resolver.inFlight, settleMillis = 600L)
         runCurrent()
-        assertNull(store.state.value.busyActionId, "the reveal timer of a settled open must not fire")
-        assertNull(store.state.value.active)
+        assertNull(store.state.value.busyActionId, "no open, no busy chip")
+
+        val token = assertNotNull(store.begin("message-a:thread"))
+        assertNull(store.state.value.busyActionId, "a local hit (no fetch) shows no spinner")
+
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val fetch = launch { resolver.fetchPhase("message-a:thread") { gate.await() } }
+        runCurrent()
+        assertEquals("message-a:thread", store.state.value.busyActionId, "busy for exactly its own fetch")
+
+        // Another page's fetch never marks this list's chip, and outlives this one.
+        val otherGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val other = launch { resolver.fetchPhase("message-z:thread") { otherGate.await() } }
+        runCurrent()
+        gate.complete(Unit)
+        fetch.join()
+        runCurrent()
+        assertNull(store.state.value.busyActionId, "the fetch ended: the chip is restored")
+
+        store.finish(token)
+        otherGate.complete(Unit)
+        other.join()
     }
 
     @Test
     fun staleOrMissingTokensLeaveTheOpenInFlightAlone() = runTest {
         val store = store()
         val token = assertNotNull(store.begin("message-a:thread"))
-        advanceTimeBy(120L)
-        runCurrent()
 
         store.finish(null)
         store.finish(token.copy(generation = token.generation + 1L))
         assertEquals(token, store.state.value.active)
-        assertEquals("message-a:thread", store.state.value.busyActionId)
         assertNull(store.begin(" "), "a blank action id never opens")
     }
 }

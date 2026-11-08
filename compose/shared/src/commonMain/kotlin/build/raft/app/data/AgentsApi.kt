@@ -178,6 +178,9 @@ internal interface RaftAgentsApi {
     suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse
     /** `GET /agents/:id/external-status` — external agents only (400 otherwise), permission-gated (403). */
     suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse
+    /** `POST /agents/:id/hosted-runtime/retry`: provision a cloud agent again. */
+    suspend fun retryHostedRuntime(agentId: MemberId, body: String): HomeNetworkResponse =
+        error("retryHostedRuntime is not implemented")
     // #89 React parity: agent permissions (scope grants) per React
     // `AgentScopesPanel.tsx`. Mirrors `GET / PUT /api/agents/:id/scopes`.
     // `updateAgentScopes` body is `{ scopes: AgentGrantableScope[] }`;
@@ -316,6 +319,14 @@ internal class RaftAgentsNetworkApi(
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "agents/${agentId.value}/skills"
+        )
+
+    override suspend fun retryHostedRuntime(agentId: MemberId, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/hosted-runtime/retry",
+            method = "POST",
+            bodyText = body
         )
 
     override suspend fun agentExternalStatus(agentId: MemberId): HomeNetworkResponse =
@@ -556,9 +567,18 @@ internal class RaftAgentsApiClient(
             ExternalAgentStatusSnapshot(
                 setupState = ExternalAgentSetupState.fromWireValue(wire.setupState),
                 credentialLastUsedAt = wire.credentialLastUsedAt?.takeIf { it.isNotBlank() },
-                lastActivityAt = wire.lastActivityAt?.takeIf { it.isNotBlank() }
+                lastActivityAt = wire.lastActivityAt?.takeIf { it.isNotBlank() },
+                hostedRuntime = wire.hostedRuntime?.toSnapshot()
             )
         }
+
+    /** [namesDefaultModel]: a retry after a refused model, on the provider's default. */
+    suspend fun retryHostedRuntime(agentId: MemberId, namesDefaultModel: Boolean): DataResult<Unit> =
+        transport.retryHostedRuntime(agentId, if (namesDefaultModel) """{"model":null}""" else "{}").mapAgentsBody(
+            "agent_hosted_runtime_retry_contract_mismatch",
+            HostedRuntimeRetryWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { Unit }
 
     suspend fun issueAgentLoginToken(agentId: MemberId, body: String = "{}"): DataResult<AgentLoginTokenSummary> =
         transport.issueAgentCredential(agentId, body).mapAgentsBody(
@@ -645,11 +665,13 @@ internal data class AgentSummary(
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
     val toolStuck: AgentToolStuck? = null,
     /** `modelLimits.defaultsReported`: true only when the server says so; false, null or absent is false. */
-    val modelLimitsDefaultsReported: Boolean = false
+    val modelLimitsDefaultsReported: Boolean = false,
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
     AgentDetailSummary(
+        hostedRuntime = hostedRuntime,
         id = id,
         name = name,
         displayName = displayName,
@@ -914,6 +936,7 @@ private data class AgentWireDto(
      * PATCH answer with nothing to report.
      */
     val modelLimits: AgentModelLimitsWireDto? = null,
+    val hostedRuntime: AgentHostedRuntimeWireDto? = null
 )
 
 @Serializable
@@ -944,6 +967,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
     val currentProfile = runtimeProfile?.current
     val configuredModel = runtimeConfig?.model?.valueOrNull()
     return AgentSummary(
+        hostedRuntime = hostedRuntime?.toSnapshot(),
         id = id,
         name = name,
         displayName = displayName,
@@ -995,8 +1019,40 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
 private data class ExternalAgentStatusWireDto(
     val setupState: String? = null,
     val credentialLastUsedAt: String? = null,
-    val lastActivityAt: String? = null
+    val lastActivityAt: String? = null,
+    val hostedRuntime: AgentHostedRuntimeWireDto? = null
 )
+
+@Serializable
+private data class HostedRuntimeRetryWireDto(val hostedRuntime: AgentHostedRuntimeWireDto? = null)
+
+@Serializable
+private data class AgentHostedRuntimeWireDto(
+    val state: String? = null,
+    val syncPending: Boolean = false,
+    val push: AgentHostedRuntimePushWireDto? = null,
+    val lastError: AgentHostedRuntimeErrorWireDto? = null,
+    val retryNeedsModel: Boolean = false
+) {
+    fun toSnapshot(): AgentHostedRuntimeSnapshot? =
+        state?.takeIf { it.isNotBlank() }?.let {
+            AgentHostedRuntimeSnapshot(
+                state = it,
+                syncPending = syncPending,
+                pushRegistered = push?.registered,
+                pushError = push?.error?.takeIf { text -> text.isNotBlank() },
+                lastErrorCode = lastError?.code,
+                lastErrorMessage = lastError?.message?.takeIf { text -> text.isNotBlank() },
+                retryNeedsModel = retryNeedsModel
+            )
+        }
+}
+
+@Serializable
+private data class AgentHostedRuntimePushWireDto(val registered: Boolean = false, val error: String? = null)
+
+@Serializable
+private data class AgentHostedRuntimeErrorWireDto(val code: String? = null, val message: String? = null)
 
 @Serializable
 private data class AgentRuntimeConfigWireDto(
@@ -1236,7 +1292,10 @@ internal data class CreateAgentBody(
      * Indicates this create call comes from the external-agent flow (no Computer).
      * Mirrors React `CreateAgentDialog` `external` flag.
      */
-    val external: Boolean? = null
+    val external: Boolean? = null,
+    /** Cloud agent: the provider runs it, with [external] true (web `provider`, `hostedModel`). */
+    val provider: String? = null,
+    val hostedModel: String? = null
 )
 
 @Serializable

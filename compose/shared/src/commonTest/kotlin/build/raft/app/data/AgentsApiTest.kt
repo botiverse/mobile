@@ -38,6 +38,16 @@ class AgentsApiTest {
     }
 
     @Test
+    fun cloudAgentBodyNamesTheProviderAndOmitsAnUnpickedModel() {
+        val cloud = CreateAgentBody(name = "Noel", external = true, provider = "antiproton")
+        assertEquals("""{"name":"Noel","external":true,"provider":"antiproton"}""", buildCreateAgentBody(cloud))
+        assertEquals(
+            """{"name":"Noel","external":true,"provider":"antiproton","hostedModel":"gpt-5.6-luna"}""",
+            buildCreateAgentBody(cloud.copy(hostedModel = "gpt-5.6-luna"))
+        )
+    }
+
+    @Test
     fun createBodyKeepsPresentOptionalFields() {
         val body =
             buildCreateAgentBody(

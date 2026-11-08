@@ -918,10 +918,25 @@ enum class ExternalAgentSetupState {
     }
 }
 
+/** Web `AgentHostedRuntimeSummary`, what the profile shows. */
+@Serializable
+data class AgentHostedRuntimeSnapshot(
+    val state: String,
+    val syncPending: Boolean = false,
+    /** Null until the provider has answered about message delivery. */
+    val pushRegistered: Boolean? = null,
+    val pushError: String? = null,
+    val lastErrorCode: String? = null,
+    val lastErrorMessage: String? = null,
+    /** The provider refused the picked model: a retry must name a model (null is its default). */
+    val retryNeedsModel: Boolean = false
+)
+
 data class ExternalAgentStatusSnapshot(
     val setupState: ExternalAgentSetupState,
     val credentialLastUsedAt: String? = null,
-    val lastActivityAt: String? = null
+    val lastActivityAt: String? = null,
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 data class AgentDetailSummary(
@@ -974,7 +989,9 @@ data class AgentDetailSummary(
      * current session filled at least one limit of its Built-in custom gateway model with a Raft
      * default. Only true shows the warning; false, null and an old server's absent field show nothing.
      */
-    val modelLimitsDefaultsReported: Boolean = false
+    val modelLimitsDefaultsReported: Boolean = false,
+    /** A cloud agent's provisioning record (web `agent.hostedRuntime`); null for any other agent. */
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 data class AgentCreatorSummary(

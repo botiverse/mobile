@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SharedReferenceFetch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -16,15 +17,20 @@ internal data class ThreadMarkdownReferencePendingToken(
 
 /**
  * One reference-chip open at a time per message list. [active] is the single-flight guard: it
- * holds from the tap until the open settles. [busyActionId] is the chip drawn busy, a subset of
- * it in time: set only once the open has outlived [ThreadMarkdownRefOpenStore.revealDelayMillis]
- * (an instant open shows no spinner) and cleared as soon as the navigation is dispatched or fails.
+ * holds from the tap until the open settles. The busy chip is not drawn from here: it is the
+ * reference resolver's fetch phase (`SharedReferenceResolver.inFlight`), so a reference opened from
+ * local data never shows a spinner and one that fetches shows it for exactly the fetch.
  */
 internal data class ThreadMarkdownReferencePendingState(
     val active: ThreadMarkdownReferencePendingToken? = null,
     val generation: Long = 0L,
-    val busyActionId: String? = null
+    /** The chips the reference resolver is fetching for right now (any page). */
+    val fetchingActionIds: Set<String> = emptySet()
 ) {
+    /** The chip drawn busy: this list's open, while one of the resolver's fetches is for it. */
+    val busyActionId: String?
+        get() = active?.actionId?.takeIf { it in fetchingActionIds }
+
     fun start(actionId: String): ThreadMarkdownReferencePendingStart {
         val normalizedActionId = actionId.trim()
         if (normalizedActionId.isBlank() || active != null) {
@@ -32,20 +38,13 @@ internal data class ThreadMarkdownReferencePendingState(
         }
         val token = ThreadMarkdownReferencePendingToken(normalizedActionId, generation + 1L)
         return ThreadMarkdownReferencePendingStart(
-            state = copy(active = token, generation = token.generation, busyActionId = null),
+            state = copy(active = token, generation = token.generation),
             token = token
         )
     }
 
-    fun reveal(token: ThreadMarkdownReferencePendingToken): ThreadMarkdownReferencePendingState =
-        if (active == token && busyActionId == null) copy(busyActionId = token.actionId) else this
-
-    /** The open was dispatched or failed: the chip is restored; the guard stays until [release]. */
-    fun settle(token: ThreadMarkdownReferencePendingToken): ThreadMarkdownReferencePendingState =
-        if (active == token && busyActionId != null) copy(busyActionId = null) else this
-
     fun finish(token: ThreadMarkdownReferencePendingToken): ThreadMarkdownReferencePendingState =
-        if (active == token) copy(active = null, busyActionId = null) else this
+        if (active == token) copy(active = null) else this
 }
 
 internal data class ThreadMarkdownReferencePendingStart(
@@ -58,17 +57,36 @@ internal data class ThreadMarkdownReferencePendingStart(
  * channel / thread / DM / task ref open in one message list goes through [begin] and [finish];
  * a tap while another open is in flight gets no token and is dropped, whichever chip it hits.
  *
- * After [finish] the guard holds [settleMillis] longer with the chip already restored, so a
- * double tap on an instant open (no lookup: the navigation is dispatched within the tap) cannot
- * push the destination twice while the page transition starts.
+ * After [finish] the guard holds [settleMillis] longer, so a double tap on an instant open (a
+ * local hit: the navigation is dispatched within the tap) cannot push the destination twice while
+ * the page transition starts.
  */
 internal class ThreadMarkdownRefOpenStore(
     private val scope: CoroutineScope,
-    val revealDelayMillis: Long = ThreadMarkdownRefBusyRevealDelayMillis,
+    /** The reference resolver's fetches in flight (`SharedReferenceResolver.inFlight`). */
+    fetches: StateFlow<Map<Long, SharedReferenceFetch>> = MutableStateFlow(emptyMap()),
     val settleMillis: Long = ThreadMarkdownRefOpenSettleMillis
 ) {
-    private val mutableState = MutableStateFlow(ThreadMarkdownReferencePendingState())
+    private val mutableState =
+        MutableStateFlow(ThreadMarkdownReferencePendingState(fetchingActionIds = fetches.value.fetchingActionIds()))
+    /**
+     * The busy chip is folded into this one state ([ThreadMarkdownReferencePendingState.busyActionId])
+     * rather than read by the page from a second flow: the page's message-list content lambda
+     * already captures this state, and one more captured value in that lambda made the task
+     * conversation page never settle under Robolectric (TaskConversationHeadRealTapTest hung).
+     */
     val state: StateFlow<ThreadMarkdownReferencePendingState> = mutableState.asStateFlow()
+
+    init {
+        scope.launch {
+            fetches.collect { inFlight ->
+                val ids = inFlight.fetchingActionIds()
+                mutableState.update { current ->
+                    if (current.fetchingActionIds == ids) current else current.copy(fetchingActionIds = ids)
+                }
+            }
+        }
+    }
 
     private var timerJob: Job? = null
 
@@ -82,11 +100,6 @@ internal class ThreadMarkdownRefOpenStore(
         }
         val started = token ?: return null
         timerJob?.cancel()
-        timerJob =
-            scope.launch {
-                delay(revealDelayMillis)
-                mutableState.update { it.reveal(started) }
-            }
         return started
     }
 
@@ -94,7 +107,6 @@ internal class ThreadMarkdownRefOpenStore(
     fun finish(token: ThreadMarkdownReferencePendingToken?) {
         if (token == null || mutableState.value.active != token) return
         timerJob?.cancel()
-        mutableState.update { it.settle(token) }
         if (settleMillis <= 0L) {
             mutableState.update { it.finish(token) }
             return
@@ -107,8 +119,8 @@ internal class ThreadMarkdownRefOpenStore(
     }
 }
 
-/** Under this an open reads as instant: its chip never shows the spinner. */
-internal const val ThreadMarkdownRefBusyRevealDelayMillis = 120L
+private fun Map<Long, SharedReferenceFetch>.fetchingActionIds(): Set<String> =
+    values.mapNotNullTo(mutableSetOf()) { it.actionId }
 
 /** How long a settled open keeps ignoring ref taps while its page transition starts. */
 internal const val ThreadMarkdownRefOpenSettleMillis = 600L

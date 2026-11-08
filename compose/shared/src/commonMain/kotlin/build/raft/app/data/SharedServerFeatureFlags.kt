@@ -116,6 +116,9 @@ const val SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY: String = "sidebar_mark_all_rea
 /** Moving an agent to the cloud (slock `AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY`). */
 const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hosted_v0"
 
+/** Cloud agents in the create dialog (slock `ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY`). */
+const val ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY: String = "antiproton_hosted_runtime"
+
 /**
  * First-party action cards rendered from their spec (`presentation.card`, `action-card.v1`). The same
  * key the web reads (slock `ACTION_CARD_SPEC_FEATURE_FLAG_KEY`), evaluated for the card's own server
@@ -221,6 +224,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
+    ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,

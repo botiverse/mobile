@@ -1607,8 +1607,13 @@ private fun rememberExternalAgentDetailIndicatorState(
     val indicator = remember(externalStatus, lastSeenAt, now) {
         externalAgentDetailIndicator(externalStatus, now, lastSeenAt)
     }
+    val hostedLabel = detail?.summary?.hostedRuntime?.let { hostedRuntimeStateLabel(it) }
+    // A cloud agent has no setup for a person to finish: its provisioning state instead.
     val label =
-        when (val caption = indicator.caption) {
+        hostedLabel?.takeIf {
+            indicator.caption == ExternalAgentDetailCaption.SetupRequired ||
+                indicator.caption == ExternalAgentDetailCaption.NotConfigured
+        } ?: when (val caption = indicator.caption) {
             ExternalAgentDetailCaption.External -> stringResource(Res.string.member_external_status)
             ExternalAgentDetailCaption.Online -> stringResource(Res.string.member_external_online)
             ExternalAgentDetailCaption.SetupRequired -> stringResource(Res.string.member_external_setup_required)
@@ -6111,6 +6116,7 @@ internal fun MembersListContent(
         val scope = rememberCoroutineScope()
         SharedCreateAgentDialog(
             external = activeCreateAgentMode == MembersCreateAgentMode.External,
+            offersHosting = true,
             submitting = createAgentSubmitting,
             errorMessage = createAgentError,
             errorFieldKeys = createAgentErrorFields,
@@ -11150,14 +11156,27 @@ private fun MembersAgentProfileTab(
                     managedByAppInstallId = member.managedByAppInstallId,
                 )
             ) {
-                MembersExternalAgentSetupSection(
-                    agentId = member.id,
-                    profileName = member.displayName,
-                    serverUrl = externalSetupServerUrl,
-                    agentsApiClient = agentsApiClient,
-                    canManage = canManage,
-                    onCopy = onCopyText
-                )
+                when (membersExternalAgentSection(summary)) {
+                    MembersExternalAgentSection.Hosted ->
+                        summary?.hostedRuntime?.let { hostedRuntime ->
+                            MembersAgentHostedRuntimeSection(
+                                agentId = member.id,
+                                initial = hostedRuntime,
+                                agentsApiClient = agentsApiClient,
+                                paused = !member.assistantPausedAt.isNullOrBlank()
+                            )
+                        }
+                    MembersExternalAgentSection.Setup ->
+                        MembersExternalAgentSetupSection(
+                            agentId = member.id,
+                            profileName = member.displayName,
+                            serverUrl = externalSetupServerUrl,
+                            agentsApiClient = agentsApiClient,
+                            canManage = canManage,
+                            onCopy = onCopyText
+                        )
+                    MembersExternalAgentSection.NotKnownYet -> Unit
+                }
             }
 
             // Web AgentDetailPanel profile tab: Info and Runtime config are followed by Skills,
@@ -13754,7 +13773,7 @@ private fun MembersDetailSectionTitle(
 
 /** raft-ui Card (default) frame: container radius, a `line-hairline` edge on `layer-card`. */
 @Composable
-private fun Modifier.membersRaftCard(): Modifier {
+internal fun Modifier.membersRaftCard(): Modifier {
     val shape = RoundedCornerShape(RaftRadius.Container)
     val colors = RaftTheme.colors
     return clip(shape).background(colors.layerCard, shape).border(RaftStroke.Hairline, colors.lineHairline, shape)

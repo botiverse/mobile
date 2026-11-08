@@ -90,7 +90,11 @@ internal fun ChannelMembersCreateAgentDialog(
                     )
                     val result = coordinator.createAgent(request.toCreateAgentRequest())
                     if (!authority.isCurrent(receipt)) return@launch
-                    if (result !is DataResult.Content) { error = failedLabel; return@launch }
+                    if (result !is DataResult.Content) {
+                        // The server's words when it gave a reason (a model no longer offered, one set by an admin).
+                        error = (result as? DataResult.Error)?.error?.let { createAgentFallbackErrorText(it, failedLabel) } ?: failedLabel
+                        return@launch
+                    }
                     formStore.rememberCreatedAgent(owner.serverId, request)
                     agentId = result.data.id
                     createdId = agentId
@@ -132,6 +136,7 @@ internal fun ChannelMembersCreateAgentDialog(
     } else {
         SharedCreateAgentDialog(
             external = mode == MembersCreateAgentMode.External,
+            offersHosting = true,
             autoJoinChannelName = channelName,
             submitting = submitting, errorMessage = error, initialName = initialName,
             machines = if (mode.requiresComputerSelection()) picker.machines else emptyList(),
