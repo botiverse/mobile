@@ -53,6 +53,21 @@ class RaftMemberModelLabelTest {
         assertEquals("gpt-6-astra", profile.modelLabel())
     }
 
+    @Test
+    fun modelLabelIsNullForTheExternalRuntimeOfExternalAndCloudAgents() {
+        // External and cloud (hosted) agents store runtime "external" and model "external": a
+        // placeholder, not a model. The card hides its Model row and no name shows beside messages.
+        assertNull(memberProfile(kind = MemberKind.Agent, roleDescription = "external", model = "external").modelLabel())
+        assertNull(memberProfile(kind = MemberKind.Agent, roleDescription = "external", model = "gpt-6-astra").modelLabel())
+        val card = raftProfilePreviewCardModel(
+            memberProfile(kind = MemberKind.Agent, roleDescription = "external", model = "external").copy(isExternal = true)
+        )
+        assertNull(card.modelLabel)
+        assertEquals("External agent", card.runtimeLabel, "the runtime row names the sentinel, never the raw id")
+        // A model id that merely reads "external" on a real runtime is still a model.
+        assertEquals("external", memberProfile(kind = MemberKind.Agent, roleDescription = "claude", model = "external").modelLabel())
+    }
+
     private fun memberProfile(
         kind: MemberKind,
         roleDescription: String? = null,
