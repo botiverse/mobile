@@ -144,6 +144,10 @@ internal fun RaftActionCardView(
     initiallyExpanded: Boolean? = null,
     /** Whether a link Button leads somewhere this viewer can open ([actionCardFrameButtonState] `linkNavigable`). */
     linkNavigable: (ActionCardSpecButton) -> Boolean = { true },
+    /** Property labels take only their width ([RaftCardTreeContext.fitLabels]). */
+    fitLabels: Boolean = false,
+    /** Drawn under the body, before the error: a question card's inline answer ([ActionCardQuestionInlineForm]). */
+    footer: (@Composable () -> Unit)? = null,
 ) {
     val executed = state.status == RaftActionCardStatus.Executed
     val ended = state.status.ended
@@ -157,6 +161,7 @@ internal fun RaftActionCardView(
             onAction = onAction,
             columnGap = 8.dp,
             buttonState = { id, button -> actionCardFrameButtonState(state, id, button, inSpecOfExecutedCard, linkNavigable(button)) },
+            fitLabels = fitLabels,
         )
     val context = context(inSpecOfExecutedCard = executed)
     val title = actionCardMsgPlainMentions(card.title, context)
@@ -201,6 +206,7 @@ internal fun RaftActionCardView(
             }
             RaftCardTree(card.spec.root, card.spec.elements, context)
             if (executed) card.result?.let { result -> RaftCardTree(result.root, result.elements, context(inSpecOfExecutedCard = false)) }
+            footer?.invoke()
             state.error?.takeIf { it.isNotBlank() }?.let { error ->
                 RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
             }

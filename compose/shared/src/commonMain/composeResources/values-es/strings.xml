@@ -3762,6 +3762,9 @@
     <string name="action_card_question_choose_first">Primero elige una opción.</string>
     <string name="action_card_question_write_first">Primero escribe tu respuesta.</string>
     <string name="action_card_question_other_placeholder">Escribe tu respuesta</string>
+    <string name="action_card_question_submitted">Enviada</string>
+    <string name="action_card_question_undo">Deshacer</string>
+    <string name="action_card_question_not_sent">No se envió: la tarjeta cambió. Responde de nuevo.</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">La última es v%1$d</string>

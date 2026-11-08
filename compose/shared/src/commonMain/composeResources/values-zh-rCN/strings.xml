@@ -3769,6 +3769,9 @@
     <string name="action_card_question_choose_first">请先选择一个选项。</string>
     <string name="action_card_question_write_first">请先写下你的回答。</string>
     <string name="action_card_question_other_placeholder">写下你的回答</string>
+    <string name="action_card_question_submitted">已提交</string>
+    <string name="action_card_question_undo">撤销</string>
+    <string name="action_card_question_not_sent">未发送：卡片已变更。请重新回答。</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">最新是 v%1$d</string>

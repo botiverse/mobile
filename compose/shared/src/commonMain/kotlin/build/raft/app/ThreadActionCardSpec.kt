@@ -386,6 +386,12 @@ internal sealed interface ThreadActionCardSpecError {
      * `Retry-After` wait when the answer named one.
      */
     data class FeedbackRateLimited(val retryAfterSeconds: Long? = null) : ThreadActionCardSpecError
+
+    /**
+     * A question card answered on the card whose answer waited for its Undo while the card froze
+     * or changed (web `card_changed`, question-card spec §5.10): nothing was sent; the choices stay.
+     */
+    data object QuestionNotSent : ThreadActionCardSpecError
 }
 
 internal const val ACTION_CARD_FEEDBACK_RATE_LIMITED_CODE = "feedback_rate_limited"
@@ -436,6 +442,10 @@ internal data class ThreadActionCardSpecState(
     val confirm: ThreadActionCardSpecConfirmState? = null,
     val form: ThreadActionCardSpecFormState? = null,
     val typedPress: Map<String, String> = emptyMap(),
+    /** A question card answered on the card (spec §5.9): its choices by message, kept while it scrolls away. */
+    val inlineValues: Map<String, Map<String, ActionCardFormValue>> = emptyMap(),
+    /** The server's 422 `FORM_INVALID` issues of a card's inline answer, by message. */
+    val inlineIssues: Map<String, List<ActionCardFormIssue>> = emptyMap(),
 ) {
     /** The Button the frame shows busy: the store's run, else the typed path's while it is pending. */
     fun busyElement(messageId: String, typedPending: Boolean): String? =
@@ -443,7 +453,13 @@ internal data class ThreadActionCardSpecState(
 
     /** What one card's frame reads: a card selects only this, so another card's run does not recompose it. */
     fun slice(messageId: String): ThreadActionCardSpecCardSlice =
-        ThreadActionCardSpecCardSlice(busy = busy[messageId], typedPress = typedPress[messageId], error = errors[messageId])
+        ThreadActionCardSpecCardSlice(
+            busy = busy[messageId],
+            typedPress = typedPress[messageId],
+            error = errors[messageId],
+            inlineValues = inlineValues[messageId],
+            inlineIssues = inlineIssues[messageId].orEmpty(),
+        )
 }
 
 /** The sheets [ThreadActionCardSpecState] has open: what the page draws over the thread. */
@@ -457,6 +473,9 @@ internal data class ThreadActionCardSpecCardSlice(
     val busy: String? = null,
     val typedPress: String? = null,
     val error: ThreadActionCardSpecError? = null,
+    /** The inline answer's choices so far; null before the first one (the form's defaults). */
+    val inlineValues: Map<String, ActionCardFormValue>? = null,
+    val inlineIssues: List<ActionCardFormIssue> = emptyList(),
 ) {
     fun busyElement(typedPending: Boolean): String? = busy ?: typedPress?.takeIf { typedPending }
 }
@@ -482,6 +501,22 @@ internal sealed interface ThreadActionCardSpecIntent {
     data class SubmitForm(val values: Map<String, ActionCardFormValue>) : ThreadActionCardSpecIntent
 
     data object DismissForm : ThreadActionCardSpecIntent
+
+    /** A question card answered on the card (spec §5.9): its choices changed. */
+    data class InlineValuesChanged(val messageId: String, val values: Map<String, ActionCardFormValue>) : ThreadActionCardSpecIntent
+
+    /**
+     * A question card's inline answer, sent once its Undo wait is over (spec §5.10): executes with
+     * `{ form: { id: formId, values } }` unless [card] (the card as the thread holds it as it is
+     * sent) can no longer be answered. [elementId]: the button the form stands for, shown busy.
+     */
+    data class SubmitInlineForm(
+        val messageId: String,
+        val card: ThreadActionCard,
+        val formId: String,
+        val elementId: String,
+        val values: Map<String, ActionCardFormValue>,
+    ) : ThreadActionCardSpecIntent
 
     /** "Open in web": [link] (this message on this page) on the Developer environment's web URL, in the browser. */
     data class OpenInWeb(val messageId: String, val link: RaftMessageLink?) : ThreadActionCardSpecIntent
@@ -550,6 +585,8 @@ internal class ThreadActionCardSpecStore(
                 update { current -> current.form?.takeIf { !it.submitting }?.let { current.copy(form = it.copy(values = intent.values)) } ?: current }
             is ThreadActionCardSpecIntent.SubmitForm -> submitForm(intent.values)
             ThreadActionCardSpecIntent.DismissForm -> update { if (it.form?.submitting == true) it else it.copy(form = null) }
+            is ThreadActionCardSpecIntent.InlineValuesChanged -> inlineValuesChanged(intent.messageId, intent.values)
+            is ThreadActionCardSpecIntent.SubmitInlineForm -> submitInline(intent)
             is ThreadActionCardSpecIntent.OpenInWeb -> openInWeb(intent.link)
         }
     }
@@ -639,27 +676,92 @@ internal class ThreadActionCardSpecStore(
             val result = executeSteppingUp(messageId, card, null)
             update { it.copy(busy = it.busy - messageId) }
             if (result == null) return@launch
-            val error: ThreadActionCardSpecError? =
-                when (result) {
-                    is DataResult.Content ->
-                        when (val outcome = result.data) {
-                            is ActionCardExecuteOutcome.Executed -> {
-                                outcome.card?.let { applyCard(messageId, it) }
-                                null
-                            }
-                            is ActionCardExecuteOutcome.AlreadyExecuted -> {
-                                outcome.card?.let { applyCard(messageId, it) }
-                                null
-                            }
-                            is ActionCardExecuteOutcome.FormRequired -> ThreadActionCardSpecError.FormRequired
-                            is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
-                        }
-                    is DataResult.Empty -> ThreadActionCardSpecError.Failed()
-                    is DataResult.Error -> expiredOrError(messageId, card, result.error)
-                    is DataResult.NoPermission ->
-                        if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
-                }
+            val error = cardError(messageId, card, result)
             if (error != null) update { it.copy(errors = it.errors + (messageId to error)) }
+        }
+    }
+
+    /** Applies an execute's card; what stays under the card, or null when nothing does. */
+    private fun cardError(messageId: String, card: ThreadActionCard, result: DataResult<ActionCardExecuteOutcome>): ThreadActionCardSpecError? =
+        when (result) {
+            is DataResult.Content ->
+                when (val outcome = result.data) {
+                    is ActionCardExecuteOutcome.Executed -> {
+                        outcome.card?.let { applyCard(messageId, it) }
+                        null
+                    }
+                    is ActionCardExecuteOutcome.AlreadyExecuted -> {
+                        outcome.card?.let { applyCard(messageId, it) }
+                        null
+                    }
+                    is ActionCardExecuteOutcome.FormRequired -> ThreadActionCardSpecError.FormRequired
+                    is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
+                }
+            is DataResult.Empty -> ThreadActionCardSpecError.Failed()
+            is DataResult.Error -> expiredOrError(messageId, card, result.error)
+            is DataResult.NoPermission ->
+                if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
+        }
+
+    private fun inlineValuesChanged(messageId: String, values: Map<String, ActionCardFormValue>) {
+        update { current ->
+            if (messageId in current.busy) return@update current
+            val before = current.inlineValues[messageId].orEmpty()
+            // An edited question drops the server's issue under it.
+            val issues = current.inlineIssues[messageId]?.filter { issue -> issue.field == null || values[issue.field] == before[issue.field] }
+            current.copy(
+                inlineValues = current.inlineValues + (messageId to values),
+                inlineIssues = if (issues.isNullOrEmpty()) current.inlineIssues - messageId else current.inlineIssues + (messageId to issues),
+            )
+        }
+    }
+
+    /**
+     * A question card's inline answer (web QuestionInlineForm + ActionCardSpecCard `submitForm`): sent
+     * once. The card ended meanwhile: nothing is sent (it draws ended); frozen or waiting on Confirm
+     * again: nothing is sent and the card says "Not sent", the choices kept. A 422 puts the issues
+     * under their questions; a 409 `ALREADY_EXECUTED` applies the card, which says who answered.
+     */
+    private fun submitInline(intent: ThreadActionCardSpecIntent.SubmitInlineForm) {
+        val messageId = intent.messageId
+        if (messageId in _state.value.busy) return
+        val card = intent.card.expiredAsOf(nowMillis())
+        if (card.isExecuted || card.hasEnded) {
+            if (card.hasEnded && !intent.card.hasEnded) applyCard(messageId, card)
+            update { it.copy(inlineValues = it.inlineValues - messageId, inlineIssues = it.inlineIssues - messageId) }
+            return
+        }
+        if (card.isFrozen || card.needsReconfirmation) {
+            update { it.copy(errors = it.errors + (messageId to ThreadActionCardSpecError.QuestionNotSent)) }
+            return
+        }
+        update {
+            it.copy(
+                busy = it.busy + (messageId to intent.elementId),
+                errors = it.errors - messageId,
+                inlineValues = it.inlineValues + (messageId to intent.values),
+                inlineIssues = it.inlineIssues - messageId,
+            )
+        }
+        scope.launch {
+            val result = executeSteppingUp(messageId, card, ExecuteActionFormBody(id = intent.formId, values = intent.values))
+            update { it.copy(busy = it.busy - messageId) }
+            // "Verify it's you" closed: as it was.
+            if (result == null) return@launch
+            val invalid = (result as? DataResult.Content)?.data as? ActionCardExecuteOutcome.FormInvalid
+            if (invalid != null && invalid.issues.isNotEmpty()) {
+                update { it.copy(inlineIssues = it.inlineIssues + (messageId to invalid.issues)) }
+                return@launch
+            }
+            val error = cardError(messageId, card, result)
+            update {
+                if (error != null) {
+                    it.copy(errors = it.errors + (messageId to error))
+                } else {
+                    // Answered (or answered by someone else): the card draws its answers instead.
+                    it.copy(inlineValues = it.inlineValues - messageId, inlineIssues = it.inlineIssues - messageId)
+                }
+            }
         }
     }
 

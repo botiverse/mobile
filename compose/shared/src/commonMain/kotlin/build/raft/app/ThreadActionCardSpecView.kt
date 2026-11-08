@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -184,6 +185,7 @@ internal fun threadActionCardSpecErrorDesc(error: ThreadActionCardSpecError?): S
     when (error) {
         null -> null
         ThreadActionCardSpecError.FormRequired -> Res.string.thread_action_card_form_required.desc()
+        ThreadActionCardSpecError.QuestionNotSent -> Res.string.action_card_question_not_sent.desc()
         is ThreadActionCardSpecError.Failed -> error.serverMessage?.desc() ?: Res.string.thread_action_card_execute_failed.desc()
         // Web `settings.about.feedbackError.rateLimited` in substance; the minutes as the joint invite's 429.
         is ThreadActionCardSpecError.FeedbackRateLimited ->
@@ -255,6 +257,12 @@ internal fun ThreadActionCardSpecView(
             // iOS view-only Billing: Add Seats / Upgrade read "View your plan" (threadActionCardSpecPress).
             if (offersUpgrade) labelled else labelled.withUpgradeButtonsLabelled(actionCardAppMsg("planBilling.viewYourPlan", viewPlanLabel, displayLocale))
         }
+    // A question card the server placed on the card (`placement: "inline"`, spec §5.9): answered in
+    // its body, without its button or its question rows; every other card keeps its sheet.
+    val inline = remember(rendered, card) { card.inlineQuestionForm(rendered) }
+    val shown = remember(rendered, inline) { if (inline == null) rendered else rendered.copy(spec = rendered.spec.withoutInlineQuestions(inline)) }
+    val canOperate = commitEnabled && blockedReason == null
+    val currentCard by rememberUpdatedState(card)
     val frame =
         RaftActionCardFrameState(
             status = card.actionCardSpecStatus(),
@@ -266,7 +274,7 @@ internal fun ThreadActionCardSpecView(
             endedLine = endedLine,
         )
     RaftActionCardView(
-        card = rendered,
+        card = shown,
         state = frame,
         entityName = { ref, serverId -> names.actionCardSpecEntityName(ref, serverId, viewerServerId) },
         onAction = onAction,
@@ -274,6 +282,26 @@ internal fun ThreadActionCardSpecView(
         sourceServerId = card.sourceServerId,
         displayLocale = displayLocale,
         linkNavigable = { button -> button.actionCardSpecLinkNavigable(card.sourceServerId, viewerServerId) },
+        fitLabels = inline != null,
+        footer =
+            inline?.let { form ->
+                {
+                    val defaults = remember(form) { initialActionCardFormValues(form.form) }
+                    ActionCardQuestionInlineForm(
+                        inline = form,
+                        values = slice.inlineValues ?: defaults,
+                        onValuesChange = { host.onIntent(ThreadActionCardSpecIntent.InlineValuesChanged(messageId, it)) },
+                        serverIssues = slice.inlineIssues,
+                        canSubmit = canOperate && card.actionCardSpecStatus() == RaftActionCardStatus.Prepared,
+                        showSubmit = canOperate,
+                        submitting = slice.busy == form.buttonId,
+                        displayLocale = displayLocale,
+                        onSend = { values ->
+                            host.onIntent(ThreadActionCardSpecIntent.SubmitInlineForm(messageId, currentCard, form.formId, form.buttonId, values))
+                        },
+                    )
+                }
+            },
     )
 }
 
