@@ -11,6 +11,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.RaftTimeContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -195,6 +196,52 @@ class AgentSpawnFailureStatusTest {
         assertEquals(MembersAgentRuntimeErrorBannerState("Model service balance too low", showViewLogs = false, billingExhausted = true), billing)
         val other = membersAgentRuntimeErrorBannerState(MemberKind.Agent, MembersAgentDetailTab.Profile, "Error: x")
         assertEquals(MembersAgentRuntimeErrorBannerState("Error: x", showViewLogs = true, billingExhausted = false), other)
+    }
+
+    @Test
+    fun theNextTryIsToldAgainstTheLiveNowWithThePagesOffsetAndFormat() {
+        val page = RaftTimeContext(localOffsetMinutes = 480, todayEpochDay = 1, nowEpochMillis = 1L, timeFormat = "12h")
+        val live = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = 20_000, nowEpochMillis = now - 1)
+        assertEquals(
+            RaftTimeContext(localOffsetMinutes = 480, todayEpochDay = null, nowEpochMillis = now, timeFormat = "12h"),
+            agentSpawnFailureTimeContext(page, live, now),
+        )
+        assertEquals(now, agentSpawnFailureTimeContext(null, live, now).nowEpochMillis)
+        assertEquals(0, agentSpawnFailureTimeContext(null, null, now).localOffsetMinutes)
+    }
+
+    @Test
+    fun theTextChangesByItselfAtTheTryOrAtMidnight() {
+        // 06:00 UTC: a try at 06:30 comes before midnight.
+        assertEquals(30 * 60_000L, agentSpawnFailureNextChangeInMs(now + 30 * 60_000L, now, 0))
+        // A try tomorrow: midnight first (18 h away in UTC; 10 h at UTC+8, where it is 14:00).
+        assertEquals(18 * 3_600_000L, agentSpawnFailureNextChangeInMs(now + 30 * 3_600_000L, now, 0))
+        assertEquals(10 * 3_600_000L, agentSpawnFailureNextChangeInMs(now + 30 * 3_600_000L, now, 480))
+        assertNull(agentSpawnFailureNextChangeInMs(now, now, 0))
+        assertNull(agentSpawnFailureNextChangeInMs(null, now, 0))
+    }
+
+    @Test
+    fun aShownBillingErrorIsReReadOnceTheAgentRunsAgain() {
+        listOf(AgentStatus.Online, AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Idle).forEach {
+            assertTrue(membersBillingErrorRereadDue(billingErrorShown = true, liveStatus = it), it.name)
+            assertFalse(membersBillingErrorRereadDue(billingErrorShown = false, liveStatus = it), it.name)
+        }
+        listOf(AgentStatus.Offline, AgentStatus.Disconnected, AgentStatus.Error, null).forEach {
+            assertFalse(membersBillingErrorRereadDue(billingErrorShown = true, liveStatus = it), it?.name)
+        }
+    }
+
+    @Test
+    fun anOpenEditorRequestWaitsUntilTheEditorCanOpen() {
+        assertFalse(membersRuntimeEditorCanOpen(canEdit = true, hasAuthority = true, hasConfig = true, runtimeEditorReady = false, hasFormV2Access = true))
+        assertFalse(membersRuntimeEditorCanOpen(canEdit = true, hasAuthority = true, hasConfig = false, runtimeEditorReady = true, hasFormV2Access = true))
+        assertFalse(membersRuntimeEditorCanOpen(canEdit = true, hasAuthority = true, hasConfig = true, runtimeEditorReady = true, hasFormV2Access = false))
+        assertTrue(membersRuntimeEditorCanOpen(canEdit = true, hasAuthority = true, hasConfig = true, runtimeEditorReady = true, hasFormV2Access = true))
+        // Not ready: the request stays (no act, so not consumed); ready: it acts.
+        assertFalse(membersRuntimeEditorOpenRequestActs(requested = true, canOpen = false))
+        assertTrue(membersRuntimeEditorOpenRequestActs(requested = true, canOpen = true))
+        assertFalse(membersRuntimeEditorOpenRequestActs(requested = false, canOpen = true))
     }
 
     private val agent = MemberProfile(id = MemberId("agent-1"), displayName = "Ruby", handle = "ruby", kind = MemberKind.Agent)

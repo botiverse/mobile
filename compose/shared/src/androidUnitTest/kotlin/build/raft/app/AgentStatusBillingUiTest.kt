@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -61,6 +62,11 @@ class AgentStatusBillingUiTest {
         StringDesc.localeType = previousLocale
     }
 
+    private companion object {
+        /** 2026-06-25 06:00 UTC. */
+        const val Now = 1_782_367_200_000L
+    }
+
     private val agent = MemberProfile(id = MemberId("agent-1"), displayName = "Ruby", handle = "ruby", kind = MemberKind.Agent)
 
     private val offline =
@@ -71,6 +77,7 @@ class AgentStatusBillingUiTest {
         spawnFailure: AgentSpawnFailure,
         onChangeModel: (() -> Unit)?,
         showActivityDetail: Boolean = true,
+        live: RaftTimeContextProvider = RaftTimeContextProvider(RaftTimeContext(localOffsetMinutes = 0, nowEpochMillis = Now)),
     ) {
         val summary =
             AgentDetailSummary(
@@ -83,6 +90,7 @@ class AgentStatusBillingUiTest {
                 spawnFailure = spawnFailure,
             )
         setContent {
+            CompositionLocalProvider(LocalRaftTimeContextProvider provides live) {
             RaftDesignSystemTheme {
                 Column(Modifier.fillMaxSize()) {
                     MembersAgentProfileHeader(
@@ -95,9 +103,11 @@ class AgentStatusBillingUiTest {
                         showActivityDetail = showActivityDetail,
                         spawnFailure = membersAgentStatusSpawnFailure(offline, summary.activityDetailKind, summary.activityDetail, spawnFailure),
                         onChangeModel = onChangeModel,
-                        timeContext = RaftTimeContext(localOffsetMinutes = 0, nowEpochMillis = 1_782_367_200_000L),
+                        // The page's context at open: its now is long past and must not be used.
+                        timeContext = RaftTimeContext(localOffsetMinutes = 0, nowEpochMillis = Now - 3 * 86_400_000L),
                     )
                 }
+            }
             }
         }
     }
@@ -129,11 +139,43 @@ class AgentStatusBillingUiTest {
         runRobolectricComposeUiTest {
             // 2026-06-25 06:00 UTC; the next try 30 min later, the same day: the clock only.
             showHero(
-                AgentSpawnFailure("runtime_repeated_failure", autoRestartPaused = true, pauseRetryAtMs = 1_782_367_200_000L + 30 * 60_000L),
+                AgentSpawnFailure("runtime_repeated_failure", autoRestartPaused = true, pauseRetryAtMs = Now + 30 * 60_000L),
                 onChangeModel = {},
             )
             onNodeWithText("Raft tries again by itself at 06:30", substring = true).assertExists()
             onAllNodesWithTag(AgentSpawnFailureStatusTestTags.ChangeModel).assertCountEquals(0)
+        }
+
+    @Test
+    fun theNextTryTurnsIntoLaterOnceItPassesEvenWithAStillLiveClock() =
+        runRobolectricComposeUiTest {
+            // The live clock does not move (it ticks once a minute at best); the notice's own wait does.
+            showHero(
+                AgentSpawnFailure("runtime_repeated_failure", autoRestartPaused = true, pauseRetryAtMs = Now + 30 * 60_000L),
+                onChangeModel = null,
+            )
+            onNodeWithText("Raft tries again by itself at 06:30", substring = true).assertExists()
+            mainClock.advanceTimeBy(31 * 60_000L)
+            waitForIdle()
+            onNodeWithText("Raft tries again by itself later", substring = true).assertExists()
+            onAllNodesWithText("06:30", substring = true).assertCountEquals(0)
+        }
+
+    @Test
+    fun aTryTomorrowLosesItsDateAfterMidnight() =
+        runRobolectricComposeUiTest {
+            // 23:50 UTC, the try at 00:20 the next day: the date and the clock, then after midnight
+            // the clock only.
+            val lateEvening = Now + 17 * 3_600_000L + 50 * 60_000L
+            showHero(
+                AgentSpawnFailure("runtime_repeated_failure", autoRestartPaused = true, pauseRetryAtMs = lateEvening + 30 * 60_000L),
+                onChangeModel = null,
+                live = RaftTimeContextProvider(RaftTimeContext(localOffsetMinutes = 0, nowEpochMillis = lateEvening)),
+            )
+            onNodeWithText("Raft tries again by itself at 06-26 00:20", substring = true).assertExists()
+            mainClock.advanceTimeBy(11 * 60_000L)
+            waitForIdle()
+            onNodeWithText("Raft tries again by itself at 00:20", substring = true).assertExists()
         }
 
     @Test

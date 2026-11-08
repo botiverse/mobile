@@ -4385,37 +4385,64 @@ internal fun MemberDetailPageContent(
     // Realtime `agent:updated { agentId }` (a profile edit, or botiverse/slock #13492: the agent's
     // modelLimits signal may have changed): the app shell re-reads the roster, and the open Profile
     // re-reads this agent's detail in the background, keeping what it shows until the answer lands.
+    // One background re-read of the open agent's detail, keeping what it shows until the answer
+    // lands. Skipped for another server's profile, and while a first load (or a cache replay still
+    // refreshing) brings the fresh answer itself.
+    suspend fun rereadAgentDetailInBackground(identity: MemberDetailIdentity, signal: build.raft.app.data.RaftAgentUpdatedSignal? = null) {
+        val route = routeState as? MemberDetailRouteState.Agent ?: return
+        if (route.accessMode != MemberDetailAccessMode.LocalFull) return
+        if (signal != null && !signal.isFor(route.server.id.value, identity.memberId.value)) return
+        val state = provider.agentDetailStore.state.value
+        val owner = state.detailOwner ?: return
+        if (
+            state.agentId != identity.memberId ||
+            state.detailFromCache ||
+            state.detailLoadStatus != SharedAgentDetailLoadStatus.Content
+        ) {
+            return
+        }
+        val generation = state.detailProfileGeneration
+        val requestGeneration = agentProfileRequestGeneration
+        val current = {
+            agentProfileRequestGeneration == requestGeneration &&
+                provider.agentDetailStore.state.value.let {
+                    it.agentId == identity.memberId && it.detailProfileGeneration == generation
+                }
+        }
+        val loaded = provider.loadMember(identity, owner, generation, current, hasCachedAgentDetail = true)
+        if (!current() || (loaded as? MemberDetailRouteState.Error)?.error?.code == "member_request_stale") {
+            return
+        }
+        routeState = loaded
+    }
     LaunchedEffect(provider, memberIdentity) {
         val signals = provider.agentUpdatedSignals ?: return@LaunchedEffect
         val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
-        signals.events.collect { signal ->
-            val route = routeState as? MemberDetailRouteState.Agent ?: return@collect
-            if (route.accessMode != MemberDetailAccessMode.LocalFull) return@collect
-            if (!signal.isFor(route.server.id.value, identity.memberId.value)) return@collect
-            val state = provider.agentDetailStore.state.value
-            val owner = state.detailOwner ?: return@collect
-            // A first load (or a cache replay still refreshing) brings the fresh answer itself.
-            if (
-                state.agentId != identity.memberId ||
-                state.detailFromCache ||
-                state.detailLoadStatus != SharedAgentDetailLoadStatus.Content
-            ) {
-                return@collect
+        signals.events.collect { signal -> rereadAgentDetailInBackground(identity, signal) }
+    }
+    // botiverse/slock #13435: a kept BillingError shows while the agent starts again, and the
+    // server clears it once the provider answers, then sends `agent:updated`. That signal can be
+    // missed (a reconnect, the app in the background, a load in flight when it came), so while the
+    // banner shows, the agent moving into a running state and the page coming back on screen each
+    // re-read the detail once.
+    val billingRereadAgentId = memberIdentity?.takeIf { it.kind == MemberKind.Agent }?.memberId
+    val billingRereadStatus =
+        rememberRaftAgentStatusIndicatorState(agentStatusResolver, billingRereadAgentId?.value)?.status
+    val billingErrorShown =
+        agentDetailStoreState.agentId == billingRereadAgentId &&
+            agentDetailStoreState.detail?.summary.let {
+                agentTypedRuntimeErrorKind(it?.lastRuntimeErrorClass, it?.lastRuntimeErrorReason) ==
+                    AgentRuntimeErrorKind.BillingExhausted
             }
-            val generation = state.detailProfileGeneration
-            val requestGeneration = agentProfileRequestGeneration
-            val current = {
-                agentProfileRequestGeneration == requestGeneration &&
-                    provider.agentDetailStore.state.value.let {
-                        it.agentId == identity.memberId && it.detailProfileGeneration == generation
-                    }
-            }
-            val loaded = provider.loadMember(identity, owner, generation, current, hasCachedAgentDetail = true)
-            if (!current() || (loaded as? MemberDetailRouteState.Error)?.error?.code == "member_request_stale") {
-                return@collect
-            }
-            routeState = loaded
-        }
+    val billingRereadOnRun = membersBillingErrorRereadDue(billingErrorShown, billingRereadStatus)
+    LaunchedEffect(provider, memberIdentity, billingRereadOnRun) {
+        val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
+        if (billingRereadOnRun) rereadAgentDetailInBackground(identity)
+    }
+    val currentBillingErrorShown by rememberUpdatedState(billingErrorShown)
+    LaunchedEffect(provider, memberIdentity, pageVisibleTick) {
+        val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
+        if (pageVisibleTick > 0 && currentBillingErrorShown) rereadAgentDetailInBackground(identity)
     }
     LaunchedEffect(provider.serverMembersStore, statusResolverServerId) {
         val serverId = statusResolverServerId ?: return@LaunchedEffect
@@ -8692,6 +8719,29 @@ internal fun membersAgentRuntimeErrorBannerState(
 }
 
 /**
+ * A kept BillingError is on screen and the agent is running again (botiverse/slock #13435): the
+ * error may have been cleared without this page hearing `agent:updated`, so re-read once.
+ */
+internal fun membersBillingErrorRereadDue(billingErrorShown: Boolean, liveStatus: AgentStatus?): Boolean =
+    billingErrorShown &&
+        when (liveStatus) {
+            AgentStatus.Online, AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Idle -> true
+            AgentStatus.Offline, AgentStatus.Disconnected, AgentStatus.Error, null -> false
+        }
+
+/** The runtime editor can open now: the pencil's conditions (a known status, a readable config, the v2 form). */
+internal fun membersRuntimeEditorCanOpen(
+    canEdit: Boolean,
+    hasAuthority: Boolean,
+    hasConfig: Boolean,
+    runtimeEditorReady: Boolean,
+    hasFormV2Access: Boolean
+): Boolean = canEdit && hasAuthority && hasConfig && runtimeEditorReady && hasFormV2Access
+
+/** An open-editor request acts only once the editor can open; until then it stays pending. */
+internal fun membersRuntimeEditorOpenRequestActs(requested: Boolean, canOpen: Boolean): Boolean = requested && canOpen
+
+/**
  * Web AgentDetailPanel `canOpenModelSettings` (`canManageAgent && !agent.deletedAt &&
  * !isExternalAgent && !activityOnly`; the app has no activity-only page, and [canManage] is
  * already false for an archived agent).
@@ -11009,10 +11059,19 @@ private fun MembersAgentRuntimeConfigSection(
         }
     }
 
+    val runtimeEditorCanOpen =
+        membersRuntimeEditorCanOpen(
+            canEdit = canEdit,
+            hasAuthority = agentProfileEditAuthority != null,
+            hasConfig = canonicalRuntimeConfig != null,
+            runtimeEditorReady = runtimeEditorReady,
+            hasFormV2Access = runtimeFormV2Access != null
+        )
+
     fun openRuntimeEditor() {
         val authority = agentProfileEditAuthority
         val config = canonicalRuntimeConfig
-        if (canEdit && authority != null && config != null && runtimeEditorReady && runtimeFormV2Access != null) {
+        if (runtimeEditorCanOpen && authority != null && config != null && runtimeFormV2Access != null) {
             runtimeConfigError = null
             runtimeEditorAuthority = authority
             runtimeEditorSession =
@@ -11032,10 +11091,12 @@ private fun MembersAgentRuntimeConfigSection(
 
     // Web AgentProfileInfo `openRuntimeConfigRequested` (botiverse/slock #13435, #13460): Change
     // model on the status, or View model settings on the billing banner, opens this editor, from
-    // another tab once this one is shown. The request is consumed as it is acted on.
+    // another tab once this one is shown. As on the web (`editing = opened || (requested &&
+    // canOpen)`), a request waits while the editor cannot open yet (status still unknown, the
+    // config or the form access still loading) and opens it once it can; it is consumed then.
     val runtimeEditorOpenRequested = edit.runtimeEditorOpenRequested
-    LaunchedEffect(runtimeEditorOpenRequested) {
-        if (!runtimeEditorOpenRequested) return@LaunchedEffect
+    LaunchedEffect(runtimeEditorOpenRequested, runtimeEditorCanOpen) {
+        if (!membersRuntimeEditorOpenRequestActs(runtimeEditorOpenRequested, runtimeEditorCanOpen)) return@LaunchedEffect
         if (!editingRuntimeConfig) openRuntimeEditor()
         edit.onRuntimeEditorOpenRequestHandled()
     }

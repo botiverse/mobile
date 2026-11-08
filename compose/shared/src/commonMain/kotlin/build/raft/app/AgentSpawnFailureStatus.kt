@@ -4,6 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -125,9 +131,31 @@ internal object AgentSpawnFailureStatusTestTags {
 }
 
 /**
+ * The clock the next try is told against: the live one's now (never the page's frozen one), with
+ * the page's own UTC offset and 12h/24h choice; today is worked out from that now, so it stays
+ * right past midnight.
+ */
+internal fun agentSpawnFailureTimeContext(payload: RaftTimeContext?, live: RaftTimeContext?, nowMs: Long): RaftTimeContext =
+    (payload ?: live ?: RaftTimeContext(localOffsetMinutes = 0)).copy(nowEpochMillis = nowMs, todayEpochDay = null)
+
+/**
+ * How long until the next try's text changes by itself: at the try (it turns into "later") or at
+ * the viewer's next local midnight (its date goes); null once there is no time ahead.
+ */
+internal fun agentSpawnFailureNextChangeInMs(retryAtMs: Long?, nowMs: Long, localOffsetMinutes: Int): Long? {
+    if (retryAtMs == null || retryAtMs <= nowMs) return null
+    val local = nowMs + localOffsetMinutes * 60_000L
+    val nextMidnight = (local.floorDiv(MillisPerDayForRetry) + 1) * MillisPerDayForRetry - localOffsetMinutes * 60_000L
+    return minOf(retryAtMs, nextMidnight) - nowMs
+}
+
+private const val MillisPerDayForRetry = 86_400_000L
+
+/**
  * The profile's start-failure lines under the status chip (web AgentStatusBadge's chip text and
  * its Change model link): the whole copy, so the chip never cuts it, and Change model for whoever
  * may change the agent's model ([onChangeModel] null otherwise) when another model is a way out.
+ * [timeContext] gives the offset and the 12h/24h choice; now comes from the live clock.
  */
 @Composable
 internal fun AgentSpawnFailureStatusNotice(
@@ -136,9 +164,26 @@ internal fun AgentSpawnFailureStatusNotice(
     onChangeModel: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val now = timeContext?.nowEpochMillis ?: currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+    val live = currentRaftTimeContextProvider?.current
+    // Raised to each moment the text changes by itself (the try, midnight), so the copy turns
+    // over then even when the live clock ticks only once a minute, or not at all.
+    var clockFloorMs by remember { mutableStateOf(Long.MIN_VALUE) }
+    val now = maxOf(live?.nowEpochMillis ?: defaultNowMillis(), clockFloorMs)
+    val clock = agentSpawnFailureTimeContext(timeContext, live, now)
     val copy = agentSpawnFailureCopy(status.spawnFailure, status.daemonDetail, now) ?: return
-    val text = agentSpawnFailureCopyText(copy, timeContext ?: currentRaftTimeContextProvider?.current)
+    val retryAtMs =
+        when (copy) {
+            is AgentSpawnFailureCopy.RepeatedFailurePaused -> copy.retryAtMs
+            is AgentSpawnFailureCopy.StartTimeoutPaused -> copy.retryAtMs
+            else -> null
+        }
+    val waitMs = agentSpawnFailureNextChangeInMs(retryAtMs, now, clock.localOffsetMinutes)
+    LaunchedEffect(retryAtMs, waitMs) {
+        if (waitMs == null) return@LaunchedEffect
+        delay(waitMs)
+        clockFloorMs = maxOf(clockFloorMs, now + waitMs)
+    }
+    val text = agentSpawnFailureCopyText(copy, clock)
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Row(
