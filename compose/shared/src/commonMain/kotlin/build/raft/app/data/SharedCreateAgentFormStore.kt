@@ -51,8 +51,35 @@ internal class SharedCreateAgentFormStore(
     /** The server runtime catalog (`GET servers/:id/runtimes`); null: the bundled table only. */
     private val serverRuntimeCatalogs: SharedServerRuntimeCatalogRepository? = null,
     /** The last create's Computer and runtime per server; null: nothing is remembered. */
-    private val lastConfigs: CreateAgentLastConfigRepository? = null
+    private val lastConfigs: CreateAgentLastConfigRepository? = null,
+    /** Whether [ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY] is on for a server. */
+    private val hostedRuntimeFlag: (ServerId) -> Boolean = { false }
 ) {
+    /** Whether a cloud agent can be offered without asking the server: off means nothing is probed. */
+    fun hostedRuntimeFlagOn(serverId: String): Boolean =
+        serverId.isNotBlank() && hostedRuntimeFlag(ServerId(serverId))
+
+    /** The availability probe (web `useAgentRuntimeProvider`); a failure means no offer. */
+    suspend fun loadHostedRuntimeAvailable(serverId: String): Boolean {
+        val result =
+            runCatchingPreservingCancellation {
+                computersApiClient.agentRuntimeProviderAvailable(ServerId(serverId), CREATE_AGENT_HOSTED_PROVIDER)
+            }.getOrElse { DataResult.Error(ScreenError("agent_runtime_provider_load_failed", retryable = true)) }
+        logResult("hosted_runtime", serverId, "", result)
+        return (result as? DataResult.Content)?.data == true
+    }
+
+    /** The models a new cloud agent can start on; a failure still allows the provider's default. */
+    suspend fun loadHostedRuntimeModels(serverId: String): DataResult<HostedRuntimeModels> {
+        val result =
+            runCatchingPreservingCancellation {
+                computersApiClient.agentRuntimeProviderModels(ServerId(serverId), CREATE_AGENT_HOSTED_PROVIDER)
+            }.getOrElse { DataResult.Error(ScreenError("agent_runtime_provider_models_load_failed", retryable = true)) }
+        logResult("hosted_runtime_models", serverId, "", result)
+        return result
+    }
+
+
     /** The runtime of the last agent created on [serverId] from this device, if any. */
     fun rememberedCreateRuntime(serverId: String?): String? = lastConfigs?.read(serverId)?.runtime
 

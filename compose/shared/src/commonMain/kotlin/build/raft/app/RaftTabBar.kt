@@ -66,6 +66,9 @@ import build.raft.designsystem.components.raftUnreadCountText
 import kotlinx.serialization.Serializable
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftPressSurface
+import androidx.compose.ui.semantics.Role
 
 @Serializable
 internal data class RaftTabItemPayload(
@@ -699,7 +702,7 @@ private fun RaftVerticalTabItem(
                 .background(if (selected) RaftColor.AccentPink else Color.Transparent)
                 // Same as the rail item: a removed border modifier does not clear the native border.
                 .border(RaftAppStroke.Default, if (selected) RaftColor.StickerInk else Color.Transparent)
-                .clickable(enabled = item.enabled) { onSelect(item.key) }
+                .raftClickable(onClick = { onSelect(item.key) }, enabled = item.enabled, role = Role.Tab, surface = if (selected) RaftPressSurface.Sticker else RaftPressSurface.Paper, selected = selected)
                 .padding(start = itemStartPadding, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)

@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -27,6 +28,7 @@ import build.raft.app.data.AppLinkResult
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.SharedArtifactScreenshotStore
 import build.raft.app.data.SharedArtifactSummaryStore
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.APP_LINK_READ_MODE_V1
@@ -92,6 +94,8 @@ internal data class ThreadArtifactLinkHost(
     val appHosts: StateFlow<List<String>>,
     val featureFlags: SharedServerFeatureFlags?,
     val webBaseUrl: String,
+    /** The cards' screenshots (in memory for this viewer); null where none are read (fixtures). */
+    val screenshots: SharedArtifactScreenshotStore? = null,
 )
 
 /** One message's Artifact links answered `ok`, and the hosts they were split on. */
@@ -167,6 +171,8 @@ internal fun ThreadAppLinkPreviewScope(
     messageId: String,
     body: String,
     enabled: Boolean,
+    /** Opens a link as the message's own links open (the app's link setting, or Raft's own page). */
+    onOpenLink: (String) -> Unit,
     content: @Composable () -> Unit,
 ) {
     val host = LocalThreadAppLinkPreviewHost.current
@@ -209,7 +215,7 @@ internal fun ThreadAppLinkPreviewScope(
     }
     var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
     // #proj-mobile: a chip whose App sent a card body opens its item card beside it.
-    val cards = rememberThreadAppLinkCards(messageId)
+    val cards = rememberThreadAppLinkCards(messageId, onOpenLink)
     val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
     val chipHost =
         remember(view.results, cards, artifacts, artifactWebBaseUrl) {
@@ -226,7 +232,8 @@ internal fun ThreadAppLinkPreviewScope(
         }
     // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the
     // message itself: quotes, forwards, search and Activity have no scope, so they show chips.
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
+    val currentOnOpenLink by rememberUpdatedState(onOpenLink)
     val read = batch.read
     val actionHost =
         remember(host, messageId, body, read) {
@@ -240,12 +247,18 @@ internal fun ThreadAppLinkPreviewScope(
             }
         }
     val blockHost =
-        remember(view.results, uriHandler, actionHost) {
+        remember(view.results, openInSystemBrowser, actionHost) {
             if (view.results.values.none { it is AppLinkResult.Card && it.block != null }) {
                 null
             } else {
                 RaftMarkdownBlockCardHost(view.results) { card ->
-                    ThreadAppLinkBlockCard(card, openUri = { uriHandler.openUri(it) }, actions = actionHost)
+                    ThreadAppLinkBlockCard(
+                        card,
+                        openUri = { address ->
+                            openThreadAppLinkAddress(address, card.connectUrl, currentOnOpenLink, openInSystemBrowser)
+                        },
+                        actions = actionHost,
+                    )
                 }
             }
         }
@@ -261,7 +274,7 @@ internal fun ThreadAppLinkPreviewScope(
     // The prompt closes itself once its chip is gone (answered, or asked on another message).
     val promptShown = prompt != null && view.results[prompt.url] is AppLinkResult.Consent
     if (prompt != null && promptShown) {
-        ThreadAppLinkConsentSheet(host = host, prompt = prompt, onDismiss = { asking = null })
+        ThreadAppLinkConsentSheet(host = host, prompt = prompt, onOpenLink = onOpenLink, onDismiss = { asking = null })
     }
     LaunchedEffect(prompt, promptShown) {
         if (prompt != null && !promptShown) asking = null
@@ -302,16 +315,29 @@ internal fun String.isAppLinkMessageId(): Boolean =
  * allowing tells it, then where the link goes, with Open Link. Allow is the ink-bordered
  * button, Don't Allow the frameless one, neither pink nor orange.
  */
+/**
+ * A card's address opens as a message link does; a connect_account card's connect URL goes to the
+ * system browser, where the account's sign-in is.
+ */
+internal fun openThreadAppLinkAddress(
+    address: String,
+    connectUrl: String?,
+    openLink: (String) -> Unit,
+    openInSystemBrowser: (String) -> Unit,
+) {
+    if (address == connectUrl) openInSystemBrowser(address) else openLink(address)
+}
+
 @Composable
 private fun ThreadAppLinkConsentSheet(
     host: ThreadAppLinkPreviewHost,
     prompt: AppLinkResult.Consent,
+    onOpenLink: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val state by host.store.state.collectAsState()
     val status = state.status[appLinkAppKey(host.viewerKey, prompt.app.id)]
     val scope = rememberCoroutineScope()
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val unavailable = stringResource(Res.string.thread_link_preview_prompt_unavailable, prompt.app.name)
     val declined = stringResource(Res.string.thread_link_preview_prompt_declined, prompt.app.name)
     val declineFailed = stringResource(Res.string.thread_link_preview_prompt_decline_failed, prompt.app.name)
@@ -351,7 +377,7 @@ private fun ThreadAppLinkConsentSheet(
             },
             onOpenLink = {
                 onDismiss()
-                uriHandler.openUri(prompt.url)
+                onOpenLink(prompt.url)
             },
         )
     }

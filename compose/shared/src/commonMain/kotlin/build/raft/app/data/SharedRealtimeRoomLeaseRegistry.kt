@@ -150,6 +150,11 @@ internal class SharedRealtimeRoomLeaseRegistry(
         joinedByUser += RoomKey(serverId, cleanRoomId)
     }
 
+    /** The user left or deleted [roomId] here: closing its page follows the [leaveAllowed] rule again. */
+    fun forgetJoinedByUser(serverId: String, roomId: String) = synchronized(lock) {
+        joinedByUser -= RoomKey(serverId, roomId.trim())
+    }
+
     /** Whether the user joined [roomId] from a page in this shell (task #168 membership lookup). */
     fun isJoinedByUser(serverId: String, roomId: String): Boolean = synchronized(lock) {
         RoomKey(serverId, roomId.trim()) in joinedByUser

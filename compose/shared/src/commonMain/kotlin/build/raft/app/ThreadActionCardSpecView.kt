@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -28,6 +29,8 @@ import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.jointInviteRateLimitMinutes
+import build.raft.app.data.QuestionAskActionCardType
+import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
@@ -72,10 +75,16 @@ internal data class ThreadActionCardSpecHost(
 
 internal val LocalThreadActionCardSpecHost = compositionLocalOf { ThreadActionCardSpecHost() }
 
-/** The frame's status for a card's `state`. */
+/**
+ * The frame's status for a card's `state` (web `ActionCardSpecCard`). A state this build doesn't
+ * know is drawn as Prepared, as before. Draw the card as of the client clock first
+ * ([build.raft.app.data.expiredAsOf]) so a prepared card past its `expiresAt` reads Expired.
+ */
 internal fun ThreadActionCard.actionCardSpecStatus(): RaftActionCardStatus =
     when {
         isExecuted -> RaftActionCardStatus.Executed
+        isExpired -> RaftActionCardStatus.Expired
+        isWithdrawn -> RaftActionCardStatus.Withdrawn
         isFrozen -> RaftActionCardStatus.Frozen
         needsReconfirmation -> RaftActionCardStatus.ReconfirmRequired
         else -> RaftActionCardStatus.Prepared
@@ -95,6 +104,75 @@ internal fun ActionCardSpecCard.withChangingButtonsLabelled(label: ActionCardSpe
     return copy(spec = relabel(spec))
 }
 
+/**
+ * Types that keep their own deadline rule (shared `isActionCardExpiryExempt`, slock #13254): a
+ * person's request among them keeps its own "No owner answered" line when it expires.
+ */
+internal val ActionCardExpiryExemptTypes: Set<String> =
+    setOf(QuestionAskActionCardType, "agent:approve_call", "assistant:owner_action", SeatsAddActionCardType, "plan:upgrade")
+
+/** Which line an expired card says under its title (web `useExpiredCardLine`, slock #13275). */
+internal sealed interface ActionCardExpiredLine {
+    /** A person's request with its own deadline (a seat or Pro request): "No owner answered within 7 days". */
+    data object PersonRequest : ActionCardExpiredLine
+
+    /** The viewer sent it: "Expired on {date}. Send a new request." */
+    data class Own(val date: String) : ActionCardExpiredLine
+
+    /** A person sent it under the 30-day rule and is a member here: "Ask {owner} to send a new request." */
+    data class FromPerson(val date: String, val owner: String) : ActionCardExpiredLine
+
+    /** An agent's card, or its sender is no longer known here: "Ask the agent to send a new request." */
+    data class FromAgent(val date: String) : ActionCardExpiredLine
+}
+
+/**
+ * The line for an expired card ([ActionCardExpiredLine]), or null: not expired, a question card
+ * (the web has its own ended lines), or no date. [formatDate] writes `expiresAt` as the done line
+ * writes its time (null: it can't); [requesterName] is the requester's name from this server's
+ * member directory (null when not a member here); [viewerUserId] is the signed-in person.
+ */
+internal fun ThreadActionCard.actionCardExpiredLine(
+    viewerUserId: String?,
+    requesterName: String?,
+    formatDate: (String) -> String?,
+): ActionCardExpiredLine? {
+    if (!isExpired || type.equals(QuestionAskActionCardType, ignoreCase = true)) return null
+    val requester = requesterUserId
+    if (requester != null && ActionCardExpiryExemptTypes.any { it.equals(type, ignoreCase = true) }) return ActionCardExpiredLine.PersonRequest
+    val at = expiresAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val date = formatDate(at)?.takeIf { it.isNotBlank() } ?: return null
+    return when {
+        requester != null && requester == viewerUserId?.trim() -> ActionCardExpiredLine.Own(date)
+        requester != null && !requesterName.isNullOrBlank() -> ActionCardExpiredLine.FromPerson(date, requesterName)
+        else -> ActionCardExpiredLine.FromAgent(date)
+    }
+}
+
+/**
+ * An ended card's line under its title ([actionCardExpiredLine]): the requester by name from the
+ * thread's member lookup ([LocalThreadActionCardNames]), the viewer from the spec host, the date
+ * in the app's time format (never the raw wire timestamp, nothing without a live time context).
+ */
+@Composable
+internal fun ThreadActionCard.actionCardEndedLine(): String? {
+    if (!isExpired) return null
+    val viewerUserId = LocalThreadActionCardSpecHost.current.viewerUserId
+    val names = LocalThreadActionCardNames.current
+    val context = currentRaftTimeContextProvider?.current
+    val requesterName = requesterUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }
+    val line =
+        actionCardExpiredLine(viewerUserId, requesterName) { at ->
+            context?.formatTimestampLabel(at)?.takeIf { it != at }
+        } ?: return null
+    return when (line) {
+        ActionCardExpiredLine.PersonRequest -> stringResource(Res.string.thread_action_card_seats_expired_line)
+        is ActionCardExpiredLine.Own -> stringResource(Res.string.thread_action_card_expired_line_own, line.date)
+        is ActionCardExpiredLine.FromPerson -> stringResource(Res.string.thread_action_card_expired_line_from_person, line.date, line.owner)
+        is ActionCardExpiredLine.FromAgent -> stringResource(Res.string.thread_action_card_expired_line, line.date)
+    }
+}
+
 /** An app string as a card Msg: the same words in [displayLocale] and as the English fallback. */
 internal fun actionCardAppMsg(key: String, text: String, displayLocale: String): ActionCardSpecMsg =
     ActionCardSpecMsg(key = key, text = mapOf("en" to text, displayLocale to text))
@@ -107,6 +185,7 @@ internal fun threadActionCardSpecErrorDesc(error: ThreadActionCardSpecError?): S
     when (error) {
         null -> null
         ThreadActionCardSpecError.FormRequired -> Res.string.thread_action_card_form_required.desc()
+        ThreadActionCardSpecError.QuestionNotSent -> Res.string.action_card_question_not_sent.desc()
         is ThreadActionCardSpecError.Failed -> error.serverMessage?.desc() ?: Res.string.thread_action_card_execute_failed.desc()
         // Web `settings.about.feedbackError.rateLimited` in substance; the minutes as the joint invite's 429.
         is ThreadActionCardSpecError.FeedbackRateLimited ->
@@ -155,12 +234,13 @@ internal fun ThreadActionCardSpecView(
     val displayLocale = rememberActionCardDisplayLocale()
     val blockedReason =
         when {
-            card.isExecuted -> null
+            card.isExecuted || card.hasEnded -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
                 card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
+    val endedLine = card.actionCardEndedLine()
     val committedBy = card.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
     val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
     val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
@@ -177,6 +257,12 @@ internal fun ThreadActionCardSpecView(
             // iOS view-only Billing: Add Seats / Upgrade read "View your plan" (threadActionCardSpecPress).
             if (offersUpgrade) labelled else labelled.withUpgradeButtonsLabelled(actionCardAppMsg("planBilling.viewYourPlan", viewPlanLabel, displayLocale))
         }
+    // A question card the server placed on the card (`placement: "inline"`, spec §5.9): answered in
+    // its body, without its button or its question rows; every other card keeps its sheet.
+    val inline = remember(rendered, card) { card.inlineQuestionForm(rendered) }
+    val shown = remember(rendered, inline) { if (inline == null) rendered else rendered.copy(spec = rendered.spec.withoutInlineQuestions(inline)) }
+    val canOperate = commitEnabled && blockedReason == null
+    val currentCard by rememberUpdatedState(card)
     val frame =
         RaftActionCardFrameState(
             status = card.actionCardSpecStatus(),
@@ -185,9 +271,10 @@ internal fun ThreadActionCardSpecView(
             readOnly = !commitEnabled,
             busyElementKey = slice.busyElement(typedPending),
             error = threadActionCardSpecErrorText(slice.error),
+            endedLine = endedLine,
         )
     RaftActionCardView(
-        card = rendered,
+        card = shown,
         state = frame,
         entityName = { ref, serverId -> names.actionCardSpecEntityName(ref, serverId, viewerServerId) },
         onAction = onAction,
@@ -195,6 +282,26 @@ internal fun ThreadActionCardSpecView(
         sourceServerId = card.sourceServerId,
         displayLocale = displayLocale,
         linkNavigable = { button -> button.actionCardSpecLinkNavigable(card.sourceServerId, viewerServerId) },
+        fitLabels = inline != null,
+        footer =
+            inline?.let { form ->
+                {
+                    val defaults = remember(form) { initialActionCardFormValues(form.form) }
+                    ActionCardQuestionInlineForm(
+                        inline = form,
+                        values = slice.inlineValues ?: defaults,
+                        onValuesChange = { host.onIntent(ThreadActionCardSpecIntent.InlineValuesChanged(messageId, it)) },
+                        serverIssues = slice.inlineIssues,
+                        canSubmit = canOperate && card.actionCardSpecStatus() == RaftActionCardStatus.Prepared,
+                        showSubmit = canOperate,
+                        submitting = slice.busy == form.buttonId,
+                        displayLocale = displayLocale,
+                        onSend = { values ->
+                            host.onIntent(ThreadActionCardSpecIntent.SubmitInlineForm(messageId, currentCard, form.formId, form.buttonId, values))
+                        },
+                    )
+                }
+            },
     )
 }
 
@@ -225,7 +332,7 @@ internal fun ThreadActionCardSpecConfirmSheet(
             title = actionCardMsgPlain(state.confirm.title, context),
             commitLabel = actionCardMsgPlain(state.confirm.confirmLabel, context),
             onCommit = { onIntent(ThreadActionCardSpecIntent.ConfirmExecute) },
-            commitEnabled = !state.card.isExecuted && !state.card.isFrozen,
+            commitEnabled = !state.card.isExecuted && !state.card.isFrozen && !state.card.hasEnded,
             commitLoading = state.submitting,
             commitVariant = if (state.destructive) RaftButtonVariant.Danger else RaftButtonVariant.Primary,
             closeLabel = stringResource(Res.string.common_close),

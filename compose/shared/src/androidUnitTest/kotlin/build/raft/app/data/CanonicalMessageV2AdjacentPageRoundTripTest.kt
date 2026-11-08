@@ -16,8 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
- * Task #168 on the real SQLite schema: the enter snapshot creates the window, adjacent paging pages
- * extend it, and the cursor the reader sees always describes facts that are actually on disk —
+ * Task #168 on the real SQLite schema: the enter creates the window, paging pages connected to it grow it, and the cursor the reader sees always describes facts that are actually on disk —
  * including after per-scope retention pruning.
  */
 class CanonicalMessageV2AdjacentPageRoundTripTest {
@@ -26,8 +25,8 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
         val rig = Rig(database, maxFactsPerScope = 500)
         runBlocking {
             rig.enter(listOf(20L, 30L, 40L))
-            rig.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
-            rig.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50)), limit = 3)
+            rig.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), coveredAfterSeq = 0)
+            rig.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50)))
 
             val frame = assertNotNull(rig.reader.read(partition, "channel-1"))
             assertEquals(listOf(5L, 10L, 20L, 30L, 40L, 50L), frame.envelopes.map { it.fact.seq })
@@ -35,10 +34,7 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
             assertEquals(true, frame.cursor.hasLoadedOldest)
             assertEquals(50L, frame.cursor.newestLoadedSeq)
             assertEquals(50L, frame.cursor.latestSeq)
-
-            // Anchor outside the window (newer than its newest edge 50): nothing changes on disk.
-            rig.extend(ThreadDurablePageDirection.Older, 55, adjacentPageOf(adjacentPageNode("m1", 1)), limit = 3)
-            assertEquals(6, assertNotNull(rig.reader.read(partition, "channel-1")).envelopes.size)
+            assertEquals(false, frame.cursor.hasLoadedNewest, "only a latest fetch proves the head")
         }
     }
 
@@ -53,7 +49,6 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
                 ThreadDurablePageDirection.Older,
                 stored.sortedDescending()[29],
                 adjacentPageOf(*pageSeqs.map { adjacentPageNode("m$it", it) }.toTypedArray()),
-                limit = 30,
             )
             val frame = assertNotNull(rig.reader.read(partition, "channel-1"))
             assertEquals((pageSeqs + stored).distinct().sorted(), frame.envelopes.map { it.fact.seq })
@@ -69,31 +64,35 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
         runBlocking {
             rig.enter(listOf(20L, 30L, 40L))
 
-            // Older: 3 stored + 2 new > cap 4 ⇒ refused (pruning would delete exactly these two
-            // while the cursor claimed them).
-            rig.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)), limit = 3)
+            // Older: 3 stored + 2 new > cap 4: the store prunes the head's low end (the page's oldest) and the cursor
+            // says what is on disk.
+            rig.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10)))
             val afterOlder = assertNotNull(rig.reader.read(partition, "channel-1"))
-            assertEquals(listOf(20L, 30L, 40L), afterOlder.envelopes.map { it.fact.seq })
-            assertEquals(20L, afterOlder.cursor.oldestLoadedSeq)
+            assertEquals(listOf(10L, 20L, 30L, 40L), afterOlder.envelopes.map { it.fact.seq })
+            assertEquals(10L, afterOlder.cursor.oldestLoadedSeq)
+            assertEquals(false, afterOlder.cursor.hasLoadedOldest)
 
-            // Newer: 3 stored + 2 new > cap 4 ⇒ committed; the store prunes seq 20 and the cursor's
-            // oldest edge moves to the oldest fact that survived.
-            rig.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50), adjacentPageNode("m60", 60)), limit = 3)
+            // Newer: 4 stored + 2 new > cap 4: the oldest go and the cursor's oldest edge moves to what survived.
+            rig.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m50", 50), adjacentPageNode("m60", 60)))
             val afterNewer = assertNotNull(rig.reader.read(partition, "channel-1"))
             assertEquals(listOf(30L, 40L, 50L, 60L), afterNewer.envelopes.map { it.fact.seq })
             assertEquals(30L, afterNewer.cursor.oldestLoadedSeq)
             assertEquals(false, afterNewer.cursor.hasLoadedOldest)
             assertEquals(60L, afterNewer.cursor.newestLoadedSeq)
+        }
+    }
 
-            // The moved edge is a real window edge (window and anchor-on-disk gates pass: the outcome
-            // is `at_capacity`, not `not_adjacent`/`anchor_missing`), but the scope sits at the cap,
-            // so the page is refused rather than written and pruned straight back out.
-            rig.extend(ThreadDurablePageDirection.Older, 30, adjacentPageOf(adjacentPageNode("m25", 25)), limit = 3)
-            assertEquals(
-                listOf(30L, 40L, 50L, 60L),
-                assertNotNull(rig.reader.read(partition, "channel-1")).envelopes.map { it.fact.seq },
-            )
-            assertEquals(true, rig.logs.last().endsWith("outcome=at_capacity"), rig.logs.toString())
+    @Test
+    fun anIslandAboveTheWindowNeverCostsTheWindowItsFacts() = withFreshDatabase { database ->
+        val rig = Rig(database, maxFactsPerScope = 4)
+        runBlocking {
+            rig.enter(listOf(20L, 30L, 40L))
+            // Connects to nothing (a message exists between 40 and the page), and the scope is at the cap afterwards.
+            rig.extend(ThreadDurablePageDirection.Newer, 40, adjacentPageOf(adjacentPageNode("m90", 90), adjacentPageNode("m100", 100)), coveredAfterSeq = 80)
+            val frame = assertNotNull(rig.reader.read(partition, "channel-1"))
+            assertEquals(listOf(20L, 30L, 40L), frame.envelopes.map { it.fact.seq }, "the island went, not the window")
+            assertEquals(20L, frame.cursor.oldestLoadedSeq)
+            assertEquals(40L, frame.cursor.newestLoadedSeq)
         }
     }
 
@@ -118,12 +117,12 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
             isEnabledForServer = { true },
             logger = logs::add,
-            maxFactsPerScope = maxFactsPerScope,
         )
 
         /** The real enter loader commits the window from a REST page (seqs ascending). */
         suspend fun enter(seqs: List<Long>) {
-            val body = """{"messages":${adjacentPageOf(*seqs.map { adjacentPageNode("m$it", it) }.toTypedArray())},"historyLimited":false}"""
+            val window = channelWindowJson(channelWindow(coveredAfterSeq = seqs.min() - 1L, coveredThroughSeq = seqs.max()))
+            val body = """{"messages":${adjacentPageOf(*seqs.map { adjacentPageNode("m$it", it) }.toTypedArray())},"historyLimited":false,"messageWindow":$window}"""
             CanonicalMessageV2EnteredScopeLoader(
                 canary = canary,
                 generationEngine = engine,
@@ -136,8 +135,11 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
             direction: ThreadDurablePageDirection,
             anchorSeq: Long,
             rawMessages: kotlinx.serialization.json.JsonArray,
-            limit: Int,
-        ) = writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null, requestHeadEpoch = null) { true }
+            coveredAfterSeq: Long? = null,
+        ) = writer.extendWithAdjacentPage(
+            partition, "channel-1", direction, anchorSeq, rawMessages, 3, replyParent = null, requestHeadEpoch = null,
+            messageWindow = pagingWindowFor(direction, anchorSeq, rawMessages, coveredAfterSeq = coveredAfterSeq),
+        ) { true }
     }
 
     private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {

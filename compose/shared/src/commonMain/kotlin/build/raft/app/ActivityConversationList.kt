@@ -247,15 +247,27 @@ internal sealed interface ActivityConversationListEntry {
     data class Row(val item: InboxItem, val divider: Boolean) : ActivityConversationListEntry {
         override val key: String = item.key
     }
+
+    /** A day's heading over its rows (web slock #13030, [groupActivityRowsByDay]); sticky. */
+    data class DayHeading(override val key: String, val label: ActivityDayLabel, val first: Boolean) : ActivityConversationListEntry
 }
 
 /**
- * web `visibleItems` (slock #10785): one row per item in the order the server lists them, a hairline
- * between two rows. There are no Pinned / All conversations sections: Pinned is a filter of its own
+ * web `visibleItems` (slock #10785): one row per item in the order the server lists them, under a
+ * heading per day (slock #13030, [groupActivityRowsByDay]), a hairline between two rows of one day.
+ * There are no Pinned / All conversations sections: Pinned is a filter of its own
  * (`InboxFilter.Pinned`, `scope=pinned`).
  */
-internal fun activityConversationListEntries(items: List<InboxItem>): List<ActivityConversationListEntry> =
-    items.mapIndexed { index, item -> ActivityConversationListEntry.Row(item, divider = index > 0) }
+internal fun activityConversationListEntries(
+    items: List<InboxItem>,
+    timeContext: RaftTimeContext? = null,
+): List<ActivityConversationListEntry> =
+    buildList {
+        groupActivityRowsByDay(items, timeContext).forEach { group ->
+            group.label?.let { label -> add(ActivityConversationListEntry.DayHeading(group.key, label, first = isEmpty())) }
+            group.rows.forEachIndexed { index, item -> add(ActivityConversationListEntry.Row(item, divider = index > 0)) }
+        }
+    }
 
 /**
  * The rows in the order the person sees them. "Prewarm the next thread after the clicked one" follows
@@ -926,7 +938,7 @@ internal fun ActivityConversationListRow(
                         }
                         // web `reveal="hover"`: the Done button takes the trailing column's place and the
                         // timestamp and marks step aside (transparent, so nothing moves).
-                        ActivityConversationTime(item, timeContext, Modifier.alpha(if (showHoverDone) 0f else 1f))
+                        ActivityConversationTime(item, timeContext, pointerHovering || hoverPreview, Modifier.alpha(if (showHoverDone) 0f else 1f))
                     }
                     // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
                     // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
@@ -1150,10 +1162,46 @@ internal fun ActivityConversationLeading(
     }
 }
 
+/**
+ * The time at the end of the row's first line, in a list grouped by day (web ActivityRowTime, slock
+ * #13030): today's rows and any row under an hour old show it short ("now", "3m", "2h"); an earlier
+ * day's row, whose heading names the day, shows its clock only while a pointer hovers it, and a finger
+ * never does. Screen readers hear it in words on every row ("yesterday at 17:20").
+ */
 @Composable
-private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeContext?, modifier: Modifier = Modifier) {
+private fun ActivityConversationTime(
+    item: InboxItem,
+    timeContext: RaftTimeContext?,
+    pointerHovering: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val effectiveContext = currentRaftTimeContext(timeContext)
+    val rowTime = activityRowTime(item.activityRowTimeValue(), effectiveContext)
+    if (rowTime == null) {
+        ActivityConversationTimeFallback(item, timeContext, modifier)
+        return
+    }
+    val words = rowTime.words()
+    val shown = rowTime !is ActivityRowTime.Older || pointerHovering
+    RaftText(
+        text = rowTime.shownLabel(),
+        modifier =
+            modifier
+                .widthIn(max = 96.dp)
+                .then(if (shown) Modifier else Modifier.alpha(0f))
+                .clearAndSetSemantics { contentDescription = words },
+        style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
+        color = RaftTheme.colors.foregroundHint,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** No live clock or no readable time: the plain relative time, as before day groups. */
+@Composable
+private fun ActivityConversationTimeFallback(item: InboxItem, timeContext: RaftTimeContext?, modifier: Modifier = Modifier) {
     RaftRelativeTimestampText(
-        value = item.latestActivityAt ?: item.lastMessageAt,
+        value = item.activityRowTimeValue(),
         timeContext = timeContext,
         style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
         color = RaftTheme.colors.foregroundHint,

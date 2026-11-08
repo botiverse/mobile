@@ -37,6 +37,13 @@ import kotlinx.serialization.json.Json
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_state_v1"
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
+/**
+ * Agent read progress (botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `AGENT_READ_PROGRESS_FEATURE_FLAG_KEY`, default off). With [READ_RECEIPTS_FEATURE_FLAG_KEY] on, a channel or
+ * reply thread shows each agent's face on the message it read up to, and, only when the viewer's latest
+ * message will not reach an agent that stopped following or muted, the line under it (ThreadAgentReadStatus.kt).
+ */
+const val AGENT_READ_PROGRESS_FEATURE_FLAG_KEY: String = "agent_read_progress_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
 /**
@@ -45,7 +52,6 @@ const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activi
  * New key, so builds that read the old `enable_webview_onboarding_v0` are unaffected.
  */
 const val MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY: String = "mobile_server_setup_v1"
-const val PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY: String = "product_feedback_multi_app"
 /**
  * #367 Thread first-frame render: single-paragraph light markdown path.
  * Default OFF everywhere (server-unresolved evaluates false); local A/B goes
@@ -67,6 +73,8 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // cleaned up: android_reused_h2_recovery_v0 (NetworkKMM reused-HTTP/2 watchdog), mobile_doh_fallback_v0
 // (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
 // sync_core_messages_v1 is no longer read either (2026-10-30): the sync-core message line is always on.
+// product_feedback_multi_app is no longer read from 1.22 (artin): Settings > Feedback and feedback cards
+// always open the ticket web page.
 // Gogo removes the server flag row after old clients are checked.
 
 /**
@@ -114,6 +122,9 @@ const val SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY: String = "sidebar_mark_all_rea
 
 /** Moving an agent to the cloud (slock `AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY`). */
 const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hosted_v0"
+
+/** Cloud agents in the create dialog (slock `ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY`). */
+const val ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY: String = "antiproton_hosted_runtime"
 
 /**
  * First-party action cards rendered from their spec (`presentation.card`, `action-card.v1`). The same
@@ -211,16 +222,17 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
     READ_RECEIPTS_FEATURE_FLAG_KEY,
+    AGENT_READ_PROGRESS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
     MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
-    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
+    ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,

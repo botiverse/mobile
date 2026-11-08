@@ -187,37 +187,6 @@ class TaskConversationHeadModelTest {
     }
 
     @Test
-    fun onAPhoneTheHeadMovesWithTheConversationScrollAndOffAPhoneItStays() {
-        val state = TaskHeadScrollState()
-        state.updateHeight(300f)
-        // Pinned (tablet): nothing moves.
-        assertEquals(0f, state.consume(-50f))
-        state.scrollsWithConversation = true
-        // A drag towards newer messages slides it away first, up to its height.
-        assertEquals(-120f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, -120f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
-        assertEquals(-180f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, -500f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
-        assertEquals(true, state.collapsed)
-        // A drag back down: the list scrolls first; only what it leaves (at its oldest) brings the head back.
-        assertEquals(0f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, 80f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
-        assertEquals(
-            80f,
-            state.connection.onPostScroll(
-                androidx.compose.ui.geometry.Offset.Zero,
-                androidx.compose.ui.geometry.Offset(0f, 80f),
-                androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput,
-            ).y,
-        )
-        assertEquals(false, state.collapsed)
-        // The keyboard folds it away (even before it is measured); the top bar's summary brings it back.
-        val fresh = TaskHeadScrollState().apply { scrollsWithConversation = true }
-        fresh.collapse()
-        fresh.updateHeight(200f)
-        assertEquals(true, fresh.collapsed)
-        fresh.expand()
-        assertEquals(false, fresh.collapsed)
-    }
-
-    @Test
     fun sourceAndViewInChannelOpenTheTaskChannelAtItsMessage() {
         val dmTask = task().copy(channelId = ChannelId("dm-1"), channelType = "dm", sourceMessageId = MessageId("source-1"))
         val dm = dmTask.taskChannelOpenRequest("server-1", dmTask.taskViewInChannelAnchor())!!

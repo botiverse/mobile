@@ -387,14 +387,15 @@ class CanonicalMessageV2SegmentStoreTest {
     }
 
     @Test
-    fun aLegacyIncrementalKeepsAnIslandBelowItsWindowButNotOneTouchingIt() = withStore { store, _ ->
+    fun aLegacyIncrementalKeepsAnIslandBelowItsWindowAndMergesOneTouchingIt() = withStore { store, _ ->
         store.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, (10..12L).map(::envelope), legacyCursor(10, 12)))
         store.cover(listOf(1L, 2L), CanonicalMessageV2Coverage(1, 2, reachesOldest = false, headAtVerify = false, Context))
         store.cover(listOf(8L), CanonicalMessageV2Coverage(8, 8, reachesOldest = false, headAtVerify = false, Context))
         assertEquals(listOf(1L to 2L, 8L to 8L, 10L to 12L), store.readSegments(scope).map { it.lowSeq to it.highSeq })
         store.applyIncremental(CanonicalMessageV2IncrementalFrame(scope, listOf(envelope(13)), legacyCursor(9, 13)))
-        // [8, 8] touches the window [9, 13] (the legacy window owns it now); [1, 2] stays apart.
-        assertEquals(listOf(1L to 2L, 9L to 13L), store.readSegments(scope).map { it.lowSeq to it.highSeq })
+        // [8, 8] touches the window [9, 13], so it merges: dropping it would leave its fact loose, and loose facts are
+        // read offline. [1, 2] stays apart.
+        assertEquals(listOf(1L to 2L, 8L to 13L), store.readSegments(scope).map { it.lowSeq to it.highSeq })
     }
 
     @Test
@@ -473,7 +474,7 @@ class CanonicalMessageV2SegmentStoreTest {
                     var kill = false
                     val store = SqlDelightCanonicalMessageV2Store(database, now = { clock }, faultHook = { it == point && kill })
                     runBlocking {
-                        store.cover(1..3L, CanonicalMessageV2Coverage(1, 3, true, false, Older))
+                        store.cover(1..3L, CanonicalMessageV2Coverage(1, 3, true, false, Latest))
                         kill = true
                         assertFailsWith<PersistKilled> {
                             store.cover(4..6L, CanonicalMessageV2Coverage(4, 6, false, true, Latest), content = "second")

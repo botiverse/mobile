@@ -38,7 +38,14 @@ internal suspend fun resolveSharedTaskReference(
      * The ref names its conversation (`#proj:#7`, `dm:@peer:#7`): only a task of
      * [currentChannelId] matches; another conversation's `#7` never does.
      */
-    channelQualified: Boolean = false
+    channelQualified: Boolean = false,
+    /**
+     * The resolver whose single fetch phase the network lookup runs in, so a task ref's spinner is
+     * the same state as a thread or message ref's. Null: no loading state is published.
+     */
+    referenceResolver: SharedReferenceResolver? = null,
+    /** The chip this open started from. */
+    actionId: String? = null
 ): SharedTaskReferenceResolution {
     if (channelQualified && currentChannelId == null) return SharedTaskReferenceResolution.NotFound
     tasksDataStore?.bindCurrentOwnerIdentity()
@@ -51,6 +58,28 @@ internal suspend fun resolveSharedTaskReference(
         )
         ?.let { return it }
 
+    val fetch: suspend () -> SharedTaskReferenceResolution = {
+        fetchSharedTaskReference(
+            serverId = serverId,
+            taskNumber = taskNumber,
+            currentChannelId = currentChannelId,
+            tasksDataSource = tasksDataSource,
+            tasksDataStore = tasksDataStore,
+            channelQualified = channelQualified
+        )
+    }
+    return referenceResolver?.fetchPhase(actionId) { fetch() } ?: fetch()
+}
+
+/** A local miss: the channel's task by number, then the server's task list. */
+private suspend fun fetchSharedTaskReference(
+    serverId: ServerId,
+    taskNumber: Int,
+    currentChannelId: ChannelId?,
+    tasksDataSource: SharedTasksDataSource,
+    tasksDataStore: SharedTasksDataStore?,
+    channelQualified: Boolean
+): SharedTaskReferenceResolution {
     currentChannelId?.let { channelId ->
         when (
             val channelResult =
@@ -65,12 +94,16 @@ internal suspend fun resolveSharedTaskReference(
                 val task = channelResult.data.task
                 val foldOutcome = tasksDataStore?.upsertTaskForCurrentServer(serverId.value, task)
                 if (tasksDataStore != null && foldOutcome != SharedTaskFactFoldOutcome.Accepted) {
-                    return tasksDataStore.loadedTaskReferenceResolution(
+                    tasksDataStore.loadedTaskReferenceResolution(
                         serverId = serverId.value,
                         taskNumber = taskNumber,
                         currentChannelId = currentChannelId,
                         channelQualified = channelQualified
-                    ) ?: SharedTaskReferenceResolution.Failed
+                    )?.let { return it }
+                    // The store already holds this revision (a realtime frame), only not in a loaded
+                    // list, or its copy conflicts: the server just answered, so the task exists and
+                    // opens on that answer. Null: this store is no longer on this server.
+                    if (foldOutcome == null) return SharedTaskReferenceResolution.Failed
                 }
                 return SharedTaskReferenceResolution.Found(
                     task = task,

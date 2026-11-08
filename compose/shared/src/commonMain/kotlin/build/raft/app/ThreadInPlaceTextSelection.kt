@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +52,7 @@ import build.raft.app.markdown.LocalRaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftMarkdownLinkDragSelection
 import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.markdown.raftCopyText
+import build.raft.designsystem.components.RaftDismissOnPageCover
 import build.raft.designsystem.components.RaftTextSelectionToolbar
 import build.raft.designsystem.components.RaftTextSelectionToolbarButton
 import build.raft.designsystem.components.RaftTextSelectionToolbarDefaults
@@ -633,6 +635,16 @@ internal fun ThreadInPlaceSelectableBody(
         remember(themeColors) {
             TextSelectionColors(handleColor = themeColors.foreground, backgroundColor = themeColors.selection)
         }
+    val pageActive = LocalRaftPageActive.current
+    // Selectable only on the active page. Navigation 3 moves a page between scenes as movable content
+    // while it is covered, revealed or in motion (never active then), and a selectable text whose row
+    // recomposes in that frame throws: the list's own composition updates the detached node, and
+    // foundation's SelectableTextAnnotatedStringNode.update then reads a CompositionLocal on re-attach,
+    // before the node counts as attached (Compose 1.12.1, 1.13.0-rc01). Plain text reads none. A selection
+    // keeps its container until the effect below has cleared it, since clearing goes through the container.
+    // The body itself is movable so that it keeps its state across the switch.
+    val selectable = pageActive || controller.hasSelection
+    val movableBody = remember { movableContentOf<@Composable () -> Unit> { body -> body() } }
     CompositionLocalProvider(
         LocalTextToolbar provides textToolbar,
         LocalTextContextMenuToolbarProvider provides contextMenuProvider,
@@ -641,19 +653,26 @@ internal fun ThreadInPlaceSelectableBody(
     ) {
         // Ctrl/Cmd+C and the system text menu copy through the clipboard, not copySelection: clean them too.
         RaftCleanCopyClipboardScope {
-            SelectionContainer(
-                controller.selectionState,
-                Modifier
-                    .onGloballyPositioned(controller::onBodyPositioned)
-                    .threadInPlaceMouseSelectionEnd(controller),
-            ) {
-                content()
+            if (selectable) {
+                SelectionContainer(
+                    controller.selectionState,
+                    Modifier
+                        .onGloballyPositioned(controller::onBodyPositioned)
+                        .threadInPlaceMouseSelectionEnd(controller),
+                ) {
+                    movableBody(content)
+                }
+            } else {
+                movableBody(content)
             }
         }
     }
+    // A page pushed over this one drops the selection first, so its popup bar goes while this
+    // page still composes (once covered it may not). Only while there is one: every message has a
+    // controller.
+    if (controller.hasSelection) RaftDismissOnPageCover { controller.clear() }
     // A kept-alive page that goes inactive (hidden shell tab) drops its selection so the popup
     // bar cannot linger over the visible page.
-    val pageActive = LocalRaftPageActive.current
     LaunchedEffect(pageActive, controller) {
         if (!pageActive && controller.hasSelection) {
             diagnosticsLogger("thread_in_place_selection_page_inactive_clear messageId=${controller.messageId}")

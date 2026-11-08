@@ -30,6 +30,7 @@ import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.refreshPixelAvatarsFromWeb
+import build.raft.app.RaftLogLevel
 import build.raft.app.raftLogError
 import build.raft.app.raftLogInfo
 import build.raft.app.raftLogWarn
@@ -68,6 +69,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.RaftRequestScheduler
 import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.raftNetworkLogLevel
 import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
 import build.raft.app.network.sync.RaftThreadReplyWindowCache
 import build.raft.app.network.sync.CanonicalFinalPreparedCommitStep
@@ -153,6 +155,16 @@ private fun sharedInfoLogger(
 ): (String) -> Unit =
     { message ->
         raftLogInfo(tag, if (prefix.isBlank()) message else "$prefix $message", hint)
+    }
+
+/** Warn, except routine request start/finish lines, which are info ([raftNetworkLogLevel]). */
+private fun sharedNetworkLogger(tag: String, prefix: String): (String) -> Unit =
+    { message ->
+        val line = "$prefix $message"
+        when (raftNetworkLogLevel(message)) {
+            RaftLogLevel.Info -> raftLogInfo(tag, line)
+            else -> raftLogWarn(tag, line)
+        }
     }
 
 private fun sharedWarnLogger(
@@ -501,6 +513,8 @@ internal class RaftSharedStoreProvider private constructor(
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
+    /** Reads not yet acknowledged, per (environment, account, server, channel). Kept on sign-out, dropped with the server. */
+    private val readReceiptPendingStore = ReadReceiptPendingStore(sharedPreferenceStore)
     /** Last-known workspace notification preference per (user, server); kept on sign-out, dropped with the server. */
     val settingsServerNotificationLastKnownStore = SettingsServerNotificationLastKnownStore(sharedPreferenceStore)
     private val searchPersonalizationRepository = PersistentSearchPersonalizationRepository(sharedPreferenceStore)
@@ -581,6 +595,20 @@ internal class RaftSharedStoreProvider private constructor(
     }
     val artifactSummaryStore: SharedArtifactSummaryStore by artifactSummaryStoreLazy
 
+    /**
+     * Workspace Artifacts: the publish check's screenshots on the Artifact cards on screen
+     * (`GET /api/objects/artifact/{id}/files/{fileId}`), in memory for this viewer.
+     */
+    private val artifactScreenshotStoreLazy = lazy {
+        val clock = kotlin.time.TimeSource.Monotonic.markNow()
+        SharedArtifactScreenshotStore(
+            fetcher = NetworkArtifactScreenshotFetcher(networkClient),
+            scope = RaftStoreThreading.newScope(),
+            nowMillis = { clock.elapsedNow().inWholeMilliseconds },
+        )
+    }
+    val artifactScreenshotStore: SharedArtifactScreenshotStore by artifactScreenshotStoreLazy
+
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
         RaftKeyedSnapshotCache(
@@ -606,6 +634,9 @@ internal class RaftSharedStoreProvider private constructor(
      */
     internal val agentDetailCache: RaftAgentDetailCache =
         raftAgentDetailCache(offlineResourceCache.resource(AgentDetailResourceSpec))
+
+    /** Realtime `agent:updated` for open agent Profiles (they re-read `GET /agents/:id`). */
+    internal val agentUpdatedSignals: RaftAgentUpdatedSignals = RaftAgentUpdatedSignals()
 
     /**
      * Realtime `channel:members-updated`: every members store reloads its held list or drops a stored one
@@ -663,6 +694,7 @@ internal class RaftSharedStoreProvider private constructor(
                 // App link previews and consent answers, and Artifact summaries: per viewer, session only.
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
+                if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
                 build.raft.app.RaftArtifactViewerMemory.clear()
             },
@@ -1416,6 +1448,7 @@ internal class RaftSharedStoreProvider private constructor(
             onServerAccessLost = { grant ->
                 reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
                 threadPayloadStore.dropServer(grant.serverId)
+                readReceiptPendingStore.dropServer(grant.serverId, replyCacheAuthContext.value?.accountId)
                 // Step 3: the server's members (memory in every shell, durable row, avatar refs).
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
                 // Step 4: the server's conversation identities (names, avatars, DM peers) in every shell.
@@ -1456,6 +1489,8 @@ internal class RaftSharedStoreProvider private constructor(
                     serverFeatureFlagChangeRefresher.onReconnected(ServerId(grant.serverId))
                     // Nor are `appearance:updated` ones: a theme changed elsewhere while offline.
                     serverAppearanceCatchUp.onReconnected(ServerId(grant.serverId))
+                    // Reads made offline go out now.
+                    processReadReceiptCoordinator().replayPendingReads()
                 }
             },
             onAccepted = { grant, event ->
@@ -1490,7 +1525,11 @@ internal class RaftSharedStoreProvider private constructor(
             threadSendScope.launch {
                 avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
             }
+            processReadReceiptCoordinator().replayPendingReads()
         }
+        // Reads a previous process could not send. A session not restored yet keeps them for the
+        // first realtime connect.
+        threadSendScope.launch { processReadReceiptCoordinator().replayPendingReads() }
         threadSendScope.launch {
             realtimeAuthorityProvider.registerScope(
                 scopeKey = ProcessRealtimeAuthorityScopeKey,
@@ -2041,6 +2080,20 @@ internal class RaftSharedStoreProvider private constructor(
             }
         }
 
+    /** Message storage Phase 2c: where a message link or the agent overview offers the context pages it read. */
+    internal fun messageContextPageSink(scope: RaftShellStoreScope): RaftMessageContextPageSink =
+        DurableMessageContextPageSink(
+            extender = threadDurablePageExtender,
+            scope = threadSendScope,
+            currentIdentity = {
+                captureThreadReplyCacheIdentity(scope)?.let { identity ->
+                    Triple(identity.environmentId, identity.principalId, identity.serverId)
+                }
+            },
+            currentAccount = ::currentAccountBindingOrNull,
+            logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2ContextPage"),
+        )
+
     /** The computers cache owner for this shell's current session. */
     internal suspend fun computersOwner(scope: RaftShellStoreScope): SharedComputersOwner? =
         authStore(scope).readSession()?.let { session ->
@@ -2101,6 +2154,9 @@ internal class RaftSharedStoreProvider private constructor(
             SharedCreateAgentFormStore(
                 computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient(scope))),
                 scope = threadSendScope,
+                hostedRuntimeFlag = { serverId ->
+                    serverFeatureFlags.isEnabled(serverId, ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY)
+                },
                 ownerProvider = {
                     shellAuthStore.readSession()?.let { session ->
                         sharedCreateAgentFormOwner(
@@ -2507,6 +2563,24 @@ internal class RaftSharedStoreProvider private constructor(
                     session != null &&
                     session.user.id == owner.accountId &&
                     session.servers.any { server -> server.id == owner.serverId }
+            },
+            pendingStore = readReceiptPendingStore,
+            replayFrontierLoader = { owner ->
+                processReadReceiptRepository(owner).loadFreshReadFrontiers(ServerId(owner.serverId))
+            },
+            onReplayDropped = { _, _ ->
+                // Home was showing that read: the server's count comes back now.
+                homeStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeStoreScopes.get(shellScope)) { store.dispatch(SharedHomeIntent.Refresh) }
+                }
+            },
+            ownerAccessLost = { owner ->
+                val session = authStore.readSession()
+                apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/') == owner.environmentId &&
+                    session != null &&
+                    session.user.id == owner.accountId &&
+                    session.servers.isNotEmpty() &&
+                    session.servers.none { server -> server.id == owner.serverId }
             },
             onPrediction = { prediction ->
                 // The user read it here: its system notification (Android) goes too.
@@ -2920,7 +2994,7 @@ internal class RaftSharedStoreProvider private constructor(
                     scope = CoroutineScope(SupervisorJob()),
                     diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "auth_loss_funnel")
                 )
-            val networkWarningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network")
+            val networkWarningLogger = sharedNetworkLogger("SlockSharedNetwork", "shared_network")
             val networkRequestScheduler = RaftRequestScheduler()
             val networkExecutor = createPlatformRaftHttpExecutor(networkWarningLogger)
             val networkReachabilityGates = RaftHostReachabilityGates()

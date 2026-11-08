@@ -85,6 +85,8 @@ import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftJointServerBadge
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftPressSurface
 
 @Composable
 internal fun ThreadAgentFollowersRoute(
@@ -207,7 +209,8 @@ private fun FollowerNoticeView(
                     Box(Modifier.heightIn(min = 28.dp)
                         .background(Color.White.copy(alpha = 0.06f), buttonShape) // raft-color: wash on fixed dark toast
                         .border(1.dp, Color.White.copy(alpha = 0.14f), buttonShape) // raft-color: edge on fixed dark toast
-                        .clickable(enabled = enabled, onClick = onUndo).padding(horizontal = 8.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                        // The toast is ink in both modes: press lays the ink sticker's wash.
+                        .raftClickable(onClick = onUndo, enabled = enabled, shape = buttonShape, surface = RaftPressSurface.InkSticker).padding(horizontal = 8.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
                         Text(stringResource(Res.string.common_undo), style = RaftType.Caption, color = RaftColor.StickerPaper)
                     }
                 }

@@ -98,6 +98,21 @@ class RealReadReceiptRepository(
         )
     }
 
+    /** A fresh read state per scope, or null when none can be had now (offline, overloaded, remembered). */
+    internal suspend fun loadFreshReadFrontiers(serverId: ServerId): Map<ChannelId, ReadReceiptFrontier>? {
+        serverContext(serverId) ?: return null
+        val response =
+            try {
+                networkClient.channelUnreadCounts(DataRequestPriority.Background, serverId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return null
+            }
+        if (!response.isSuccessful || response.raftStaleReason() != null) return null
+        return response.bodyText?.let(::parseFreshReadFrontiers)
+    }
+
     override suspend fun markChannelReadToSeq(
         channelId: ChannelId,
         seq: Long

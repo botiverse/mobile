@@ -211,6 +211,25 @@ internal class RaftPopoverAnchor private constructor(
                 captureLease = captureLease
             )
 
+        /**
+         * A resolver for a holder that outlives one attachment of the captured node: it follows this
+         * ref's current capture instead of fencing to the lease it was made under. A [resolver] goes
+         * dead for good at the next [invalidate], which is right for a gesture-bound lease on a
+         * recycled row but not for a page's own control: Navigation 3 moves a stack entry between
+         * scenes as movable content on every push and pop, which detaches and reattaches its nodes
+         * while everything it remembered stays. Between attachments this still fails closed.
+         */
+        fun currentCaptureResolver(localPoint: RaftPopoverLocalPoint): RaftPopoverAnchorResolver =
+            RaftPopoverAnchorResolver(
+                identity = identity,
+                anchorRef = this,
+                localPoint = localPoint,
+                captureLease = null
+            )
+
+        internal val currentCaptureLease: Long
+            get() = captureLease
+
         fun resolve(localPoint: RaftPopoverLocalPoint): RaftPopoverAnchor? =
             resolve(localPoint = localPoint, expectedCaptureLease = captureLease)
 
@@ -371,17 +390,18 @@ internal class RaftPopoverAnchorResolver internal constructor(
     val identity: Any,
     private val anchorRef: RaftLiveRootAnchorRef,
     private val localPoint: RaftPopoverLocalPoint,
-    private val captureLease: Long
+    /** Null: follows the ref's current capture ([RaftLiveRootAnchorRef.currentCaptureResolver]). */
+    private val captureLease: Long?
 ) {
     internal val placementRevision: Long
         get() = anchorRef.placementRevision
 
-    fun resolve(): RaftPopoverAnchor? = anchorRef.resolve(localPoint, captureLease)
+    fun resolve(): RaftPopoverAnchor? = anchorRef.resolve(localPoint, captureLease ?: anchorRef.currentCaptureLease)
 
     internal fun resolveAtPlacementRevision(expectedPlacementRevision: Long): RaftPopoverAnchor? =
         anchorRef.resolve(
             localPoint = localPoint,
-            expectedCaptureLease = captureLease,
+            expectedCaptureLease = captureLease ?: anchorRef.currentCaptureLease,
             expectedPlacementRevision = expectedPlacementRevision
         )
 
@@ -389,7 +409,8 @@ internal class RaftPopoverAnchorResolver internal constructor(
 
     internal fun endObservingPlacement() = anchorRef.endObservingPlacement()
 
-    fun wasInvalidatedByCaptureReuse(): Boolean = anchorRef.wasCaptureLeaseInvalidatedByReuse(captureLease)
+    fun wasInvalidatedByCaptureReuse(): Boolean =
+        captureLease != null && anchorRef.wasCaptureLeaseInvalidatedByReuse(captureLease)
 }
 
 /**

@@ -98,6 +98,7 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import build.raft.designsystem.components.raftClickable
 
 /** Semantics, keyboard and touch of the interactive components (compose ui-test, desktop). */
 @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
@@ -761,5 +762,52 @@ class RaftInteractiveSemanticsTest {
             onNodeWithText("Done").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.LiveRegion))
             onNodeWithText("Done").performTouchInput { click(Offset(centerX, height + 8.dp.toPx())) }
             assertTrue(done, "a tap 8dp under the word ends the mode")
+        }
+
+    /** raftClickable: a button by default (or the role asked for) with its click label, the same box, and no click when disabled. */
+    @Test
+    fun raftClickableIsANamedButtonThatTakesNoRoom() =
+        runComposeUiTest {
+            var clicks = 0
+            var enabled by mutableStateOf(true)
+            setContent(
+                themed {
+                    Column {
+                        Box(
+                            Modifier
+                                .testTag("plain")
+                                .size(width = 120.dp, height = 32.dp),
+                        )
+                        Box(
+                            Modifier
+                                .testTag("pressable")
+                                .size(width = 120.dp, height = 32.dp)
+                                .raftClickable(onClick = { clicks++ }, enabled = enabled, onClickLabel = "Open details"),
+                        )
+                        Box(
+                            Modifier
+                                .testTag("tab")
+                                .size(40.dp)
+                                .raftClickable(onClick = {}, role = Role.Tab),
+                        )
+                    }
+                },
+            )
+            val pressable = onNodeWithTag("pressable")
+            pressable.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            assertEquals("Open details", pressable.fetchSemanticsNode().config[SemanticsActions.OnClick].label)
+            assertEquals(
+                onNodeWithTag("plain").fetchSemanticsNode().size,
+                pressable.fetchSemanticsNode().size,
+                "the modifier takes no layout room",
+            )
+            pressable.performClick()
+            assertEquals(1, clicks)
+            onNodeWithTag("tab").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+            enabled = false
+            waitForIdle()
+            pressable.assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            pressable.performClick()
+            assertEquals(1, clicks, "a disabled raftClickable does not click")
         }
 }

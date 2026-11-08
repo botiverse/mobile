@@ -28,17 +28,21 @@ internal data class RaftFeedbackCardEntry(
 )
 
 /**
+ * Whether `feedback:submit` cards open the Feedback WebView on [viewingServerId]. No server flag
+ * (artin, 1.22: the ticket web page is always on); only an unknown viewing server keeps it off,
+ * since the card entry is sent as operated from that server.
+ */
+internal fun raftFeedbackCardEntryEnabled(viewingServerId: String?): Boolean = !viewingServerId.isNullOrBlank()
+
+/**
  * The entry for tapping [card] (message [messageId]) on [viewingServerId], or null when the card
- * stays read-only: not a `feedback:submit` card, already executed, missing ids, or the viewing
- * server does not have `product_feedback_multi_app` on.
+ * stays read-only: not a `feedback:submit` card, already executed, or missing ids.
  */
 internal fun raftFeedbackCardEntryOrNull(
     messageId: String?,
     card: ThreadActionCard?,
     viewingServerId: String?,
-    productFeedbackMultiAppEnabled: Boolean,
 ): RaftFeedbackCardEntry? {
-    if (!productFeedbackMultiAppEnabled) return null
     if (card == null || !card.isFeedbackSubmitAction() || card.isExecuted) return null
     val id = messageId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val server = viewingServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -46,16 +50,15 @@ internal fun raftFeedbackCardEntryOrNull(
 }
 
 /** Whether a prepared `feedback:submit` card's button opens the Feedback page. */
-internal fun ThreadActionCard.opensFeedbackCardEntry(productFeedbackMultiAppEnabled: Boolean): Boolean =
-    productFeedbackMultiAppEnabled && isFeedbackSubmitAction() && !isExecuted
+internal fun ThreadActionCard.opensFeedbackCardEntry(): Boolean = isFeedbackSubmitAction() && !isExecuted
 
 /**
  * `<web>/feedback/?embed=…&shell=host[&actionCard=<id>&server=<id>][&ticket=<id>]`, on the current
  * environment's web origin. Both card params are added together or not at all. [ticketId] (a UUID,
  * [feedbackTicketIdOrNull]) asks the page to open on that ticket. The parameter is named exactly
- * `ticket` (agreed with the web: slock's standalone feedback page reads `ticket` and opens its
- * workspace on it, Kirby's S0.3 follow-up); a page that does not read it yet opens the list, which
- * is the S0.3 fallback.
+ * `ticket` (agreed with the web for Kirby's S0.3 follow-up). As of slock bb82a341b the standalone
+ * page (`packages/web/src/feedback/standalone/main.tsx`) does not read it yet and opens the list,
+ * which is the S0.3 fallback.
  */
 internal fun settingsFeedbackWebUrl(webBaseUrl: String?, entry: RaftFeedbackCardEntry?, ticketId: String? = null): String =
     sharedSettingsHostShellWebUrl(

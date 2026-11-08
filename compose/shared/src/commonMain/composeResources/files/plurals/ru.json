@@ -496,5 +496,11 @@
   "few": "%1$d страницы",
   "many": "%1$d страниц",
   "other": "%1$d страницы"
+ },
+ "thread_agent_read_status_agent_count": {
+  "one": "%1$d агент",
+  "few": "%1$d агента",
+  "many": "%1$d агентов",
+  "other": "%1$d агента"
  }
 }

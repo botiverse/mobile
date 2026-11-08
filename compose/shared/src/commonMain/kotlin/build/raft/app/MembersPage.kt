@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.LocalRaftBarButtons
+import build.raft.app.data.isFor
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
@@ -346,6 +347,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import build.raft.app.model.isExternalAgentRuntime
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
+import androidx.compose.ui.semantics.selected
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -1605,8 +1609,13 @@ private fun rememberExternalAgentDetailIndicatorState(
     val indicator = remember(externalStatus, lastSeenAt, now) {
         externalAgentDetailIndicator(externalStatus, now, lastSeenAt)
     }
+    val hostedLabel = detail?.summary?.hostedRuntime?.let { hostedRuntimeStateLabel(it) }
+    // A cloud agent has no setup for a person to finish: its provisioning state instead.
     val label =
-        when (val caption = indicator.caption) {
+        hostedLabel?.takeIf {
+            indicator.caption == ExternalAgentDetailCaption.SetupRequired ||
+                indicator.caption == ExternalAgentDetailCaption.NotConfigured
+        } ?: when (val caption = indicator.caption) {
             ExternalAgentDetailCaption.External -> stringResource(Res.string.member_external_status)
             ExternalAgentDetailCaption.Online -> stringResource(Res.string.member_external_online)
             ExternalAgentDetailCaption.SetupRequired -> stringResource(Res.string.member_external_setup_required)
@@ -3088,6 +3097,8 @@ private class MemberDetailRouteProvider(
     val agentControlsApi: RaftAgentControlsApi? = null,
     /** Data-layer plan step 5: last canonical agent details, keyed by account + server + agent. */
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
+    /** Realtime `agent:updated`: the open Profile re-reads its agent. */
+    val agentUpdatedSignals: build.raft.app.data.RaftAgentUpdatedSignals? = null,
     /** Synchronous (environment, account) of the process auth binding, for first-frame reads. */
     val accountBinding: () -> Pair<String, String>? = { null },
     /** DM opens: Home's DM at once, else one request per server + peer for any number of taps. */
@@ -3156,7 +3167,9 @@ private class MemberDetailRouteProvider(
 
     suspend fun applyRuntimeConfigProjection(
         authority: MembersAgentProfileEditAuthority,
-        config: RuntimeConfig
+        config: RuntimeConfig,
+        /** The read-back's `modelLimits.defaultsReported`: the signal for the saved config. */
+        modelLimitsDefaultsReported: Boolean? = null
     ): Boolean {
         val expectedOwner = authority.ownerOrNull() ?: return false
         if (currentAgentDetailOwner(authority.serverId, requireCurrentServer = true) != expectedOwner) return false
@@ -3165,7 +3178,8 @@ private class MemberDetailRouteProvider(
                 owner = expectedOwner,
                 agentId = authority.memberId,
                 config = config,
-                profileGeneration = authority.profileGeneration
+                profileGeneration = authority.profileGeneration,
+                modelLimitsDefaultsReported = modelLimitsDefaultsReported
             )
         )
         val projection = agentDetailStore.state.value.runtimeConfigProjection
@@ -3879,7 +3893,8 @@ private fun rememberMemberDetailRouteProvider(
     val activityOverviewRepository = remember(networkClient) {
         build.raft.app.data.RealAgentActivityOverviewRepository(
             networkClient = networkClient,
-            logger = { message -> bridge.log("member_detail_$message") }
+            logger = { message -> bridge.log("member_detail_$message") },
+            contextPageSink = sharedStores.messageContextPageSink(storeScope),
         )
     }
     val agentControlsApi = remember(networkClient) { RaftAgentControlsApi(networkClient) }
@@ -3944,6 +3959,7 @@ private fun rememberMemberDetailRouteProvider(
             activityOverviewRepository = activityOverviewRepository,
             agentControlsApi = agentControlsApi,
             agentDetailCache = sharedStores.agentDetailCache,
+            agentUpdatedSignals = sharedStores.agentUpdatedSignals,
             accountBinding = { sharedStores.currentAccountBindingOrNull() }
         )
     }
@@ -4359,6 +4375,41 @@ internal fun MemberDetailPageContent(
         routeState = loaded
         // The canonical detail request already includes the freshly merged durable/current
         // activity snapshot. Do not immediately repeat the same visible activity request.
+    }
+    // Realtime `agent:updated { agentId }` (a profile edit, or botiverse/slock #13492: the agent's
+    // modelLimits signal may have changed): the app shell re-reads the roster, and the open Profile
+    // re-reads this agent's detail in the background, keeping what it shows until the answer lands.
+    LaunchedEffect(provider, memberIdentity) {
+        val signals = provider.agentUpdatedSignals ?: return@LaunchedEffect
+        val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
+        signals.events.collect { signal ->
+            val route = routeState as? MemberDetailRouteState.Agent ?: return@collect
+            if (route.accessMode != MemberDetailAccessMode.LocalFull) return@collect
+            if (!signal.isFor(route.server.id.value, identity.memberId.value)) return@collect
+            val state = provider.agentDetailStore.state.value
+            val owner = state.detailOwner ?: return@collect
+            // A first load (or a cache replay still refreshing) brings the fresh answer itself.
+            if (
+                state.agentId != identity.memberId ||
+                state.detailFromCache ||
+                state.detailLoadStatus != SharedAgentDetailLoadStatus.Content
+            ) {
+                return@collect
+            }
+            val generation = state.detailProfileGeneration
+            val requestGeneration = agentProfileRequestGeneration
+            val current = {
+                agentProfileRequestGeneration == requestGeneration &&
+                    provider.agentDetailStore.state.value.let {
+                        it.agentId == identity.memberId && it.detailProfileGeneration == generation
+                    }
+            }
+            val loaded = provider.loadMember(identity, owner, generation, current, hasCachedAgentDetail = true)
+            if (!current() || (loaded as? MemberDetailRouteState.Error)?.error?.code == "member_request_stale") {
+                return@collect
+            }
+            routeState = loaded
+        }
     }
     LaunchedEffect(provider.serverMembersStore, statusResolverServerId) {
         val serverId = statusResolverServerId ?: return@LaunchedEffect
@@ -6067,6 +6118,7 @@ internal fun MembersListContent(
         val scope = rememberCoroutineScope()
         SharedCreateAgentDialog(
             external = activeCreateAgentMode == MembersCreateAgentMode.External,
+            offersHosting = true,
             submitting = createAgentSubmitting,
             errorMessage = createAgentError,
             errorFieldKeys = createAgentErrorFields,
@@ -6205,7 +6257,7 @@ private class MembersAgentDetailCallbacks(
     val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     val onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     val onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean = { _, _, _ -> false },
     val onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
     val onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
     val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction, AgentArchiveWorkspaceChoice) -> DataResult<AgentLifecycleActionResult>)?,
@@ -7653,7 +7705,7 @@ internal fun MembersDetailHeader(
     val threeDotButtonAnchor =
         remember(member.id.value) { RaftLiveRootAnchorRef(identity = "member:${member.id.value}:management") }
     val threeDotButtonAnchorResolver =
-        remember(threeDotButtonAnchor) { threeDotButtonAnchor.resolver(RaftPopoverLocalPoint.BottomEnd) }
+        remember(threeDotButtonAnchor) { threeDotButtonAnchor.currentCaptureResolver(RaftPopoverLocalPoint.BottomEnd) }
     val currentOnManagementMenuAnchorResolverReady by
         rememberUpdatedState(onManagementMenuAnchorResolverReady)
     val headerMetaLabel =
@@ -8271,7 +8323,8 @@ private fun MembersArchiveWorkspaceOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (enabled) Modifier.clickable(onClick = onSelect) else Modifier)
+            .then(if (enabled) Modifier.raftClickable(onClick = onSelect, role = Role.RadioButton, tier = RaftHoverTier.Subtle) else Modifier)
+            .semantics { this.selected = selected }
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top
@@ -9118,7 +9171,7 @@ internal fun MembersServerRoleEditor(
                 .height(33.dp)
                 // Web InlineBadgeEditor with the roles' `default` soft badge: the fill-muted wash.
                 .raftControlSurface(fill = RaftColor.FillMuted, border = RaftColor.LineField)
-                .clickable(enabled = enabled, onClick = onToggle)
+                .raftClickable(onClick = onToggle, enabled = enabled, shape = RoundedCornerShape(RaftAppRadius.Control))
                 .padding(horizontal = RaftAppSpacing.Sm, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
@@ -9485,7 +9538,7 @@ private fun MembersProfileIconAction(
     Box(
         modifier = Modifier
             .size(18.dp)
-            .clickable(onClick = onClick)
+            .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Chip))
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center
     ) {
@@ -10594,7 +10647,7 @@ private fun MembersAgentRuntimeConfigSection(
     edit: MembersAgentProfileEditInputs,
     runtimeModels: MembersAgentRuntimeModelInputs,
     createAgentFormStore: SharedCreateAgentFormStore?,
-    onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean
+    onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean
 ) {
     val canEdit = edit.canEdit
     val agentProfileEditAuthority = edit.agentProfileEditAuthority
@@ -10724,7 +10777,8 @@ private fun MembersAgentRuntimeConfigSection(
                             as? MembersAgentRuntimeConfigResolution.Content)?.config
                         val authority = runtimeEditorAuthority
                         val projected =
-                            config != null && authority != null && onApplyAgentRuntimeConfigProjection(authority, config)
+                            config != null && authority != null &&
+                                onApplyAgentRuntimeConfigProjection(authority, config, stored?.modelLimitsDefaultsReported)
                         closeRuntimeEditor()
                         // The save landed; only the read-back failed, so the rows may lag until a refresh.
                         if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
@@ -10787,6 +10841,11 @@ private fun MembersAgentRuntimeConfigSection(
                 canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get),
             machineId = summary?.machineId ?: member.membersComputerId
         )
+        // Web AgentProfileInfo: under the runtime rows (`mt-3`), before Environment Variables, only
+        // when the server says the session reported Raft default limits (botiverse/slock #13492).
+        if (summary?.modelLimitsDefaultsReported == true) {
+            MembersAgentModelLimitsWarning(Modifier.padding(top = MembersProfileEnvVarsGap - MembersInfoItemGap))
+        }
         MembersAgentRuntimeEnvVars(summary, modifier = Modifier.padding(top = MembersProfileEnvVarsGap - MembersInfoItemGap))
     }
 
@@ -10820,6 +10879,7 @@ private fun MembersAgentRuntimeConfigSection(
             runtimeId = session.config.runtime,
             machineRuntimeIds = agentMachineRuntimes,
             activeAgent = activeAgent,
+            modelLimitsDefaultsReported = summary?.modelLimitsDefaultsReported == true,
             saving = savingRuntimeConfig,
             error = runtimeConfigError,
             errorFieldKeys = runtimeFormV2ErrorFields,
@@ -11003,7 +11063,7 @@ private fun MembersAgentProfileTab(
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean = { _, _, _ -> false },
     agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     archiveInputs: MembersAgentArchiveInputs = MembersAgentArchiveInputs(),
     externalSetupServerUrl: String? = null,
@@ -11103,14 +11163,27 @@ private fun MembersAgentProfileTab(
                     managedByAppInstallId = member.managedByAppInstallId,
                 )
             ) {
-                MembersExternalAgentSetupSection(
-                    agentId = member.id,
-                    profileName = member.displayName,
-                    serverUrl = externalSetupServerUrl,
-                    agentsApiClient = agentsApiClient,
-                    canManage = canManage,
-                    onCopy = onCopyText
-                )
+                when (membersExternalAgentSection(summary)) {
+                    MembersExternalAgentSection.Hosted ->
+                        summary?.hostedRuntime?.let { hostedRuntime ->
+                            MembersAgentHostedRuntimeSection(
+                                agentId = member.id,
+                                initial = hostedRuntime,
+                                agentsApiClient = agentsApiClient,
+                                paused = !member.assistantPausedAt.isNullOrBlank()
+                            )
+                        }
+                    MembersExternalAgentSection.Setup ->
+                        MembersExternalAgentSetupSection(
+                            agentId = member.id,
+                            profileName = member.displayName,
+                            serverUrl = externalSetupServerUrl,
+                            agentsApiClient = agentsApiClient,
+                            canManage = canManage,
+                            onCopy = onCopyText
+                        )
+                    MembersExternalAgentSection.NotKnownYet -> Unit
+                }
             }
 
             // Web AgentDetailPanel profile tab: Info and Runtime config are followed by Skills,
@@ -11907,7 +11980,7 @@ private fun MembersAgentSkillRow(skill: AgentSkillSummary) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button) { open = !open }
+            .raftClickable(onClick = { open = !open }, tier = RaftHoverTier.Subtle)
             .semantics { if (open) collapse { open = false; true } else expand { open = true; true } }
             .padding(horizontal = 12.dp, vertical = RaftAppSpacing.Sm)
     ) {
@@ -12680,8 +12753,17 @@ private fun MembersAgentAppLoginCard(
                     RaftText(
                         text = stringResource(
                             Res.string.member_label_connected_since,
-                            it.membersActivityDisplayTime(timeContext)
+                            // A clock alone read as today for a grant from any day (artin 11-06).
+                            it.membersReminderShortDateTime(timeContext)
                         ),
+                        style = RaftTheme.typography.caption,
+                        color = RaftTheme.colors.foregroundHint
+                    )
+                }
+                // Web `GRANT_SOURCE_LABEL`: two grants of one App otherwise read as the same row.
+                item.grantSource?.let(::membersAgentAppGrantSourceLabel)?.let { label ->
+                    RaftText(
+                        text = stringResource(label),
                         style = RaftTheme.typography.caption,
                         color = RaftTheme.colors.foregroundHint
                     )
@@ -13596,7 +13678,7 @@ private fun MembersProfilePencilButton(
     Box(
         modifier = modifier
             .size(18.dp)
-            .clickable(onClick = onClick)
+            .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Chip))
             .then(
                 if (contentDescription != null) {
                     Modifier.semantics { this.contentDescription = contentDescription }
@@ -13698,7 +13780,7 @@ private fun MembersDetailSectionTitle(
 
 /** raft-ui Card (default) frame: container radius, a `line-hairline` edge on `layer-card`. */
 @Composable
-private fun Modifier.membersRaftCard(): Modifier {
+internal fun Modifier.membersRaftCard(): Modifier {
     val shape = RoundedCornerShape(RaftRadius.Container)
     val colors = RaftTheme.colors
     return clip(shape).background(colors.layerCard, shape).border(RaftStroke.Hairline, colors.lineHairline, shape)
@@ -13839,7 +13921,7 @@ private fun MembersListMachineGroupLabel(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = MembersListMachineLabelTop, bottom = MembersListMachineLabelBottom)
-            .clickable(role = Role.Button, onClick = onToggle)
+            .raftClickable(onClick = onToggle, tier = RaftHoverTier.Subtle)
             .semantics { if (expanded) collapse { onToggle(); true } else expand { onToggle(); true } }
             .padding(horizontal = MembersListMachineLabelInset),
         verticalAlignment = Alignment.CenterVertically,
@@ -14460,6 +14542,16 @@ private fun String.toMemberDetailDiagnosticsLine(): String =
         .filter { it.isNotBlank() }
         .joinToString(" | ")
         .take(1200)
+
+/** Web `GRANT_SOURCE_LABEL`; an unknown source shows no line. */
+internal fun membersAgentAppGrantSourceLabel(source: String): StringResource? =
+    when (source) {
+        "person" -> Res.string.member_app_grant_source_person
+        "agent_login" -> Res.string.member_app_grant_source_agent_login
+        "app_request" -> Res.string.member_app_grant_source_app_request
+        "legacy_import" -> Res.string.member_app_grant_source_legacy_import
+        else -> null
+    }
 
 private fun String?.membersActivityDisplayTime(timeContext: RaftTimeContext): String =
     formatRaftTimestampClockWithSeconds(this, timeContext)

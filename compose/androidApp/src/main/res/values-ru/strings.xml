@@ -515,9 +515,6 @@
     <string name="browser_unavailable_toast">Нет браузера, который может открыть эту ссылку</string>
     <string name="email_verified_toast">Адрес электронной почты подтверждён</string>
     <string name="email_verified_sign_in_toast">Адрес электронной почты подтверждён. Войдите, чтобы продолжить.</string>
-    <string name="provider_unavailable_toast">Этот способ входа пока недоступен на Android</string>
-    <string name="google_sign_in_no_code_toast">При входе через Google не получен код авторизации</string>
-    <string name="google_sign_in_failed_toast">Не удалось войти через Google. Попробуйте ещё раз.</string>
     <string name="oauth_request_expired_toast">Срок действия запроса на вход истёк. Попробуйте ещё раз.</string>
     <string name="provider_no_handoff_code_toast">Провайдер %1$s не вернул код передачи</string>
     <string name="provider_linked_toast">Аккаунт %1$s привязан.</string>

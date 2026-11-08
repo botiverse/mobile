@@ -183,6 +183,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
 import build.raft.app.data.map
 import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -248,6 +249,9 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SharedReferenceFailure
+import build.raft.app.data.SharedReferenceResolver
+import build.raft.app.data.sharedReferenceFailure
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
@@ -271,6 +275,9 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.expiredAsOf
+import build.raft.app.data.isActionCardExpiredRefusal
+import build.raft.app.data.markedExpired
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -300,7 +307,6 @@ import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.InstallMarketplaceAppActionCardType
-import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.messageBodyFontSizeOwnerKey
@@ -325,6 +331,7 @@ import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
 import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
+import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
@@ -407,6 +414,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.derivedStateOf
@@ -433,7 +441,6 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -527,13 +534,19 @@ import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.theme.LocalRaftColors
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.app.components.RaftDesignSystemTheme
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -550,7 +563,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -614,6 +630,7 @@ import kotlin.uuid.Uuid
 import kotlin.time.TimeSource
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.atomicfu.locks.SynchronizedObject
+import build.raft.designsystem.components.raftClickable
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
@@ -2793,6 +2810,36 @@ internal fun RaftThreadScreenPayload.joinChannelTargetId(): ChannelId? =
         ?: streamChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
+/**
+ * What Home hears of a join here. The row in case Home doesn't list the channel comes only from
+ * the channel's own page: a reply's title or a task sheet's other channel isn't that channel's name.
+ */
+internal fun channelJoinedHomeIntent(
+    payload: RaftThreadScreenPayload,
+    serverId: String,
+    channelId: ChannelId,
+): SharedHomeIntent.ChannelJoined =
+    SharedHomeIntent.ChannelJoined(
+        serverId = serverId,
+        channelId = channelId,
+        rowIfMissing =
+            payload.takeIf {
+                it.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                    it.joinChannelTargetId() == channelId &&
+                    it.title.isNotBlank()
+            }?.let {
+                HomeChannelRow(
+                    threadId = ThreadId(channelId.value),
+                    channelId = channelId,
+                    channelType = it.channelKind,
+                    kind = parseConversationKindOrNull(it.channelKind) ?: ConversationKind.Channel,
+                    name = it.title.removePrefix("#"),
+                    subtitle = it.subtitle,
+                    joined = true,
+                )
+            },
+    )
+
 internal fun RaftThreadScreenPayload.threadForwardSourceChannelId(): ChannelId? =
     (sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() }
@@ -4009,6 +4056,13 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
                 else -> knownTaskNumbers?.contains(label.removePrefix("#").toIntOrNull()) ?: true
             }
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
+        // A channel or DM the reader cannot resolve keeps the ref as plain text (Web MessageItem).
+        ThreadMarkdownTagKind.Message ->
+            if (directMessagePeerName != null) {
+                directMessagePeerName.normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames
+            } else {
+                channelName.orEmpty().trim().lowercase().let { it.isNotBlank() && it in knownChannelNames }
+            }
         ThreadMarkdownTagKind.DirectMessageThread ->
             directMessagePeerName.orEmpty().normalizedThreadMentionLookupKey() in knownDirectMessagePeerNames &&
                 !threadShortId.isNullOrBlank()
@@ -4206,7 +4260,10 @@ internal suspend fun openMarkdownTaskNumberPayload(
     taskV2Enabled: Boolean = false,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
     /** `#proj:#7` / `dm:@peer:#7`: only a task of [currentTaskChannelId] matches. */
-    channelQualified: Boolean = false
+    channelQualified: Boolean = false,
+    /** Its network lookup runs in this resolver's shared fetch phase (the chip spinner). */
+    referenceResolver: SharedReferenceResolver? = null,
+    actionId: String? = null
 ): MarkdownTaskNumberOpenResult {
     return when (
         val resolution =
@@ -4216,25 +4273,40 @@ internal suspend fun openMarkdownTaskNumberPayload(
                 currentChannelId = currentTaskChannelId,
                 tasksDataSource = tasksDataSource,
                 tasksDataStore = tasksDataStore,
-                channelQualified = channelQualified
+                channelQualified = channelQualified,
+                referenceResolver = referenceResolver,
+                actionId = actionId
             )
     ) {
         is SharedTaskReferenceResolution.Found -> {
             if (resolution.task.taskOpenSurface(taskV2Enabled) != null) {
                 return MarkdownTaskNumberOpenResult.OpensInPlace(resolution.task)
             }
+            val resolveConversation: suspend () -> ChannelId? = {
+                resolveTaskOpenConversationChannelId(
+                    task = resolution.task,
+                    serverId = serverId.value,
+                    tasksDataSource = tasksDataSource,
+                    taskV2Enabled = taskV2Enabled,
+                )
+            }
+            // A joint task's local conversation is a `POST /tasks/:id/conversation`: part of the
+            // open's fetch, so the shared spinner covers it; every other target is local.
+            val resolvedConversationChannelId =
+                if (
+                    referenceResolver != null &&
+                    resolution.task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation
+                ) {
+                    referenceResolver.fetchPhase(actionId) { resolveConversation() }
+                } else {
+                    resolveConversation()
+                }
             val payload =
                 currentPayload.taskThreadLaunchPayload(
                     task = resolution.task,
                     serverId = serverId,
                     conversationIdentityProvider = conversationIdentityProvider,
-                    resolvedConversationChannelId =
-                        resolveTaskOpenConversationChannelId(
-                            task = resolution.task,
-                            serverId = serverId.value,
-                            tasksDataSource = tasksDataSource,
-                            taskV2Enabled = taskV2Enabled,
-                        ),
+                    resolvedConversationChannelId = resolvedConversationChannelId,
                 ) ?: return MarkdownTaskNumberOpenResult.Failed
             MarkdownTaskNumberOpenResult.Found(
                 task = resolution.task,
@@ -4338,7 +4410,8 @@ internal fun shouldStartThreadTasksLoad(
     taskChannelId: ChannelId?
 ): Boolean =
     taskChannelId != null &&
-        payload.status == "content" &&
+        // A channel with no messages loads as "empty" and still has a Tasks tab to fill.
+        (payload.status == "content" || payload.status == "empty") &&
         payload.supportsChannelTasks() &&
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
 
@@ -5186,10 +5259,10 @@ private fun ThreadPageScreen(
                 authenticatedRouteAuthorityRequired = true,
             )
         },
-        onOpenChannelSettings = { serverId, channelId, currentStoreScope ->
+        onOpenChannelSettings = { serverId, channelId, currentStoreScope, linkKey ->
             pager.openRaftPage(
                 pageName = CHANNEL_SETTINGS_PAGE,
-                pageData = channelSettingsPageData(serverId, channelId),
+                pageData = channelSettingsPageData(serverId, channelId, linkKey),
                 storeScopeOverride = currentStoreScope,
                 authenticatedRouteAuthorityRequired = true,
             )
@@ -6719,7 +6792,8 @@ private class SharedThreadRouteContentCallbacks(
     val onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit,
     val onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit,
     val onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit,
-    val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit,
+    /** The last argument is the opening conversation's [ThreadSettingsPageLinks] key. */
+    val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit,
 )
 
 @Composable
@@ -6752,7 +6826,7 @@ internal fun SharedThreadRouteContent(
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
     onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
     onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit = { _, _, _, _, _ -> },
-    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit = { _, _, _ -> }
+    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit = { _, _, _, _ -> }
 ) {
     SharedThreadRouteContentContent(
         data =
@@ -6966,6 +7040,16 @@ private fun SharedThreadRouteContentContent(
     val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
     val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
     var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    val threadKeyboardTapDismissal =
+        remember(adaptiveFocusManager, adaptiveKeyboardController) {
+            ThreadKeyboardTapDismissal(
+                keyboardInsetDp = { adaptivePageKeyboardInsetDp },
+                hideKeyboard = {
+                    adaptiveFocusManager.clearFocus(force = true)
+                    adaptiveKeyboardController?.hide()
+                },
+            )
+        }
     var pendingAdaptiveParentFocus by remember { mutableStateOf<AdaptiveParentFocusRequest?>(null) }
     DisposableEffect(eventBus, adaptiveCloseRequest, threadViewModel) {
         val page = adaptiveCloseRequest
@@ -7964,8 +8048,12 @@ private fun SharedThreadRouteContentContent(
     val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow() }
     val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    // Reference-chip opens are single-flight in their store: busy chip, ignored repeat taps.
-    val markdownRefOpenStore = remember(threadInstanceKey) { ThreadMarkdownRefOpenStore(coroutineScope) }
+    // Reference-chip opens are single-flight in their store (ignored repeat taps). The busy chip is
+    // the reference resolver's fetch phase: a local hit never shows it, a fetch shows it throughout.
+    val markdownRefOpenStore =
+        remember(threadInstanceKey, dataSource) {
+            ThreadMarkdownRefOpenStore(coroutineScope, fetches = dataSource.referenceResolver.inFlight)
+        }
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
     fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? =
         markdownRefOpenStore.begin(actionId)
@@ -8197,6 +8285,12 @@ private fun SharedThreadRouteContentContent(
         stringResource(Res.string.thread_error_open_target, ThreadLocalizedFeedbackPlaceholder)
     val unableToOpenTaskNumberTemplate =
         stringResource(Res.string.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
+    val referenceNotFoundTemplate =
+        stringResource(Res.string.thread_error_ref_not_found, ThreadLocalizedFeedbackPlaceholder)
+    val referenceNoAccessTemplate =
+        stringResource(Res.string.thread_error_ref_no_access, ThreadLocalizedFeedbackPlaceholder)
+    val referenceOtherServerTemplate =
+        stringResource(Res.string.thread_error_ref_other_server, ThreadLocalizedFeedbackPlaceholder)
     val genericThreadErrorLabel = stringResource(Res.string.common_error)
     val pendingMentionActionBatchStrings =
         PendingMentionActionBatchStrings(
@@ -8317,6 +8411,15 @@ private fun SharedThreadRouteContentContent(
         unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
         unableToOpenTaskNumberTemplate.replace(ThreadLocalizedFeedbackPlaceholder, taskNumber.toString())
+    /** The toast of a reference that did not open, naming why ([fallback] when no reason applies). */
+    fun localizedReferenceFailure(failure: SharedReferenceFailure, target: String, fallback: String): String =
+        when (failure) {
+            SharedReferenceFailure.NotFound -> referenceNotFoundTemplate
+            SharedReferenceFailure.NoAccess -> referenceNoAccessTemplate
+            SharedReferenceFailure.OtherServer -> referenceOtherServerTemplate
+            SharedReferenceFailure.AuthRequired,
+            SharedReferenceFailure.Unavailable -> null
+        }?.replace(ThreadLocalizedFeedbackPlaceholder, target) ?: fallback
     fun localizedForwardModeLabel(mode: String?): String =
         if (mode?.trim()?.lowercase() == ThreadForwardSelectionMode.Individual.wireValue) {
             individualForwardModeLabel
@@ -8630,17 +8733,10 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(taskConversationDetailsViewModel, taskConversationTask, currentServerId) {
         if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
     }
-    // `feedback:submit` cards open the Feedback WebView only where the viewing server has
-    // `product_feedback_multi_app` on; follow the flag live as its evaluation lands.
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val feedbackCardEntryEnabled =
-        remember(featureFlagSnapshotRevision, currentServerId) {
-            currentServerId != null &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(currentServerId),
-                    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
-                )
-        }
+    // `feedback:submit` cards open the Feedback WebView once the viewing server is known (no server
+    // flag since 1.22).
+    val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
     // The session is captured a few frames after the page composes; until then the shell's server
@@ -12426,6 +12522,8 @@ private fun SharedThreadRouteContentContent(
                             threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
                             currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
                                 realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                             }
                             realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
                             bridge.toast(joinedChannelLabel)
@@ -12583,6 +12681,13 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
             )
+        val agentTypingInThread =
+            rememberThreadAgentTypingInThread(
+                payload = renderedThread,
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                serverId = currentServerId,
+            )
         // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
         // when the assistant is ready with its DM, never on that DM or a thread in it.
         val assistantOtterHostId = remember { newAssistantOtterHostId() }
@@ -12686,6 +12791,7 @@ private fun SharedThreadRouteContentContent(
                                 appHosts = sharedStores.clientConfigStore.appHosts,
                                 featureFlags = sharedStores.serverFeatureFlags,
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                                screenshots = sharedStores.artifactScreenshotStore,
                             ),
                         // interactive_link_cards: the batched link-card read (App link cards v2).
                         featureFlags = sharedStores.serverFeatureFlags,
@@ -12733,6 +12839,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
+                LocalThreadAgentTypingInThread provides agentTypingInThread,
                 LocalThreadAssistantOtter provides assistantOtter,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
@@ -12762,6 +12869,7 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
                 LocalThreadActionCardNames provides actionCardNames,
                 LocalThreadActionCardSpecHost provides actionCardSpecHost,
+                LocalThreadKeyboardTapDismissal provides threadKeyboardTapDismissal,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -12828,8 +12936,8 @@ private fun SharedThreadRouteContentContent(
                 action,
             )
         }
-        // Task v2 on a phone: the head scrolls with the conversation (web mobile); the top bar names
-        // the task's state while it is out of view and pulls the head down over the messages.
+        // Task v2 on a phone: the head is the conversation's first row; while that row is out of
+        // view the top bar names the task's state and pulls the head down over the messages.
         val taskHeadScrollState = remember(taskConversationId) { TaskHeadScrollState() }
         // Back (and Escape) puts the pulled-down head back up before it leaves the page.
         RaftBackHandler(enabled = taskHeadScrollState.floatOpen, label = "task_head_float") {
@@ -12855,10 +12963,11 @@ private fun SharedThreadRouteContentContent(
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
             timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
-        // The head in the conversation ([floating] false) and pulled down from the bar (true).
-        val taskConversationHeadRoute: (@Composable (floating: Boolean) -> Unit)? =
+        // The head pinned above the conversation off a phone, as its first row on a phone, and pulled
+        // down from the bar ([TaskHeadPlacement]).
+        val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
-                { floating ->
+                { placement ->
                     TaskConversationHeadRoute(
                         task = taskConversationTask,
                         state = taskConversationHeaderState,
@@ -12895,20 +13004,22 @@ private fun SharedThreadRouteContentContent(
                             )
                         },
                         scrollState = taskHeadScrollState,
-                        // Typing on a phone: the head folds away so the conversation keeps its room.
+                        // Typing on a phone: the pulled-down head goes back up.
                         keyboardUp = adaptivePageKeyboardInsetDp > 0f,
                         onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                         // The offline stand-in refuses writes: its status and assignee are plain facts.
                         editable = taskConversationTasksState?.standIn != true,
-                        floating = floating,
+                        placement = placement,
                         serverId = currentServerId,
                     )
                 }
             } else {
                 null
             }
-        val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(false) } }
-        val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(true) } }
+        val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.Page) } }
+        val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.PullDown) } }
+        val taskConversationHeadRow =
+            rememberTaskConversationHeadRow(taskHeadScrollState) { taskConversationHeadRoute?.invoke(TaskHeadPlacement.FirstRow) }
         // What the settings drawer (and the phone's settings page) do beyond the members strip and
         // the preferences: Info with the Slack pick, Guest access and every action through the
         // settings page's store, then what follows them. [onLeave] leaves the conversation after
@@ -13043,6 +13154,21 @@ private fun SharedThreadRouteContentContent(
                     if (serverId != null && channelId != null) onOpenMembersPager(renderedThread, serverId, channelId, storeScope, add)
                 },
                 onLeaveConversation = { leaveAfterSettingsPage = true },
+                // The standalone settings page: delete, disconnect or a private leave goes back as the
+                // drawer's Leave does; a public leave stays here with the composer's Join.
+                onChannelSettingsClosed = { landing, channelId ->
+                    if (landing != ChannelSettingsCloseLanding.StayInChannel) {
+                        currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                            realtimeRoomLeaseRegistry.forgetJoinedByUser(serverId, channelId.value)
+                        }
+                    }
+                    when (landing) {
+                        ChannelSettingsCloseLanding.StayInChannel -> Unit
+                        ChannelSettingsCloseLanding.StayNotJoined ->
+                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelLeft(channelId.value))
+                        ChannelSettingsCloseLanding.LeaveConversation -> leaveAfterSettingsPage = true
+                    }
+                },
             )
         SideEffect { settingsPageLink.sources = settingsPageSources }
         val openSettingsPage: () -> Boolean = {
@@ -13067,6 +13193,7 @@ private fun SharedThreadRouteContentContent(
             taskConversationChrome = taskConversationChrome,
             taskConversationHead = taskHeadScrollState.takeIf { taskConversationBar != null },
             taskConversationFloat = taskConversationFloat,
+            taskConversationHeadRow = taskConversationHeadRow.takeIf { taskConversationBar != null },
             agentFollowersHeader = {
                 // Task v2: a task conversation's bar carries its Agent followers too (web
                 // ThreadAgentFollowers `subject="task"` on the conversation channel).
@@ -13753,6 +13880,9 @@ private fun SharedThreadRouteContentContent(
                     }
                     // web ActionCard: a frozen card's button is disabled; nothing runs.
                     if (actionCard.isFrozen) return@ThreadPageContent
+                    // Expired (by state, or past `expiresAt` on this clock) or withdrawn: no run, and no
+                    // create-agent / create-channel / add-members dialog (they create, then mark it executed).
+                    if (threadActionCardCommitBlockedByEnd(actionCard, defaultNowMillis())) return@ThreadPageContent
                     // A reconfirm card's button reconfirms it (back to prepared), whatever its type.
                     if (actionCard.needsReconfirmation) {
                         pendingActionCardIds = pendingActionCardIds + itemId
@@ -13761,8 +13891,14 @@ private fun SharedThreadRouteContentContent(
                                 when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
                                     is DataResult.Content ->
                                         threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, result.data))
-                                    is DataResult.Empty,
-                                    is DataResult.Error -> bridge.toast(actionCardReconfirmFailedLabel)
+                                    is DataResult.Empty -> bridge.toast(actionCardReconfirmFailedLabel)
+                                    is DataResult.Error ->
+                                        if (result.error.isActionCardExpiredRefusal()) {
+                                            // The server refused it as expired (409): the card says so itself.
+                                            threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
+                                        } else {
+                                            bridge.toast(actionCardReconfirmFailedLabel)
+                                        }
                                     is DataResult.NoPermission -> {
                                         if (routeAuthRequired(result)) return@launch
                                         bridge.toast(actionCardReconfirmFailedLabel)
@@ -13780,12 +13916,6 @@ private fun SharedThreadRouteContentContent(
                                 messageId = itemId,
                                 card = actionCard,
                                 viewingServerId = currentServerId,
-                                productFeedbackMultiAppEnabled =
-                                    currentServerId != null &&
-                                        sharedStores.serverFeatureFlags.isEnabled(
-                                            ServerId(currentServerId),
-                                            PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
-                                        )
                             )
                         if (feedbackCardEntry == null) {
                             bridge.toast(actionUnsupportedLabel)
@@ -13817,7 +13947,14 @@ private fun SharedThreadRouteContentContent(
                     pendingActionCardIds = pendingActionCardIds + itemId
                     coroutineScope.launch {
                         try {
-                            val outcome = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp)
+                            var createdChannel: HomeChannelRow? = null
+                            val outcome =
+                                dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp) { channel ->
+                                    createdChannel = channel
+                                    // As submitCreateChannel: Home lists it now, whatever marking the card answers.
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.ChannelCreated(channel))
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                }
                             // "Verify it's you" closed: the card stays as it was, nothing is shown.
                             val result = (outcome as? SecondFactorStepUpOutcome.Completed)?.result ?: return@launch
                             when (result) {
@@ -13827,13 +13964,36 @@ private fun SharedThreadRouteContentContent(
                                     )
                                     bridge.toast(actionCardSuccessLabels[actionCard.type] ?: genericActionCardSuccessLabel)
                                 }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
+                                is DataResult.Empty -> {
                                     bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                }
+                                is DataResult.Error -> {
+                                    if (result.error.isActionCardExpiredRefusal()) {
+                                        // The server refused it as expired (409): the card says so itself.
+                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
+                                    } else {
+                                        bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                    }
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                }
+                            }
+                            // Web CreateChannelDialog `finish`: the new channel opens; marking the card doesn't hold it.
+                            createdChannel?.let { channel ->
+                                val next =
+                                    buildAppShellThreadPayload(
+                                        conversation = channel.toThreadLaunchConversationIdentity(),
+                                        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                                        alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                                        compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                                        onWarn = bridge::logWarn,
+                                    )
+                                if (next != null) {
+                                    onOpenThreadPayload(next)
+                                } else {
+                                    bridge.logWarn("action_card_created_channel_open_rejected reason=identity_unresolved")
                                 }
                             }
                         } finally {
@@ -14008,6 +14168,7 @@ private fun SharedThreadRouteContentContent(
                                     taskChannelId
                                 } else {
                                     dataSource.markdownTaskRefChannelId(
+                                        actionId = markdownActionId,
                                         currentPayload = renderedThread,
                                         conversationLabel =
                                             qualifiedTaskRef.channelName ?: qualifiedTaskRef.directMessagePeerName.orEmpty(),
@@ -14029,7 +14190,9 @@ private fun SharedThreadRouteContentContent(
                                     tasksDataStore = tasksDataStore,
                                     taskV2Enabled = taskV2Enabled,
                                     conversationIdentityProvider = conversationIdentityProvider,
-                                    channelQualified = qualifiedTaskRef != null
+                                    channelQualified = qualifiedTaskRef != null,
+                                    referenceResolver = dataSource.referenceResolver,
+                                    actionId = markdownActionId
                                 )
                             val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
                             if (result == null) {
@@ -14228,11 +14391,21 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
-                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef") &&
+                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef" || action == "openMarkdownMessageRef") &&
                     !itemId.isNullOrBlank() -> {
+                    val openMessageRef = action == "openMarkdownMessageRef"
+                    val unableToOpenRefLabel =
+                        if (openMessageRef) localizedUnableToOpenTarget(itemId.take(32)) else unableToOpenThreadRefLabel
+                    val refToastTarget =
+                        if (openMessageRef || tab.isNullOrBlank()) {
+                            itemId.take(32)
+                        } else {
+                            "#${itemId.removePrefix("#").take(31)}:${tab.take(12)}"
+                        }
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    // How long the chip waits for its target (a local hit, or messages/context).
+                    // How long the open waits for its target: a local hit opens with no spinner;
+                    // only a miss fetches messages/context, and the chip is busy for that fetch alone.
                     val resolveStartedAt = TimeSource.Monotonic.markNow()
                     var resolveOutcome = "cancelled"
                     bridge.log("thread_markdown_ref_resolve result=start label=${itemId.take(32)}")
@@ -14243,23 +14416,37 @@ private fun SharedThreadRouteContentContent(
                                     .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                             if (provenance == null) {
                                 resolveOutcome = "no_provenance"
-                                bridge.toast(unableToOpenThreadRefLabel)
+                                bridge.toast(unableToOpenRefLabel)
                                 return@launch
                             }
                             when (
                                 val result =
-                                    dataSource.markdownThreadRefLaunchPayload(
-                                        provenance = provenance,
-                                        currentPayload = renderedThread,
-                                        channelLabel = itemId,
-                                        threadShortId = tab,
-                                        requiredParentKind =
-                                            if (action == "openMarkdownDirectMessageThreadRef") {
-                                                ConversationKind.DirectMessage
-                                            } else {
-                                                null
+                                    if (openMessageRef) {
+                                        parseRaftMarkdownMessageRefLabel(itemId)
+                                            ?.let { ref ->
+                                                dataSource.markdownMessageRefLaunchPayload(
+                                                    provenance = provenance,
+                                                    currentPayload = renderedThread,
+                                                    ref = ref,
+                                                    actionId = markdownActionId
+                                                )
                                             }
-                                    )
+                                            ?: DataResult.Empty(EmptyReason.NoMessages)
+                                    } else {
+                                        dataSource.markdownThreadRefLaunchPayload(
+                                            provenance = provenance,
+                                            currentPayload = renderedThread,
+                                            channelLabel = itemId,
+                                            threadShortId = tab,
+                                            requiredParentKind =
+                                                if (action == "openMarkdownDirectMessageThreadRef") {
+                                                    ConversationKind.DirectMessage
+                                                } else {
+                                                    null
+                                                },
+                                            actionId = markdownActionId
+                                        )
+                                    }
                             ) {
                                 is DataResult.Content -> {
                                     resolveOutcome = "opened"
@@ -14276,27 +14463,45 @@ private fun SharedThreadRouteContentContent(
                                         val targetFocusedMessageId = result.data.focusedMessageId
                                         if (!targetFocusedMessageId.isNullOrBlank()) {
                                             threadViewModel.dispatch(
-                                                SharedThreadIntent.FocusMessage(
-                                                    messageId = targetFocusedMessageId,
-                                                    switchToTab = result.data.selectedTab
-                                                )
+                                                if (openMessageRef) {
+                                                    // The named message may be outside the loaded window.
+                                                    SharedThreadIntent.JumpToMessage(
+                                                        messageId = targetFocusedMessageId,
+                                                        switchToTab = result.data.selectedTab
+                                                    )
+                                                } else {
+                                                    SharedThreadIntent.FocusMessage(
+                                                        messageId = targetFocusedMessageId,
+                                                        switchToTab = result.data.selectedTab
+                                                    )
+                                                }
                                             )
                                         }
                                     } else {
                                         onOpenThreadPayload(result.data)
                                     }
                                 }
+                                // A failure never navigates: the toast names why and the page stays.
                                 is DataResult.Empty -> {
-                                    resolveOutcome = "empty"
-                                    bridge.errorToast(unableToOpenThreadRefLabel)
+                                    val failure = result.sharedReferenceFailure()
+                                    resolveOutcome = if (failure == SharedReferenceFailure.OtherServer) "other_server" else "not_found"
+                                    bridge.errorToast(localizedReferenceFailure(failure, refToastTarget, unableToOpenRefLabel))
                                 }
                                 is DataResult.Error -> {
                                     resolveOutcome = "error"
-                                    bridge.errorToast(unableToOpenThreadRefLabel, result.error)
+                                    bridge.errorToast(unableToOpenRefLabel, result.error)
                                 }
                                 is DataResult.NoPermission -> {
                                     resolveOutcome = "no_permission"
-                                    routeAuthRequired(result)
+                                    if (!routeAuthRequired(result)) {
+                                        bridge.errorToast(
+                                            localizedReferenceFailure(
+                                                result.sharedReferenceFailure(),
+                                                refToastTarget,
+                                                unableToOpenRefLabel
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         } finally {
@@ -14552,6 +14757,8 @@ private fun SharedThreadRouteContentContent(
                                     // Now a member: closing this page must not leave the room (the
                                     // conversation directory may still list the channel as not joined).
                                     realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
                                 }
                                 realtimeEvents.joinChannel(
                                     result.data.channelId.value,
@@ -14595,7 +14802,7 @@ private fun SharedThreadRouteContentContent(
                         )
                         return@ThreadPageContent
                     }
-                    onOpenChannelSettings(serverId, channelId, storeScope)
+                    onOpenChannelSettings(serverId, channelId, storeScope, settingsPageLinkKey)
                 }
                 action == "loadMembers" -> {
                     if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
@@ -15445,7 +15652,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                         radius = RaftAppRadius.Container,
                         borderWidth = RaftAppStroke.Thin
                     )
-                    .clickable(onClick = onClick)
+                    .raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Container), tier = RaftHoverTier.Subtle, selected = currentChannel)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -16455,10 +16662,12 @@ private data class ThreadPageContentData(
     val taskConversationBar: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
     val taskConversationChrome: TaskConversationHeaderChrome? = null,
-    /** Task v2 on a phone: the head moves with the conversation's scroll and is pulled down from the bar. */
+    /** Task v2 on a phone: whether the head's row is in view, and the head pulled down from the bar while it is not. */
     val taskConversationHead: TaskHeadScrollState? = null,
     /** Task v2 on a phone: the head pulled down from the bar over the messages ([TaskHeadFloat]). */
     val taskConversationFloat: (@Composable () -> Unit)? = null,
+    /** Task v2 on a phone: the head as the conversation's first row ([LocalTaskConversationHeadRow]). */
+    val taskConversationHeadRow: TaskConversationHeadRow? = null,
     val threadInstanceKey: String,
     val routeActive: Boolean,
     val hostForeground: Boolean,
@@ -16570,6 +16779,7 @@ fun ThreadPageContent(
     taskConversationChrome: TaskConversationHeaderChrome? = null,
     taskConversationHead: TaskHeadScrollState? = null,
     taskConversationFloat: (@Composable () -> Unit)? = null,
+    taskConversationHeadRow: TaskConversationHeadRow? = null,
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
@@ -16683,6 +16893,7 @@ fun ThreadPageContent(
                 taskConversationChrome = taskConversationChrome,
                 taskConversationHead = taskConversationHead,
                 taskConversationFloat = taskConversationFloat,
+                taskConversationHeadRow = taskConversationHeadRow,
                 threadInstanceKey = threadInstanceKey,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
@@ -17536,6 +17747,14 @@ private fun ThreadPageContentContent(
                     markdownActionId = actionId
                 )
             }
+            ThreadMarkdownTagKind.Message -> {
+                onThreadEvent(
+                    "openMarkdownMessageRef",
+                    tag.label,
+                    tab = tag.kind.name,
+                    markdownActionId = actionId
+                )
+            }
             ThreadMarkdownTagKind.DirectMessage -> {
                 onThreadEvent(
                     "openMarkdownDirectMessage",
@@ -18090,18 +18309,18 @@ private fun ThreadPageContentContent(
                     content = renderThreadTabContent
                 )
             } else {
-                // Task v2: the list tells the head how far it may fold ([taskHeadConversationOverflow]).
                 // No tab pager around the list here: dragging it left shows message times
                 // (ThreadMessageTimeReveal.kt). Under the pager that drag pages to Tasks.
+                // Task v2 on a phone: the list draws the head as its first row.
                 CompositionLocalProvider(
-                    LocalTaskHeadScrollState provides data.taskConversationHead,
                     LocalThreadTimeRevealAvailable provides true,
+                    LocalTaskConversationHeadRow provides data.taskConversationHeadRow,
                 ) {
                     renderThreadTabContent(
                         // Task v2 cards: the page under them is always the conversation.
                         if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
                         Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
-                            // Task v2 on a phone: the head above moves with the conversation's scroll.
+                            // Task v2 on a phone: scrolling the messages puts the pulled-down head back up.
                             .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
                         true
                     )
@@ -18937,8 +19156,8 @@ internal fun ThreadPageHeader(
         },
         titleContent = {
             if (taskConversationChrome != null) {
-                // Task v2 (web TaskConversationBar): the ref over "Task #7", and the task's state once
-                // the head has scrolled away.
+                // Task v2 (web TaskConversationBar): the ref over "Task #7", and on a phone the task's
+                // state with the chevron that pulls the head down.
                 TaskConversationBarTitle(taskConversationChrome, Modifier.weight(1f))
             } else
             Column(
@@ -18953,19 +19172,14 @@ internal fun ThreadPageHeader(
                 // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
                 verticalArrangement = Arrangement.Top
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ThreadHeaderDmAgentActivityLeadingGap)
-                ) {
+                ThreadHeaderNameFirstRow(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = localizedHeaderTitle,
                         // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
                         style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                         color = RaftColor.TextBlack,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel) {
                         RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
@@ -18976,7 +19190,9 @@ internal fun ThreadPageHeader(
                     if (dmAppBot != null) {
                         RaftAppBotBadge(identity = dmAppBot, botName = localizedHeaderTitle)
                     } else {
-                        dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
+                        dmAgentActivity?.let {
+                            ThreadDmAgentActivity(state = it, modifier = Modifier.layoutId(ThreadHeaderYieldingSlot))
+                        }
                     }
                 }
                 // Web #10285: a reply thread's channel name does what Open in Channel does (the
@@ -19232,25 +19448,20 @@ private fun threadHeaderSideColumnActions(
 
 @Composable
 private fun ThreadActivityMutedBadge() {
-    // raft-ui `PanelStatus`: a bare attribute (no edge, no fill), caption medium in
-    // source case on foreground-hint.
-    Row(
+    // Header space is tight (name, status, actions), so muted shows as the bell-off icon alone
+    // (artin, 11-08); screen readers still hear "Muted".
+    val mutedLabel = stringResource(Res.string.member_label_muted)
+    Box(
         modifier =
             Modifier
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .clearAndSetSemantics { contentDescription = mutedLabel },
+        contentAlignment = Alignment.Center
     ) {
         RaftLucideIcon(
             RaftLucideIconName.BellOff,
-            Modifier.size(11.dp),
+            Modifier.size(14.dp),
             color = raftArgbHex(RaftColor.ForegroundHint)
-        )
-        Text(
-            text = stringResource(Res.string.member_label_muted),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
-            color = RaftColor.ForegroundHint,
-            maxLines = 1
         )
     }
 }
@@ -19294,8 +19505,57 @@ internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
         ?.trim()
         ?.takeIf(String::isNotBlank)
 
+private const val ThreadHeaderYieldingSlot = "yielding"
+
+/**
+ * The header's title line: the name, its badges, then the agent's activity, 8dp apart. The name is
+ * measured first (web ChatPanel: `PanelTitle` keeps its width, AgentDMStatus is `flex-1 min-w-0`),
+ * so on a crowded phone head the activity words give way down to the dot and the name stays
+ * readable (artin 2026-11-06: with task v2's three buttons the name had shrunk to "."). The badges
+ * keep their width; the [ThreadHeaderYieldingSlot] child gets what is left after them and the name,
+ * but never less than its dot.
+ */
 @Composable
-private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
+private fun ThreadHeaderNameFirstRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val gap = ThreadHeaderDmAgentActivityLeadingGap.roundToPx()
+        val loose = constraints.copy(minWidth = 0)
+        val name = measurables.first()
+        val yielding = measurables.drop(1).firstOrNull { it.layoutId == ThreadHeaderYieldingSlot }
+        val fixed = measurables.drop(1).filter { it !== yielding }.map { it.measure(loose) }
+        val gaps = gap * (measurables.size - 1)
+        val yieldingMin = if (yielding == null) 0 else ThreadHeaderDmAgentActivityDotSize.roundToPx()
+        val namePlaceable =
+            if (constraints.hasBoundedWidth) {
+                val room = constraints.maxWidth - fixed.sumOf { it.width } - gaps - yieldingMin
+                name.measure(loose.copy(maxWidth = room.coerceAtLeast(0)))
+            } else {
+                name.measure(loose)
+            }
+        val yieldingPlaceable =
+            yielding?.let {
+                if (constraints.hasBoundedWidth) {
+                    val rest = constraints.maxWidth - namePlaceable.width - fixed.sumOf { p -> p.width } - gaps
+                    it.measure(loose.copy(maxWidth = rest.coerceAtLeast(0)))
+                } else {
+                    it.measure(loose)
+                }
+            }
+        val placeables = listOf(namePlaceable) + fixed + listOfNotNull(yieldingPlaceable)
+        val width = constraints.constrainWidth(placeables.sumOf { it.width } + gap * (placeables.size - 1))
+        val height = constraints.constrainHeight(placeables.maxOf { it.height })
+        layout(width, height) {
+            var x = 0
+            placeables.forEach {
+                it.placeRelative(x, (height - it.height) / 2)
+                x += it.width + gap
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState, modifier: Modifier = Modifier) {
     // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
     // warning colour, not as a plain "busy". Otherwise the same localized caption as every
     // other live-status surface (SSOT audit).
@@ -19304,7 +19564,7 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
     val labelColor = if (toolStuck != null) RaftColor.WarningStrong else RaftColor.ForegroundHint
     Row(
         modifier =
-            Modifier
+            modifier
                 .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
                 .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
@@ -19324,7 +19584,9 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
                 ),
             color = labelColor,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            // The dot stays; the words give way (web AgentDMStatus `truncate`).
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }
@@ -21555,6 +21817,9 @@ private fun ThreadMessagesListContent(
             onThreadContentReady()
         }
         val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
+        // Task v2 on a phone: the head is the conversation's first row, so it stays above its
+        // loading or empty state (web: the parent slot over the replies' placeholder).
+        TaskConversationHeadAboveState(LocalTaskConversationHeadRow.current) {
         if (
             timelineSlice.status == "loading" ||
             threadEmptyStandInAwaitsFirstLoad(
@@ -21576,6 +21841,7 @@ private fun ThreadMessagesListContent(
                 localizedThreadStateTitle(timelineSlice.emptyTitle),
                 localizedThreadStateDetail(timelineSlice.emptyDetail)
             )
+        }
         }
         return
     }
@@ -21625,6 +21891,18 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
+    val agentTypingInThread = LocalThreadAgentTypingInThread.current
+    // agent_read_progress_v0 (web useAgentReadProgress): each agent's face on the message it read up to,
+    // and the line under the viewer's latest message when it will not reach an agent.
+    val agentReadProgress =
+        remember(peerReadReceipts, renderPayload.messages, renderPayload.canLoadMoreAfter, agentTyping, agentTypingInThread) {
+            peerReadReceipts?.threadAgentReadProgress(
+                messages = renderPayload.messages,
+                hasNewer = renderPayload.canLoadMoreAfter,
+                workingAgentIds = agentTyping?.agents?.map { it.agentId }.orEmpty(),
+                threadWorkingAgentIds = { parent -> agentTypingInThread?.agentIds(parent).orEmpty() },
+            )
+        }
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -24368,11 +24646,19 @@ private fun ThreadMessagesListContent(
                 )
             }
             val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
-            val taskHeadScrollState = LocalTaskHeadScrollState.current
-            val taskHeadOverflowModifier =
-                remember(taskHeadScrollState, listState.raw) {
-                    Modifier.taskHeadConversationOverflow(taskHeadScrollState, listState.raw)
+            // Task v2 on a phone: the head is the list's first row, at the top of the history
+            // boundary row (web `mobile-modal`: the parent row over the history boundary), so it
+            // moves with the conversation; the top bar summarizes the task while it is out of view.
+            val taskHeadRow = LocalTaskConversationHeadRow.current?.takeIf { maxWidth < TaskHeadPinnedMinWidth }
+            if (taskHeadRow != null) {
+                LaunchedEffect(taskHeadRow, listState) {
+                    snapshotFlow { listState.threadTaskHeadRowInView(taskHeadRow.scrollState.rowHeadHeightPx) }
+                        .distinctUntilChanged()
+                        .collect { inView -> taskHeadRow.scrollState.updateHeadInView(inView) }
                 }
+                // No longer a row of this list: the bar does not keep a summary for it (web).
+                DisposableEffect(taskHeadRow) { onDispose { taskHeadRow.scrollState.updateHeadInView(true) } }
+            }
             // Drag the list toward its start to see message times (ThreadMessageTimeReveal.kt): where
             // no tab pager surrounds the list, and not while messages are being selected.
             val timeRevealState = rememberThreadTimeRevealState(threadInstanceKey)
@@ -24394,9 +24680,6 @@ private fun ThreadMessagesListContent(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
-                    // Task v2: a short conversation stays bottom-anchored with the head in view
-                    // instead of a gap above its oldest row once the head folds (#proj-mobile:#69).
-                    .then(taskHeadOverflowModifier)
                     .then(
                         if (inPlaceSelectionViewportHost?.enabled == true) {
                             // In-place selection bar stays inside the list's visible viewport.
@@ -24648,6 +24931,10 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (renderPayload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
+                    Column(Modifier.fillMaxWidth()) {
+                    // Task v2 on a phone: the head above where the conversation begins, or above the
+                    // older messages still to load (they come in under it: it stays the first row).
+                    taskHeadRow?.let { TaskConversationHeadRowContent(it) }
                     when {
                         renderPayload.canLoadMoreBefore && renderPayload.olderMessagesStatus == "error" ->
                             ThreadInlineActionRow(
@@ -24666,6 +24953,7 @@ private fun ThreadMessagesListContent(
                             )
                         else ->
                             ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(renderPayload))
+                    }
                     }
                 }
             }
@@ -24736,6 +25024,16 @@ private fun ThreadMessagesListContent(
                                 localOffsetMinutes = renderConfig.timeContext.localOffsetMinutes
                             )
                     }
+                // Web MessageItem `showSelectedGroupedHeader`: while messages are picked for the share
+                // image, the first selected row of a run shows its author even when the timeline groups
+                // it under an unselected message, so the image (the live rows) never starts headless.
+                val rowSuppressesRepeatedAuthor =
+                    threadShareSelectionSuppressesAuthor(
+                        timelineSuppressesAuthor = suppressRepeatedAuthor,
+                        selectionActive = shareSelectionActive || shareSelectionCaptureActive,
+                        selected = message.id in selectedShareMessageIds,
+                        previousSelected = previousMessage != null && previousMessage.id in selectedShareMessageIds,
+                    )
                 val isRichContentEnabled = contentExtrasVisible
                 val actionCardSignature =
                     if (isRichContentEnabled) {
@@ -24907,7 +25205,7 @@ private fun ThreadMessagesListContent(
                             ThreadTimeRevealRow(
                                 state = timeReveal,
                                 timeLabel = formatThreadTimeRevealLabel(message.timestampLabel, renderConfig.timeContext),
-                                continuation = renderPayload.compactConsecutiveMessages && suppressRepeatedAuthor,
+                                continuation = renderPayload.compactConsecutiveMessages && rowSuppressesRepeatedAuthor,
                             ) {
                                 ThreadMessageCard(
                                     message = displayMessage,
@@ -24961,7 +25259,7 @@ private fun ThreadMessagesListContent(
                                     alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
                                     messageAlignmentModeEnabled = renderPayload.alignOwnMessagesRight,
                                     compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
-                                    suppressRepeatedAuthor = suppressRepeatedAuthor,
+                                    suppressRepeatedAuthor = rowSuppressesRepeatedAuthor,
                                     showReplyAction = renderPayload.showReplyActions,
                                     quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
                                     resolvedTaskAssigneeName = linkedTaskAssigneeName,
@@ -25070,6 +25368,24 @@ private fun ThreadMessagesListContent(
                     if (message.id == dmReadStatusMessageId && peerReadReceipts?.showsDmReadStatus(displayMessage) == true) {
                         // The card already ends in its 8dp bottom padding, which stands in for web `mt-1`.
                         ThreadDmReadStatusRow(
+                            Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web AgentReadFaces): the faces of the agents that read up to
+                    // this message, at its end. The @mention read badges stay, as on web.
+                    agentReadProgress?.facesByMessageId?.get(message.id)?.let { faces ->
+                        ThreadAgentReadFacesRow(
+                            faces = faces,
+                            serverId = agentReadProgress.serverId,
+                            modifier = Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
+                    // agent_read_progress_v0 (web option C, AgentReadStatusLine): under the viewer's latest
+                    // message, only when it will not reach an agent that stopped following or muted.
+                    val agentReadStatus = agentReadProgress?.status
+                    if (agentReadStatus != null && message.id == agentReadStatus.messageId) {
+                        ThreadAgentReadStatusRow(
+                            agentReadStatus,
                             Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
                         )
                     }
@@ -25902,6 +26218,9 @@ internal fun ThreadComposerDock(
     edgePadding: Dp = RaftAppSpacing.Sm,
     composer: @Composable () -> Unit,
 ) {
+    val ime = WindowInsets.ime
+    val hostIme = LocalRaftHostImeInsets.current
+    val density = LocalDensity.current
     Column(
         modifier =
             Modifier
@@ -25921,7 +26240,10 @@ internal fun ThreadComposerDock(
                     .padding(start = edgePadding, top = 12.dp, end = edgePadding)
                     .then(composerModifier)
                     // raft-ui: on a conversation page the window's toasts sit just above the composer.
-                    .raftToastAvoid(enabled = LocalRaftPageActive.current)
+                    .raftToastAvoid(
+                        enabled = LocalRaftPageActive.current,
+                        keyboardPx = { raftImeBottomPx(ime, hostIme, density).toFloat() },
+                    )
         ) { composer() }
     }
 }
@@ -27565,6 +27887,19 @@ internal fun shouldRestoreThreadOlderPageAnchor(
     currentUserScrollGeneration: Int
 ): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
+/** Task v2: whether any of the head at the top of the history boundary row is on screen ([taskHeadRowInView]). */
+private fun ThreadListViewport.threadTaskHeadRowInView(headHeightPx: Int): Boolean {
+    val info = layoutInfo
+    val row = info.visibleItemsInfo.firstOrNull { it.key == ThreadOlderMessagesListItemKey }
+    return taskHeadRowInView(
+        rowOffsetPx = row?.offset,
+        rowSizePx = row?.size ?: 0,
+        headHeightPx = headHeightPx,
+        viewportStartPx = info.viewportStartOffset,
+        viewportEndPx = info.viewportEndOffset,
+    )
+}
+
 private fun ThreadListViewport.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,
     userScrollGeneration: Int,
@@ -29065,20 +29400,25 @@ private fun ThreadMessageCardContent(
         }
     // A tap whose gesture started while a selection was showing (here or on another row) only
     // dismisses it. The flag is captured at DOWN because the selection is already gone by onTap.
+    val keyboardTapDismissal = LocalThreadKeyboardTapDismissal.current
     val consumeSelectionDismissalTap: (() -> Boolean)? =
-        if (inPlaceSelection == null || (rowTapAction == null && rowDoubleTapAction == null)) {
+        if (rowTapAction == null && rowDoubleTapAction == null) {
             null
         } else {
             {
-                val selectionShowingAtDown = inPlaceSelection.dismissalGestureInFlight
-                inPlaceSelection.dismissalGestureInFlight = false
+                val selectionShowingAtDown = inPlaceSelection?.dismissalGestureInFlight == true
+                inPlaceSelection?.dismissalGestureInFlight = false
                 when (threadInPlaceSelectionTapDecision(selectionShowingAtDown)) {
                     ThreadInPlaceSelectionTapDecision.DismissSelectionOnly -> {
                         diagnosticsLogger("thread_in_place_selection_tap_clear messageId=${message.id}")
-                        inPlaceSelection.clear()
+                        inPlaceSelection?.clear()
                         true
                     }
-                    ThreadInPlaceSelectionTapDecision.RunRowAction -> false
+                    ThreadInPlaceSelectionTapDecision.RunRowAction -> {
+                        val keyboardClosed = keyboardTapDismissal?.dismissIfUp() == true
+                        if (keyboardClosed) diagnosticsLogger("thread_message_row_tap_keyboard_only messageId=${message.id}")
+                        keyboardClosed
+                    }
                 }
             }
         }
@@ -29483,39 +29823,43 @@ private fun ThreadMessageCardContent(
                         // RFC 082: a card message's card (message_cards on), else its text below.
                         val messageCard = if (richContentEnabled && actionCard == null) rememberThreadMessageCard(message.metadata) else null
                         if (richContentEnabled && actionCard != null) {
+                            // A prepared card past its `expiresAt` by the live clock draws as expired: no button,
+                            // no dialog (the server's 409 stays final).
+                            val actionCardNowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+                            val shownActionCard = actionCard.expiredAsOf(actionCardNowMillis)
                             // A4: the spec card when `action_card_spec` is on for the card's
                             // server; otherwise (and for every card without a spec) the typed card.
                             val specHost = LocalThreadActionCardSpecHost.current
                             val viewerServerId = LocalThreadViewerServerId.current
-                            val specFlagServerId = actionCard.actionCardSpecFlagServerId(viewerServerId)
+                            val specFlagServerId = shownActionCard.actionCardSpecFlagServerId(viewerServerId)
                             val specEnabled = specHost.specEnabled(specFlagServerId)
                             val feedbackTicketVisible =
-                                actionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
+                                shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
                             val specCard =
-                                remember(actionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
-                                    actionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
+                                remember(shownActionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
+                                    shownActionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
                                 }
-                            if (actionCard.presentationCardJson != null && specFlagServerId != null) {
+                            if (shownActionCard.presentationCardJson != null && specFlagServerId != null) {
                                 LaunchedEffect(specFlagServerId) { specHost.ensureFlags(specFlagServerId) }
                             }
                             if (specCard != null) {
                                 ThreadActionCardSpecView(
                                     messageId = message.id,
-                                    card = actionCard,
+                                    card = shownActionCard,
                                     spec = specCard,
                                     commitEnabled = writeActionsEnabled,
                                     typedPending = message.id in pendingActionCardIds,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
                                     modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                     onAction = { elementId ->
-                                        when (val press = threadActionCardSpecPress(actionCard, specCard, elementId, viewerServerId)) {
+                                        when (val press = threadActionCardSpecPress(shownActionCard, specCard, elementId, viewerServerId)) {
                                             ThreadActionCardSpecPress.Ignore -> Unit
                                             ThreadActionCardSpecPress.Typed -> {
                                                 specHost.onIntent(ThreadActionCardSpecIntent.TypedPress(message.id, elementId))
                                                 onCommitActionCard(message.id)
                                             }
                                             ThreadActionCardSpecPress.Store ->
-                                                specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, actionCard, specCard))
+                                                specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, shownActionCard, specCard))
                                             ThreadActionCardSpecPress.OpenInWeb -> specHost.openInWeb(message.id)
                                             ThreadActionCardSpecPress.ViewPlan -> specHost.openPlan()
                                             is ThreadActionCardSpecPress.OpenFeedbackTicket -> specHost.openFeedbackTicket(press.ticketId)
@@ -29523,7 +29867,7 @@ private fun ThreadMessageCardContent(
                                             is ThreadActionCardSpecPress.Navigate ->
                                                 openActionCardSpecTarget(
                                                     target = press.target,
-                                                    cardSourceServerId = actionCard.sourceServerId,
+                                                    cardSourceServerId = shownActionCard.sourceServerId,
                                                     viewerServerId = viewerServerId,
                                                     serverSlug = currentServerSlug,
                                                     isDirectMessageChannel = specHost.isDirectMessageChannel,
@@ -29537,7 +29881,7 @@ private fun ThreadMessageCardContent(
                                 )
                             } else {
                                 ThreadActionCardView(
-                                    card = actionCard,
+                                    card = shownActionCard,
                                     pending = message.id in pendingActionCardIds,
                                     commitEnabled = writeActionsEnabled,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
@@ -29665,6 +30009,7 @@ private fun ThreadMessageCardContent(
                                                               messageId = message.id,
                                                               body = message.body,
                                                               enabled = message.pendingSendContext == null,
+                                                              onOpenLink = onOpenMarkdownUrl,
                                                           ) {
                                                           // A tap on a code block is not the row's tap (web skips `pre, code`).
                                                           CompositionLocalProvider(
@@ -29954,6 +30299,7 @@ private fun ThreadMessageCardContent(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
+                        .threadMessageHoverToolbarOverlay()
                         .offset(
                             x = -RaftMessageItemToolbarDefaults.EndInset,
                             // web `top-[-18px]` is measured inside the row's border, below a turn's
@@ -30267,7 +30613,7 @@ private fun ThreadNewMessageMenuMoreOverlay(
             Modifier
                 .fillMaxWidth()
                 .height(ThreadNewMessageMenuMoreOverlayHeight)
-                .clickable(enabled = enabled, onClick = onClick)
+                .raftClickable(onClick = onClick, enabled = enabled)
                 .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
@@ -30287,19 +30633,11 @@ private fun ThreadNewMessageMenuToolButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
     Column(
         modifier =
             modifier
                 .height(ThreadNewMessageMenuToolRowHeight)
-                .background(if (pressed && enabled) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
-                .clickable(
-                    enabled = enabled,
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick
-                )
+                .raftClickable(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(RaftAppRadius.Control))
                 .semantics { contentDescription = label }
                 .padding(horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -30437,14 +30775,14 @@ private fun ThreadMessageLocalSendStatus(
                     ),
                     style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                     color = RaftColor.TextMutedGray,
-                    modifier = Modifier.clickable { detailsExpanded = !detailsExpanded }.padding(vertical = 2.dp)
+                    modifier = Modifier.raftClickable(onClick = { detailsExpanded = !detailsExpanded }).padding(vertical = 2.dp)
                 )
                 if (detailsExpanded) {
                     Text(
                         text = stringResource(Res.string.thread_send_failure_copy_details),
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                         color = RaftColor.TextMutedGray,
-                        modifier = Modifier.clickable(onClick = onCopyDetails).padding(vertical = 2.dp)
+                        modifier = Modifier.raftClickable(onClick = onCopyDetails).padding(vertical = 2.dp)
                     )
                 }
             }
@@ -30546,18 +30884,21 @@ internal fun ThreadActionCardView(
     val doneLine = if (card.isExecuted) card.localizedActionCardDoneLine(executedTimeLabel).takeIf { it.isNotBlank() } else null
     // web `isActionCardReadOnlyInServer`: a card prepared on another server runs only there.
     val viewerServerId = LocalThreadViewerServerId.current
+    // Expired (wire state, or past `expiresAt` as the caller drew it) or withdrawn: ended, folded, no button.
+    val ended = card.hasEnded
+    val endedLine = card.actionCardEndedLine()
     val blockedReason =
         when {
-            card.isExecuted -> null
+            card.isExecuted || ended -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
                 card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
-    val viewOnly = !card.isExecuted && (!commitEnabled || blockedReason != null)
-    // Web: a done card, and a view-only one that says why, fold by default; a frozen or
+    val viewOnly = !card.isExecuted && !ended && (!commitEnabled || blockedReason != null)
+    // Web: a done card, an ended one, and a view-only one that says why, fold by default; a frozen or
     // reconfirm card stays open (it waits on the reader). The fold then belongs to the reader.
-    val foldsByDefault = card.isExecuted || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
+    val foldsByDefault = card.isExecuted || ended || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
     var expanded by remember(foldsByDefault) { mutableStateOf(!foldsByDefault) }
     val feedbackEntryEnabled = LocalThreadFeedbackCardEntryEnabled.current
     RaftDesignSystemTheme {
@@ -30575,10 +30916,13 @@ internal fun ThreadActionCardView(
             },
             description =
                 doneLine?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
+                    ?: endedLine?.takeIf { ended }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     ?: blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } },
             status =
                 when {
                     card.isExecuted -> stringResource(Res.string.common_done)
+                    card.isExpired -> stringResource(Res.string.thread_action_card_status_expired)
+                    card.isWithdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
                     card.needsReconfirmation -> stringResource(Res.string.thread_action_card_status_reconfirm)
                     viewOnly -> stringResource(Res.string.thread_action_card_view_only)
@@ -30593,7 +30937,7 @@ internal fun ThreadActionCardView(
                 },
             expanded = expanded,
             onExpandedChange =
-                if (card.isExecuted || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
+                if (card.isExecuted || ended || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
             toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
         ) {
             card.actionCardNotice()?.let { notice -> RaftMessageActionCardNotice(notice) }
@@ -30627,7 +30971,7 @@ internal fun ThreadActionCardView(
             }
             // Web shows the button disabled beside the reason; with no reason to give (the
             // thread is read-only here) the card shows no button.
-            if (!card.isExecuted && commitEnabled) {
+            if (!card.isExecuted && !ended && commitEnabled) {
                 RaftMessageActionCardActions(note = blockedReason?.takeUnless { foldsByDefault }) {
                     RaftButton(
                         text =
@@ -30643,7 +30987,7 @@ internal fun ThreadActionCardView(
                                 (
                                     card.needsReconfirmation ||
                                         card.isSupportedCommitAction() ||
-                                        card.opensFeedbackCardEntry(feedbackEntryEnabled)
+                                        (feedbackEntryEnabled && card.opensFeedbackCardEntry())
                                     ),
                     )
                 }
@@ -31440,6 +31784,26 @@ internal fun decideThreadMessageLongPressDispatch(
  * setting). Not inside a reply thread (no reply action there), not while sharing, not on a local
  * send that is still sending or failed.
  */
+/**
+ * artin 11-06: with the keyboard up, a tap on a message row is the reader closing the keyboard, not
+ * asking for the thread: since a single tap opens the thread (stdrc 10-29) it opened one by accident.
+ * Only the row's own whole-row actions (open thread, the double tap's reaction bar) yield; a link,
+ * mention, avatar, reaction or replies chip is something the reader aimed at and still acts.
+ */
+internal class ThreadKeyboardTapDismissal(
+    private val keyboardInsetDp: () -> Float,
+    private val hideKeyboard: () -> Unit,
+) {
+    /** True when the keyboard was up: it is closed and this tap does nothing else. */
+    fun dismissIfUp(): Boolean {
+        if (keyboardInsetDp() <= 0f) return false
+        hideKeyboard()
+        return true
+    }
+}
+
+internal val LocalThreadKeyboardTapDismissal = staticCompositionLocalOf<ThreadKeyboardTapDismissal?> { null }
+
 internal fun threadMessageTapOpensThread(
     showReplyAction: Boolean,
     shareSelectionActive: Boolean,
@@ -32545,6 +32909,21 @@ internal fun shouldSuppressCompactThreadAuthor(
     localOffsetMinutes: Int
 ): Boolean =
     previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
+
+/**
+ * Whether a row drops its author header (avatar, name, time, model badge) while messages are picked
+ * for the share image. Web messageGrouping.ts `shouldShowGroupedMessageHeader`: a selected
+ * continuation whose timeline predecessor is not selected cannot lean on that predecessor's header,
+ * so it shows its own; a selected continuation right after a selected row of its run stays compact.
+ * Two selected messages with an unselected one between them therefore never group. The share image
+ * captures the live rows, so this is what puts the author on the image's first message.
+ */
+internal fun threadShareSelectionSuppressesAuthor(
+    timelineSuppressesAuthor: Boolean,
+    selectionActive: Boolean,
+    selected: Boolean,
+    previousSelected: Boolean
+): Boolean = timelineSuppressesAuthor && !(selectionActive && selected && !previousSelected)
 
 /** The local day a thread date divider names; rendered from string resources by [localizedLabel]. */
 internal data class ThreadDateDividerDay(
@@ -34344,6 +34723,18 @@ internal fun threadMessageHoverToolbarActions(
     return actions.takeUnless { it.isEmpty }
 }
 
+/**
+ * The hover toolbar floats over its row (web `absolute`): it is drawn and takes pointer input at
+ * its full size, but tells the row's Box it has no height, so the row never grows to fit it. A
+ * one-line continuation row is 32dp (4 + 24 + 4) and the toolbar 36dp; counted in the Box, it made
+ * the hovered row 4dp taller and shifted every row above it in the bottom-anchored list.
+ */
+private fun Modifier.threadMessageHoverToolbarOverlay(): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+        layout(placeable.width, 0) { placeable.place(0, 0) }
+    }
+
 /** Between a hover toolbar button and the menu or reactions it opens (web: 4px). */
 internal val ThreadMessageHoverToolbarPopupGap = 4.dp
 
@@ -34668,7 +35059,7 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
 
-/** Whether the viewing server lets `feedback:submit` cards open the Feedback WebView. */
+/** Whether `feedback:submit` cards open the Feedback WebView: the viewing server is known ([raftFeedbackCardEntryEnabled]). */
 internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
 
 /**

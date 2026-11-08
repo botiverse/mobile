@@ -43,6 +43,8 @@ import build.raft.app.model.validateAgentName
 import build.raft.app.data.DataResult
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
+import build.raft.app.data.CREATE_AGENT_HOSTED_PROVIDER
+import build.raft.app.data.HostedRuntimeModels
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.createAgentRuntimeForOptions
 import build.raft.app.data.DataRequestPriority
@@ -94,6 +96,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
 import androidx.compose.foundation.layout.widthIn
 import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.raftClickable
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
 // cap has been removed. The dialog body now fills the viewport via
@@ -108,9 +111,44 @@ internal data class SharedCreateAgentDialogSubmit(
     val description: String?,
     val machineId: String?,
     val external: Boolean = false,
-    /** The runtime form v2 submit; null only for an external agent. */
-    val runtimeFormV2: RuntimeFormV2SubmitBody? = null
+    /** The runtime form v2 submit; null only for an external or cloud agent. */
+    val runtimeFormV2: RuntimeFormV2SubmitBody? = null,
+    /** Cloud agent ([external] too); [hostedModel] null means the provider's default. */
+    val hostedProvider: String? = null,
+    val hostedModel: String? = null
 )
+
+/** The computer list's value for a cloud agent (web `HOSTED_COMPUTER_CHOICE`). */
+internal const val CREATE_AGENT_HOSTED_CHOICE = "__hosted_runtime__"
+
+/** The models a new cloud agent can start on, as the form's Model field shows them. */
+internal sealed interface CreateAgentHostedModels {
+    data object Loading : CreateAgentHostedModels
+    /** Create still works, on the provider's default (web: "the model can change later"). */
+    data object Failed : CreateAgentHostedModels
+    data class Ready(val models: HostedRuntimeModels) : CreateAgentHostedModels
+}
+
+/** Web `isHostedMode`: picked, or the only place the agent can run (the computer list is loaded and empty). */
+internal fun createAgentHostedMode(
+    available: Boolean,
+    selected: Boolean,
+    machines: List<SharedCreateAgentMachineOption>,
+    machinesLoading: Boolean,
+    machinesErrorMessage: String?,
+): Boolean =
+    available && (selected || (machines.isEmpty() && !machinesLoading && machinesErrorMessage.isNullOrBlank()))
+
+/** Web `hostedModelPickerShown`: no field where the server may not pick; while loading it may yet. */
+internal fun createAgentHostedModelFieldShown(models: CreateAgentHostedModels): Boolean =
+    (models as? CreateAgentHostedModels.Ready)?.models?.picker != false
+
+/** The model a create names: none while the list is out, an administrator decides, or Raft does. */
+internal fun createAgentHostedModelToSend(models: CreateAgentHostedModels, pick: String?): String? {
+    val view = (models as? CreateAgentHostedModels.Ready)?.models ?: return null
+    if (view.locked || !view.picker) return null
+    return pick?.takeIf { id -> view.models.any { it.id == id } }
+}
 
 /** What the create dialog's runtime section shows (runtime form v2, the only runtime form). */
 internal sealed interface CreateAgentRuntimeSection {
@@ -162,10 +200,22 @@ internal fun createAgentDialogSubmit(
     external: Boolean,
     runtime: String,
     loaded: RuntimeFormV2Loaded?,
-    values: RuntimeFormV2Values
+    values: RuntimeFormV2Values,
+    hosted: Boolean = false,
+    hostedModel: String? = null
 ): SharedCreateAgentDialogSubmit? {
     val cleanName = name.trim().removePrefix("@")
     val cleanDescription = description.trim().takeIf { it.isNotBlank() }
+    if (hosted) {
+        return SharedCreateAgentDialogSubmit(
+            name = cleanName,
+            description = cleanDescription,
+            machineId = null,
+            external = true,
+            hostedProvider = CREATE_AGENT_HOSTED_PROVIDER,
+            hostedModel = hostedModel
+        )
+    }
     if (external) return SharedCreateAgentDialogSubmit(cleanName, cleanDescription, machineId = null, external = true)
     val form = loaded ?: return null
     return SharedCreateAgentDialogSubmit(
@@ -230,7 +280,7 @@ internal fun CreateAgentDialogVisualContent() {
 
 /**
  * After a create succeeds: remembers its Computer and runtime for the next dialog on [serverId]
- * (web writes the last config after the create). External agents have neither and are skipped.
+ * (web writes the last config after the create). External and cloud agents have neither and are skipped.
  */
 internal fun SharedCreateAgentFormStore.rememberCreatedAgent(serverId: String?, submit: SharedCreateAgentDialogSubmit) {
     if (submit.external) return
@@ -250,7 +300,9 @@ internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): build.raft.ap
         machineId = machineId,
         external = external,
         avatarUrl = randomCreateAgentAvatarWireValue(),
-        runtimeFormV2 = runtimeFormV2
+        runtimeFormV2 = runtimeFormV2,
+        hostedProvider = hostedProvider,
+        hostedModel = hostedModel
     )
 
 private fun randomCreateAgentAvatarWireValue(): String {
@@ -384,6 +436,11 @@ internal fun SharedCreateAgentDialog(
     limitPlanLabel: String? = null,
     external: Boolean = false,
     /**
+     * The Members and Add Member flows offer a cloud agent next to the computers. Off for action
+     * cards: their confirm flow creates on a computer.
+     */
+    offersHosting: Boolean = false,
+    /**
      * Add Member's channel: the dialog keeps the entry's promise that the new agent joins it
      * (web `autoJoinChannelName`, `create-agent-channel-context`); null elsewhere.
      */
@@ -404,9 +461,21 @@ internal fun SharedCreateAgentDialog(
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
-    // Web CreateAgentDialog: with no computer there is nothing to configure, so it asks for one
-    // in a short centred dialog instead of the form (no limit banner, no fields).
-    if (createAgentNeedsComputer(external, machines, machinesLoading, machinesErrorMessage)) {
+    val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
+    // A cloud agent: the flag, then the server's probe (web `useAgentRuntimeProvider`); null while it runs.
+    val hostingAsked = offersHosting && !external
+    var hostedAvailable by remember(createAgentFormStore, cleanCreateAgentServerId, hostingAsked) {
+        mutableStateOf<Boolean?>(
+            if (hostingAsked && createAgentFormStore?.hostedRuntimeFlagOn(cleanCreateAgentServerId) == true) null else false
+        )
+    }
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, hostingAsked) {
+        if (hostedAvailable != null) return@LaunchedEffect
+        hostedAvailable = createAgentFormStore?.loadHostedRuntimeAvailable(cleanCreateAgentServerId) == true
+    }
+    // Web CreateAgentDialog: with no computer and no cloud there is nothing to configure, so it asks
+    // for a computer in a short centred dialog instead of the form (no limit banner, no fields).
+    if (hostedAvailable == false && createAgentNeedsComputer(external, machines, machinesLoading, machinesErrorMessage)) {
         CreateAgentNeedsComputerDialog(onAddComputer = onAddComputer, onDismiss = onDismiss)
         return
     }
@@ -432,11 +501,29 @@ internal fun SharedCreateAgentDialog(
         )
     }
     val availableSelectedMachineId = createAgentAvailableMachineId(machines, selectedMachineId)
+    var hostedSelected by remember { mutableStateOf(false) }
+    val hostedMode =
+        createAgentHostedMode(hostedAvailable == true, hostedSelected, machines, machinesLoading, machinesErrorMessage)
+    // Neither an external nor a cloud agent runs on a computer: no runtime fields (web `skipsComputer`).
+    val skipsComputer = external || hostedMode
+    var hostedModelsAttempt by remember { mutableStateOf(0) }
+    var hostedModels by remember(createAgentFormStore, cleanCreateAgentServerId, hostedModelsAttempt) {
+        mutableStateOf<CreateAgentHostedModels>(CreateAgentHostedModels.Loading)
+    }
+    var hostedModelPick by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, hostedMode, hostedModelsAttempt) {
+        val formStore = createAgentFormStore ?: return@LaunchedEffect
+        if (!hostedMode || hostedModels != CreateAgentHostedModels.Loading) return@LaunchedEffect
+        hostedModels =
+            when (val result = formStore.loadHostedRuntimeModels(cleanCreateAgentServerId)) {
+                is DataResult.Content -> CreateAgentHostedModels.Ready(result.data)
+                else -> CreateAgentHostedModels.Failed
+            }
+    }
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
     val runtimeUsageAccess = LocalMembersRuntimeAccountUsageAccess.current
     val selectedQuotaMachine =
         machines.firstOrNull { it.id == availableSelectedMachineId }?.quotaMachine()?.copy(access = runtimeUsageAccess)
-    val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
     // The runtimes this server offers (GET servers/:id/runtimes): the cached answer first, then the
     // server's; the bundled table until either lands. Never blocks the dialog.
     var serverRuntimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId) {
@@ -456,13 +543,13 @@ internal fun SharedCreateAgentDialog(
     // The computer's runtime-options rows: which runtimes have a v2 form (`runtimeFormV2` marker) and
     // whether Built-in is offered. Reloaded on every computer change; a failure leaves it unknown.
     var runtimeCatalogAttempt by remember { mutableStateOf(0) }
-    var runtimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, external) {
+    var runtimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, skipsComputer) {
         mutableStateOf<SharedCreateAgentRuntimeCatalog?>(null)
     }
-    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, external, runtimeCatalogAttempt) {
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId, availableSelectedMachineId, skipsComputer, runtimeCatalogAttempt) {
         val formStore = createAgentFormStore ?: return@LaunchedEffect
         val machineId = availableSelectedMachineId ?: return@LaunchedEffect
-        if (external || cleanCreateAgentServerId.isBlank()) return@LaunchedEffect
+        if (skipsComputer || cleanCreateAgentServerId.isBlank()) return@LaunchedEffect
         val result = formStore.loadRuntimeCatalog(cleanCreateAgentServerId, machineId, force = true)
         runtimeCatalog = (result as? DataResult.Content)?.data
     }
@@ -471,8 +558,8 @@ internal fun SharedCreateAgentDialog(
     // catalog only names, groups and gives forms. The last create's runtime on this server wins while
     // it is still one of them (web CreateAgentDialog `pickCreateAgentRuntime`).
     val rememberedRuntime =
-        remember(createAgentFormStore, cleanCreateAgentServerId, external) {
-            if (external) null else createAgentFormStore?.rememberedCreateRuntime(cleanCreateAgentServerId)
+        remember(createAgentFormStore, cleanCreateAgentServerId, skipsComputer) {
+            if (skipsComputer) null else createAgentFormStore?.rememberedCreateRuntime(cleanCreateAgentServerId)
         }
     val runtimeFormV2 = runtimeFormV2Override ?: createAgentFormStore?.runtimeFormV2Access(cleanCreateAgentServerId)
     // No v2 access (no form store or server) means no form can load: say so instead of loading forever.
@@ -480,15 +567,15 @@ internal fun SharedCreateAgentDialog(
         if (runtimeFormV2 == null) RuntimeFormV2Availability.Unavailable else runtimeCatalog.runtimeFormV2Availability(runtime)
     val v2Candidate =
         runtimeFormV2 != null &&
-            !external &&
+            !skipsComputer &&
             availableSelectedMachineId != null &&
             runtime.isNotBlank() &&
             v2Availability != RuntimeFormV2Availability.Unavailable
-    var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
+    var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer) { mutableStateOf(0) }
     // A form that went stale mid-session (`form_revision_stale`) is reloaded whole, once; after that it
     // fails like any other load (the retry banner).
-    var v2StaleReloads by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
-    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
+    var v2StaleReloads by remember(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer) { mutableStateOf(0) }
+    var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer, v2LoadAttempt) {
         mutableStateOf<RuntimeFormV2DialogLoad>(RuntimeFormV2DialogLoad.Loading)
     }
     val runtimeSection = createAgentRuntimeSection(v2Availability, v2Load)
@@ -517,7 +604,7 @@ internal fun SharedCreateAgentDialog(
     val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
 
     LaunchedEffect(machines, requiredComputer, suggestedComputer, selectedMachineId) {
-        if (external) return@LaunchedEffect
+        if (skipsComputer) return@LaunchedEffect
         if (selectedMachineId == null) {
             selectedMachineId = createAgentInitialMachineSelection(machines, requiredComputer, suggestedComputer)
         }
@@ -526,8 +613,8 @@ internal fun SharedCreateAgentDialog(
     // Keeps a choice only while this computer's runtime-options still offer it; otherwise picks the
     // default. No usable runtime leaves the field empty instead of guessing; options still loading
     // (or another computer's) change nothing.
-    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, external) {
-        if (external) return@LaunchedEffect
+    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, skipsComputer) {
+        if (skipsComputer) return@LaunchedEffect
         val next =
             createAgentRuntimeForOptions(
                 current = runtime,
@@ -539,7 +626,7 @@ internal fun SharedCreateAgentDialog(
         if (next != runtime) runtime = next
     }
 
-    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt, v2Candidate) {
+    LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer, v2LoadAttempt, v2Candidate) {
         val source = runtimeFormV2 ?: return@LaunchedEffect
         val machineId = availableSelectedMachineId ?: return@LaunchedEffect
         if (!v2Candidate) return@LaunchedEffect
@@ -571,9 +658,9 @@ internal fun SharedCreateAgentDialog(
         createAgentRuntimeAvailabilityError(
             selectedMachineId = selectedMachine?.id,
             machineRuntimeIds = selectedMachineRuntimeIds,
-            external = external
+            external = skipsComputer
         )
-    val selectedMachineBlocked = !external &&
+    val selectedMachineBlocked = !skipsComputer &&
         (selectedMachine == null ||
             selectedMachine.status != "online" ||
             (!requiredComputer.isNullOrBlank() && selectedMachine.id != requiredComputer))
@@ -584,8 +671,10 @@ internal fun SharedCreateAgentDialog(
         !submitting &&
         !selectedMachineBlocked &&
         runtimeAvailabilityError == null &&
-        (external || runtime in supportedRuntimeIds) &&
-        (external || createAgentRuntimeFormV2SubmitReady(v2Loaded != null, v2Errors.isNotEmpty()))
+        (skipsComputer || runtime in supportedRuntimeIds) &&
+        (skipsComputer || createAgentRuntimeFormV2SubmitReady(v2Loaded != null, v2Errors.isNotEmpty())) &&
+        // An unavailable list still allows the default (no model is sent, nothing to check).
+        !(hostedMode && hostedModels == CreateAgentHostedModels.Loading)
     val showMachinePicker = !external
     // The one commit: the footer's Create on a wide window, the phone sheet's head button.
     val commitLabel =
@@ -602,7 +691,9 @@ internal fun SharedCreateAgentDialog(
             external = external,
             runtime = runtime,
             loaded = v2Form ?: v2Loaded,
-            values = v2Values
+            values = v2Values,
+            hosted = hostedMode,
+            hostedModel = createAgentHostedModelToSend(hostedModels, hostedModelPick)
         )?.let(onSubmit)
     }
 
@@ -668,7 +759,7 @@ internal fun SharedCreateAgentDialog(
                     item(key = "machine-picker") {
                         MachinePicker(
                             machines = machines,
-                            machinesLoading = machinesLoading,
+                            machinesLoading = machinesLoading || (hostedAvailable == null && machines.isEmpty()),
                             machinesErrorMessage = machinesErrorMessage,
                             onRetry = onMachinesRetry,
                             selectedMachineId = selectedMachineId,
@@ -677,9 +768,17 @@ internal fun SharedCreateAgentDialog(
                             enabled = !submitting,
                             runtimeId = runtime,
                             usageAccess = runtimeUsageAccess,
+                            hostedOption =
+                                if (hostedAvailable == true) stringResource(Res.string.agent_create_hosted_option) else null,
+                            hostedSelected = hostedMode,
+                            onSelectHosted = {
+                                focusManager.clearFocus(force = true)
+                                hostedSelected = true
+                            },
                             onSelect = { id ->
                                 if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
                                     focusManager.clearFocus(force = true)
+                                    hostedSelected = false
                                     if (id != selectedMachineId) {
                                         selectedMachineId = id
                                         // Another computer: its own runtime-options decide (web clears it too).
@@ -752,7 +851,18 @@ internal fun SharedCreateAgentDialog(
                         )
                     }
                 }
-                if (!external && availableSelectedMachineId != null) {
+                if (hostedMode && createAgentHostedModelFieldShown(hostedModels)) {
+                    item(key = "hosted-model") {
+                        CreateAgentHostedModelField(
+                            models = hostedModels,
+                            pick = hostedModelPick,
+                            enabled = !submitting,
+                            onPick = { hostedModelPick = it },
+                            onReload = { hostedModelsAttempt += 1 }
+                        )
+                    }
+                }
+                if (!skipsComputer && availableSelectedMachineId != null) {
                     when (runtimeSection) {
                         is CreateAgentRuntimeSection.Failed ->
                             item(key = "runtime-form-v2-failure") {
@@ -789,7 +899,7 @@ internal fun SharedCreateAgentDialog(
                         else -> Unit
                     }
                 }
-                if (!external) {
+                if (!skipsComputer) {
                     item(key = "runtime") {
                         RuntimeFormV2RuntimeSection(
                             runtime = runtime,
@@ -851,9 +961,89 @@ internal fun SharedCreateAgentDialog(
     }
 
 /**
- * Web CreateAgentDialog's needs-computer gate (`!isExternalMode && machines.length === 0`; the
- * app has no hosted runtime): a managed agent with the computer list loaded, without error, and
- * empty. While loading or after a failed load the form keeps its own picker states.
+ * Web `HostedModelChoice`: an offered model or the provider's default, read-only while an
+ * administrator decides, and a failed list that still lets the create go on the default.
+ */
+@Composable
+private fun CreateAgentHostedModelField(
+    models: CreateAgentHostedModels,
+    pick: String?,
+    enabled: Boolean,
+    onPick: (String?) -> Unit,
+    onReload: () -> Unit,
+) {
+    val label = stringResource(Res.string.agent_create_hosted_model_label)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftFieldLabel(text = label)
+        when (models) {
+            CreateAgentHostedModels.Loading ->
+                Text(
+                    text = stringResource(Res.string.agent_create_state_computers_loading),
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
+                )
+            CreateAgentHostedModels.Failed ->
+                RaftUiBanner(
+                    status = RaftUiBannerStatus.Warning,
+                    description = stringResource(Res.string.agent_create_hosted_model_load_failed),
+                    size = RaftUiBannerSize.Medium,
+                    action = {
+                        RaftButton(
+                            text = stringResource(Res.string.common_retry),
+                            onClick = onReload,
+                            modifier = Modifier.widthIn(min = 72.dp),
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            enabled = enabled,
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
+                        )
+                    }
+                )
+            is CreateAgentHostedModels.Ready -> {
+                val view = models.models
+                if (view.locked) {
+                    Text(
+                        text = view.defaultLabel ?: view.defaultModel.orEmpty(),
+                        style = RaftType.Body,
+                        color = RaftColor.TextBlack
+                    )
+                    Text(
+                        text = stringResource(Res.string.agent_create_hosted_model_locked),
+                        style = RaftType.Caption,
+                        color = RaftColor.TextMutedGray
+                    )
+                } else {
+                    val defaultLabel =
+                        view.defaultLabel?.let { stringResource(Res.string.agent_create_hosted_model_default, it) }
+                            ?: stringResource(Res.string.agent_create_hosted_model_default_unnamed)
+                    val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
+                    CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = label, inField = true)) {
+                        RaftCombobox(
+                            value = pick.orEmpty(),
+                            options = createAgentHostedModelOptions(view, defaultLabel),
+                            onValueChange = { id -> onPick(id.takeIf { it.isNotEmpty() }) },
+                            emptyText = { query -> noMatches.replace("\u0001", query) },
+                            placeholder = label,
+                            title = label,
+                            searchPlaceholder = stringResource(Res.string.runtime_picker_search),
+                            enabled = enabled,
+                            label = label
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The provider's default first, under the empty value (web `emptyOption`); then the offered models. */
+internal fun createAgentHostedModelOptions(models: HostedRuntimeModels, defaultLabel: String): List<RaftComboboxOption<String>> =
+    listOf(RaftComboboxOption("", defaultLabel)) + models.models.map { RaftComboboxOption(it.id, it.label) }
+
+/**
+ * Web CreateAgentDialog's needs-computer gate (`!isExternalMode && machines.length === 0`): a
+ * managed agent with the computer list loaded, without error, and empty. While loading or after a
+ * failed load the form keeps its own picker states. The caller skips it where a cloud agent is offered.
  */
 internal fun createAgentNeedsComputer(
     external: Boolean,
@@ -1020,6 +1210,10 @@ internal fun MachinePicker(
     enabled: Boolean,
     runtimeId: String,
     usageAccess: MembersRuntimeAccountUsageAccess?,
+    /** The cloud agent's row after the computers (web `computerOptions`); null where it isn't offered. */
+    hostedOption: String? = null,
+    hostedSelected: Boolean = false,
+    onSelectHosted: () -> Unit = {},
     onSelect: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1045,7 +1239,7 @@ internal fun MachinePicker(
                         )
                     }
                 )
-            machines.isEmpty() ->
+            machines.isEmpty() && hostedOption == null ->
                 RaftBanner(
                     description = stringResource(Res.string.agent_create_state_computers_empty),
                     status = RaftBannerStatus.Info
@@ -1065,9 +1259,11 @@ internal fun MachinePicker(
                 val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
                 CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = computerLabel, inField = true)) {
                     RaftCombobox(
-                        value = selectedMachineId,
-                        options = createAgentMachineChoiceOptions(machineItems, quotaLines),
-                        onValueChange = onSelect,
+                        value = if (hostedSelected) CREATE_AGENT_HOSTED_CHOICE else selectedMachineId,
+                        options =
+                            createAgentMachineChoiceOptions(machineItems, quotaLines) +
+                                listOfNotNull(hostedOption?.let { RaftComboboxOption(CREATE_AGENT_HOSTED_CHOICE, it) }),
+                        onValueChange = { id -> if (id == CREATE_AGENT_HOSTED_CHOICE) onSelectHosted() else onSelect(id) },
                         emptyText = { query -> noMatches.replace("\u0001", query) },
                         placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
                         title = computerLabel,
@@ -1078,7 +1274,13 @@ internal fun MachinePicker(
                 }
             }
         }
-        if (!requiredComputer.isNullOrBlank()) {
+        if (hostedSelected) {
+            Text(
+                text = stringResource(Res.string.agent_create_hosted_hint),
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
+            )
+        } else if (!requiredComputer.isNullOrBlank()) {
             Text(
                 text = Res.string.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized(),
                 style = RaftType.Caption,
@@ -1135,7 +1337,7 @@ internal fun CreateAgentSectionLabelWithAction(
             modifier =
                 Modifier
                     .size(22.dp)
-                    .clickable(enabled = actionEnabled) { onAction() },
+                    .raftClickable(onClick = onAction, enabled = actionEnabled, shape = RoundedCornerShape(RaftRadius.Chip)),
             contentAlignment = Alignment.Center
         ) {
             if (loading) {

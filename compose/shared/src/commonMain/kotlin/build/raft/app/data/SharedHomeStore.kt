@@ -238,6 +238,20 @@ internal class SharedHomeStore(
      * reaches the seq or [HOME_REPLICA_LAG_GUARD] passes.
      */
     private val realtimeRowGuards = mutableMapOf<String, HomeRealtimeRowGuard>()
+
+    /**
+     * Channels just created here: the Refresh right after a create reads a replica that may not have
+     * them yet (lag p99 > 20 s), and a fetched list replaces the rows. Kept until a fetch lists them
+     * or [HOME_REPLICA_LAG_GUARD] passes (tygg / artin 11-06).
+     */
+    private val createdChannelGuards = mutableListOf<HomeCreatedChannelGuard>()
+
+    /**
+     * Channels just joined here: the join's own `channel:members-updated` and the Refresh after it read a
+     * replica that may still say not joined, and a fetched list replaces the rows. Kept until a fetch agrees
+     * or [HOME_REPLICA_LAG_GUARD] passes.
+     */
+    private val joinedChannelGuards = mutableListOf<HomeJoinedChannelGuard>()
     private val realtimeRowGuardLock = SynchronizedObject()
     private var nextHomeLoadToken = 0L
     /** Monotonic fence for non-cooperative loads that outlive an auth/session reset. */
@@ -500,7 +514,11 @@ internal class SharedHomeStore(
     fun reset() {
         homeSessionGeneration.incrementAndGet()
         clearRealtimeUnreadWatches()
-        synchronized(realtimeRowGuardLock) { realtimeRowGuards.clear() }
+        synchronized(realtimeRowGuardLock) {
+            realtimeRowGuards.clear()
+            createdChannelGuards.clear()
+            joinedChannelGuards.clear()
+        }
         clear()
         dismissedLocalNotificationIds.clear()
         homeSurfaceVisible = true
@@ -735,6 +753,8 @@ internal class SharedHomeStore(
                 dismissNotification(intent.id)
             is SharedHomeIntent.ChannelCreated ->
                 reduceState(_state.value.withCreatedChannel(intent.channel))
+            is SharedHomeIntent.ChannelJoined -> applyChannelJoined(intent)
+            is SharedHomeIntent.ChannelMembershipEnded -> applyChannelMembershipEnded(intent)
             is SharedHomeIntent.ChannelProfileUpdated ->
                 reduceState(
                     _state.value.withChannelProfile(
@@ -911,7 +931,15 @@ internal class SharedHomeStore(
     private fun SharedHomeState.withCreatedChannel(channel: HomeChannelRow): SharedHomeState {
         val nextContent =
             when (val current = content) {
-                is SharedHomeContentState.Content ->
+                is SharedHomeContentState.Content -> {
+                    synchronized(realtimeRowGuardLock) {
+                        createdChannelGuards +=
+                            HomeCreatedChannelGuard(
+                                current.baseSnapshot.server.id,
+                                channel,
+                                kotlin.time.TimeSource.Monotonic.markNow(),
+                            )
+                    }
                     contentFromDurableSnapshot(
                         snapshot =
                             current.baseSnapshot.copy(
@@ -925,6 +953,7 @@ internal class SharedHomeStore(
                         contentRefreshing = false,
                         previousContent = current
                     )
+                }
                 else -> current
             }
         return copy(
@@ -932,6 +961,44 @@ internal class SharedHomeStore(
             selectedConversationId = channel.threadId.value,
             selectedTopAction = null
         )
+    }
+
+    private fun applyChannelJoined(intent: SharedHomeIntent.ChannelJoined) {
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return
+        val serverId = current.baseSnapshot.server.id
+        if (serverId.value != intent.serverId) return
+        synchronized(realtimeRowGuardLock) {
+            joinedChannelGuards.removeAll { it.channelId == intent.channelId }
+            joinedChannelGuards +=
+                HomeJoinedChannelGuard(serverId, intent.channelId, intent.rowIfMissing, kotlin.time.TimeSource.Monotonic.markNow())
+        }
+        applyHomeSnapshotLocally { it.withJoinedChannel(intent.channelId, intent.rowIfMissing) }
+    }
+
+    /** The person left or deleted [channelId]: no guard may bring back or re-mark its row on the next fetch. */
+    private fun dropChannelGuards(channelId: ChannelId) {
+        synchronized(realtimeRowGuardLock) {
+            joinedChannelGuards.removeAll { it.channelId == channelId }
+            createdChannelGuards.removeAll { it.channel.channelId == channelId }
+        }
+    }
+
+    private fun applyChannelMembershipEnded(intent: SharedHomeIntent.ChannelMembershipEnded) {
+        dropChannelGuards(intent.channelId)
+        val conversationId = intent.channelId.value
+        val selected =
+            (_state.value.content as? SharedHomeContentState.Content)
+                ?.snapshot
+                ?.findHomeConversation(conversationId)
+                ?.threadId
+                ?.value
+                ?.takeIf { it == _state.value.selectedConversationId }
+        applyHomeSnapshotLocally {
+            if (intent.keepListed) it.withHomeChannelLeft(conversationId) else it.withoutHomeConversation(conversationId)
+        }
+        if (!intent.keepListed && selected != null) {
+            reduceState(_state.value.copy(selectedConversationId = null))
+        }
     }
 
     private fun SharedHomeState.withChannelProfile(
@@ -1253,6 +1320,19 @@ internal class SharedHomeStore(
                 ?.toReadStateV1ProductionOwner()
                 ?: return
         if (currentOwner != owner) return
+        readReceiptOwnerFactory
+            ?.invoke(content.snapshot.server.id.value, content.snapshot.currentMember.id.value)
+            ?.let { readOwner ->
+                readReceiptCoordinator?.noteReadFrontier(
+                    readOwner,
+                    ChannelId(fact.channelId),
+                    ReadReceiptFrontier(
+                        fact.maxReadSeq,
+                        fact.readStateVersion,
+                        content.snapshot.isConversationMarkedUnread(fact.channelId)
+                    )
+                )
+            }
         val changed = synchronized(readProjectionOwnerLock) {
             applyHomeSnapshotLocally { snapshot ->
                 snapshot.withPerReceiverReadState(
@@ -2007,17 +2087,20 @@ internal class SharedHomeStore(
                 }
                 val sidebarOrder = loadServerDrawerSidebarOrder(serverId)
                 if (!isCurrentServerDrawerRequest(serverId, generation)) return
+                noteReadFrontiers(homeResult.data)
+                val loaded = homeResult.data.withPendingReads(emptyMap())
                 val content =
                     createHomeContent(
                         snapshot =
-                            if (sidebarOrder != null && homeResult.data.sidebarOrder != sidebarOrder) {
-                                homeResult.data.copy(sidebarOrder = sidebarOrder)
+                            if (sidebarOrder != null && loaded.sidebarOrder != sidebarOrder) {
+                                loaded.copy(sidebarOrder = sidebarOrder)
                             } else {
-                                homeResult.data
+                                loaded
                             },
                         session = session,
                         contentRefreshing = false,
-                        previousContent = contentByServer[serverId]
+                        previousContent = contentByServer[serverId],
+                        fromFetch = true,
                     )
                 publishServerDrawerContent(serverId, generation, content)
             }
@@ -2433,6 +2516,12 @@ internal class SharedHomeStore(
                     runCatching { loadSidebarOrder(serverId) }.getOrNull()
                 }
             }
+        val pendingReadOwner =
+            (activeServer?.value ?: activeSession.currentServerId)?.let { server ->
+                readReceiptOwnerFactory?.invoke(server, activeSession.user.id)
+            }
+        val pendingReadsAtRequest =
+            pendingReadOwner?.let { owner -> readReceiptCoordinator?.pendingReadSeqs(owner) }.orEmpty()
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
         if (sessionGeneration != homeSessionGeneration.value) {
             diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
@@ -2463,6 +2552,7 @@ internal class SharedHomeStore(
                 it.session.user.id == activeSession.user.id &&
                     it.snapshot.currentMember.id.value == activeSession.user.id
             }
+        (dataResult as? DataResult.Content)?.data?.let(::noteReadFrontiers)
         val preparedHydrates =
             (dataResult as? DataResult.Content)?.data?.let { snapshot ->
                 prepareReadStateV1Hydrates(snapshot)
@@ -2516,7 +2606,7 @@ internal class SharedHomeStore(
                         diagnosticsLogger("home_rows_keep_local reason=fetch_older_than_realtime guarded=${guardedRowKeys.size}")
                     }
                 }
-            }
+            }?.withPendingReads(pendingReadsAtRequest)
         // task #322: the sidebar-order fetch runs concurrently with the home request.
         // Wait a short cap for it before building the published content so the pinned
         // section lands in the same frame as the channel list; on timeout the home
@@ -2577,7 +2667,8 @@ internal class SharedHomeStore(
                         snapshot = requireNotNull(freshSnapshotWithSidebar),
                         session = activeSession,
                         contentRefreshing = false,
-                        previousContent = previousContent
+                        previousContent = previousContent,
+                        fromFetch = true,
                     ).keepingLastKnownRowHintsFrom(
                         previous = previousContent,
                         unreadFrozen = rawSnapshot?.unreadEnrichmentAvailable == false
@@ -2812,7 +2903,8 @@ internal class SharedHomeStore(
                 snapshot = snapshot,
                 session = session,
                 contentRefreshing = contentRefreshing,
-                previousContent = previousContent
+                previousContent = previousContent,
+                fromFetch = false,
             )
         commitDurableContent(content)
         return content
@@ -2888,6 +2980,7 @@ internal class SharedHomeStore(
             serverUnreadCounts = prior.serverUnreadCounts,
             followedThreadUnread = prior.followedThreadUnread,
             markedUnreadIds = prior.markedUnreadIds,
+            unreadLatestActivitySeqs = prior.unreadLatestActivitySeqs,
         )
     }
 
@@ -2895,7 +2988,8 @@ internal class SharedHomeStore(
         snapshot: HomeSnapshot,
         session: StoredAuthSession,
         contentRefreshing: Boolean,
-        previousContent: SharedHomeContentState.Content?
+        previousContent: SharedHomeContentState.Content?,
+        fromFetch: Boolean,
     ): SharedHomeContentState.Content {
         val compatiblePreviousContent =
             previousContent?.takeIf {
@@ -2903,7 +2997,18 @@ internal class SharedHomeStore(
                     it.session.user.id == session.user.id &&
                     it.snapshot.currentMember.id == snapshot.currentMember.id
             }
-        val strippedSnapshot = snapshot.withoutReadStateV1Hydrates()
+        // Only a fetch can settle a guard: a local snapshot lists the guarded row because this store put it there.
+        val guardedSnapshot =
+            if (fromFetch) {
+                synchronized(realtimeRowGuardLock) {
+                    createdChannelGuards.removeAll { it.settledBy(snapshot) }
+                    joinedChannelGuards.removeAll { it.settledBy(snapshot) }
+                    snapshot.withCreatedChannelsFrom(createdChannelGuards).withJoinedChannelsFrom(joinedChannelGuards)
+                }
+            } else {
+                snapshot
+            }
+        val strippedSnapshot = guardedSnapshot.withoutReadStateV1Hydrates()
         val sidebarOrder = strippedSnapshot.sidebarOrder ?: sidebarOrderByServer[strippedSnapshot.server.id]
             ?: compatiblePreviousContent?.baseSnapshot?.sidebarOrder
         val snapshotWithSidebarOrder =
@@ -3686,7 +3791,10 @@ internal class SharedHomeStore(
                 current.snapshot.currentMember.id.value
             )
         if (coordinator != null && owner != null) {
-            applyReadReceiptPrediction(coordinator.markReadAll(owner, target.messageStreamChannelId()))
+            val channelId = target.messageStreamChannelId()
+            val knownSeq =
+                listOfNotNull(target.lastMessageSeq, current.snapshot.unreadLatestActivitySeqs[channelId.value]).maxOrNull()
+            applyReadReceiptPrediction(coordinator.markReadAll(owner, channelId, knownSeq))
             return
         }
         val previous = current
@@ -3760,6 +3868,36 @@ internal class SharedHomeStore(
                 }
             )
         }
+    }
+
+    /**
+     * What this network Home says about each scope's read state: the base of a read made from here on.
+     * Without the summary the marks are unknown, so nothing is noted.
+     */
+    private fun noteReadFrontiers(snapshot: HomeSnapshot) {
+        if (!snapshot.unreadEnrichmentAvailable) return
+        val coordinator = readReceiptCoordinator ?: return
+        val owner =
+            readReceiptOwnerFactory?.invoke(snapshot.server.id.value, snapshot.currentMember.id.value) ?: return
+        (snapshot.channels + snapshot.directMessages).forEach { row ->
+            val hydrate = row.readStateV1Hydrate ?: return@forEach
+            val maxReadSeq = hydrate.maxReadSeq ?: return@forEach
+            coordinator.noteReadFrontier(
+                owner,
+                row.messageStreamChannelId(),
+                ReadReceiptFrontier(maxReadSeq, hydrate.readStateVersion, row.isMarkedUnreadIn(snapshot.markedUnreadIds))
+            )
+        }
+        snapshot.unreadReadFrontiers.forEach { (id, frontier) ->
+            coordinator.noteReadFrontier(owner, ChannelId(id), frontier)
+        }
+    }
+
+    /** Reads not yet acknowledged stay read in this network snapshot. See [withPendingReadOverlay]. */
+    private fun HomeSnapshot.withPendingReads(atRequest: Map<ChannelId, Long>): HomeSnapshot {
+        val coordinator = readReceiptCoordinator ?: return this
+        val owner = readReceiptOwnerFactory?.invoke(server.id.value, currentMember.id.value) ?: return this
+        return withPendingReadOverlay(coordinator.pendingReadOverlay(owner, atRequest))
     }
 
     private fun HomeSnapshot.matchesReadReceiptOwner(owner: ReadReceiptOwner): Boolean {
@@ -3874,7 +4012,8 @@ internal class SharedHomeStore(
         diagnosticsLogger("home_followed_thread_read thread=${threadId.take(8)} known=${cleared != null}")
         if (coordinator != null && owner != null) {
             // The prediction clears the thread (withConversationUnread(threadId, 0)) and settles itself.
-            applyReadReceiptPrediction(coordinator.markReadAll(owner, ChannelId(threadId)))
+            val knownSeq = current.snapshot.unreadLatestActivitySeqs[threadId]
+            applyReadReceiptPrediction(coordinator.markReadAll(owner, ChannelId(threadId), knownSeq))
             return
         }
         applyHomeSnapshotLocally { it.withThreadUnfollowed(threadId) }
@@ -3899,10 +4038,11 @@ internal class SharedHomeStore(
         val accountId = current.snapshot.currentMember.id
         val nextUnread = target.unreadCount.takeIf { it > 0 } ?: 1
         applyHomeSnapshotLocally { it.withConversationUnread(conversationId, nextUnread) }
+        val readOwner = readReceiptOwnerFactory?.invoke(serverId.value, accountId.value)
+        if (readOwner != null) readReceiptCoordinator?.settleReadsBeforeUnread(readOwner, channelId)
         when (val result = markChannelUnread(channelId)) {
             is DataResult.Content -> {
-                val readOwner =
-                    readReceiptOwnerFactory?.invoke(serverId.value, accountId.value)
+                if (readOwner != null) readReceiptCoordinator?.noteUnreadAnswer(readOwner, channelId, result.data)
                 // The read point may not have moved (a mark), or moved back: the next open must send its
                 // read again (it is what clears the row on the server), not reuse an earlier acknowledgement.
                 if (readOwner != null) readReceiptCoordinator?.forgetAcknowledged(readOwner, channelId)
@@ -3983,6 +4123,7 @@ internal class SharedHomeStore(
         }
         val channelId = target.messageStreamChannelId()
         val previousState = _state.value
+        dropChannelGuards(channelId)
         applyHomeSnapshotLocally { it.withoutHomeConversation(conversationId) }
         if (_state.value.selectedConversationId == conversationId) {
             reduceState(_state.value.copy(selectedConversationId = null))
@@ -4014,6 +4155,7 @@ internal class SharedHomeStore(
         val channelId = target.messageStreamChannelId()
         val previousState = _state.value
         val keepsListed = !target.leaveRevokesAccess()
+        dropChannelGuards(channelId)
         applyHomeSnapshotLocally {
             if (keepsListed) it.withHomeChannelLeft(conversationId) else it.withoutHomeConversation(conversationId)
         }
@@ -4146,6 +4288,15 @@ internal class SharedHomeStore(
                 incomingVersion = update.version,
                 incomingMaxReadSeq = incomingMaxReadSeq
             )
+        if (factResult == PerReceiverReadStateFactResult.Current || factResult == PerReceiverReadStateFactResult.Accepted) {
+            readReceiptOwnerFactory?.invoke(update.serverId.value, update.memberId.value)?.let { owner ->
+                readReceiptCoordinator?.noteReadFrontier(
+                    owner,
+                    update.channelId,
+                    ReadReceiptFrontier(incomingMaxReadSeq, update.version, update.markedUnread)
+                )
+            }
+        }
         if (factResult == PerReceiverReadStateFactResult.Current) {
             // The fact this store (or Activity, which shares the checkpoints) already holds: only its
             // "marked unread" flag may still be news here (botiverse/slock #11795). No reconcile.
@@ -4777,6 +4928,8 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.UpsertNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification-dismiss:$id"
         is SharedHomeIntent.ChannelCreated -> "${SharedHomeChannelFoldEvent.Ensure.wireName}:${channel.threadId.value}"
+        is SharedHomeIntent.ChannelJoined -> "${SharedHomeChannelFoldEvent.Patch.wireName}:joined:${channelId.value}"
+        is SharedHomeIntent.ChannelMembershipEnded -> "${SharedHomeChannelFoldEvent.Remove.wireName}:ended:${channelId.value}"
         is SharedHomeIntent.ChannelProfileUpdated ->
             "${SharedHomeChannelFoldEvent.Patch.wireName}:channel-profile:${channelId.value}"
         is SharedHomeIntent.SetSurfaceVisible -> "${SharedHomeChannelFoldEvent.Patch.wireName}:surface-visible:$visible"
@@ -5203,6 +5356,38 @@ internal fun HomeSnapshot.withConversationUnread(
         unreadTotal = nextUnreadTotal,
         serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
     )
+}
+
+/**
+ * Lowers each conversation with a read in [pendingSeqs] to what lies above that read, so a read the
+ * server has not acknowledged does not come back as a badge. Only counts change: the read cursor stays
+ * the server's, also with `sync_core_read_state_v1` on, until the ack brings a real version.
+ *
+ * Messages above the read still count. The seq distance to the newest message is only an upper bound
+ * on them, not a count: seqs have gaps and not every message counts as unread, so the server's count
+ * caps it. With no newest seq for the row the server's count stands, since hiding a
+ * message nobody read is worse than a badge that stays until the ack. Mentions stay while anything is
+ * left, as the summary does not say which message they are on.
+ */
+internal fun HomeSnapshot.withPendingReadOverlay(pendingSeqs: Map<ChannelId, Long>): HomeSnapshot {
+    if (pendingSeqs.isEmpty()) return this
+    var next = this
+    for (row in channels + directMessages) {
+        val channelId = row.messageStreamChannelId()
+        val readSeq = pendingSeqs[channelId] ?: continue
+        val latestSeq =
+            listOfNotNull(row.lastMessageSeq, unreadLatestActivitySeqs[channelId.value]).maxOrNull() ?: continue
+        val above = (latestSeq - readSeq).coerceAtLeast(0L)
+        val unread = minOf(row.unreadCount.toLong(), above).toInt()
+        // A row with no count and messages above the read stays as is: its @ may be on one of them.
+        if (above == 0L || unread < row.unreadCount) next = next.withConversationUnread(channelId.value, unread)
+    }
+    for (threadId in followedThreadUnread.keys) {
+        val readSeq = pendingSeqs[ChannelId(threadId)] ?: continue
+        val latestSeq = unreadLatestActivitySeqs[threadId] ?: continue
+        if (latestSeq <= readSeq) next = next.withConversationUnread(threadId, 0)
+    }
+    return next
 }
 
 /** What a sidebar "Mark All as Read" cleared, so a failed request can put exactly that back. */
@@ -5666,6 +5851,20 @@ sealed interface SharedHomeIntent {
     data class UpsertNotification(val notification: SharedHomeNotification) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: HomeChannelRow) : SharedHomeIntent
+    /**
+     * Joined [channelId] from a conversation or task sheet: its row says so at once. [rowIfMissing]
+     * is listed if Home hasn't got the channel; Home on another server ignores this.
+     */
+    data class ChannelJoined(
+        val serverId: String,
+        val channelId: ChannelId,
+        val rowIfMissing: HomeChannelRow? = null,
+    ) : SharedHomeIntent
+    /**
+     * Left, deleted or archived from the channel's settings (the request is done): [keepListed] keeps a public
+     * channel as not joined (as [LeaveChannel] does); otherwise the row and its selection go.
+     */
+    data class ChannelMembershipEnded(val channelId: ChannelId, val keepListed: Boolean) : SharedHomeIntent
     data class ChannelProfileUpdated(
         val channelId: ChannelId,
         val name: String,
@@ -5786,6 +5985,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.ChannelJoined,
+            is SharedHomeIntent.ChannelMembershipEnded,
             is SharedHomeIntent.ChannelProfileUpdated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
@@ -5838,6 +6039,8 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.ChannelJoined,
+            is SharedHomeIntent.ChannelMembershipEnded,
             is SharedHomeIntent.ChannelProfileUpdated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
@@ -5890,6 +6093,8 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.ChannelJoined,
+            is SharedHomeIntent.ChannelMembershipEnded,
             is SharedHomeIntent.ChannelProfileUpdated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
@@ -6041,8 +6246,58 @@ private fun Throwable.safeHomeStoreDiagnosticsType(): String =
 internal fun SharedHomeStore?.homeStateForPage(): StateFlow<SharedHomeState> =
     this?.state ?: MutableStateFlow(SharedHomeState())
 
+/** A channel just joined here, kept joined across fetches that don't say so yet. */
+internal data class HomeJoinedChannelGuard(
+    val serverId: ServerId,
+    val channelId: ChannelId,
+    val rowIfMissing: HomeChannelRow?,
+    val at: kotlin.time.TimeSource.Monotonic.ValueTimeMark,
+) {
+    /** No longer needed: [snapshot] of this server lists the channel as joined, or the lag window passed. */
+    fun settledBy(snapshot: HomeSnapshot): Boolean =
+        at.elapsedNow() >= HOME_REPLICA_LAG_GUARD ||
+            (snapshot.server.id == serverId && snapshot.channels.any { it.channelId == channelId && it.joined })
+}
+
+/** The row of [channelId] marked joined, or [rowIfMissing] listed when there is none; unchanged otherwise. */
+internal fun HomeSnapshot.withJoinedChannel(channelId: ChannelId, rowIfMissing: HomeChannelRow?): HomeSnapshot {
+    val existing = channels.firstOrNull { it.channelId == channelId }
+    return when {
+        existing == null && rowIfMissing != null -> copy(channels = channels + rowIfMissing.copy(joined = true))
+        existing == null || existing.joined -> this
+        else -> copy(channels = channels.map { if (it.channelId == channelId) it.copy(joined = true) else it })
+    }
+}
+
+/** This snapshot with the [guards] of its server applied. */
+internal fun HomeSnapshot.withJoinedChannelsFrom(guards: List<HomeJoinedChannelGuard>): HomeSnapshot =
+    guards
+        .filter { it.serverId == server.id }
+        .fold(this) { snapshot, guard -> snapshot.withJoinedChannel(guard.channelId, guard.rowIfMissing) }
+
 /** How long a realtime-advanced Home row outranks an older fetched copy (replica lag p99 is > 20 s). */
 internal val HOME_REPLICA_LAG_GUARD: kotlin.time.Duration = kotlin.time.Duration.parse("60s")
+
+/** A channel created here, kept across fetches that don't list it yet. */
+internal data class HomeCreatedChannelGuard(
+    val serverId: ServerId,
+    val channel: HomeChannelRow,
+    val at: kotlin.time.TimeSource.Monotonic.ValueTimeMark,
+) {
+    /** No longer needed: [snapshot] of this server lists the channel, or the lag window passed. */
+    fun settledBy(snapshot: HomeSnapshot): Boolean =
+        at.elapsedNow() >= HOME_REPLICA_LAG_GUARD ||
+            (snapshot.server.id == serverId && snapshot.channels.any { it.channelId == channel.channelId })
+}
+
+/** This snapshot plus the [guards] of its server's channels it doesn't list. */
+internal fun HomeSnapshot.withCreatedChannelsFrom(guards: List<HomeCreatedChannelGuard>): HomeSnapshot {
+    val missing =
+        guards.filter { guard ->
+            guard.serverId == server.id && channels.none { it.channelId == guard.channel.channelId }
+        }
+    return if (missing.isEmpty()) this else copy(channels = channels + missing.map { it.channel })
+}
 
 internal data class HomeRealtimeRowGuard(
     val serverId: ServerId,

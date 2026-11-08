@@ -53,8 +53,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The task head's two editors on a phone, laid out as the task conversation page lays them out
- * (the head above the messages, which scroll it away; the pulled-down head over both) and on the
- * pending task page: tapping the Status chip opens the status menu and a pick dispatches the task
+ * (the head the first row of a short conversation) and on the pending task page: tapping the Status chip opens the status menu and a pick dispatches the task
  * channel store's UpdateStatus; tapping the Assignee opens the picker and a pick dispatches
  * AssignTask (web TaskProperties' InlineBadgeEditors, slock staging 2d1156a89). A read-only task
  * has neither editor.
@@ -171,40 +170,48 @@ class TaskConversationHeadEditUiTest {
     }
 
     /**
-     * ThreadPage's task conversation on a phone: the top bar, then the head ([floating] false)
-     * above the messages, whose scroll moves it, and the pulled-down head ([floating] true) over
-     * both; a press outside the pulled-down head anywhere on the page puts it back up.
+     * ThreadPage's task conversation on a phone: the top bar, the head above the messages
+     * ([TaskHeadPlacement.Page], no room on a phone: it only tells the state the page is a phone's),
+     * the messages with the head as their first row ([TaskHeadPlacement.FirstRow]; a short
+     * conversation, so it is in view), and the head pulled down from the bar over them
+     * ([TaskHeadPlacement.PullDown], up while the row is in view).
      */
     @Composable
     private fun ConversationPage(task: TaskSummary) {
         val scrollState = remember { TaskHeadScrollState() }
         val edits = remember { TaskHeadEdits { dispatched += it } }
-        val route: @Composable (Boolean) -> Unit = { floating ->
-            TaskConversationHeadRoute(
-                task = task,
-                state = TaskConversationHeaderState(ChannelId("conv-35")),
-                details = TaskConversationDetailsState(),
-                statusUpdating = false,
-                assigneeCandidates = listOf(artin, lagoon),
-                timeContext = null,
-                onUpdateStatus = { edits.updateStatus(task, it) },
-                onAssign = { edits.assign(task, it) },
-                onOpenSource = {},
-                onOpenEarlierDiscussion = {},
-                scrollState = scrollState,
-                floating = floating,
-            )
-        }
+        val route: @Composable (TaskHeadPlacement) -> Unit =
+            remember(task) {
+                { placement ->
+                    TaskConversationHeadRoute(
+                        task = task,
+                        state = TaskConversationHeaderState(ChannelId("conv-35")),
+                        details = TaskConversationDetailsState(),
+                        statusUpdating = false,
+                        assigneeCandidates = listOf(artin, lagoon),
+                        timeContext = null,
+                        onUpdateStatus = { edits.updateStatus(task, it) },
+                        onAssign = { edits.assign(task, it) },
+                        onOpenSource = {},
+                        onOpenEarlierDiscussion = {},
+                        scrollState = scrollState,
+                        placement = placement,
+                    )
+                }
+            }
+        val headRow = rememberTaskConversationHeadRow(scrollState) { route(TaskHeadPlacement.FirstRow) }
         Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).taskHeadFloatOutsidePress(scrollState)) {
             Box(Modifier.fillMaxWidth().height(56.dp))
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Column(Modifier.fillMaxSize()) {
-                    route(false)
+                    route(TaskHeadPlacement.Page)
                     LazyColumn(Modifier.weight(1f).fillMaxWidth().nestedScroll(scrollState.connection), reverseLayout = true) {
                         items(3) { index -> RaftText("Message $index", Modifier.padding(16.dp)) }
+                        // Reversed: the last row is the top one, where the conversation begins.
+                        item { TaskConversationHeadRowContent(headRow) }
                     }
                 }
-                route(true)
+                route(TaskHeadPlacement.PullDown)
             }
         }
     }

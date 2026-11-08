@@ -344,6 +344,7 @@ jobs:
             .github/gradle-cache-epoch \
             .github/gradle-cache-quarantine \
             scripts/upload_android_hands_artifacts.sh \
+            scripts/lib/hands_retry.sh \
             scripts/sign_android_aab.sh \
             scripts/verify_android_aab.sh \
             scripts/VerifyAndroidAab.java \
@@ -752,6 +753,54 @@ jobs:
           path: ${{ steps.native-symbols.outputs.archive }}
           if-no-files-found: error
           retention-days: 14
+
+      # The Hands artifact upload registers the build with its AAB + APK only, and
+      # create_hands_draft (whose publish-android attaches mapping + symbols) never runs
+      # for Play. Attach this run's R8 mapping and native symbols so every build uploaded
+      # through that path can be symbolicated on Hands. It runs after the workflow
+      # artifacts are saved, so a Hands/npm failure here never loses them; a network
+      # failure only warns (attach-symbols is add-only and idempotent: rerun the printed
+      # command by hand), while a missing mapping for a minified variant still fails.
+      # The AAB already embeds the mapping (BUNDLE-METADATA/.../proguard.map) for Play.
+      # CLI >= 0.5.40 for --platform: older attach-symbols labels native symbols "ios".
+      - name: Install hands-cli for symbol attach
+        if: ${{ steps.hands-artifacts.outputs.build_id != '' }}
+        shell: bash
+        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.43
+
+      - name: Attach R8 mapping + native symbols to the Hands build
+        id: hands-symbols
+        if: ${{ steps.hands-artifacts.outputs.build_id != '' }}
+        env:
+          HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
+          HANDS_ANDROID_APP_ID: ${{ secrets.HANDS_ANDROID_APP_ID }}
+          HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+          HANDS_BUILD_ID: ${{ steps.hands-artifacts.outputs.build_id }}
+          ANDROID_VARIANT: ${{ needs.resolve.outputs.android_variant }}
+          SYMBOL_ARCHIVE: ${{ steps.native-symbols.outputs.archive }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAPPING="compose/androidApp/build/outputs/mapping/${ANDROID_VARIANT}/mapping.txt"
+          if [ ! -s "${MAPPING}" ] && [ "${ANDROID_VARIANT}" != "debug" ]; then
+            echo "R8 mapping missing for minified variant ${ANDROID_VARIANT}: ${MAPPING}" >&2
+            exit 1
+          fi
+          # shellcheck source=/dev/null
+          source scripts/lib/hands_retry.sh
+          APP="${HANDS_ANDROID_APP_ID:-raft-android}"
+          attach_failed=0
+          if [ -s "${MAPPING}" ]; then
+            echo "pg_map_id: $(sed -nE '1,40s/^# pg_map_id: ([0-9a-f]+).*/\1/p' "${MAPPING}" | head -n 1)"
+            hands_retry hands builds attach-symbols "${APP}" "${HANDS_BUILD_ID}" "${MAPPING}" --kind proguard-mapping \
+              || attach_failed=1
+          fi
+          hands_retry hands builds attach-symbols "${APP}" "${HANDS_BUILD_ID}" "${SYMBOL_ARCHIVE}" \
+            --kind native-symbols --platform android || attach_failed=1
+          if [ "${attach_failed}" = "1" ]; then
+            echo "::error::Symbol attach to Hands build ${HANDS_BUILD_ID} failed; the workflow artifacts are saved. Attach by hand: hands builds attach-symbols ${APP} ${HANDS_BUILD_ID} <mapping.txt> --kind proguard-mapping (and the native-symbols archive with --kind native-symbols --platform android)"
+            echo "- :warning: Symbol attach to Hands build \`${HANDS_BUILD_ID}\` failed; attach by hand from the workflow artifacts." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Step summary
         if: always()

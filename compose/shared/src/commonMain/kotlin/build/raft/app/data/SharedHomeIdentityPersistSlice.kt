@@ -81,6 +81,8 @@ private object SharedHomeIdentityPersistSpec :
                     intent is SharedHomeIntent.ForegroundRefresh ||
                     intent is SharedHomeIntent.SelectServer ||
                     intent is SharedHomeIntent.ChannelCreated ||
+                    intent is SharedHomeIntent.ChannelJoined ||
+                    intent is SharedHomeIntent.ChannelMembershipEnded ||
                     intent is SharedHomeIntent.ChannelProfileUpdated ||
                     intent is SharedHomeIntent.TogglePinned ||
                     intent is SharedHomeIntent.SetPinnedSortMode ||

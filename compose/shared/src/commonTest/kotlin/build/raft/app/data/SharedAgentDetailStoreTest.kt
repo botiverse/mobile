@@ -131,6 +131,34 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
+    fun runtimeConfigSaveCarriesTheSavedConfigsModelLimitsSignal() {
+        // botiverse/slock #13492: the answer to a save carries the signal for the saved config, never
+        // the old one, so a warning shown for the old config goes away with it.
+        val s = store()
+        val owner = SharedAgentDetailOwner("https://api.raft.build/api", "account-1", ServerId("server-1"))
+        val warned =
+            detailWithSummary().copy(
+                summary = detailWithSummary().summary?.copy(runtime = "builtin", modelLimitsDefaultsReported = true)
+            )
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 1L))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, warned, owner.serverId, owner = owner, profileGeneration = 1L))
+        val claude = RuntimeConfig(runtime = "claude", model = RuntimeModelConfig.Preset("claude-opus-5"))
+
+        // No read-back value: what is shown stays.
+        s.dispatch(SharedAgentDetailIntent.ApplyRuntimeConfigProjection(owner, testMemberId, claude, 1L))
+        assertEquals(true, s.state.value.detail?.summary?.modelLimitsDefaultsReported)
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(owner, testMemberId, claude, 1L, modelLimitsDefaultsReported = false)
+        )
+        assertEquals(false, s.state.value.detail?.summary?.modelLimitsDefaultsReported)
+
+        // A later fresh read (agent:updated) decides again; the saved projection does not pin it.
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, warned, owner.serverId, owner = owner, profileGeneration = 1L))
+        assertEquals(true, s.state.value.detail?.summary?.modelLimitsDefaultsReported)
+    }
+
+    @Test
     fun newerProfileGenerationCanReplaceSavedRuntimeProjection() {
         val s = store()
         val owner =

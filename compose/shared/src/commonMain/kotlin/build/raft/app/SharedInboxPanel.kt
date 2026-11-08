@@ -1821,10 +1821,14 @@ private fun SharedActivityList(
     var swipeOpenRow by remember { mutableStateOf(ActivitySwipeOpenRow()) }
     val swipeOpenRowGeometry = remember { ActivitySwipeOpenRowGeometry() }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
+    // Day headings (web slock #13030) by the live clock: they turn at the person's midnight.
+    val listTimeContext = currentRaftTimeContext(timeContext)
+    val listToday = listTimeContext?.activityTodayEpochDay()
+    val listOffsetMinutes = listTimeContext?.localOffsetMinutes
     val conversationListEntries =
-        remember(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys) {
+        remember(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys, listToday, listOffsetMinutes) {
             val listed = activitySwipeListedItems(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys)
-            activityConversationListEntries(listed)
+            activityConversationListEntries(listed, listTimeContext)
         }
     // LazyColumn key order as laid out, for the pill.
     val lazyItemKeys =
@@ -2102,9 +2106,11 @@ private fun SharedActivityList(
                     // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
                     // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
                     // theme token with the rest of Activity's dark-mode pass.
-                    items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
+                    conversationListEntries.forEach { entry ->
                         when (entry) {
-                            is ActivityConversationListEntry.Row -> {
+                            // On the panel's own surface, so no row shows through the stuck heading.
+                            is ActivityConversationListEntry.DayHeading -> activityDayHeadingItem(entry, RaftColor.SurfaceWhite)
+                            is ActivityConversationListEntry.Row -> item(key = entry.key, contentType = "activity_row") {
                                 val item = entry.item
                                 val model =
                                     remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
@@ -3046,7 +3052,7 @@ internal const val ACTIVITY_LOAD_MORE_ROW_KEY = "activity_load_more"
 
 /**
  * True only when at least one activity row is visible and none of the visible
- * rows still exists. The load-more footer is not an activity row, and an empty
+ * rows still exists. The load-more footer and the day headings are not activity rows, and an empty
  * visible set is a transient layout state; neither is evidence that the rows
  * the reader was looking at were removed.
  */
@@ -3056,7 +3062,7 @@ internal fun activityListShouldRecoverVisibleContent(
     currentItemKeys: List<String>
 ): Boolean {
     if (firstVisibleItemIndex <= 0 || currentItemKeys.isEmpty()) return false
-    val visibleRowKeys = visibleItemKeys.filter { it != ACTIVITY_LOAD_MORE_ROW_KEY }
+    val visibleRowKeys = visibleItemKeys.filter { it != ACTIVITY_LOAD_MORE_ROW_KEY && !it.startsWith(ACTIVITY_DAY_GROUP_KEY_PREFIX) }
     if (visibleRowKeys.isEmpty()) return false
     val currentKeys = currentItemKeys.toSet()
     return visibleRowKeys.none(currentKeys::contains)

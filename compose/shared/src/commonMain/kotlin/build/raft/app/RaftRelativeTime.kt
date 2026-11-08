@@ -19,11 +19,9 @@ import build.raft.app.data.RaftDatetimeFoundationOwner
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveRaftRelativeTimeLabel
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -32,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.jetbrains.compose.resources.StringResource
+import build.raft.designsystem.components.raftClickable
 
 internal enum class RaftTimestampDisplayMode {
     Relative,
@@ -196,13 +195,13 @@ internal fun RaftRelativeTimestampText(
     val interactiveModifier =
         if (toggleAvailable) {
             modifier
-                .clickable(
+                .raftClickable(
+                    onClick = {
+                        val nextMode = displayState.toggle(displayGroup, value, effectiveContext)
+                        onToggle(nextMode)
+                    },
                     onClickLabel = onClickLabel,
-                    role = Role.Button
-                ) {
-                    val nextMode = displayState.toggle(displayGroup, value, effectiveContext)
-                    onToggle(nextMode)
-                }
+                )
                 .semantics { stateDescription = modeDescription }
         } else {
             modifier
@@ -264,7 +263,7 @@ internal fun nextRaftTimestampDisplayMode(
 }
 
 @Composable
-private fun currentRaftTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? =
+internal fun currentRaftTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? =
     timeContext?.takeIf { it.nowEpochMillis != null }
         ?: currentRaftTimeContextProvider?.current
 

@@ -223,6 +223,7 @@ LUCIDE_ICONS = [
     "message-circle-plus",
     "message-square",
     "message-square-check",
+    "message-square-dashed",
     "message-square-dot",
     "message-square-plus",
     "monitor",

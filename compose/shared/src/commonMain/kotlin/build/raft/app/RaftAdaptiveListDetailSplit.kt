@@ -96,7 +96,8 @@ internal fun raftListPaneShareCapDp(roomDp: Float, share: Float, minDp: Float): 
  *   the list takes the whole row and there is no empty detail beside it.
  * - [collapsed] (the rail's Collapse Sidebar, [RaftSidebarCollapseState]): the detail takes the
  *   whole row at once, with no seam or handle; the list leaves composition until it is expanded
- *   (web: the collapsed sidebar is inert). With [onCollapsedChange] (the columns the rail's toggle
+ *   (web: the collapsed sidebar is inert). Only while [hasSelection]: with nothing open the list shows
+ *   beside the empty detail (#4394), and hides again once something opens. With [onCollapsedChange] (the columns the rail's toggle
  *   collapses) the handle collapses the list too: a drag 40dp under its minimum, or Enter.
  * - Otherwise (compact): the detail when something is selected, else the list.
  */
@@ -123,7 +124,9 @@ internal fun RaftAdaptiveListDetailSplit(
     val listWidthDp = widths.renderedDp(kind, rowWidthDp).let { if (shareCap != null) minOf(it, shareCap) else it }
     val listMaxDp = raftListPaneWidthDp(kind, kind.maxDp, rowWidthDp).let { if (shareCap != null) minOf(it, shareCap) else it }
     val listFillsRow = dualPane && fillListWhenNothingPicked && !hasSelection
-    val listCollapsed = dualPane && !listFillsRow && collapsed
+    // #4394: with nothing open the list shows even when collapsed (else the page is only "Select a
+    // conversation"); [collapsed] is kept, so it hides again once something opens.
+    val listCollapsed = dualPane && !listFillsRow && collapsed && hasSelection
     val split = dualPane && !listFillsRow && !listCollapsed
     Box(
         modifier =

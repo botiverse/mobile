@@ -199,6 +199,9 @@ internal class CanonicalMessageV2DurableLastKnownReader(
             val member = CanonicalMessageV2SegmentAlgebra.memberOf(segments, envelope.fact.seq)
             member == null || member == head
         }
+        // Phase 2c: islands only (a link or overview write into a never-opened channel) is no window: not an empty
+        // channel and not a screen, so the offline result stays what it was until Phase 2d.
+        if (head == null && envelopes.isEmpty() && !cursor.hasLoadedOldest) return null
         val readIds = envelopes.mapTo(HashSet()) { it.fact.id }
         return ThreadDurableLastKnownFrame(
             scope = scope,

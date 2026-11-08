@@ -17,7 +17,8 @@ data class RaftMarkdownInlineRef(
 /**
  * Raft's GFM extension for `@member`, `#channel`, `#channel:thread`,
  * `dm:@peer:thread`, numeric `#task`, and conversation-qualified task
- * (`#channel:#7`, `dm:@peer:#7`) references.
+ * (`#channel:#7`, `dm:@peer:#7`) and message (`#channel msg=id`,
+ * `#channel:thread msg=id`, `dm:@peer msg=id`, `dm:@peer:thread msg=id`) references.
  *
  * GFM parses first and therefore owns nesting. Raft recognition runs only on
  * source ranges not claimed by Markdown links/definitions, images, code,
@@ -77,7 +78,7 @@ internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int =
     var cursor = start.coerceAtLeast(0)
     val boundedEnd = end.coerceAtMost(length)
     while (cursor < boundedEnd) {
-        val range = raftInlineRefRange(cursor)?.takeIf { it.last < boundedEnd }
+        val range = raftInlineRefRange(cursor, boundedEnd)?.takeIf { it.last < boundedEnd }
         if (range != null) {
             result += range
             cursor = range.last + 1
@@ -88,19 +89,23 @@ internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int =
     return result
 }
 
-private fun String.raftInlineRefRange(start: Int): IntRange? {
+/**
+ * The ref starting at [start]. [messageRefs] false reads only its target: the `#channel` of a
+ * `#channel msg=id` whose tail the lexer gave to something else.
+ */
+internal fun String.raftInlineRefRange(start: Int, boundedEnd: Int = length, messageRefs: Boolean = true): IntRange? {
     if (start >= length || (this[start] != '#' && this[start] != '@' && !startsWith("dm:@", start, ignoreCase = true))) {
         return null
     }
     if (isRaftMarkdownEscaped(start)) return null
     return when {
-        startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageRange(start)
+        startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageRange(start, boundedEnd, messageRefs)
         this[start] == '@' -> if (isRaftMentionBoundary(start - 1)) raftMentionRange(start) else null
-        else -> raftHashRange(start)
+        else -> raftHashRange(start, boundedEnd, messageRefs)
     }
 }
 
-private fun String.raftDirectMessageRange(start: Int): IntRange? {
+private fun String.raftDirectMessageRange(start: Int, boundedEnd: Int, messageRefs: Boolean): IntRange? {
     val peerStart = start + 4
     if (peerStart >= length || !this[peerStart].isRaftAsciiWordCharacter()) return null
     var peerEnd = peerStart + 1
@@ -121,6 +126,7 @@ private fun String.raftDirectMessageRange(start: Int): IntRange? {
     }
     // A peer longer than the scan cap is not a DM target at all.
     if (peerEnd < length && (this[peerEnd].isRaftDirectMessagePeerPart() || this[peerEnd] == '~')) return null
+    if (messageRefs) raftMessageRefTailEnd(peerEnd, boundedEnd)?.let { end -> return start until end }
     // `dm:@peer:#7` is a task in the DM (Web `createRaftDmTaskRefRegex`, run
     // before the DM thread and bare DM passes).
     raftTaskRefEnd(peerEnd)?.let { taskEnd -> return start until taskEnd }
@@ -135,6 +141,7 @@ private fun String.raftDirectMessageRange(start: Int): IntRange? {
         }
         val shortLength = shortEnd - shortStart
         if (shortLength in 6..8 && (shortEnd >= length || !this[shortEnd].isRaftShortIdPart())) {
+            if (messageRefs) raftMessageRefTailEnd(shortEnd, boundedEnd)?.let { end -> return start until end }
             return start until shortEnd
         }
     }
@@ -184,9 +191,10 @@ private fun String.raftMentionRange(start: Int): IntRange? {
     return start until end
 }
 
-private fun String.raftHashRange(start: Int): IntRange? {
+private fun String.raftHashRange(start: Int, boundedEnd: Int, messageRefs: Boolean): IntRange? {
     val valueStart = start + 1
     if (valueStart >= length) return null
+    if (messageRefs) raftChannelMessageRefEnd(valueStart, boundedEnd)?.let { end -> return start until end }
     if (this[valueStart].isDigit()) {
         if (!isRaftTaskRefBoundary(start - 1)) return null
         var end = valueStart + 1
@@ -222,6 +230,58 @@ private fun String.raftHashRange(start: Int): IntRange? {
     }
     return start until nameEnd
 }
+
+/**
+ * End offset of `name[:short] msg=id` with the name at [nameStart], or null (Web
+ * `createRaftMessageRefRegex`). It runs before every other `#` form, as the Web's message pass
+ * does, so the whole token is claimed even when the name reads as a number or a short id.
+ */
+private fun String.raftChannelMessageRefEnd(nameStart: Int, boundedEnd: Int): Int? {
+    var nameEnd = nameStart
+    while (nameEnd < boundedEnd && this[nameEnd].isRaftChannelPart()) nameEnd++
+    if (nameEnd == nameStart || nameEnd >= boundedEnd) return null
+    if (this[nameEnd] != ':') return raftMessageRefTailEnd(nameEnd, boundedEnd)
+    val shortStart = nameEnd + 1
+    var shortEnd = shortStart
+    while (shortEnd < boundedEnd && shortEnd - shortStart < 8 && this[shortEnd].isRaftShortIdPart()) shortEnd++
+    if (shortEnd - shortStart < 6) return null
+    return raftMessageRefTailEnd(shortEnd, boundedEnd)
+}
+
+/**
+ * End offset of the `\s+msg=<id>` tail at [targetEnd], or null. The id is Web
+ * `RAFT_REF_MESSAGE_ID_PATTERN` (`[A-Za-z0-9][A-Za-z0-9-]{1,63}`), which has no right boundary:
+ * `msg=abc_d` is the id `abc` followed by text. The whitespace may hold a soft line break (the Web
+ * matches inside one text node), but neither a hard break nor a blank line, which end that node.
+ */
+private fun String.raftMessageRefTailEnd(targetEnd: Int, boundedEnd: Int): Int? {
+    var keyStart = targetEnd
+    var lineBreaks = 0
+    var spacesBeforeBreak = 0
+    var spaces = 0
+    while (keyStart < boundedEnd && this[keyStart].isWhitespace()) {
+        when (this[keyStart]) {
+            '\n' -> {
+                lineBreaks++
+                spacesBeforeBreak = spaces
+            }
+            ' ' -> spaces++
+            '\r' -> Unit
+            else -> spaces = 0
+        }
+        keyStart++
+    }
+    if (keyStart == targetEnd || lineBreaks > 1 || spacesBeforeBreak >= 2) return null
+    if (!startsWith(RaftMessageRefKey, keyStart, ignoreCase = true)) return null
+    val idStart = keyStart + RaftMessageRefKey.length
+    if (idStart >= boundedEnd || !this[idStart].isRaftMessageIdStart()) return null
+    var idEnd = idStart + 1
+    while (idEnd < boundedEnd && idEnd - idStart < RaftMessageIdMaxLength && this[idEnd].isRaftMessageIdPart()) idEnd++
+    return idEnd.takeIf { it - idStart >= 2 }
+}
+
+private const val RaftMessageRefKey = "msg="
+private const val RaftMessageIdMaxLength = 64
 
 /**
  * The task ref separator (Web `RAFT_TASK_REF_SEPARATOR`): a task ref is its
@@ -277,4 +337,6 @@ private fun Char.isRaftDirectMessagePeerPart(): Boolean = isRaftAsciiWordCharact
 private fun Char.isRaftAsciiWordCharacter(): Boolean =
     this in 'a'..'z' || this in 'A'..'Z' || isDigit() || this == '_'
 private fun Char.isRaftChannelPart(): Boolean = isLetterOrDigit() || this == '_' || this == '-'
+private fun Char.isRaftMessageIdStart(): Boolean = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
+private fun Char.isRaftMessageIdPart(): Boolean = isRaftMessageIdStart() || this == '-'
 private fun Char.isRaftShortIdPart(): Boolean = isDigit() || this in 'a'..'f' || this in 'A'..'F'

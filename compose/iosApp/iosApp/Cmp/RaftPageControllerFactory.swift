@@ -105,6 +105,10 @@ import shared
         container.raftBackSwipeContentProbe = { point in
             page.contentConsumesBackSwipe(x: Double(point.x), y: Double(point.y))
         }
+        // Covered (a native push, a full-screen presentation): the page closes its overlays.
+        container.raftPageWillBeCoveredHook = {
+            page.pageWillBeCovered()
+        }
         return container
     }
 

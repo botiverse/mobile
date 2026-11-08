@@ -111,4 +111,44 @@ class SharedPeerReadReceiptStoreTest {
         scope.advanceUntilIdle()
         assertEquals(3, requested.size)
     }
+    @Test fun followersUpdatedReloadsTheDetailAfterAnyLoadInFlightAndCarriesStoppedFollowing() = runTest {
+        val scope = TestScope(StandardTestDispatcher(testScheduler))
+        val answers = ArrayDeque<CompletableDeferred<PeerReadReceiptHydrateResult>>()
+        val requested = mutableListOf<String>()
+        val store = SharedPeerReadReceiptStore(scope, fetchHydrate = { _, scopeId ->
+            requested += scopeId
+            CompletableDeferred<PeerReadReceiptHydrateResult>().also { answers.addLast(it) }.await()
+        })
+        store.dispatch(PeerReadReceiptIntent.BindOwner(owner))
+        // Never hydrated: nothing to refresh (the open loads it on its own).
+        store.refreshFollowState(owner, "th-1")
+        scope.advanceUntilIdle()
+        assertEquals(emptyList(), requested)
+
+        store.hydrate(owner, "th-1")
+        scope.advanceUntilIdle()
+        // thread:followers-updated while the first load is in flight: it may have read before the
+        // change, so one more load runs after it, not alongside.
+        store.refreshFollowState(owner, "th-1")
+        scope.advanceUntilIdle()
+        assertEquals(listOf("th-1"), requested)
+        answers.removeFirst().complete(PeerReadReceiptHydrateResult.Loaded(peers("agent-1" to 4)))
+        scope.advanceUntilIdle()
+        assertEquals(listOf("th-1", "th-1"), requested)
+        val stopped = PeerReadReceiptScope.Peers(listOf(PeerReadState(ReadReceiptPeerKind.Agent, "agent-1", 4, stoppedFollowing = true)))
+        answers.removeFirst().complete(PeerReadReceiptHydrateResult.Loaded(stopped))
+        scope.advanceUntilIdle()
+        assertEquals(stopped, store.state.value.scopes["th-1"])
+
+        // The follow resumed: the next refresh drops the mark.
+        store.refreshFollowState(owner, "th-1")
+        scope.advanceUntilIdle()
+        answers.removeFirst().complete(PeerReadReceiptHydrateResult.Loaded(peers("agent-1" to 4)))
+        scope.advanceUntilIdle()
+        assertEquals(peers("agent-1" to 4), store.state.value.scopes["th-1"])
+        // Another owner's event does nothing.
+        store.refreshFollowState(otherServer, "th-1")
+        scope.advanceUntilIdle()
+        assertEquals(3, requested.size)
+    }
 }

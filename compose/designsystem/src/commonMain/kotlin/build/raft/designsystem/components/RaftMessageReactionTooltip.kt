@@ -106,6 +106,11 @@ fun RaftMessageReactionTooltip(
     val transition = rememberTransition(visible, label = "RaftMessageReactionTooltip")
     Box(modifier.raftMouseHover { hovered = it }, propagateMinConstraints = true) {
         if (visible.currentState || visible.targetState) {
+            // A page pushed over this one closes the tooltip first.
+            RaftDismissOnPageCover {
+                hovered = false
+                onDismissRequest()
+            }
             Popup(
                 popupPositionProvider = framed,
                 onDismissRequest = {

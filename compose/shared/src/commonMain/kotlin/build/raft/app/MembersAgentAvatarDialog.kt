@@ -73,6 +73,8 @@ import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftPressSurface
 
 /*
  * The agent's change-avatar dialog: web `AgentProfileEditDialog` with `field="avatar"`
@@ -635,7 +637,7 @@ private fun MembersAgentAvatarTileFrame(
                     contentDescription = label
                     this.selected = selected
                 }
-                .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+                .raftClickable(onClick = onClick, enabled = enabled, shape = shape, surface = if (selected) RaftPressSurface.Sticker else RaftPressSurface.Paper, selected = selected),
         contentAlignment = Alignment.Center
     ) {
         content()

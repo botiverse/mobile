@@ -177,6 +177,7 @@ enum class RaftLucideIconName(val wireName: String) {
     MessageCirclePlus("message-circle-plus"),
     MessageSquare("message-square"),
     MessageSquareCheck("message-square-check"),
+    MessageSquareDashed("message-square-dashed"),
     MessageSquareDot("message-square-dot"),
     MessageSquarePlus("message-square-plus"),
     Monitor("monitor"),

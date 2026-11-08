@@ -49,7 +49,11 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.SharedTaskFactFoldOutcome
+import build.raft.app.data.TaskActionResult
+import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
+import build.raft.app.data.resolveSharedTaskReference
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -7433,6 +7437,44 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun markdownTaskNumberNetworkStepsRunInTheSharedReferenceFetchPhase() = runBlocking {
+        // A joint v2 task: the number lookup and the `POST /tasks/:id/conversation` are both
+        // network, so the shared spinner must cover each of them, and nothing after.
+        val resolver = build.raft.app.data.SharedReferenceResolver()
+        val busyDuring = mutableMapOf<String, Boolean>()
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-77","channelId":"parent-channel","channelType":"joint","conversationChannelId":"joint-canonical","conversationAnchored":true,"taskNumber":77,"title":"Joint task","status":"in_progress"}}""",
+                serverTasksBody = """{"tasks":[]}""",
+                onRequest = { request -> busyDuring[request] = resolver.isFetching("message-a:task") }
+            )
+
+        openMarkdownTaskNumberPayload(
+            serverId = ServerId("server-1"),
+            taskNumber = 77,
+            currentPayload =
+                RaftThreadScreenPayload(
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    channelKind = "channel",
+                    sourceThreadId = "parent-channel",
+                    streamChannelId = "parent-channel"
+                ),
+            currentTaskChannelId = ChannelId("parent-channel"),
+            tasksDataSource = SharedTasksDataSource(api),
+            tasksDataStore = null,
+            taskV2Enabled = true,
+            referenceResolver = resolver,
+            actionId = "message-a:task"
+        )
+
+        assertEquals(listOf("taskByNumber:server-1:parent-channel:77", "openConversation:task-77"), api.calls)
+        assertEquals(mapOf("taskByNumber" to true, "openConversation" to true), busyDuring)
+        assertTrue(resolver.inFlight.value.isEmpty(), "the spinner ends with the open")
+    }
+
+    @Test
     fun markdownTaskNumberOpenUsesLoadedServerStoreWithoutNetwork() = runBlocking {
         val store = SharedTasksDataStore()
         store.publishSnapshot(
@@ -7512,6 +7554,50 @@ class ThreadPayloadTest {
         assertEquals("target-channel", found.payload.parentChannelId)
         assertEquals("target-message", found.payload.parentMessageId)
         assertEquals(emptyList(), api.calls)
+    }
+
+    /**
+     * Hands 10e5cecd: a task the store already holds (a realtime frame), in a channel whose list is
+     * not loaded. The server's answer at that revision folds as stale, or as a conflict if the copies
+     * differ; either way the task exists and opens on the answer, on every tap.
+     */
+    @Test
+    fun markdownTaskRefOpensATaskTheStoreAlreadyHolds() = runBlocking {
+        val channel = ChannelId("wg-mobile")
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-16","title":"From the server","status":"in_progress","taskNumber":16,""" +
+                        """"channelId":"wg-mobile","messageId":"host","revision":3}}""",
+                serverTasksBody = """{"tasks":[]}"""
+            )
+        val source = SharedTasksDataSource(api)
+        val answer =
+            assertIs<DataResult.Content<TaskActionResult>>(
+                source.loadChannelTaskByNumber(ServerId("server-1"), channel, 16, DataRequestPriority.Foreground)
+            ).data.task
+
+        suspend fun assertOpens(store: SharedTasksDataStore) =
+            repeat(2) {
+                val resolution =
+                    resolveSharedTaskReference(
+                        serverId = ServerId("server-1"),
+                        taskNumber = 16,
+                        currentChannelId = channel,
+                        tasksDataSource = source,
+                        tasksDataStore = store,
+                        channelQualified = true
+                    )
+                assertEquals("From the server", assertIs<SharedTaskReferenceResolution.Found>(resolution).task.title)
+            }
+
+        val sameCopy = SharedTasksDataStore()
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, sameCopy.upsertTaskForCurrentServer("server-1", answer))
+        assertOpens(sameCopy)
+
+        val differentCopy = SharedTasksDataStore()
+        differentCopy.upsertTaskForCurrentServer("server-1", answer.copy(title = "An older wording"))
+        assertOpens(differentCopy)
     }
 
     @Test
@@ -8474,6 +8560,27 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadTasksJoinStartsForChannelWithNoMessages() {
+        // 1.21.0: a channel with no messages loads as "empty"; its Tasks tab sent no request and
+        // stayed on Loading.
+        val taskChannelId = ChannelId("channel-1")
+        val emptyChannel =
+            RaftThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "empty",
+                selectedTab = "tasks",
+                showTaskStatusActions = true
+            )
+
+        assertTrue(shouldStartThreadTasksLoad(emptyChannel, taskChannelId = taskChannelId))
+        assertTrue(shouldStartThreadTasksJoin(emptyChannel, startedThreadId = null, taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(emptyChannel, startedThreadId = "channel-1", taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(emptyChannel.copy(status = "error"), startedThreadId = null, taskChannelId = taskChannelId))
+    }
+
+    @Test
     fun resolvedAuxiliaryThreadIdUsesCurrentPayloadIdentityAfterLoading() {
         val launchPayload =
             RaftThreadScreenPayload(
@@ -9413,15 +9520,24 @@ class ThreadPayloadTest {
 
     private class FakeMarkdownTaskNumberApi(
         private val channelTaskBody: String,
-        private val serverTasksBody: String
+        private val serverTasksBody: String,
+        /** Runs inside every request (reads the reference resolver's fetch phase). */
+        private val onRequest: (String) -> Unit = {}
     ) : RaftTasksApi {
         val calls = mutableListOf<String>()
+
+        override suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): HomeNetworkResponse {
+            calls += "openConversation:${taskId.value}"
+            onRequest("openConversation")
+            return HomeNetworkResponse(code = 200, bodyText = """{"conversationChannelId":"joint-local-conversation"}""")
+        }
 
         override suspend fun serverTasks(
             serverId: ServerId,
             priority: DataRequestPriority
         ): HomeNetworkResponse {
             calls += "serverTasks:${serverId.value}"
+            onRequest("serverTasks")
             return HomeNetworkResponse(code = 200, bodyText = serverTasksBody)
         }
 
@@ -9432,6 +9548,7 @@ class ThreadPayloadTest {
             priority: DataRequestPriority
         ): HomeNetworkResponse {
             calls += "taskByNumber:${serverId.value}:${channelId.value}:$taskNumber"
+            onRequest("taskByNumber")
             return HomeNetworkResponse(code = 200, bodyText = channelTaskBody)
         }
 

@@ -14,6 +14,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
@@ -92,6 +93,10 @@ import build.raft.app.data.ThreadCandidateProofGate
 import build.raft.app.data.ThreadIdentityProof
 import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.ThreadReplySummariesSnapshot
+import build.raft.app.data.SharedReferenceKey
+import build.raft.app.data.SharedReferenceKind
+import build.raft.app.data.SharedReferenceOutcome
+import build.raft.app.data.SharedReferenceResolver
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.RawMessagePage
@@ -128,6 +133,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.parseRaftDirectMessagePeerRef
+import build.raft.app.markdown.RaftMarkdownMessageRef
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MemberProfile
@@ -899,6 +905,41 @@ internal class SharedThreadMessageStore(
         return selected
     }
 
+    /** The loaded messages of [channelId] whose id starts with [idPrefix]. */
+    fun findScopedByIdPrefix(scopeId: String, channelId: ChannelId, idPrefix: String): List<Message> {
+        val prefix = idPrefix.trim().lowercase()
+        if (prefix.isBlank()) return emptyList()
+        return synchronized(messageLock) {
+            messages.entries
+                .filter { (key, _) ->
+                    key.scopeId == scopeId &&
+                        key.channelId == channelId &&
+                        key.messageId.value.lowercase().startsWith(prefix)
+                }
+                .map { it.value }
+                .distinctBy { it.id }
+        }
+    }
+
+    /** Reply-thread resolutions of [parentChannelId] whose parent id starts with [parentIdPrefix]. */
+    fun findReplyThreadStreams(
+        namespaceId: String,
+        parentChannelId: String,
+        parentIdPrefix: String
+    ): List<Pair<String, String>> {
+        val prefix = parentIdPrefix.trim().lowercase()
+        if (prefix.isBlank()) return emptyList()
+        return synchronized(messageLock) {
+            replyThreadStreams.entries
+                .filter { (key, _) ->
+                    key.namespaceId == namespaceId &&
+                        key.parentChannelId == parentChannelId &&
+                        key.parentMessageId.lowercase().startsWith(prefix)
+                }
+                .map { (key, threadChannelId) -> key.parentMessageId to threadChannelId }
+        }
+    }
+
     fun getReplyThreadStream(
         namespaceId: String,
         parentChannelId: String,
@@ -1074,6 +1115,88 @@ internal class SharedThreadPayloadStore(
     private val failedPrewarmTakeoverResultGenerations =
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private var lastPrewarmStartedAt: TimeMark? = null
+    /** Reference opens (thread, message, task refs): local first, one shared fetch phase, resolutions kept. */
+    internal val referenceResolver: SharedReferenceResolver = SharedReferenceResolver()
+    // A task conversation's task / parent channel never change: keep every ref this process read
+    // (bounded, least recently used first) so a reopen resolves composer access without a request.
+    private val taskConversationRefLock = SynchronizedObject()
+    private val taskConversationRefs = LinkedHashMap<SharedTaskConversationRefKey, TaskConversationChannelRef>()
+    private val taskConversationRefFlights =
+        mutableMapOf<SharedTaskConversationRefKey, Deferred<DataResult<TaskConversationChannelRef>>>()
+
+    fun cachedTaskConversationRef(key: SharedTaskConversationRefKey): TaskConversationChannelRef? =
+        synchronized(taskConversationRefLock) {
+            taskConversationRefs.remove(key)?.also { taskConversationRefs[key] = it }
+        }
+
+    /**
+     * The ref of a task conversation: the cached one, else one shared fetch. The fetch runs on this
+     * process-wide [scope], so a caller that stops waiting (the thread page's 1 s initial-access
+     * deadline) does not cancel it: the ref still lands in the cache and a caller that keeps waiting
+     * still gets it.
+     */
+    suspend fun taskConversationRef(
+        key: SharedTaskConversationRefKey,
+        load: suspend () -> DataResult<TaskConversationChannelRef>,
+    ): DataResult<TaskConversationChannelRef> {
+        cachedTaskConversationRef(key)?.let { return DataResult.Content(it) }
+        var started = false
+        val flight =
+            synchronized(taskConversationRefLock) {
+                taskConversationRefFlights[key]?.takeUnless { it.isCompleted }
+                    ?: scope
+                        .async(start = CoroutineStart.LAZY) {
+                            val result =
+                                try {
+                                    load()
+                                } catch (cancellation: CancellationException) {
+                                    throw cancellation
+                                } catch (_: Throwable) {
+                                    DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
+                                }
+                            if (result is DataResult.Content) {
+                                synchronized(taskConversationRefLock) {
+                                    taskConversationRefs.remove(key)
+                                    taskConversationRefs[key] = result.data
+                                    while (taskConversationRefs.size > SharedThreadTaskConversationRefCacheLimit) {
+                                        taskConversationRefs.remove(taskConversationRefs.keys.first())
+                                    }
+                                }
+                            }
+                            result
+                        }
+                        .also { created ->
+                            taskConversationRefFlights[key] = created
+                            started = true
+                        }
+            }
+        if (started) {
+            // Completed, failed or cancelled: the flight leaves the map either way, so the map holds
+            // only fetches still running.
+            flight.invokeOnCompletion {
+                synchronized(taskConversationRefLock) {
+                    if (taskConversationRefFlights[key] === flight) taskConversationRefFlights.remove(key)
+                }
+            }
+            flight.start()
+        }
+        return flight.await()
+    }
+
+    /** Session / account boundary: refs and running ref fetches leave with the account. */
+    private fun clearTaskConversationRefs(matching: (SharedTaskConversationRefKey) -> Boolean) {
+        val cancelled =
+            synchronized(taskConversationRefLock) {
+                taskConversationRefs.keys.removeAll(matching)
+                val flights = taskConversationRefFlights.filterKeys(matching)
+                flights.keys.forEach(taskConversationRefFlights::remove)
+                flights.values
+            }
+        cancelled.forEach { it.cancel() }
+    }
+
+    internal fun taskConversationRefFlightCountForTest(): Int =
+        synchronized(taskConversationRefLock) { taskConversationRefFlights.size }
 
     suspend fun joinOrStartReplyThreadAccessFlight(
         key: SharedReplyThreadAccessFlightKey,
@@ -1135,6 +1258,7 @@ internal class SharedThreadPayloadStore(
      */
     fun retireAccount(environmentId: String, principalId: String) {
         if (environmentId.isBlank() || principalId.isBlank()) return
+        clearTaskConversationRefs { key -> key.environmentId == environmentId && key.principalId == principalId }
         val prefix = sharedThreadTimelineAccountScopePrefix(environmentId, principalId)
         val retired = freshnessLedger.retireOwnersMatching { owner -> owner.startsWith(prefix) }
         if (retired.isEmpty()) return
@@ -1186,12 +1310,14 @@ internal class SharedThreadPayloadStore(
      * Every owner generation is retired so a late producer cannot re-commit afterwards.
      */
     fun clearAll() {
+        clearTaskConversationRefs { true }
         freshnessLedger.retireOwnersMatching { true }
         synchronized(recencyLock) {
             payloads.value = emptyMap()
             recency.clear()
             resolvedAccessKeys.clear()
         }
+        referenceResolver.clear()
     }
 
     /** Test seam: owner keys currently cached, least recently used first. */
@@ -1833,6 +1959,8 @@ internal data class SharedThreadDurablePage(
     val rawPage: RawMessagePage,
     /** Phase 3b: the durable partition's head epoch read before this page was requested (`null` = none). */
     val headEpochAtRequest: Long? = null,
+    /** Phase 2c: the durable write revision read before this page was requested (`null` = none). */
+    val revAtRequest: Long? = null,
 )
 
 private val processAttachmentUploadCapabilitiesCache =
@@ -1854,6 +1982,8 @@ internal data class SharedThreadDurableContextPage(
     val hasNewer: Boolean,
     /** Phase 3b: the durable partition's head epoch read before this page was requested (`null` = none). */
     val headEpochAtRequest: Long? = null,
+    /** Phase 2c: the durable write revision read before this page was requested (`null` = none). */
+    val revAtRequest: Long? = null,
 )
 
 internal class SharedThreadDataSource(
@@ -2093,6 +2223,8 @@ internal class SharedThreadDataSource(
     private val payloadCache = payloadStore ?: SharedThreadPayloadStore()
     /** Shared with Activity reply prewarm through the process-wide [SharedThreadPayloadStore]. */
     internal val foregroundLoadGate: SharedForegroundLoadGate get() = payloadCache.foregroundLoadGate
+    /** Process-wide with [payloadCache]: a reference resolved on one page is local on the next. */
+    internal val referenceResolver: SharedReferenceResolver get() = payloadCache.referenceResolver
     private val messageResolver = messageStore ?: SharedThreadMessageStore()
     private val replyThreadResolveCache = mutableMapOf<ReplyThreadResolveKey, String>()
     private val cacheEnvironmentId = MutableStateFlow("")
@@ -2131,6 +2263,12 @@ internal class SharedThreadDataSource(
     private fun durableHeadEpochOrNull(provenance: ReplyCacheProvenance): Long? {
         val partition = provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) ?: return null
         return durablePageExtender?.headEpoch(partition) ?: enteredScopeSnapshotLoader?.headEpoch(partition)
+    }
+
+    /** Phase 2c: the durable write revision of [provenance]'s partition, read BEFORE a page fetch (`revAtRequest`). */
+    private suspend fun durableLocalRevOrNull(provenance: ReplyCacheProvenance): Long? {
+        val partition = provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) ?: return null
+        return durablePageExtender?.currentLocalRev(partition)
     }
 
     internal fun pendingSendJournalOrNull(): ThreadPendingSendJournal? = pendingSendJournal
@@ -2772,6 +2910,7 @@ internal class SharedThreadDataSource(
         rawPage: RawMessagePage,
         replyParent: ThreadDurableReplyParent? = null,
         headEpochAtRequest: Long? = null,
+        revAtRequest: Long? = null,
     ): Boolean {
         val extender = durablePageExtender ?: return false
         if (!routeIdentity.canRenderTimelineCandidates) return false
@@ -2790,6 +2929,10 @@ internal class SharedThreadDataSource(
             requestedLimit = rawPage.requestedLimit,
             replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
             requestHeadEpoch = headEpochAtRequest,
+            messageWindow = rawPage.messageWindow,
+            historyLimited = rawPage.historyLimited,
+            revAtRequest = revAtRequest,
+            replyCountByParentId = rawPage.replyCountsByParentId,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
     }
@@ -2822,15 +2965,24 @@ internal class SharedThreadDataSource(
             page.context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return skip("no_partition")
         if (!isCurrentReplyCacheProvenance(page.context.provenance)) return skip("identity_changed")
+        // The scope key is the response's, which may be a thread of this route's channel; never the route's by default.
+        val response = page.rawPage.context ?: return skip("no_response_channel")
+        val routeParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent
+        val targetParent = response.threadParentChannelId?.let { parentChannelId ->
+            response.threadRootMessageId?.let { root -> ThreadDurableReplyParent(parentChannelId, root) }
+        }
         extender.persistContextPage(
             partition = partition,
-            channelId = channelId,
-            anchorMessageId = page.anchorMessageId,
+            channelId = response.channelId,
+            anchorMessageId = response.targetMessageId ?: page.anchorMessageId,
             rawMessages = page.rawPage.messages,
             hasOlder = page.hasOlder,
             hasNewer = page.hasNewer,
-            replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
+            replyParent = targetParent ?: routeParent?.takeIf { response.channelId == channelId },
             requestHeadEpoch = page.headEpochAtRequest,
+            historyLimited = page.rawPage.historyLimited,
+            revAtRequest = page.revAtRequest,
+            replyCountByParentId = page.rawPage.replyCountsByParentId,
         ) { isCurrentReplyCacheProvenance(page.context.provenance) }
         return true
     }
@@ -3640,36 +3792,132 @@ internal class SharedThreadDataSource(
         return cachedReplyThreadStreamId(namespaceId, parentChannel, parentMessage) == routeStream
     }
 
-    private fun cachedMarkdownThreadRefTarget(
-        serverId: String,
-        ownerScopeId: String,
+    /**
+     * A thread ref's target from what the device already holds: the page's own messages and
+     * origin, the in-memory thread cache, the loaded timelines of cached conversations (their
+     * messages carry the thread summaries), reply-thread resolutions already made, and the parent
+     * messages the message store holds. Candidates from every source are pooled and deduped by
+     * full message id: an 8-char prefix is a local hit only when exactly one message matches across
+     * all of them. None, or two different messages, is a miss and fetches.
+     */
+    private fun localMarkdownThreadRefTarget(
+        provenance: ReplyCacheProvenance,
+        currentPayload: RaftThreadScreenPayload,
         parentChannelId: String,
         threadShortId: String
     ): MarkdownThreadRefTarget? {
         val shortId = threadShortId.trim().lowercase()
         if (parentChannelId.isBlank() || shortId.isBlank()) return null
-        val matches =
-            payloadCache.values(serverId, ownerScopeId)
-                .mapNotNull { payload ->
-                    val parentMessageId =
-                        payload.parentMessageId?.takeIf { it.isNotBlank() }
-                            ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
-                            ?: return@mapNotNull null
-                    if (
-                        payload.parentChannelId != parentChannelId ||
-                        !parentMessageId.lowercase().startsWith(shortId)
-                    ) {
-                        return@mapNotNull null
-                    }
+        val candidates = mutableListOf<MarkdownThreadRefTarget>()
+        candidates += currentPayload.markdownThreadRefCandidates(parentChannelId, shortId)
+        provenance.threadPayloadOwnerScopeId?.let { ownerScopeId ->
+            candidates += cachedMarkdownThreadRefCandidates(provenance.serverId, ownerScopeId, parentChannelId, shortId)
+            candidates +=
+                payloadCache.values(provenance.serverId, ownerScopeId)
+                    .flatMap { payload -> payload.markdownThreadRefCandidates(parentChannelId, shortId) }
+        }
+        provenance.namespaceId?.takeIf { it.isNotBlank() }?.let { namespaceId ->
+            val resolutions =
+                synchronized(replyCacheProvenanceLock) {
+                    replyThreadResolveCache.entries
+                        .filter { (key, _) ->
+                            key.namespaceId == namespaceId &&
+                                key.parentChannelId == parentChannelId &&
+                                key.parentMessageId.lowercase().startsWith(shortId)
+                        }
+                        .map { (key, threadChannelId) -> key.parentMessageId to threadChannelId }
+                } + messageStore?.findReplyThreadStreams(namespaceId, parentChannelId, shortId).orEmpty()
+            candidates +=
+                resolutions.map { (parentMessageId, threadChannelId) ->
+                    MarkdownThreadRefTarget(parentMessageId = parentMessageId, threadChannelId = threadChannelId)
+                }
+        }
+        provenance.messageStoreScopeId?.takeIf { it.isNotBlank() }?.let { scopeId ->
+            candidates +=
+                messageResolver.findScopedByIdPrefix(scopeId, ChannelId(parentChannelId), shortId).map { message ->
                     MarkdownThreadRefTarget(
-                        parentMessageId = parentMessageId,
-                        threadChannelId =
-                            payload.streamChannelId?.takeIf { it.isNotBlank() }
-                                ?: payload.sourceThreadId?.takeIf { it.isNotBlank() }
+                        parentMessageId = message.id.value,
+                        threadChannelId = message.threadChannelId?.value?.takeIf { it.isNotBlank() }
                     )
                 }
-                .distinctBy { it.parentMessageId }
-        return matches.singleOrNull()
+        }
+        return candidates.singleMarkdownThreadRefTarget()
+    }
+
+    /**
+     * A message of [parentChannelId]'s loaded timelines whose id starts with [messageShortId]: the
+     * page's own and every cached timeline of that conversation, pooled. One distinct message only.
+     */
+    private fun localMarkdownTimelineRefTarget(
+        provenance: ReplyCacheProvenance,
+        currentPayload: RaftThreadScreenPayload,
+        parentChannelId: String,
+        messageShortId: String
+    ): MarkdownThreadRefTarget? {
+        val candidates = currentPayload.markdownThreadRefCandidates(parentChannelId, messageShortId).toMutableList()
+        provenance.threadPayloadOwnerScopeId?.let { ownerScopeId ->
+            candidates +=
+                payloadCache.values(provenance.serverId, ownerScopeId)
+                    .flatMap { payload -> payload.markdownThreadRefCandidates(parentChannelId, messageShortId) }
+        }
+        return candidates.singleMarkdownThreadRefTarget()
+    }
+
+    private fun cachedMarkdownThreadRefCandidates(
+        serverId: String,
+        ownerScopeId: String,
+        parentChannelId: String,
+        threadShortId: String
+    ): List<MarkdownThreadRefTarget> {
+        val shortId = threadShortId.trim().lowercase()
+        if (parentChannelId.isBlank() || shortId.isBlank()) return emptyList()
+        return payloadCache.values(serverId, ownerScopeId)
+            .mapNotNull { payload ->
+                val parentMessageId =
+                    payload.parentMessageId?.takeIf { it.isNotBlank() }
+                        ?: payload.originParentMessageId?.takeIf { it.isNotBlank() }
+                        ?: return@mapNotNull null
+                if (
+                    payload.parentChannelId != parentChannelId ||
+                    !parentMessageId.lowercase().startsWith(shortId)
+                ) {
+                    return@mapNotNull null
+                }
+                MarkdownThreadRefTarget(
+                    parentMessageId = parentMessageId,
+                    threadChannelId =
+                        payload.streamChannelId?.takeIf { it.isNotBlank() }
+                            ?: payload.sourceThreadId?.takeIf { it.isNotBlank() }
+                )
+            }
+    }
+
+    /**
+     * A reference's target page could not be read (refused or gone): every kept resolution that
+     * points at it is forgotten, so the next tap on that reference asks the server again.
+     */
+    internal fun forgetReferenceTargetsOf(payload: RaftThreadScreenPayload): Int {
+        val ids =
+            listOfNotNull(
+                payload.parentMessageId,
+                payload.originParentMessageId,
+                payload.streamChannelId,
+                payload.sourceThreadId,
+                payload.focusedMessageId
+            ).filter { it.isNotBlank() }.toSet()
+        if (ids.isEmpty()) return 0
+        return referenceResolver.forgetTargets { _, target ->
+            target is MarkdownThreadRefTarget &&
+                (target.parentMessageId in ids || target.threadChannelId in ids || target.focusedMessageId in ids)
+        }
+    }
+
+    /** The conversation directory a reference resolves names in: local, unless it has to be fetched. */
+    private suspend fun referenceHomeSnapshot(session: StoredAuthSession, actionId: String?): HomeSnapshot? {
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+        homeSnapshotProvider?.invoke(serverId)?.let { return it }
+        // No home snapshot on the device: reading it is part of the reference's fetch.
+        return referenceResolver.fetchPhase(actionId) { currentHomeSnapshot(session) }
     }
 
     private fun cacheReplyThreadResolution(
@@ -3836,6 +4084,9 @@ internal class SharedThreadDataSource(
         messageId: String,
         card: ThreadActionCard
     ): DataResult<ThreadActionCard> {
+        if (threadActionCardCommitBlockedByEnd(card, defaultNowMillis())) {
+            return DataResult.Error(ScreenError(code = ActionCardEndedErrorCode, retryable = false))
+        }
         return commitAgentCreateActionCardInternal(messageId, card)
     }
 
@@ -3885,21 +4136,26 @@ internal class SharedThreadDataSource(
         }
     }
 
+    /** [onChannelCreated]: a `channel:create` card made its channel (it exists, whether or not the card can be marked). */
     suspend fun commitThreadActionCard(
         payload: RaftThreadScreenPayload,
         messageId: String,
-        card: ThreadActionCard
+        card: ThreadActionCard,
+        onChannelCreated: (HomeChannelRow) -> Unit = {},
     ): DataResult<ThreadActionCard> {
         return when {
             // web ActionCard: a frozen card runs nothing; a reconfirm card's button reconfirms it.
             card.isFrozen ->
                 DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+            // Expired (state, or past `expiresAt` on this clock) or withdrawn: nothing is created.
+            threadActionCardCommitBlockedByEnd(card, defaultNowMillis()) ->
+                DataResult.Error(ScreenError(code = ActionCardEndedErrorCode, retryable = false))
             card.needsReconfirmation ->
                 reconfirmThreadActionCard(messageId, card)
             card.type.equals("agent:create", ignoreCase = true) ->
                 DataResult.Error(ScreenError(code = "action_card_agent_create_dialog_required", retryable = false))
             card.type.equals("channel:create", ignoreCase = true) ->
-                commitChannelCreateActionCard(messageId, card)
+                commitChannelCreateActionCard(messageId, card, onChannelCreated)
             card.type.equals("channel:add_member", ignoreCase = true) ->
                 commitChannelAddMembersActionCard(payload, messageId, card)
             card.type.equals("integration:approve_agent_login", ignoreCase = true) ->
@@ -3925,8 +4181,9 @@ internal class SharedThreadDataSource(
         messageId: String,
         card: ThreadActionCard,
         stepUp: SecondFactorStepUpCoordinator,
+        onChannelCreated: (HomeChannelRow) -> Unit = {},
     ): SecondFactorStepUpOutcome<ThreadActionCard> =
-        stepUp.run { commitThreadActionCard(payload, messageId, card) }
+        stepUp.run { commitThreadActionCard(payload, messageId, card, onChannelCreated) }
 
     /**
      * The Install of an `integration:install_marketplace_app` card's confirmation (web
@@ -4088,7 +4345,8 @@ internal class SharedThreadDataSource(
 
     private suspend fun commitChannelCreateActionCard(
         messageId: String,
-        card: ThreadActionCard
+        card: ThreadActionCard,
+        onChannelCreated: (HomeChannelRow) -> Unit,
     ): DataResult<ThreadActionCard> {
         if (!card.type.equals("channel:create", ignoreCase = true)) {
             return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
@@ -4117,6 +4375,7 @@ internal class SharedThreadDataSource(
         ) {
             is DataResult.Content -> {
                 val channel = created.data.channel
+                onChannelCreated(channel)
                 val createdChannelId = channel.channelId?.value ?: channel.threadId.value
                 val createdChannelName = channel.name.takeIf { it.isNotBlank() } ?: channelName
                 val executedCard = card.withExecutedChannel(id = createdChannelId, name = createdChannelName)
@@ -4270,6 +4529,17 @@ internal class SharedThreadDataSource(
         onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null,
         /** Message storage Phase 2b: receives the request's own latest page, for the durable write-through. */
         onEnteredPage: ((ThreadDurableEnteredPage) -> Unit)? = null,
+        /**
+         * Receives the first canonical result whose freshness generation moved while it was fetched
+         * (it is refetched; see [SharedThreadStaleCanonicalRefetchMaxExtraRounds]). Its content is not
+         * final, but its conversation access is server truth the caller may act on right away.
+         */
+        onSupersededCanonicalResult: (suspend (DataResult<RaftThreadScreenPayload>) -> Unit)? = null,
+        /**
+         * Called when the stale-generation refetch hit its cap: the returned result is superseded
+         * content (not cached here) that the caller must not present as final.
+         */
+        onCanonicalRefetchCapped: (() -> Unit)? = null,
     ): DataResult<RaftThreadScreenPayload> {
         if (!isCurrentReplyCacheProvenanceForLocalSend(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
@@ -4287,6 +4557,8 @@ internal class SharedThreadDataSource(
             replaceReplyAccessFailure = replaceReplyAccessFailure,
             onFocusedContextPage = onFocusedContextPage,
             onEnteredPage = onEnteredPage,
+            onSupersededCanonicalResult = onSupersededCanonicalResult,
+            onCanonicalRefetchCapped = onCanonicalRefetchCapped,
         )
     }
 
@@ -4298,6 +4570,8 @@ internal class SharedThreadDataSource(
         replaceReplyAccessFailure: Boolean = false,
         onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null,
         onEnteredPage: ((ThreadDurableEnteredPage) -> Unit)? = null,
+        onSupersededCanonicalResult: (suspend (DataResult<RaftThreadScreenPayload>) -> Unit)? = null,
+        onCanonicalRefetchCapped: (() -> Unit)? = null,
     ): DataResult<RaftThreadScreenPayload> {
         val resolutionScope = replyResolutionScope ?: readReplyResolutionScope() ?: return authSessionRequiredResult()
         val session = resolutionScope.session
@@ -4425,6 +4699,7 @@ internal class SharedThreadDataSource(
         var canonicalRequestGeneration: SharedThreadFreshnessGeneration? = null
         suspend fun fetchCanonicalPayloadForCurrentGeneration(): DataResult<RaftThreadScreenPayload> {
             val resolvedThreadId = threadId ?: return fetchCanonicalPayload()
+            var extraRound = 0
             while (true) {
                 if (!isCurrentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)) {
                     return staleReplyCacheProvenanceResult()
@@ -4443,6 +4718,23 @@ internal class SharedThreadDataSource(
                 if (!isCurrentReplyCacheProvenanceForLocalSend(resolutionScope.provenance)) {
                     return staleReplyCacheProvenanceResult()
                 }
+                if (extraRound == 0) {
+                    // The content may miss what moved the generation; the access it carries does not.
+                    onSupersededCanonicalResult?.invoke(result)
+                }
+                if (extraRound >= SharedThreadStaleCanonicalRefetchMaxExtraRounds) {
+                    // Stop refetching. canonicalRequestGeneration stays null, so this superseded
+                    // result is neither cached nor recorded under a generation it does not match, and
+                    // the caller is told it is not final (a delete / edit that landed mid-fetch may be
+                    // missing from it); the store keeps its visible content and refreshes once more.
+                    diagnosticsLogger(
+                        "thread_canonical_refetch_capped threadId=$resolvedThreadId rounds=${extraRound + 1}"
+                    )
+                    onCanonicalRefetchCapped?.invoke()
+                    return result
+                }
+                extraRound++
+                delay(SharedThreadStaleCanonicalRefetchBackoffMillis * extraRound)
             }
         }
         val payloadResult =
@@ -5217,10 +5509,12 @@ internal class SharedThreadDataSource(
     suspend fun markdownTaskRefChannelId(
         currentPayload: RaftThreadScreenPayload,
         conversationLabel: String,
-        requiredKind: ConversationKind? = null
+        requiredKind: ConversationKind? = null,
+        /** The chip this open started from: a directory fetch is drawn on it. */
+        actionId: String? = null
     ): ChannelId? {
         val session = readSession() ?: return null
-        val home = currentHomeSnapshot(session) ?: return null
+        val home = referenceHomeSnapshot(session, actionId) ?: return null
         val conversation =
             resolveMarkdownChannelConversation(
                 home = home,
@@ -5242,7 +5536,11 @@ internal class SharedThreadDataSource(
         currentPayload: RaftThreadScreenPayload,
         channelLabel: String,
         threadShortId: String?,
-        requiredParentKind: ConversationKind? = null
+        requiredParentKind: ConversationKind? = null,
+        /** The message to focus in the thread when the caller knows it (a `#channel:short msg=id` ref). */
+        focusedMessageId: String? = null,
+        /** The chip this open started from: [referenceResolver]'s fetch phase is drawn on it. */
+        actionId: String? = null
     ): DataResult<RaftThreadScreenPayload> {
         val shortId =
             threadShortId
@@ -5258,7 +5556,7 @@ internal class SharedThreadDataSource(
         onMarkdownReplyCacheScopeCapturedForTest?.invoke()
         val session = resolutionScope.session
         val home =
-            currentHomeSnapshot(session)
+            referenceHomeSnapshot(session, actionId)
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
         val knownMemberProfilesById = currentKnownMarkdownMemberProfilesById(home)
         val channel =
@@ -5275,35 +5573,41 @@ internal class SharedThreadDataSource(
             channel.resolveThreadRouteIdentity().timelineChannelId
                 ?: channel.messageStreamChannelId().value.takeIf { it.isNotBlank() }
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
-        val localTarget =
-            currentPayload.markdownThreadRefTarget(parentChannelId, shortId)
-                ?: provenance.threadPayloadOwnerScopeId?.let { ownerScopeId ->
-                    cachedMarkdownThreadRefTarget(
-                        provenance.serverId,
-                        ownerScopeId,
-                        parentChannelId,
-                        shortId
-                    )
-                }
         val target =
-            localTarget
-                ?: when (
-                    val result =
-                        fetchThreadSnapshotFromRepository(
-                            fallbackCode = "thread_markdown_ref_context_network",
-                            expectedProvenance = provenance,
-                            // Only the ref's target: the opened page loads its own header detail.
-                            call = { repository ->
-                                repository.resolveMessageContext(MessageId(shortId), ChannelId(parentChannelId))
+            when (
+                val outcome =
+                    referenceResolver.resolve(
+                        key = SharedReferenceKey.of(provenance.namespaceId, SharedReferenceKind.Thread, parentChannelId, shortId),
+                        actionId = actionId,
+                        local = { localMarkdownThreadRefTarget(provenance, currentPayload, parentChannelId, shortId) },
+                        // A message without a thread yet must not stop its thread opening later.
+                        cacheable = { target -> !target.threadChannelId.isNullOrBlank() },
+                        fetch = {
+                            when (
+                                val result =
+                                    fetchThreadSnapshotFromRepository(
+                                        fallbackCode = "thread_markdown_ref_context_network",
+                                        expectedProvenance = provenance,
+                                        // Only the ref's target: the opened page loads its own header detail.
+                                        call = { repository ->
+                                            repository.resolveMessageContext(MessageId(shortId), ChannelId(parentChannelId))
+                                        }
+                                    )
+                            ) {
+                                is DataResult.Content ->
+                                    result.data.markdownThreadRefTarget(parentChannelId, shortId)
+                                        ?.let { DataResult.Content(it) }
+                                        ?: DataResult.Empty(EmptyReason.NoMessages)
+                                is DataResult.Empty -> result
+                                is DataResult.Error -> result
+                                is DataResult.NoPermission -> result
                             }
-                        )
-                ) {
-                    is DataResult.Content -> result.data.markdownThreadRefTarget(parentChannelId, shortId)
-                    is DataResult.Empty -> return result
-                    is DataResult.Error -> return result
-                    is DataResult.NoPermission -> return result
-                }
-                ?: return DataResult.Empty(EmptyReason.NoMessages)
+                        }
+                    )
+            ) {
+                is SharedReferenceOutcome.Open -> outcome.target
+                is SharedReferenceOutcome.Failed -> return outcome.result
+            }
         if (!isCurrentReplyCacheProvenance(provenance)) {
             return staleReplyCacheProvenanceResult()
         }
@@ -5316,7 +5620,7 @@ internal class SharedThreadDataSource(
                 requiredParentKind = requiredParentKind,
                 knownMemberProfilesById = knownMemberProfilesById,
                 parentMessageId = target.parentMessageId,
-                focusedMessageId = target.focusedMessageId,
+                focusedMessageId = focusedMessageId ?: target.focusedMessageId,
                 threadChannelId = target.threadChannelId
             )
                 ?: return DataResult.Empty(EmptyReason.NoMessages)
@@ -5333,6 +5637,126 @@ internal class SharedThreadDataSource(
         if (!isCurrentReplyCacheProvenance(provenance)) {
             return staleReplyCacheProvenanceResult()
         }
+        return DataResult.Content(payload)
+    }
+
+    /**
+     * Opens what a message ref names (Web `handleOpenMessageRef`): the channel or DM is resolved by
+     * name in the current server, and the id, which may be short, by the message's context. A reply
+     * opens its thread focused on it; a top-level message opens its conversation anchored on it,
+     * unless the ref names a thread, which then opens with the message focused.
+     */
+    suspend fun markdownMessageRefLaunchPayload(
+        provenance: ReplyCacheProvenance,
+        currentPayload: RaftThreadScreenPayload,
+        ref: RaftMarkdownMessageRef,
+        /** The chip this open started from: [referenceResolver]'s fetch phase is drawn on it. */
+        actionId: String? = null
+    ): DataResult<RaftThreadScreenPayload> {
+        val resolutionScope =
+            readReplyResolutionScope()
+                ?: return authSessionRequiredResult()
+        if (resolutionScope.provenance != provenance || !isCurrentReplyCacheProvenance(provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        val home =
+            referenceHomeSnapshot(resolutionScope.session, actionId)
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val requiredKind = ConversationKind.DirectMessage.takeIf { ref.directMessagePeerName != null }
+        val knownMemberProfilesById = currentKnownMarkdownMemberProfilesById(home)
+        val channel =
+            resolveMarkdownChannelConversation(
+                home = home,
+                channelLabel = ref.conversationLabel,
+                requiredKind = requiredKind,
+                knownMemberProfilesById = knownMemberProfilesById,
+                currentPayload = currentPayload,
+                threadShortId = ref.threadShortId ?: ref.messageId
+            )
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val parentChannelId =
+            channel.resolveThreadRouteIdentity().timelineChannelId
+                ?: channel.messageStreamChannelId().value.takeIf { it.isNotBlank() }
+                ?: return DataResult.Empty(EmptyReason.NoChannels)
+        val target =
+            when (
+                val outcome =
+                    referenceResolver.resolve(
+                        key = SharedReferenceKey.of(provenance.namespaceId, SharedReferenceKind.Message, parentChannelId, ref.messageId),
+                        actionId = actionId,
+                        // A message in a loaded timeline of its conversation is a top-level message there.
+                        local = {
+                            localMarkdownTimelineRefTarget(provenance, currentPayload, parentChannelId, ref.messageId)
+                                ?.copy(threadChannelId = null)
+                        },
+                        fetch = {
+                            when (
+                                val result =
+                                    fetchThreadSnapshotFromRepository(
+                                        fallbackCode = "thread_markdown_message_ref_context_network",
+                                        expectedProvenance = provenance,
+                                        call = { repository ->
+                                            repository.resolveMessageContext(MessageId(ref.messageId), ChannelId(parentChannelId))
+                                        }
+                                    )
+                            ) {
+                                is DataResult.Content ->
+                                    result.data.markdownThreadRefTarget(parentChannelId, ref.messageId)
+                                        ?.let { DataResult.Content(it) }
+                                        ?: DataResult.Empty(EmptyReason.NoMessages)
+                                is DataResult.Empty -> result
+                                is DataResult.Error -> result
+                                is DataResult.NoPermission -> result
+                            }
+                        }
+                    )
+            ) {
+                is SharedReferenceOutcome.Open -> outcome.target
+                is SharedReferenceOutcome.Failed -> return outcome.result
+            }
+        if (!isCurrentReplyCacheProvenance(provenance)) {
+            return staleReplyCacheProvenanceResult()
+        }
+        if (target.focusedMessageId == null && target.threadChannelId == null) {
+            val messageId = target.parentMessageId
+            ref.threadShortId?.let { threadShortId ->
+                return markdownThreadRefLaunchPayload(
+                    provenance = provenance,
+                    currentPayload = currentPayload,
+                    channelLabel = ref.conversationLabel,
+                    threadShortId = threadShortId,
+                    requiredParentKind = requiredKind,
+                    // The thread's own parent: opening the thread is the jump.
+                    focusedMessageId = messageId.takeUnless { it.startsWith(threadShortId, ignoreCase = true) },
+                    actionId = actionId
+                )
+            }
+            return buildMarkdownChannelLaunchPayload(
+                currentPayload = currentPayload,
+                home = home,
+                channelLabel = ref.conversationLabel,
+                requiredKind = requiredKind,
+                knownMemberProfilesById = knownMemberProfilesById,
+                anchorMessageId = messageId
+            )?.let { DataResult.Content(it) }
+                ?: DataResult.Empty(EmptyReason.NoMessages)
+        }
+        val payload =
+            buildMarkdownThreadRefLaunchPayload(
+                currentPayload = currentPayload,
+                home = home,
+                channelLabel = ref.conversationLabel,
+                threadShortId = ref.threadShortId ?: ref.messageId,
+                requiredParentKind = requiredKind,
+                knownMemberProfilesById = knownMemberProfilesById,
+                parentMessageId = target.parentMessageId,
+                focusedMessageId = target.focusedMessageId,
+                threadChannelId = target.threadChannelId
+            )
+                ?: return DataResult.Empty(EmptyReason.NoMessages)
+        target.threadChannelId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { cacheReplyThreadResolution(provenance, parentChannelId, target.parentMessageId, it) }
         return DataResult.Content(payload)
     }
 
@@ -5923,13 +6347,26 @@ internal class SharedThreadDataSource(
         val repository =
             conversationRepository
                 ?: return DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
-        return try {
-            repository.loadTaskConversationRef(conversationChannelId)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
-        }
+        suspend fun load(): DataResult<TaskConversationChannelRef> =
+            try {
+                repository.loadTaskConversationRef(conversationChannelId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
+            }
+        val session = readSession()
+        val serverId = session?.currentServerId?.takeIf { it.isNotBlank() } ?: return load()
+        val key =
+            SharedTaskConversationRefKey(
+                environmentId = cacheEnvironmentIdProvider(),
+                principalId = session.user.id,
+                serverId = serverId,
+                conversationChannelId = conversationChannelId.value,
+            )
+        // The ref never changes: a reopen reads it from the process-wide cache, and the shared fetch
+        // outlives a caller that stops waiting (see [SharedThreadPayloadStore.taskConversationRef]).
+        return payloadCache.taskConversationRef(key) { load() }
     }
 
     private suspend fun loadResolvedReplyThread(
@@ -6165,6 +6602,7 @@ internal class SharedThreadDataSource(
         var rawPage = RawMessagePageWitness.None
         // Phase 3b: read before the request (with the identity): a horizonReset during it voids the page's head claim.
         val headEpochAtRequest = durableHeadEpochOrNull(resolutionScope.provenance)
+        val revAtRequest = durableLocalRevOrNull(resolutionScope.provenance)
         val result =
             if (conversationRepository != null) {
                 fetchThreadPayloadFromRepository(
@@ -6214,6 +6652,7 @@ internal class SharedThreadDataSource(
                                     context = ReplyCacheProducerContext(session, resolutionScope.provenance),
                                     rawPage = page,
                                     headEpochAtRequest = headEpochAtRequest,
+                                    revAtRequest = revAtRequest,
                                 )
                             }
                     )
@@ -6344,6 +6783,7 @@ internal class SharedThreadDataSource(
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
         // Phase 3b: read before the request: a horizonReset during it voids the page's head claim.
         val headEpochAtRequest = durableHeadEpochOrNull(replyResolutionScope.provenance)
+        val revAtRequest = durableLocalRevOrNull(replyResolutionScope.provenance)
         val contextResult =
             fetchThreadSnapshotFromRepository(
                 fallbackCode = "thread_focused_context",
@@ -6375,6 +6815,7 @@ internal class SharedThreadDataSource(
                         hasOlder = context.canLoadMoreBefore,
                         hasNewer = context.canLoadMoreAfter,
                         headEpochAtRequest = headEpochAtRequest,
+                        revAtRequest = revAtRequest,
                     )
                 )
             }
@@ -7178,6 +7619,31 @@ private const val SharedThreadFirstFrameDelayMillis = 16L
  */
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
+/** Upper bound of a task conversation's late initial-access lookup (after the 1 s first pass). */
+private const val ThreadInitialAccessLateLookupTimeoutMillis = 15_000L
+
+/**
+ * A canonical fetch whose freshness generation moved while it ran (a realtime event landed) is
+ * refetched at most this many extra times, with [SharedThreadStaleCanonicalRefetchBackoffMillis]
+ * per round before it. The rounds used to be unbounded: a busy conversation's realtime traffic kept
+ * a task conversation loading 4 full cycles (context -> channel -> parent channel) before its
+ * composer could mount. After the cap the latest result is accepted as the page's content but is
+ * not cached under a generation it does not match; the realtime events that moved the generation
+ * are folded into the live timeline, and the next refresh re-baselines.
+ */
+internal const val SharedThreadStaleCanonicalRefetchMaxExtraRounds = 2
+internal const val SharedThreadStaleCanonicalRefetchBackoffMillis = 150L
+/** After a capped refetch the store refreshes once more after this pause, instead of committing it. */
+internal const val SharedThreadCappedRefreshFollowUpDelayMillis = 1_000L
+private const val SharedThreadTaskConversationRefCacheLimit = 256
+
+/** A task conversation ref, per environment, account, server and conversation. */
+internal data class SharedTaskConversationRefKey(
+    val environmentId: String,
+    val principalId: String,
+    val serverId: String,
+    val conversationChannelId: String,
+)
 
 internal data class SharedThreadState(
     val payload: RaftThreadScreenPayload = RaftThreadScreenPayload(),
@@ -7186,6 +7652,12 @@ internal data class SharedThreadState(
     val highlightedMentions: Set<String> = emptySet(),
     val accessResolution: ThreadAccessResolution = ThreadAccessResolution.Loading,
     val canonicalAccessResolved: Boolean = false,
+    /**
+     * Access was taken from a canonical result whose content generation was superseded (see
+     * `applySupersededCanonicalAccess`). Server truth, so a Home candidate cannot override it, but
+     * provisional: the refresh's final result still records its own access, positive or negative.
+     */
+    val provisionalCanonicalAccess: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
     /**
@@ -7436,6 +7908,8 @@ internal sealed interface SharedThreadIntent {
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
     data class ApplyChannelJoined(val channelId: String) : SharedThreadIntent
+    /** Left this public channel from its settings: it stays open, with the composer's Join. */
+    data class ApplyChannelLeft(val channelId: String) : SharedThreadIntent
     data class UpdateChannelProfile(
         val channelId: String,
         val originalName: String,
@@ -7642,11 +8116,11 @@ internal class SharedThreadStore(
     private val foregroundLoadLeaseLock = SynchronizedObject()
     private var foregroundLoadLease: SharedForegroundLoadGate.Lease? = null
     /** Message storage Phase 2b: the durable write of the last refresh's own page (a context page write waits for it). */
-    private var enteredPagePersistJob: Job? = null
     private var threadJoinCatchUpJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
     private var focusedOriginHydrationJob: Job? = null
     private var initialAccessResolutionJob: Job? = null
+    private var cappedRefreshFollowUpJob: Job? = null
     private var homeContextHydrationJob: Job? = null
     private var taskConversationTitleJob: Job? = null
     private var taskConversationTitleJobKey: String? = null
@@ -7750,6 +8224,8 @@ internal class SharedThreadStore(
                 if (intent is SharedThreadIntent.Start) {
                     initialAccessResolutionJob?.cancel()
                     initialAccessResolutionJob = null
+                    cappedRefreshFollowUpJob?.cancel()
+                    cappedRefreshFollowUpJob = null
                 }
                 secondaryTimelineRefreshJob?.cancel()
                 secondaryTimelineRefreshJob = null
@@ -7784,6 +8260,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyMessageSaved,
             is SharedThreadIntent.ApplyChannelJoined,
+            is SharedThreadIntent.ApplyChannelLeft,
             is SharedThreadIntent.UpdateChannelProfile,
             SharedThreadIntent.ClearChannelProfileUpdateStatus,
             is SharedThreadIntent.ApplyChannelProfile,
@@ -7876,6 +8353,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyChannelJoined -> applyChannelJoined(intent.channelId)
+            is SharedThreadIntent.ApplyChannelLeft -> applyChannelLeft(intent.channelId)
             is SharedThreadIntent.ApplyParentDirectoryHint -> applyParentDirectoryHint(intent)
             is SharedThreadIntent.UpdateChannelProfile -> updateChannelProfile(intent)
             SharedThreadIntent.ClearChannelProfileUpdateStatus -> clearChannelProfileUpdateStatus()
@@ -7924,6 +8402,8 @@ internal class SharedThreadStore(
         focusedOriginHydrationJob = null
         initialAccessResolutionJob?.cancel()
         initialAccessResolutionJob = null
+        cappedRefreshFollowUpJob?.cancel()
+        cappedRefreshFollowUpJob = null
         homeContextHydrationJob?.cancel()
         homeContextHydrationJob = null
         taskConversationTitleJob?.cancel()
@@ -8560,6 +9040,7 @@ internal class SharedThreadStore(
                             latest.copy(
                                 accessResolution = ThreadAccessResolution.Loading,
                                 canonicalAccessResolved = false,
+                                provisionalCanonicalAccess = false,
                                 initialHomeAccessLookupComplete = false,
                                 initialHomeAccessCandidate = null
                             )
@@ -8659,6 +9140,7 @@ internal class SharedThreadStore(
         // Capture the raw page only when it can be written (a writer that took a ticket, or will after the request).
         val onEnteredPage: ((ThreadDurableEnteredPage) -> Unit)? =
             if (enteredTicket != null || resolvesItsStream) { page -> enteredPage = page } else null
+        var refetchCapped = false
         val result =
             try {
                 dataSource.fetchThreadPayloadForContext(
@@ -8669,8 +9151,14 @@ internal class SharedThreadStore(
                     replaceReplyAccessFailure = explicitRetry,
                     onFocusedContextPage = ::launchDurableContextPagePersist,
                     onEnteredPage = onEnteredPage,
+                    onSupersededCanonicalResult = { superseded ->
+                        applySupersededCanonicalAccess(basePayload, staleToken, refreshProvenance, superseded)
+                    },
+                    onCanonicalRefetchCapped = { refetchCapped = true },
                 )
             } finally {
+                // Superseded content is not a durable baseline either.
+                if (refetchCapped) enteredPage = null
                 launchEnteredPagePersist(enteredTicket, enteredStamp, enteredPage, basePayload, refreshProducerContext)
             }
         val latest = _state.value.payload
@@ -8691,6 +9179,20 @@ internal class SharedThreadStore(
                     "result=${result.threadDiagnosticsResult()} ignored=true reason=stale_route " +
                     "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
             )
+            return
+        }
+        if (refetchCapped && result is DataResult.Content) {
+            // The capped result is superseded: a delete or edit that landed mid-fetch may be missing
+            // from it, and the stable-timeline merge would let it win over the live timeline. Keep the
+            // visible content (the loading shell if there is none), commit and cache nothing, and
+            // refresh once more after a pause; access may already be provisional from the first round.
+            abortRepliesRebaseline()
+            diagnosticsLogger?.invoke(
+                "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
+                    "result=${result.threadDiagnosticsResult()} ignored=true reason=superseded_capped " +
+                    "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            launchCappedRefreshFollowUp(basePayload, staleToken)
             return
         }
         val repliesProjectedResult =
@@ -8817,6 +9319,7 @@ internal class SharedThreadStore(
                                     .withInitialHomeConversationAccessFallbackUnlessCanonical(
                                         canonicalAccessResolved =
                                             currentState.canonicalAccessResolved ||
+                                                currentState.provisionalCanonicalAccess ||
                                                 (resolvingInitialAccess && result is DataResult.Content),
                                         candidate = currentState.initialHomeAccessCandidate,
                                     )
@@ -8846,6 +9349,8 @@ internal class SharedThreadStore(
                                         payload = authorityProjectedPayload,
                                         accessResolution = projectedAccessResolution,
                                         canonicalAccessResolved = canonicalAccessResolved,
+                                        provisionalCanonicalAccess =
+                                            currentState.provisionalCanonicalAccess && !canonicalAccessResolved,
                                         lastRefreshResultReason = result.diagnosticsResultReason(),
                                         conversationAccessLost =
                                             currentState.conversationAccessLost ||
@@ -9272,141 +9777,275 @@ internal class SharedThreadStore(
         initialAccessResolutionJob?.cancel()
         initialAccessResolutionJob =
             scope.launch {
-                val homeResolution =
-                    raceInitialAccessLookupDeadline {
-                        try {
-                            dataSource.initialConversationAccessResolution(routePayload)
-                        } catch (cancellation: CancellationException) {
-                            throw cancellation
-                        } catch (_: Throwable) {
-                            null
-                        }
+                suspend fun applyResolution(
+                    homeResolution: ThreadHomeContextResolution?,
+                    late: Boolean,
+                    lateProvenance: ReplyCacheProvenance? = null,
+                ) {
+                    if (homeResolution?.ownerCurrent == false) {
+                        diagnosticsLogger?.invoke(
+                            "thread_access_resolution_stale_drop " +
+                                "threadId=${routePayload.sourceThreadId.orEmpty()} reason=owner_changed"
+                        )
+                        return
                     }
-                if (homeResolution?.ownerCurrent == false) {
-                    diagnosticsLogger?.invoke(
-                        "thread_access_resolution_stale_drop " +
-                            "threadId=${routePayload.sourceThreadId.orEmpty()} reason=owner_changed"
-                    )
-                    return@launch
-                }
-                val candidate = homeResolution?.accessCandidate
-                val launchBackgroundHomeContext =
-                    homeResolution?.requiresBackgroundHomeContextHydration
-                        ?: (routePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread)
-                initialAccessStateMutex.withLock {
-                    val currentState = _state.value
-                    val currentPayload = currentState.payload
-                    if (
-                        !staleTokenStillCurrent(
-                            staleToken,
-                            "thread_access_resolution",
-                            "apply",
-                            routePayload,
+                    val candidate = homeResolution?.accessCandidate
+                    // A late lookup only adds a positive candidate the deadline cut off; it never
+                    // re-runs the terminal (no candidate) projection the timed-out pass already applied.
+                    if (late && (candidate == null || !candidate.joined || !candidate.permissions.canSend)) return
+                    val launchBackgroundHomeContext =
+                        homeResolution?.requiresBackgroundHomeContextHydration
+                            ?: (routePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread)
+                    initialAccessStateMutex.withLock {
+                        val currentState = _state.value
+                        val currentPayload = currentState.payload
+                        if (
+                            !staleTokenStillCurrent(
+                                staleToken,
+                                "thread_access_resolution",
+                                "apply",
+                                routePayload,
+                                currentPayload
+                            ) ||
+                            !routeStillCurrent(routePayload, "thread_access_resolution", "apply", currentPayload)
+                        ) {
+                            return@withLock
+                        }
+                        // The late pass re-checks everything that may have changed while the ref was
+                        // in flight: the session owner, the route (above), and any terminal answer.
+                        if (
+                            late &&
+                            (
+                                lateProvenance == null ||
+                                    !dataSource.isCurrentReplyCacheProvenanceForLocalSend(lateProvenance) ||
+                                    currentState.accessResolution != ThreadAccessResolution.Loading ||
+                                    currentState.conversationAccessLost ||
+                                    currentPayload.status == "error"
+                            )
+                        ) {
+                            return@withLock
+                        }
+                        val projectedPayload =
                             currentPayload
-                        ) ||
-                        !routeStillCurrent(routePayload, "thread_access_resolution", "apply", currentPayload)
-                    ) {
-                        return@withLock
-                    }
-                    val projectedPayload =
-                        currentPayload
-                            .let { payload ->
-                                homeResolution?.payload?.let { homePayload ->
-                                    payload.withHomeContextProjectionFrom(homePayload)
-                                } ?: payload
-                            }
-                            .withInitialHomeConversationAccessFallbackUnlessCanonical(
-                                canonicalAccessResolved = currentState.canonicalAccessResolved,
-                                candidate = candidate,
-                            )
-                            .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
-                                homeLookupComplete = true,
-                                homeAccessCandidate = candidate
-                            )
-                    val nextResolution =
-                        when {
-                            currentState.accessResolution == ThreadAccessResolution.NoPermission ->
-                                ThreadAccessResolution.NoPermission
-                            currentState.accessResolution == ThreadAccessResolution.Error ->
-                                ThreadAccessResolution.Error
-                            currentState.accessResolution == ThreadAccessResolution.Resolved &&
-                                currentState.canonicalAccessResolved ->
-                                ThreadAccessResolution.Resolved
-                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
-                                currentState.canonicalAccessResolved &&
-                                (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
-                                ThreadAccessResolution.Resolved
-                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
-                                currentState.canonicalAccessResolved ->
-                                ThreadAccessResolution.Error
-                            currentState.canonicalAccessResolved ->
-                                ThreadAccessResolution.Resolved
-                            // Task #1141 + reply-thread parity: a POSITIVE access candidate
-                            // (joined + canSend) is the same write authority the canonical fetch
-                            // would confirm — for Channel/DM it is the conversation's own row, and
-                            // for a ReplyThread it is the exact parent row, which is the only write
-                            // authority the reply surface ever consults
-                            // (hasWriteAuthorityForAccess + withInitialHomeConversationAccessFallback).
-                            // Accept it for renderable cached content just as it is accepted for
-                            // "empty", so the composer mounts when the directory answers instead of
-                            // after the first network refresh. For reply threads the canonical reply
-                            // stream never attests parent write authority anyway, so waiting for it
-                            // added latency without adding information. A negative candidate (stale
-                            // unjoined row) keeps waiting for the canonical fetch, which must still
-                            // win; a later canonical NoPermission still closes access.
-                            candidate != null &&
-                                candidate.joined &&
-                                candidate.permissions.canSend &&
-                                currentPayload.status == "content" ->
-                                ThreadAccessResolution.Resolved
-                            candidate != null && currentPayload.status == "empty" ->
-                                ThreadAccessResolution.Resolved
-                            currentPayload.status == "error" ->
-                                ThreadAccessResolution.Error
-                            currentPayload.status == "empty" ->
-                                ThreadAccessResolution.Error
-                            else -> ThreadAccessResolution.Loading
-                        }
-                    val authorityProjectedPayload =
-                        projectedPayload.withTerminalAccessWriteAuthorityClosed(nextResolution)
-                    reduceState(
-                        currentState.copy(
-                            payload = authorityProjectedPayload,
-                            accessResolution = nextResolution,
-                            initialHomeAccessLookupComplete = true,
-                            initialHomeAccessCandidate = candidate,
-                            replyParentAuthority =
-                                resolveReplyParentAuthorityStatus(
-                                    accessResolution = nextResolution,
-                                    payload = authorityProjectedPayload,
+                                .let { payload ->
+                                    homeResolution?.payload?.let { homePayload ->
+                                        payload.withHomeContextProjectionFrom(homePayload)
+                                    } ?: payload
+                                }
+                                .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                                    canonicalAccessResolved =
+                                        currentState.canonicalAccessResolved || currentState.provisionalCanonicalAccess,
                                     candidate = candidate,
-                                ),
-                            writeActionsEnabled =
-                                authorityProjectedPayload.hasWriteAuthorityForAccess(
-                                    accessResolution = nextResolution,
+                                )
+                                .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
                                     homeLookupComplete = true,
                                     homeAccessCandidate = candidate
                                 )
+                        val nextResolution =
+                            when {
+                                currentState.accessResolution == ThreadAccessResolution.NoPermission ->
+                                    ThreadAccessResolution.NoPermission
+                                currentState.accessResolution == ThreadAccessResolution.Error ->
+                                    ThreadAccessResolution.Error
+                                currentState.accessResolution == ThreadAccessResolution.Resolved &&
+                                    currentState.canonicalAccessResolved ->
+                                    ThreadAccessResolution.Resolved
+                                projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                                    currentState.canonicalAccessResolved &&
+                                    (candidate != null || projectedPayload.hasReadableCanonicalReplyContent()) ->
+                                    ThreadAccessResolution.Resolved
+                                projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                                    currentState.canonicalAccessResolved ->
+                                    ThreadAccessResolution.Error
+                                currentState.canonicalAccessResolved ->
+                                    ThreadAccessResolution.Resolved
+                                // A superseded canonical result already attested write authority.
+                                currentState.provisionalCanonicalAccess &&
+                                    (currentPayload.status == "content" || currentPayload.status == "empty") ->
+                                    ThreadAccessResolution.Resolved
+                                // Task #1141 + reply-thread parity: a POSITIVE access candidate
+                                // (joined + canSend) is the same write authority the canonical fetch
+                                // would confirm — for Channel/DM it is the conversation's own row, and
+                                // for a ReplyThread it is the exact parent row, which is the only write
+                                // authority the reply surface ever consults
+                                // (hasWriteAuthorityForAccess + withInitialHomeConversationAccessFallback).
+                                // Accept it for renderable cached content just as it is accepted for
+                                // "empty", so the composer mounts when the directory answers instead of
+                                // after the first network refresh. For reply threads the canonical reply
+                                // stream never attests parent write authority anyway, so waiting for it
+                                // added latency without adding information. A negative candidate (stale
+                                // unjoined row) keeps waiting for the canonical fetch, which must still
+                                // win; a later canonical NoPermission still closes access.
+                                candidate != null &&
+                                    candidate.joined &&
+                                    candidate.permissions.canSend &&
+                                    currentPayload.status == "content" ->
+                                    ThreadAccessResolution.Resolved
+                                candidate != null && currentPayload.status == "empty" ->
+                                    ThreadAccessResolution.Resolved
+                                currentPayload.status == "error" ->
+                                    ThreadAccessResolution.Error
+                                currentPayload.status == "empty" ->
+                                    ThreadAccessResolution.Error
+                                else -> ThreadAccessResolution.Loading
+                            }
+                        val authorityProjectedPayload =
+                            projectedPayload.withTerminalAccessWriteAuthorityClosed(nextResolution)
+                        reduceState(
+                            currentState.copy(
+                                payload = authorityProjectedPayload,
+                                accessResolution = nextResolution,
+                                initialHomeAccessLookupComplete = true,
+                                initialHomeAccessCandidate = candidate,
+                                replyParentAuthority =
+                                    resolveReplyParentAuthorityStatus(
+                                        accessResolution = nextResolution,
+                                        payload = authorityProjectedPayload,
+                                        candidate = candidate,
+                                    ),
+                                writeActionsEnabled =
+                                    authorityProjectedPayload.hasWriteAuthorityForAccess(
+                                        accessResolution = nextResolution,
+                                        homeLookupComplete = true,
+                                        homeAccessCandidate = candidate
+                                    )
+                            )
                         )
-                    )
+                    }
+                    if (
+                        !late &&
+                        launchBackgroundHomeContext &&
+                        staleTokenStillCurrent(
+                            staleToken,
+                            "thread_access_home_context",
+                            "launch",
+                            routePayload,
+                        ) &&
+                        routeStillCurrent(
+                            routePayload,
+                            "thread_access_home_context",
+                            "launch",
+                        )
+                    ) {
+                        launchBackgroundHomeContextHydration(routePayload)
+                    }
                 }
-                if (
-                    launchBackgroundHomeContext &&
-                    staleTokenStillCurrent(
-                        staleToken,
-                        "thread_access_home_context",
-                        "launch",
-                        routePayload,
-                    ) &&
-                    routeStillCurrent(
-                        routePayload,
-                        "thread_access_home_context",
-                        "launch",
+                suspend fun lookup(): ThreadHomeContextResolution? =
+                    try {
+                        dataSource.initialConversationAccessResolution(routePayload)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        null
+                    }
+                if (!routePayload.isTaskConversationSurface()) {
+                    applyResolution(raceInitialAccessLookupDeadline { lookup() }, late = false)
+                    return@launch
+                }
+                // A task conversation's lookup waits on a `GET /channels/:id` ref fetch. The deadline
+                // only bounds how long the first pass waits; it must not cancel the lookup (that
+                // left access Loading although the ref landed ~1 s later, and the composer waited
+                // for the whole canonical load). The lookup is a child of this job, so a newer
+                // resolution or a route change still cancels it.
+                val lookupProvenance = dataSource.captureReplyCacheProducerContext()?.provenance
+                val pendingLookup = async { lookup() }
+                val homeResolution = raceInitialAccessLookupDeadline { pendingLookup.await() }
+                applyResolution(homeResolution, late = false)
+                if (homeResolution == null) {
+                    // Bounded: a ref that has not answered by then is left to the canonical load.
+                    val lateResolution =
+                        withTimeoutOrNull(ThreadInitialAccessLateLookupTimeoutMillis) { pendingLookup.await() }
+                    pendingLookup.cancel()
+                    diagnosticsLogger?.invoke(
+                        "thread_initial_task_access_late threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                            "candidate=${lateResolution?.accessCandidate != null}"
                     )
-                ) {
-                    launchBackgroundHomeContextHydration(routePayload)
+                    applyResolution(lateResolution, late = true, lateProvenance = lookupProvenance)
                 }
             }
+    }
+
+    /** One more refresh after a capped (superseded) one; see [SharedThreadCappedRefreshFollowUpDelayMillis]. */
+    private fun launchCappedRefreshFollowUp(basePayload: RaftThreadScreenPayload, staleToken: MviStaleToken) {
+        cappedRefreshFollowUpJob?.cancel()
+        cappedRefreshFollowUpJob =
+            scope.launch {
+                delay(SharedThreadCappedRefreshFollowUpDelayMillis)
+                if (
+                    staleTokenStillCurrent(staleToken, "thread_refresh", "capped_follow_up", basePayload) &&
+                    routeStillCurrent(basePayload, "thread_refresh", "capped_follow_up")
+                ) {
+                    refresh(basePayload, staleToken)
+                }
+            }
+    }
+
+    /**
+     * The first canonical result of a refresh whose freshness generation moved while it was
+     * fetched: the data source refetches it, so its content is not final and is NOT shown. Its
+     * conversation access is server truth all the same (realtime message traffic moves the
+     * generation, not the conversation's write authority), so a positive answer records canonical
+     * access now instead of after the refetch rounds settle. A negative answer waits for the final
+     * result, which still records itself; a later NoPermission still closes access.
+     */
+    private suspend fun applySupersededCanonicalAccess(
+        routePayload: RaftThreadScreenPayload,
+        staleToken: MviStaleToken,
+        refreshProvenance: ReplyCacheProvenance,
+        result: DataResult<RaftThreadScreenPayload>,
+    ) {
+        val canonical = (result as? DataResult.Content)?.data ?: return
+        // A reply thread's canonical stream never attests its parent's write authority.
+        if (routePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
+        if (canonical.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
+        if (!canonical.joined || !canonical.canSend) return
+        initialAccessStateMutex.withLock {
+            dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
+                val currentState = _state.value
+                val currentPayload = currentState.payload
+                if (
+                    !staleTokenStillCurrent(staleToken, "thread_superseded_access", "apply", routePayload, currentPayload) ||
+                    !routeStillCurrent(routePayload, "thread_superseded_access", "apply", currentPayload)
+                ) {
+                    return@withCurrentReplyCacheProvenanceForLocalSend
+                }
+                if (
+                    currentState.canonicalAccessResolved ||
+                    currentState.provisionalCanonicalAccess ||
+                    currentState.conversationAccessLost ||
+                    currentState.accessResolution == ThreadAccessResolution.NoPermission ||
+                    currentState.accessResolution == ThreadAccessResolution.Error
+                ) {
+                    return@withCurrentReplyCacheProvenanceForLocalSend
+                }
+                val projectedPayload = currentPayload.withCanonicalConversationAccessFrom(canonical)
+                // Like a positive Home candidate: it resolves the footer over renderable content; the
+                // final result still records itself (canonicalAccessResolved stays false).
+                val nextResolution =
+                    if (currentPayload.status == "content" || currentPayload.status == "empty") {
+                        ThreadAccessResolution.Resolved
+                    } else {
+                        currentState.accessResolution
+                    }
+                diagnosticsLogger?.invoke(
+                    "thread_superseded_canonical_access threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                        "accessResolution=$nextResolution"
+                )
+                reduceState(
+                    currentState.copy(
+                        payload = projectedPayload,
+                        accessResolution = nextResolution,
+                        provisionalCanonicalAccess = true,
+                        writeActionsEnabled =
+                            projectedPayload.hasWriteAuthorityForAccess(
+                                accessResolution = nextResolution,
+                                homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                            ),
+                    )
+                )
+            }
+        }
     }
 
     /**
@@ -10710,8 +11349,7 @@ internal class SharedThreadStore(
         context: ReplyCacheProducerContext,
     ) {
         if (ticket == null && page == null) return
-        enteredPagePersistJob =
-            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
                     if (page == null) {
                         ticket?.let { withContext(NonCancellable) { dataSource.abandonEnteredPage(it) } }
@@ -10752,10 +11390,10 @@ internal class SharedThreadStore(
     }
 
     private fun launchDurableContextPagePersist(page: SharedThreadDurableContextPage) {
-        val enterJob = enteredPagePersistJob
+        // Phase 2c: no wait for the enter page. A page that does not move the head leaves its baseline alone
+        // ([CanonicalMessageV2AdjacentPageWriter]), and each write's revAtRequest was read before its own fetch.
         scope.launch {
             try {
-                enterJob?.join()
                 dataSource.persistDurableContextPageIfCurrent(page)
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -10792,6 +11430,7 @@ internal class SharedThreadStore(
                     rawPage = durablePage.rawPage,
                     replyParent = replyParent,
                     headEpochAtRequest = durablePage.headEpochAtRequest,
+                    revAtRequest = durablePage.revAtRequest,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -12114,6 +12753,10 @@ internal class SharedThreadStore(
         }
     }
 
+    private suspend fun applyChannelLeft(channelId: String) {
+        reducePayloadPatchAndCache(cachePayload = true) { payload -> payload.withChannelLeft(channelId) }
+    }
+
     private suspend fun applyMembersPatch(patch: SharedThreadIntent.ApplyMembersPatch) {
         reducePayloadPatchAndCache(cachePayload = true) { payload ->
             payload.copy(
@@ -12556,8 +13199,24 @@ internal class SharedThreadStore(
         val emitted = synchronizedState != previousState
         if (!emitted) return false
         _state.value = synchronizedState
+        if (
+            synchronizedState.accessResolution.refusesReferenceTarget() &&
+            !previousState.accessResolution.refusesReferenceTarget()
+        ) {
+            // This page could not be read (refused, or gone): a reference resolved to it, locally
+            // or by an earlier fetch, must ask the server again on its next tap.
+            val forgotten = dataSource.forgetReferenceTargetsOf(synchronizedState.payload)
+            if (forgotten > 0) {
+                diagnosticsLogger?.invoke(
+                    "thread_markdown_ref_forget reason=${synchronizedState.accessResolution.name} count=$forgotten"
+                )
+            }
+        }
         return true
     }
+
+    private fun ThreadAccessResolution.refusesReferenceTarget(): Boolean =
+        this == ThreadAccessResolution.NoPermission || this == ThreadAccessResolution.Error
 
     private suspend fun reducePayloadPatchAndCache(
         cachePayload: Boolean = false,
@@ -13064,7 +13723,8 @@ internal fun buildMarkdownChannelLaunchPayload(
     home: HomeSnapshot,
     channelLabel: String,
     requiredKind: ConversationKind? = null,
-    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap()
+    knownMemberProfilesById: Map<String, MemberProfile> = emptyMap(),
+    anchorMessageId: String? = null
 ): RaftThreadScreenPayload? {
     val channel =
         resolveMarkdownChannelConversation(
@@ -13079,6 +13739,7 @@ internal fun buildMarkdownChannelLaunchPayload(
     return buildStandaloneConversationThreadLaunchPayload(
         conversation = conversation,
         timeContext = currentPayload.toRaftTimeContext(),
+        anchorMessageId = anchorMessageId,
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
         instanceIdOverride = "shared-shell-thread-$streamChannelId"
@@ -13365,9 +14026,15 @@ private fun String.markdownChannelLookupKey(): String =
 private fun RaftThreadScreenPayload.markdownThreadRefTarget(
     parentChannelId: String,
     threadShortId: String
-): MarkdownThreadRefTarget? {
+): MarkdownThreadRefTarget? = markdownThreadRefCandidates(parentChannelId, threadShortId).singleMarkdownThreadRefTarget()
+
+/** Every message of this payload's [parentChannelId] timeline (and its origin) whose id starts with [threadShortId]. */
+private fun RaftThreadScreenPayload.markdownThreadRefCandidates(
+    parentChannelId: String,
+    threadShortId: String
+): List<MarkdownThreadRefTarget> {
     val shortId = threadShortId.trim().lowercase()
-    if (parentChannelId.isBlank() || shortId.isBlank()) return null
+    if (parentChannelId.isBlank() || shortId.isBlank()) return emptyList()
     val routeIsParentChannel =
         surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
             (sourceThreadId == parentChannelId || streamChannelId == parentChannelId)
@@ -13377,19 +14044,28 @@ private fun RaftThreadScreenPayload.markdownThreadRefTarget(
     val candidateMessages =
         (if (routeIsParentChannel) messages else emptyList()) +
             if (originIsParentMessage) listOfNotNull(originMessage) else emptyList()
-    val candidates =
-        candidateMessages
-            .filter { message ->
-                message.id.lowercase().startsWith(shortId)
-            }
-            .map { message ->
-                MarkdownThreadRefTarget(
-                    parentMessageId = message.id,
-                    threadChannelId = message.threadChannelId
-                )
-            }
-            .distinctBy { it.parentMessageId }
-    return candidates.singleOrNull()
+    return candidateMessages
+        .filter { message -> message.id.lowercase().startsWith(shortId) }
+        .map { message ->
+            MarkdownThreadRefTarget(
+                parentMessageId = message.id,
+                threadChannelId = message.threadChannelId
+            )
+        }
+}
+
+/**
+ * The one target these candidates name, merged across sources (a source that knows the thread
+ * fills in one that does not). Null when there is none or when two different messages match.
+ */
+private fun List<MarkdownThreadRefTarget>.singleMarkdownThreadRefTarget(): MarkdownThreadRefTarget? {
+    val byMessage = groupBy { it.parentMessageId }
+    val matches = byMessage.values.singleOrNull() ?: return null
+    return MarkdownThreadRefTarget(
+        parentMessageId = matches.first().parentMessageId,
+        focusedMessageId = matches.firstNotNullOfOrNull { it.focusedMessageId?.takeIf(String::isNotBlank) },
+        threadChannelId = matches.firstNotNullOfOrNull { it.threadChannelId?.takeIf(String::isNotBlank) }
+    )
 }
 
 private fun ThreadSnapshot.markdownThreadRefTarget(
@@ -15047,6 +15723,18 @@ internal fun RaftThreadScreenPayload.withThreadContentProjectionFrom(
     withResolvedReplyThreadIdentityFrom(patch)
         .withContentSliceFrom(patch)
         .withTaskSliceFrom(patch)
+
+/** The opposite of `applyChannelJoined`: [channelId]'s page shows the composer's Join. */
+internal fun RaftThreadScreenPayload.withChannelLeft(channelId: String): RaftThreadScreenPayload =
+    if (joinChannelTargetId()?.value != channelId) {
+        this
+    } else {
+        copy(
+            joined = false,
+            canSend = false,
+            composer = composer.copy(enabled = false)
+        )
+    }
 
 internal fun RaftThreadScreenPayload.withCanonicalConversationAccessFrom(
     patch: RaftThreadScreenPayload

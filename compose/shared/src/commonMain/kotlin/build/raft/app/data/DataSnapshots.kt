@@ -619,7 +619,18 @@ data class HomeSnapshot(
     val unreadStale: Boolean = false,
     /** Task #164: the server's `Retry-After` on that stale or overloaded read. Never persisted. */
     @Transient
-    val unreadRetryAfterMillis: Long? = null
+    val unreadRetryAfterMillis: Long? = null,
+    /**
+     * The unread summary's newest message per scope, by channel id value
+     * ([ChannelUnreadSummary.latestActivitySeqs]): how far past a saved read a row's count can reach.
+     * Never persisted, and kept apart from the rows' [HomeConversationRow.lastMessageSeq], which
+     * decides whether a realtime message is new.
+     */
+    @Transient
+    val unreadLatestActivitySeqs: Map<String, Long> = emptyMap(),
+    /** The unread summary's read state per scope, by channel id value. Never persisted. */
+    @Transient
+    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap()
 )
 
 @Serializable
@@ -676,6 +687,21 @@ data class RawMessagePage(
     val historyLimited: Boolean = false,
     /** Phase 2b: the page's embedded reply counts by parent message id; `null` = the page carried none. */
     val replyCountsByParentId: Map<String, Int>? = null,
+    /** Phase 2c: what a `messages/context` response says about itself; `null` on any other page. */
+    val context: RawMessageContextFields? = null,
+)
+
+/**
+ * The top-level fields of a `messages/context` response the durable writer needs. [channelId] is the page's scope key;
+ * [threadParentChannelId] / [threadRootMessageId] are its `canonicalTarget` when that is a reply in [channelId].
+ */
+data class RawMessageContextFields(
+    val channelId: String,
+    val targetMessageId: String?,
+    val hasOlder: Boolean,
+    val hasNewer: Boolean,
+    val threadParentChannelId: String?,
+    val threadRootMessageId: String?,
 )
 
 /**
@@ -892,10 +918,25 @@ enum class ExternalAgentSetupState {
     }
 }
 
+/** Web `AgentHostedRuntimeSummary`, what the profile shows. */
+@Serializable
+data class AgentHostedRuntimeSnapshot(
+    val state: String,
+    val syncPending: Boolean = false,
+    /** Null until the provider has answered about message delivery. */
+    val pushRegistered: Boolean? = null,
+    val pushError: String? = null,
+    val lastErrorCode: String? = null,
+    val lastErrorMessage: String? = null,
+    /** The provider refused the picked model: a retry must name a model (null is its default). */
+    val retryNeedsModel: Boolean = false
+)
+
 data class ExternalAgentStatusSnapshot(
     val setupState: ExternalAgentSetupState,
     val credentialLastUsedAt: String? = null,
-    val lastActivityAt: String? = null
+    val lastActivityAt: String? = null,
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 data class AgentDetailSummary(
@@ -942,7 +983,15 @@ data class AgentDetailSummary(
     val lastRuntimeErrorClass: String? = null,
     val lastRuntimeErrorReason: String? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
-    val toolStuck: build.raft.app.model.AgentToolStuck? = null
+    val toolStuck: build.raft.app.model.AgentToolStuck? = null,
+    /**
+     * `modelLimits.defaultsReported` (botiverse/slock #13492): the agent's Computer reported that the
+     * current session filled at least one limit of its Built-in custom gateway model with a Raft
+     * default. Only true shows the warning; false, null and an old server's absent field show nothing.
+     */
+    val modelLimitsDefaultsReported: Boolean = false,
+    /** A cloud agent's provisioning record (web `agent.hostedRuntime`); null for any other agent. */
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
 )
 
 data class AgentCreatorSummary(
@@ -1057,7 +1106,9 @@ data class AgentAppLoginItem(
     val createdAt: String? = null,
     val resolvedAt: String? = null,
     val resolvedByUserId: String? = null,
-    val revokedAt: String? = null
+    val revokedAt: String? = null,
+    /** How the grant came about (web `grantSource`): person, agent_login, app_request, legacy_import; null when not reported. */
+    val grantSource: String? = null
 )
 
 enum class AgentAppLoginType {

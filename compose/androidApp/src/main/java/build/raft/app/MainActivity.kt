@@ -104,7 +104,6 @@ class MainActivity : ComponentActivity() {
             !handleExternalShareIntent(intent) &&
             !handleAppLoginCallback(intent) &&
             !handleMobileOAuthCallback(intent) &&
-            !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
             !handleRaftMessageLink(intent) &&
             !handleUnclaimedAppSchemeLink(intent) &&
@@ -295,47 +294,6 @@ class MainActivity : ComponentActivity() {
                             error("Unauthenticated verification must not open a post-login destination")
                     }
                 }
-            }
-        }
-        return true
-    }
-
-    private fun handleSocialAuthCallback(intent: Intent?): Boolean {
-        val uri = intent?.data ?: return false
-        if (!uri.isRaftSocialAuthCallback()) return false
-        setIntent(Intent(this, MainActivity::class.java))
-        val provider = uri.getQueryParameter("provider").orEmpty().lowercase()
-        if (provider != "google") {
-            Toast.makeText(this, getString(R.string.provider_unavailable_toast), Toast.LENGTH_SHORT).show()
-            return true
-        }
-        val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
-        if (!error.isNullOrBlank()) {
-            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
-            return true
-        }
-        val code = uri.getQueryParameter("code")
-        if (code.isNullOrBlank()) {
-            Toast.makeText(this, getString(R.string.google_sign_in_no_code_toast), Toast.LENGTH_SHORT).show()
-            return true
-        }
-        val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
-        lifecycleScope.launch {
-            val result =
-                withContext(Dispatchers.IO) {
-                    SharedAuthDataSource(
-                        api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                        sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
-                        diagnosticsLogger = ::logSharedAuthDiagnostics
-                    ).completeSocialLogin(provider = provider, code = code)
-                }
-            when (result) {
-                is SharedAuthResult.Success ->
-                    openPostLoginDestination(result.data, loginTransition)
-                is SharedAuthResult.Failure ->
-                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
-                SharedAuthResult.Unauthenticated ->
-                    Toast.makeText(this@MainActivity, getString(R.string.google_sign_in_failed_toast), Toast.LENGTH_SHORT).show()
             }
         }
         return true
@@ -655,13 +613,6 @@ internal fun selectExternalWebHandlerPackage(
         ?: externalPackages.firstOrNull()
 }
 
-/**
- * Whether an `openUrl` is pinned to a browser package first: only when the caller asked for the
- * browser (`browser: true`, HostLinkCapability.openUrlInBrowser) and it is an untyped http(s) URL.
- */
-internal fun openUrlUsesBrowserPackage(browser: Boolean, mimeType: String?, scheme: String?): Boolean =
-    browser && mimeType == null && scheme?.lowercase() in setOf("http", "https")
-
 private fun String.isRaftAppPackage(): Boolean = this == RAFT_APP_PACKAGE || startsWith("$RAFT_APP_PACKAGE.")
 
 private const val RAFT_APP_PACKAGE = "build.raft.app"
@@ -672,8 +623,11 @@ internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
     val implicit =
         Intent(Intent.ACTION_VIEW, uri)
             .addCategory(Intent.CATEGORY_BROWSABLE)
+    // MATCH_DEFAULT_ONLY lists only apps picked as defaults; a device with no default browser reports none.
     val candidates =
-        packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+        packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY).ifEmpty {
+            packageManager.queryIntentActivities(implicit, PackageManager.MATCH_ALL)
+        }
     val defaultPackage =
         packageManager
             .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
@@ -713,14 +667,6 @@ private fun Intent?.safeDataString(): String =
 
 private fun Uri.safeWebLinkTarget(): String =
     buildUpon().clearQuery().fragment(null).build().toString()
-
-private fun Uri.isRaftSocialAuthCallback(): Boolean =
-    admittedUriQuery(
-        isHierarchical = isHierarchical,
-        routeAccepted = scheme == "https" && host in setOf("app.slock.ai", "app.raft.build"),
-    ) {
-        getQueryParameter("auth_callback") == "social"
-    } ?: false
 
 internal fun Uri.isRaftMobileOAuthCallback(): Boolean =
     admittedUriQuery(

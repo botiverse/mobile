@@ -343,12 +343,15 @@ fun RaftMessageActionCardNotice(
  * 2dp under its label, with no minimum height or padding of its own, and 10dp above the next
  * label; from it the labels form a column (at least 88dp, at most 160dp) 16dp before the
  * values, each value at least 32dp tall with 6dp above and below. [twoColumns] overrides the
- * width rule.
+ * width rule. [fitLabels]: the label column takes only its labels' width, without the 88dp
+ * minimum (web `FITTED_LABELS`: a question card answered inline keeps only its For row, with
+ * nothing to line up with).
  */
 @Composable
 fun RaftMessageActionCardProperties(
     modifier: Modifier = Modifier,
     twoColumns: Boolean? = null,
+    fitLabels: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val typography = RaftTheme.typography
@@ -389,10 +392,11 @@ fun RaftMessageActionCardProperties(
         val valuePad = 6.dp.roundToPx()
         val valueMin = 32.dp.roundToPx()
         val top = labelTop.roundToPx()
+        val labelMin = if (fitLabels) 0 else 88.dp.roundToPx()
         val labelWidth =
             labels.maxOfOrNull { it.maxIntrinsicWidth(constraints.maxHeight) }
-                ?.coerceIn(88.dp.roundToPx(), labelCap)
-                ?: 88.dp.roundToPx()
+                ?.coerceIn(labelMin, labelCap)
+                ?: labelMin
         val valueWidth = (constraints.maxWidth - labelWidth - gap).coerceAtLeast(0)
         val rows =
             labels.indices.map { index ->

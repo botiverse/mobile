@@ -322,6 +322,25 @@ two owners have different authority and restore lifecycles.
 8. Post-accept return to legacy still requires control revocation plus a successful canonical rebaseline
    barrier.
 
+## Canary → main path: blocking checklist
+
+V2 does not leave the canary (become the path the app draws from) until every item here is done.
+
+- [x] **Producer keys are filtered, never refused.** A server key the V2 fact does not carry is dropped
+  before the shape check, for action cards (task #43, `withKnownActionCardKeysOnly`) and forwarded bundles
+  (`withKnownForwardedKeysOnly`, 11-05: every forward the server writes carries `forwardedBy`,
+  `forwardedAt`, `destinationTargetId`, per-item source fields and attachment ids/sizes, so the old
+  exact-key check failed every forwarded message). Tenny, 11-05: a blocker for the switch.
+- [x] **The server pins what it sends.** slock `packages/shared/src/actionCards.ts`
+  `ACTION_CARD_METADATA_KEYS` (`v2-keeps` / `v2-drops`, #13265) and the forwarded-bundle (root, item,
+  author, target, attachment) and `action.*` / `result.*` lists (#13274, staging 11-05) fail the build on a
+  new key, so a new key is agreed with the app first.
+- [ ] **Every result kind the server writes is carried.** `CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND` has
+  no entry for `agent-call-approval`, `assistant-owner-action` and `question-answers` (AppFather, slock
+  #13274), so their executed results reach the V2 fact as `kind` only. Harmless while V2 is a canary (the
+  app draws cards from the row); on the main path those results would not draw. Add their keys (manifest
+  bump if needed) before the switch.
+
 ## Planned commit topology
 
 ### A — seam/schema/migration

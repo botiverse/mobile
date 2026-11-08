@@ -58,6 +58,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.RaftHoverTier
 
 @Serializable
 internal data class RaftSharedSettingsPayload(
@@ -439,7 +441,7 @@ private fun SharedSettingsRow(
                     onAction(row.key, row.value.takeIf { it.isNotBlank() })
                 }
             } else {
-                Modifier.clickable(enabled = row.enabled) { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }
+                Modifier.raftClickable(onClick = { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }, enabled = row.enabled, tier = RaftHoverTier.Subtle)
             }
         Row(
             modifier = Modifier

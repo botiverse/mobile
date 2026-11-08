@@ -13,6 +13,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.uikit.LocalUIViewController
+import build.raft.app.raftIosAppOnMacDensity
+import build.raft.app.RaftIosHardwareKeyboardState
+import build.raft.app.raftIosAppOnMacImeInsets
+import build.raft.app.raftIosIgnoresKeyboardFrame
+import build.raft.app.raftPlatformIsiOSAppOnMac
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -104,6 +109,10 @@ private class RaftKeyboardSlideTracker(private val view: UIView) {
     var slide: RaftKeyboardSlide? by mutableStateOf(null)
         private set
 
+    /** The latest keyboard frame's overlap of the view, in points, animated or not (0: none). */
+    var overlapPoints: Double by mutableStateOf(0.0)
+        private set
+
     private var observer: Any? = null
 
     fun start() {
@@ -134,8 +143,6 @@ private class RaftKeyboardSlideTracker(private val view: UIView) {
         slide?.cancel()
         slide = null
         val screen = view.window?.screen ?: return
-        // No slide (a keyboard that appears without animation): CMP sets the value at once.
-        if (duration <= 0.0) return
         val keyboard = endFrame.CGRectValue()
         val viewBottomInScreen =
             screen.coordinateSpace
@@ -150,6 +157,9 @@ private class RaftKeyboardSlideTracker(private val view: UIView) {
                 keyboardMinY = CGRectGetMinY(keyboard),
                 viewBottomInScreen = viewBottomInScreen,
             )
+        overlapPoints = target
+        // No slide (a keyboard that appears without animation): CMP sets the value at once.
+        if (duration <= 0.0) return
         val probe = UIView()
         probe.userInteractionEnabled = false
         view.addSubview(probe)
@@ -170,6 +180,25 @@ private class RaftKeyboardSlideTracker(private val view: UIView) {
 
 @Composable
 internal actual fun ProvideRaftPlatformImeInsets(content: @Composable () -> Unit) {
+    if (raftPlatformIsiOSAppOnMac()) ProvideRaftIosAppOnMacPage(content) else ProvideRaftIosKeyboardInsets(content)
+}
+
+/**
+ * The iPad app on a Mac (see RaftIosAppOnMac.kt): no software keyboard, so a 0 keyboard inset, and
+ * the desktop's text size, by laying the page out in Mac points.
+ */
+@Composable
+private fun ProvideRaftIosAppOnMacPage(content: @Composable () -> Unit) {
+    val insets = remember { raftIosAppOnMacImeInsets() }
+    CompositionLocalProvider(
+        LocalDensity provides raftIosAppOnMacDensity(LocalDensity.current, onMac = true),
+        LocalRaftHostImeInsets provides insets,
+        content = content,
+    )
+}
+
+@Composable
+private fun ProvideRaftIosKeyboardInsets(content: @Composable () -> Unit) {
     val view = LocalUIViewController.current.view
     val ime = WindowInsets.ime
     val density = LocalDensity.current
@@ -199,5 +228,16 @@ internal actual fun ProvideRaftPlatformImeInsets(content: @Composable () -> Unit
         // Settled: CMP's own value (same formula) takes over again.
         insets.imeAnimationRunning = true
     }
-    CompositionLocalProvider(LocalRaftHostImeInsets provides insets, content = content)
+    // A hardware keyboard's shortcuts bar (RaftIosHardwareKeyboard.kt): a 0 inset, as on a Mac, so
+    // the composer stays down instead of lifting above the bar's small pill and leaving a band.
+    val ignoresFrame =
+        raftIosIgnoresKeyboardFrame(
+            hardwareKeyboard = RaftIosHardwareKeyboardState.connected,
+            overlapPoints = tracker.overlapPoints,
+        )
+    val noKeyboard = remember { raftIosAppOnMacImeInsets() }
+    CompositionLocalProvider(
+        LocalRaftHostImeInsets provides if (ignoresFrame) noKeyboard else insets,
+        content = content,
+    )
 }

@@ -4,6 +4,12 @@ import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
+/**
+ * The iPad app is running on a Mac ("Designed for iPad", `NSProcessInfo.isiOSAppOnMac`), where it
+ * behaves like the desktop app (RaftIosAppOnMac.kt). False on every other host.
+ */
+internal expect fun raftPlatformIsiOSAppOnMac(): Boolean
+
 /** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style, desktop = none. */
 internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle
 

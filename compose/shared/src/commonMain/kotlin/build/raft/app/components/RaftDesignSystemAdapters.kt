@@ -144,7 +144,7 @@ internal fun RaftAnchoredPickerTrigger(
 ) {
     val currentOnAnchorChanged by rememberUpdatedState(onAnchorChanged)
     val anchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
-    val anchorResolver = remember(anchor) { anchor.resolver(RaftPopoverLocalPoint.BottomStart) }
+    val anchorResolver = remember(anchor) { anchor.currentCaptureResolver(RaftPopoverLocalPoint.BottomStart) }
     var resolverNotified by remember(anchorResolver) { mutableStateOf(false) }
     Box(
         modifier =

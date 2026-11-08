@@ -114,8 +114,9 @@ internal data class ActionCardFormCandidates(
  *
  * A form with `steps` pages: a step a page under "Question n of total", Next (the commit) checking
  * only that page, Back (the head's arrow, or Back in the centred dialog's footer) keeping every
- * value, one submit on the last page; a server problem on another page turns to it. A form whose
- * `placement` is `inline` opens here too (the sheet answers the same form).
+ * value, one submit on the last page; a server problem on another page turns to it. A question
+ * card's form with `placement: "inline"` is answered on the card instead
+ * ([ActionCardQuestionInlineForm]); any other `inline` form still opens here.
  *
  * Enter in "Other" does what the commit does (Next, or the submit on the last page), but not the
  * Enter that confirms an IME composition (web ActionCardChoiceField: Safari sends it with keyCode
@@ -465,9 +466,13 @@ private fun ActionCardFormField(
  * or, for a required Choice, what it still lacks. The value is [ActionCardFormValue.Choice]: `other` is
  * non-null while Other is chosen, even empty. Choosing a single option drops Other; unticking Other
  * keeps what was typed for the next time it is chosen.
+ *
+ * On a question card answered inline ([ActionCardQuestionInlineForm]): [number] goes before the
+ * question's text when the card asks several ("2. …", web `ChoiceFieldControl` `number`), and
+ * [onPicked] hears a single option tapped (not Other…), which moves the form on (spec §5.10).
  */
 @Composable
-private fun ActionCardChoiceField(
+internal fun ActionCardChoiceField(
     field: ActionCardSpecChoiceField,
     value: ActionCardFormValue.Choice,
     onValueChange: (ActionCardFormValue) -> Unit,
@@ -475,6 +480,8 @@ private fun ActionCardChoiceField(
     enabled: Boolean,
     locale: String,
     onEnter: () -> Unit,
+    number: Int? = null,
+    onPicked: (() -> Unit)? = null,
 ) {
     val other = field.other
     val otherChosen = other != null && value.other != null
@@ -484,8 +491,9 @@ private fun ActionCardChoiceField(
     var focusOther by remember { mutableStateOf(false) }
     // A required Choice speaks only to someone who can answer it, and not over an issue.
     val pending = if (field.required == true && enabled && error == null) actionCardChoicePending(value) else null
+    val label = field.label.render(locale)
     RaftField(
-        label = field.label.render(locale),
+        label = if (number != null) "$number. $label" else label,
         description = field.description?.render(locale),
         error = error,
         enabled = enabled,
@@ -525,7 +533,10 @@ private fun ActionCardChoiceField(
                         RaftRadioRow(
                             label = option.label.render(locale),
                             selected = !otherChosen && option.value in value.selected,
-                            onClick = { onValueChange(ActionCardFormValue.Choice(listOf(option.value))) },
+                            onClick = {
+                                onValueChange(ActionCardFormValue.Choice(listOf(option.value)))
+                                onPicked?.invoke()
+                            },
                             description = option.description?.render(locale),
                             enabled = enabled,
                         )

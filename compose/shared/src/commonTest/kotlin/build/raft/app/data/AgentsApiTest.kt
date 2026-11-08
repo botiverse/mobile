@@ -38,6 +38,16 @@ class AgentsApiTest {
     }
 
     @Test
+    fun cloudAgentBodyNamesTheProviderAndOmitsAnUnpickedModel() {
+        val cloud = CreateAgentBody(name = "Noel", external = true, provider = "antiproton")
+        assertEquals("""{"name":"Noel","external":true,"provider":"antiproton"}""", buildCreateAgentBody(cloud))
+        assertEquals(
+            """{"name":"Noel","external":true,"provider":"antiproton","hostedModel":"gpt-5.6-luna"}""",
+            buildCreateAgentBody(cloud.copy(hostedModel = "gpt-5.6-luna"))
+        )
+    }
+
+    @Test
     fun createBodyKeepsPresentOptionalFields() {
         val body =
             buildCreateAgentBody(
@@ -432,6 +442,33 @@ class AgentsApiTest {
         val plainDetail =
             assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = plain)).agent(MemberId("agent-1"))).data
         assertEquals(null, plainDetail.toolStuck)
+    }
+
+    @Test
+    fun agentModelLimitsWarnOnlyWhenTheServerReportsDefaults() = runPortableCoroutineTest {
+        // botiverse/slock #13492 (routes/agents.ts, routes/agentModelLimits.api.test.ts @ f2aef25):
+        // the detail, the list and the PATCH answer carry `modelLimits: { defaultsReported }` for a
+        // Built-in custom gateway agent; others, and older servers, send nothing (PATCH sends null).
+        val base = """{"id":"agent-1","name":"Pi","runtime":"builtin","status":"active""""
+        suspend fun detail(tail: String): AgentSummary =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(RecordingAgentsApi(agentBody = "$base$tail}")).agent(MemberId("agent-1"))
+            ).data
+
+        assertTrue(detail(""","modelLimits":{"defaultsReported":true}""").toAgentDetailSummary().modelLimitsDefaultsReported)
+        assertFalse(detail(""","modelLimits":{"defaultsReported":false}""").modelLimitsDefaultsReported)
+        assertFalse(detail(""","modelLimits":null""").modelLimitsDefaultsReported)
+        assertFalse(detail("").modelLimitsDefaultsReported)
+
+        val list =
+            assertIs<DataResult.Content<AgentsPage>>(
+                RaftAgentsApiClient(
+                    RecordingAgentsApi(
+                        agentsBody = "[$base,\"modelLimits\":{\"defaultsReported\":true}},{\"id\":\"agent-2\",\"name\":\"Old\"}]"
+                    )
+                ).agents()
+            ).data.agents
+        assertEquals(listOf(true, false), list.map { it.modelLimitsDefaultsReported })
     }
 
     @Test

@@ -127,6 +127,10 @@ internal object SharedThreadStoreTestFakes {
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
             requestHeadEpoch: Long?,
+            messageWindow: ChannelMessageWindow?,
+            historyLimited: Boolean,
+            revAtRequest: Long?,
+            replyCountByParentId: Map<String, Int>?,
             stillCurrent: () -> Boolean
         ) {
             replyParents += replyParent
@@ -494,6 +498,8 @@ internal object SharedThreadStoreTestFakes {
         /** Task v2: `GET /channels/:id` refs by conversation id; any other id answers "not a task". */
         var taskConversationRefs: Map<ChannelId, TaskConversationChannelRef> = emptyMap()
         val taskConversationRefRequests: MutableList<ChannelId> = mutableListOf()
+        /** Virtual-time latency of [loadTaskConversationRef]. */
+        var taskConversationRefDelayMillis: Long = 0L
         var syncNewerStarted: CompletableDeferred<Unit>? = null
         var releaseSyncNewer: CompletableDeferred<Unit>? = null
         /** Task #168 step 1: the gap catch-up's latest page; `null` answers with [getThread]'s result. */
@@ -532,6 +538,7 @@ internal object SharedThreadStoreTestFakes {
 
         override suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> {
             taskConversationRefRequests += conversationChannelId
+            if (taskConversationRefDelayMillis > 0L) delay(taskConversationRefDelayMillis)
             return taskConversationRefs[conversationChannelId]?.let { DataResult.Content(it) }
                 ?: DataResult.Empty(EmptyReason.NoMessages)
         }

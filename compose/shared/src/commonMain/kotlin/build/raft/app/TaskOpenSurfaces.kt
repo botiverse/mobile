@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -417,9 +419,11 @@ internal fun TaskPendingConversationWindow(onBack: () -> Unit, sending: Boolean,
 /**
  * A task before its first message (web `TaskConversationDialog` with no conversation yet), drawn as
  * the task conversation page it becomes, so nothing moves when the first send opens it:
- * - the same top bar (the task's ref over "Task #N"; its status and assignee once the head has
- *   scrolled away, [TaskConversationBarTitle]);
- * - the same head ([TaskConversationHeadRoute]): title, description, facts and History, with the
+ * - the same top bar (the task's ref over "Task #N"; on a phone its status and assignee too once
+ *   the head is out of view, [TaskConversationBarTitle]);
+ * - the same head ([TaskConversationHeadRoute]): on a phone the first row of the page under the
+ *   bar, scrolling with it (and pulled down from the bar while it is out of view); wider, pinned
+ *   above it. Title, description, facts and History, with the
  *   Status and Assignee editors under the same gates (guest, read-only task, Done freezes the
  *   assignee; [editable] false while there is no store to write to or it holds the offline
  *   stand-in);
@@ -485,9 +489,9 @@ internal fun TaskPendingConversationPage(
             },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
         )
-        // The same head pulled down from the bar as on the conversation page, once it has scrolled away.
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-        Column(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
+        // The head, as on the conversation page: pinned above the page off a phone ([TaskHeadPlacement.Page]),
+        // its first row on a phone, and pulled down from the bar while that row is out of view.
+        val headRoute: @Composable (TaskHeadPlacement) -> Unit = { placement ->
             TaskConversationHeadRoute(
                 task = task,
                 state = state,
@@ -504,52 +508,58 @@ internal fun TaskPendingConversationPage(
                 keyboardUp = keyboardUp,
                 onRetryHistory = details.retryHistory,
                 editable = editable,
+                placement = placement,
                 serverId = serverId,
             )
-            // Where the messages go: the empty state, and a refused send's words.
-            Column(
-                Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    RaftText(
-                        text = stringResource(Res.string.task_conversation_empty_title),
-                        style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.foreground,
-                    )
-                    if (task.hostMessageId != null) {
-                        RaftText(
-                            text = stringResource(Res.string.task_conversation_empty_body),
-                            style = typography.callout,
-                            color = colors.foregroundMuted,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
+        }
+        val headRow = rememberTaskConversationHeadRow(headScrollState) { headRoute(TaskHeadPlacement.FirstRow) }
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+        BoxWithConstraints(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
+            val phone = maxWidth < TaskHeadPinnedMinWidth
+            val pageScroll = rememberScrollState()
+            if (phone) {
+                // The head is the top of what scrolls here: in view while any of it is (and before it is measured).
+                LaunchedEffect(headScrollState, pageScroll) {
+                    snapshotFlow {
+                        val headHeight = headScrollState.rowHeadHeightPx
+                        headHeight <= 0 || pageScroll.value < headHeight
+                    }.collect { inView -> headScrollState.updateHeadInView(inView) }
+                }
+            }
+            Column(Modifier.fillMaxSize()) {
+                headRoute(TaskHeadPlacement.Page)
+                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(pageScroll)) {
+                    if (phone) TaskConversationHeadRowContent(headRow)
+                    // Where the messages go: the empty state, and a refused send's words.
+                    Column(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            RaftText(
+                                text = stringResource(Res.string.task_conversation_empty_title),
+                                style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                                color = colors.foreground,
+                            )
+                            if (task.hostMessageId != null) {
+                                RaftText(
+                                    text = stringResource(Res.string.task_conversation_empty_body),
+                                    style = typography.callout,
+                                    color = colors.foregroundMuted,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                )
+                            }
+                        }
+                        errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
                     }
                 }
-                errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
             }
         }
-            TaskConversationHeadRoute(
-                task = task,
-                state = state,
-                details = details.state,
-                statusUpdating = statusUpdating,
-                assigneeCandidates = members,
-                timeContext = timeContext,
-                onUpdateStatus = onUpdateStatus,
-                onAssign = onAssign,
-                onOpenSource = null,
-                onOpenEarlierDiscussion = null,
-                scrollState = headScrollState,
-                onRetryHistory = details.retryHistory,
-                editable = editable,
-                floating = true,
-                serverId = serverId,
-            )
+            headRoute(TaskHeadPlacement.PullDown)
         }
         if (joined == false) {
             ThreadJoinFooter(label = stringResource(Res.string.task_conversation_join_to_reply), onJoin = onJoin)

@@ -279,8 +279,12 @@ private fun raftHostTopSafeAreaPadding(): Dp {
     // When the host hides the status bar (immersive / fullscreen), the reported
     // bar height would reserve a strip of dead space; keep a small fixed
     // padding instead so page headers are not flush against the top edge.
+    // A Mac has no status bar (raftHostStatusBarHidden): it takes the live inset, like desktop.
     val statusBarHidden =
-        live?.statusBarHidden ?: params.optBoolean(KEY_STATUS_BAR_HIDDEN, false)
+        raftHostStatusBarHidden(
+            reported = live?.statusBarHidden ?: params.optBoolean(KEY_STATUS_BAR_HIDDEN, false),
+            onMac = raftPlatformIsiOSAppOnMac(),
+        )
     if (statusBarHidden) return RaftAppSpacing.Md
     // A live host snapshot is authoritative (it replaces, so 0 means 0), except that a
     // sheet-presented page keeps its header off the sheet's top edge. The renderer-native and

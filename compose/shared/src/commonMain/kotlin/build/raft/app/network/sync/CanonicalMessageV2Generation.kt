@@ -718,7 +718,12 @@ internal class SqlDelightCanonicalMessageV2Store(
             // 4. Header: the window columns mirror the head segment.
             val head = CanonicalMessageV2SegmentAlgebra.head(segments)
             val written = base.mirroring(head, selectHeadFactBoundsInsideTransaction(scope, head)).copy(
-                latestSeq = (listOfNotNull(base.latestSeq) + envelopes.map { it.fact.seq }).maxOrNull(),
+                // Phase 2c: a fact in another range (an island above the head) does not move the mirror.
+                latestSeq = (
+                    listOfNotNull(base.latestSeq) + envelopes.map { it.fact.seq }.filter { seq ->
+                        CanonicalMessageV2SegmentAlgebra.memberOf(segments, seq).let { it == null || it == head }
+                    }
+                ).maxOrNull(),
             )
             queries.upsertSyncCursor(
                 scopeId = scope.scopeId,
@@ -795,6 +800,8 @@ internal class SqlDelightCanonicalMessageV2Store(
                     localRev = localRev,
                 )
             }
+            // Phase 2c: islands make room first, so they never cost the window users see its oldest facts.
+            dropIslandsOverScopeCapInsideTransaction(scope)
             // The per-scope cap runs before the cursor is written, so the cursor that lands on disk
             // never claims a window edge the cap just pruned away.
             val prune = pruneScopeInsideTransaction(scope, cursor)
@@ -1158,6 +1165,8 @@ internal class SqlDelightCanonicalMessageV2Store(
      * scope's segments are: those strictly below the window that do not touch it (none before Phase 2), then
      * the window itself. A snapshot cleared the scope's facts, so it drops every other segment; the legacy
      * cap's pruning trims every segment below the pruned edge. An unchanged window keeps its stored row.
+     * Phase 2c: islands survive too (dropping one would make its facts loose, and the reader shows loose facts); one
+     * the window reaches merges into it, and the head then stays that wide on later writes.
      */
     private fun syncLegacyWindowSegmentsInsideTransaction(
         scope: SyncScopeKey,
@@ -1168,13 +1177,27 @@ internal class SqlDelightCanonicalMessageV2Store(
         val before = selectSegmentsInsideTransaction(scope)
         var segments = if (rebaseline) emptyList() else before
         if (prunedThroughSeq != null) segments = CanonicalMessageV2SegmentAlgebra.trimBelow(segments, prunedThroughSeq)
-        val window = written.legacyWindowSegment(verifiedAtMs = now())
-        segments = if (window == null) {
-            emptyList()
+        val written0 = written.legacyWindowSegment(verifiedAtMs = now())
+        segments = if (written0 == null) {
+            segments.filterNot { it.source.rootsHead }
         } else {
-            val unchanged = segments.firstOrNull { it.sameRangeAs(window) }
+            val oldHead = CanonicalMessageV2SegmentAlgebra.head(segments)
+            val window = if (oldHead != null && oldHead.highSeq > written0.highSeq && CanonicalMessageV2SegmentAlgebra.joins(oldHead, written0)) {
+                written0.copy(highSeq = oldHead.highSeq, headAtVerify = oldHead.headAtVerify)
+            } else {
+                written0
+            }
+            val unchanged = segments.firstOrNull { it.source.rootsHead && it.sameRangeAs(window) }
             val below = segments.filter { it.highSeq + 1L < window.effectiveLowSeq }
-            (below + (unchanged ?: window)).sortedBy { it.lowSeq }
+            val islands = segments.filterNot { it.source.rootsHead || it in below }
+            val above = islands.filter { it.effectiveLowSeq > window.highSeq + 1L }
+            (islands - above.toSet()).fold((below + above + (unchanged ?: window)).sortedBy { it.lowSeq }) { acc, reached ->
+                if (reached.highSeq <= window.highSeq && reached.effectiveLowSeq >= window.effectiveLowSeq) {
+                    acc
+                } else {
+                    CanonicalMessageV2SegmentAlgebra.union(acc, reached)
+                }
+            }
         }
         replaceSegmentsInsideTransaction(scope, before, segments)
     }
@@ -1351,6 +1374,39 @@ internal class SqlDelightCanonicalMessageV2Store(
     }
 
     private class LegacyPrune(val cursor: PersistedCursor, val prunedThroughSeq: Long)
+
+    /** Phase 2c: over the cap, a legacy write first drops islands, least recently verified first, with their facts. */
+    private fun dropIslandsOverScopeCapInsideTransaction(scope: SyncScopeKey) {
+        val before = selectSegmentsInsideTransaction(scope)
+        if (before.all { it.source.rootsHead }) return
+        val facts = database.queries.selectUnpinnedFactSeqsInScope(
+            environmentId = scope.environmentId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsList().map { it.id to it.seq }.toMutableList()
+        val live = before.toMutableList()
+        while (facts.size > retention.maxFactsPerScope) {
+            val victim = live.filterNot { it.source.rootsHead }
+                .minWithOrNull(compareBy<CanonicalMessageV2Segment> { it.verifiedAtMs }.thenBy { it.lowSeq }) ?: break
+            facts.filter { (_, seq) -> seq in victim }.forEach { fact ->
+                database.queries.deleteCanonicalFactInScope(
+                    id = fact.first,
+                    environmentId = scope.environmentId,
+                    serverId = scope.serverId,
+                    principalId = scope.principalId,
+                    consumerId = scope.consumerId,
+                    scopeKind = scope.scopeKind,
+                    channelId = scope.scopeId,
+                )
+                facts.remove(fact)
+            }
+            live.remove(victim)
+        }
+        if (live.size != before.size) replaceSegmentsInsideTransaction(scope, before, live)
+    }
 
     private fun pruneScopeInsideTransaction(scope: SyncScopeKey, cursor: PersistedCursor): LegacyPrune? {
         val pruned = database.queries.selectCanonicalFactIdsBeyondLimit(

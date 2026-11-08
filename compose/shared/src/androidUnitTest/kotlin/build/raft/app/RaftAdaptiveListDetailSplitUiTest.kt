@@ -2,7 +2,10 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
@@ -78,6 +81,37 @@ class RaftAdaptiveListDetailSplitUiTest {
                 assertEquals(dragged.toInt().toString(), values.getString(RaftListPaneKind.Sidebar.storageKey))
                 assertEquals(listOf(true, false), resizing)
             }
+            onNodeWithTag(DETAIL).assertExists()
+        }
+
+    /**
+     * #4394: a collapsed list with nothing open still shows (the page is otherwise only "Select a
+     * conversation"), and hides again once something opens, as the collapse is kept.
+     */
+    @Test
+    fun aCollapsedListShowsWhileNothingIsOpenAndHidesAgainWhenSomethingOpens() =
+        runRobolectricComposeUiTest {
+            var hasSelection by mutableStateOf(false)
+            setContent {
+                RaftAdaptiveListDetailSplit(
+                    kind = RaftListPaneKind.Sidebar,
+                    widths = remember { RaftListPaneWidths(KeyValueChatLayoutPreferenceStore(InMemoryRaftKeyValueStore())) },
+                    dualPane = true,
+                    active = true,
+                    hasSelection = hasSelection,
+                    detailBottomInset = 0.dp,
+                    listPane = { Box(Modifier.fillMaxSize().testTag(LIST)) },
+                    detailPane = { modifier -> Box(modifier.testTag(DETAIL)) },
+                    collapsed = true,
+                    onCollapsedChange = {},
+                )
+            }
+            onNodeWithTag(LIST).assertExists()
+            onNodeWithTag(DETAIL).assertExists()
+
+            hasSelection = true
+            waitForIdle()
+            onNodeWithTag(LIST).assertDoesNotExist()
             onNodeWithTag(DETAIL).assertExists()
         }
 

@@ -518,9 +518,6 @@
     <string name="browser_unavailable_toast">このリンクを開けるブラウザがありません</string>
     <string name="email_verified_toast">メールアドレスを確認しました</string>
     <string name="email_verified_sign_in_toast">メールアドレスを確認しました。続行するにはログインしてください。</string>
-    <string name="provider_unavailable_toast">このログインプロバイダーはまだ Android では利用できません</string>
-    <string name="google_sign_in_no_code_toast">Google ログインが認可コードを返しませんでした</string>
-    <string name="google_sign_in_failed_toast">Google ログインに失敗しました。もう一度お試しください。</string>
     <string name="oauth_request_expired_toast">ログインリクエストの有効期限が切れました。もう一度お試しください。</string>
     <string name="provider_no_handoff_code_toast">%1$s がハンドオフコードを返しませんでした</string>
     <string name="provider_linked_toast">%1$s アカウントを連携しました。</string>

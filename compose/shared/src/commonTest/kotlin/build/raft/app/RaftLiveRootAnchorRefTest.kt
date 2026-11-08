@@ -178,6 +178,23 @@ class RaftLiveRootAnchorRefTest {
     }
 
     @Test
+    fun currentCaptureResolverFailsClosedWhileDetachedAndFollowsTheNextCapture() {
+        val coordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val anchorRef = RaftLiveRootAnchorRef(identity = "composer")
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        val resolver = anchorRef.currentCaptureResolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
+        assertNotNull(resolver.resolve())
+
+        anchorRef.invalidate()
+        assertNull(resolver.resolve())
+
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        assertNotNull(resolver.resolve())
+        assertNotNull(resolver.resolveAtPlacementRevision(resolver.placementRevision))
+        assertEquals(false, resolver.wasInvalidatedByCaptureReuse())
+    }
+
+    @Test
     fun coordinateSlotClaimByNewIdentityPermanentlyInvalidatesOldResolver() {
         val reusedCoordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
         val oldRef = RaftLiveRootAnchorRef(identity = "lazy:A")
