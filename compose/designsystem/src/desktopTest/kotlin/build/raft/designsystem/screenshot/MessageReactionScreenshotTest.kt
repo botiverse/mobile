@@ -110,15 +110,19 @@ class MessageReactionScreenshotTest {
 
     @Composable
     private fun Tipped(x: Int, y: Int, names: List<String>, count: Int, mine: Boolean, more: String? = null) {
-        RaftMessageReactionTooltip(
-            names = names,
-            moreLabel = more,
-            open = true,
-            onDismissRequest = {},
-            modifier = Modifier.offset(x.dp, y.dp),
-            emptyContent = { Face() },
-        ) {
-            RaftMessageReaction(count = count, mine = mine, glyph = { Face() }, onClick = {})
+        // Opened as the web's hover tooltip (below the chip): a long press opens it above instead,
+        // see RaftMessageReactionTooltipPlacementTest.
+        CompositionLocalProvider(LocalRaftTooltipPreview provides true) {
+            RaftMessageReactionTooltip(
+                names = names,
+                moreLabel = more,
+                open = false,
+                onDismissRequest = {},
+                modifier = Modifier.offset(x.dp, y.dp),
+                emptyContent = { Face() },
+            ) {
+                RaftMessageReaction(count = count, mine = mine, glyph = { Face() }, onClick = {})
+            }
         }
     }
 

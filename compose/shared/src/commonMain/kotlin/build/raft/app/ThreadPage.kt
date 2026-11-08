@@ -8758,8 +8758,8 @@ private fun SharedThreadRouteContentContent(
         if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
     }
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    // `feedback:submit` cards open the Feedback WebView once the viewing server is known (no server
-    // flag since 1.22).
+    // `feedback:submit` cards open the Feedback WebView only where Settings > Feedback is the web page
+    // (Compose desktop; settingsFeedbackUsesWebPage) and the viewing server is known. No server flag.
     val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
@@ -26085,6 +26085,9 @@ private fun ThreadMessagesListContent(
                     }
                 }
             val outlineOriginId = renderPayload.originMessage?.id
+            val outlineTimeContext =
+                currentRaftTimeContextProvider?.current?.copy(timeFormat = renderConfig.timeContext.timeFormat)
+                    ?: renderConfig.timeContext.refreshedAt(defaultNowMillis())
             ThreadOutlineHost(
                 state = LocalThreadOutlineState.current,
                 leadingMessageId = renderPayload.parentMessageId ?: outlineOriginId,
@@ -26094,7 +26097,9 @@ private fun ThreadMessagesListContent(
                 jumpTargetId = renderPayload.focusedMessageId,
                 jumpNonce = renderPayload.focusedMessageRequestNonce,
                 listWidth = maxWidth,
-                formatTime = { value -> renderConfig.formatTimestampLabel(value) },
+                // The payload's time context has no "today": without the page's live one every row
+                // would show the raw UTC wire timestamp. Same day source as the date dividers.
+                formatTime = { value -> outlineTimeContext.formatTimestampLabel(value) },
                 onJump = { messageId ->
                     // The thread's first message heads the list and isn't among the replies the
                     // page focuses: scroll to its row (web `jumpToParent`); a reply is focused.
@@ -35560,7 +35565,7 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
 
-/** Whether `feedback:submit` cards open the Feedback WebView: the viewing server is known ([raftFeedbackCardEntryEnabled]). */
+/** Whether `feedback:submit` cards open the Feedback WebView ([raftFeedbackCardEntryEnabled]). */
 internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
 
 /**
