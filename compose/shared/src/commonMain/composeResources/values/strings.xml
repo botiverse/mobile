@@ -3771,6 +3771,9 @@
     <string name="action_card_question_choose_first">Choose an option first.</string>
     <string name="action_card_question_write_first">Write your answer first.</string>
     <string name="action_card_question_other_placeholder">Write your answer</string>
+    <string name="action_card_question_submitted">Submitted</string>
+    <string name="action_card_question_undo">Undo</string>
+    <string name="action_card_question_not_sent">Not sent: the card changed. Answer again.</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">Latest is v%1$d</string>

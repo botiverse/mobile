@@ -3771,6 +3771,9 @@
     <string name="action_card_question_choose_first">先に選択肢を選んでください。</string>
     <string name="action_card_question_write_first">先に回答を入力してください。</string>
     <string name="action_card_question_other_placeholder">回答を入力</string>
+    <string name="action_card_question_submitted">送信済み</string>
+    <string name="action_card_question_undo">元に戻す</string>
+    <string name="action_card_question_not_sent">送信されませんでした。カードが変更されました。もう一度回答してください。</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">最新は v%1$d</string>

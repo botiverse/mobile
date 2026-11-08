@@ -93,6 +93,8 @@ internal class RaftCardTreeContext(
     val onAction: (elementId: String) -> Unit = {},
     val columnGap: Dp = 6.dp,
     val buttonState: (elementId: String, button: ActionCardSpecButton) -> RaftCardButtonState = { _, _ -> RaftCardButtonState.Enabled },
+    /** Property labels take only their width (raft-ui `fitLabels`): a question card answered on the card. */
+    val fitLabels: Boolean = false,
 )
 
 /** How the frame lets a card Button show. */
@@ -334,7 +336,7 @@ internal fun actionCardColumnRuns(elements: Map<String, CardElement>, children: 
 private fun RaftCardFields(fields: List<ActionCardSpecDisplayElement.Field>, context: RaftCardTreeContext) {
     if (fields.isEmpty()) return
     val colors = RaftTheme.colors
-    RaftMessageActionCardProperties {
+    RaftMessageActionCardProperties(fitLabels = context.fitLabels) {
         fields.forEach { field ->
             RaftMessageActionCardProperty(
                 label = actionCardMsgText(field.label, context).text,

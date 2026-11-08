@@ -3764,6 +3764,9 @@
     <string name="action_card_question_choose_first">먼저 옵션을 선택해 주세요.</string>
     <string name="action_card_question_write_first">먼저 답변을 입력해 주세요.</string>
     <string name="action_card_question_other_placeholder">답변을 입력하세요</string>
+    <string name="action_card_question_submitted">제출됨</string>
+    <string name="action_card_question_undo">실행 취소</string>
+    <string name="action_card_question_not_sent">보내지 않았어요. 카드가 바뀌었어요. 다시 답해 주세요.</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
     <string name="artifacts_card_latest_is">최신 버전은 v%1$d</string>
