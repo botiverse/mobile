@@ -3,7 +3,7 @@ type: fixed
 area: thread
 platforms:
   - desktop
-pull_request: null
+pull_request: 4433
 rollout: full
 ---
 
