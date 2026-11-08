@@ -492,6 +492,7 @@ internal fun raftNativeNavBarSymbolFor(id: String): String? =
         "thread-open-in-channel", VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> "mappin.and.ellipse"
         FOCUS_MODE_MENU_ITEM_ID -> "arrow.up.left.and.arrow.down.right"
         MARK_THREAD_UNREAD_MENU_ITEM_ID -> "message.badge"
+        THREAD_TIMELINE_MENU_ITEM_ID -> "list.bullet"
         FOLLOW_THREAD_MENU_ITEM_ID -> "bell.badge"
         else -> null
     }

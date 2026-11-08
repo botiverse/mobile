@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,6 +24,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -34,6 +37,23 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.node.currentValueOf
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -69,12 +89,41 @@ import kotlinx.coroutines.launch
 // in a short rail at the list's right edge. Over it a card lists them, a line each, with a
 // tooltip for the rest of the text, its author and time; a row jumps the list there.
 //
-// Mobile scope (artin 2026-11-08): wide windows only (the app's wide breakpoint, a tablet or
-// the desktop app), where the web's desktop rail lives too. A mouse or trackpad opens the card
-// on hover, as the web does; a finger on a tablet taps the rail. Phones show nothing.
+// Mobile scope (artin 2026-11-08): the rail in wide windows only (the app's wide breakpoint, a
+// tablet or the desktop app). A mouse or trackpad opens the card on hover, as the web does; a
+// finger on a tablet taps the rail. Where the rail doesn't show (a phone, a list too narrow for
+// it), the reply thread's ⋯ has Timeline, as the web's on touch: a half-height bottom sheet of
+// the same rows (web OutlineList).
 
 /** Fewer messages from people than this in a thread (its first message aside), and it has no outline. */
 internal const val ThreadOutlineMinItems = 4
+
+/** web RAIL_INSET: the room the rail takes, which message content keeps clear while it shows. */
+internal val ThreadOutlineRailInset: Dp = 36.dp
+
+/** The next step of a jump to the thread's first message (web `jumpToParent`). */
+internal enum class ThreadOutlineOriginJumpStep { Idle, LoadOlder, Wait, Pin, GiveUp }
+
+/**
+ * Where a jump to the thread's first message is: none pending ([request] already [consumed]);
+ * older pages still to load before its row is the list's first; one loading; the row there to
+ * pin; or the load failed, which drops the jump.
+ */
+internal fun threadOutlineOriginJumpStep(
+    request: Int,
+    consumed: Int,
+    canLoadMoreBefore: Boolean,
+    olderMessagesStatus: String,
+    originRowShown: Boolean,
+): ThreadOutlineOriginJumpStep =
+    when {
+        request == 0 || request == consumed -> ThreadOutlineOriginJumpStep.Idle
+        !canLoadMoreBefore && originRowShown -> ThreadOutlineOriginJumpStep.Pin
+        olderMessagesStatus == "loading" -> ThreadOutlineOriginJumpStep.Wait
+        canLoadMoreBefore && olderMessagesStatus == "error" -> ThreadOutlineOriginJumpStep.GiveUp
+        canLoadMoreBefore -> ThreadOutlineOriginJumpStep.LoadOlder
+        else -> ThreadOutlineOriginJumpStep.Wait
+    }
 
 /** web MIN_LIST_WIDTH: narrower than a thread beside the conversation, where it mostly lives. */
 internal val ThreadOutlineMinListWidth: Dp = 360.dp
@@ -104,6 +153,40 @@ internal fun threadOutlineRowTestTag(messageId: String): String = "thread-outlin
 
 /** The outline's reads; null where the page has no network (fixtures, screenshots): no outline. */
 internal val LocalThreadOutlineApi = compositionLocalOf<RaftThreadOutlineApi?> { null }
+
+/**
+ * The reply thread's outline, shared by its header (the ⋯ menu's Timeline) and its message list
+ * (the rail and the sheet); null on any other conversation or without [LocalThreadOutlineApi].
+ */
+internal val LocalThreadOutlineState = compositionLocalOf<ThreadOutlineState?> { null }
+
+/** One [ThreadOutlineState] per thread channel, while [channelId] is a reply thread's (else null). */
+@Composable
+internal fun rememberThreadOutlineState(channelId: String?): ThreadOutlineState? {
+    val api = LocalThreadOutlineApi.current ?: return null
+    val id = channelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return remember(api, id) { ThreadOutlineState(api, id) }
+}
+
+/**
+ * Whether the reply thread's ⋯ offers Timeline: the thread has an outline and the rail isn't
+ * showing it beside the list (a phone, a narrow list, the desktop below the rail's width).
+ */
+internal fun threadOutlineMenuOffered(hasOutline: Boolean, railShown: Boolean): Boolean = hasOutline && !railShown
+
+/**
+ * The reply thread's ⋯ Timeline for its header: opens the sheet; null when the menu doesn't offer
+ * it ([threadOutlineMenuOffered]) for the thread's [origin] and loaded [messages].
+ */
+internal fun ThreadOutlineState.openTimelineAction(
+    leadingMessageId: String?,
+    origin: RaftThreadMessageItem?,
+    messages: List<RaftThreadMessageItem>,
+): (() -> Unit)? {
+    val items = threadOutlineItems(serverItems, loaded, leadingMessageId, origin, messages)
+    if (!threadOutlineMenuOffered(threadOutlineHasOutline(items, leadingMessageId), railShown)) return null
+    return { listOpen = true }
+}
 
 // ---- Rules (web messageOutlineStore / outlineListStore / useOutlinePosition) ----
 
@@ -208,6 +291,16 @@ internal fun threadOutlineCurrentIndex(
     return current
 }
 
+/**
+ * The seq the outline must page back to for the top message in view, or null when it already
+ * reaches it: the thread's first message on top needs the thread's start (0).
+ */
+internal fun threadOutlinePageBackTarget(hasMore: Boolean, oldestLoadedSeq: Long?, topIsLeading: Boolean, topSeq: Long?): Long? {
+    if (!hasMore || oldestLoadedSeq == null) return null
+    if (topIsLeading) return 0L
+    return topSeq?.takeIf { it < oldestLoadedSeq }
+}
+
 /** A jump's target, current from the jump until it has been in view and left it (web). */
 internal data class ThreadOutlineJump(val messageId: String, val landed: Boolean = false)
 
@@ -234,8 +327,16 @@ internal class ThreadOutlineState(
         private set
     var loaded by mutableStateOf(false)
         private set
+
+    /** The rail shows beside the list (written by [ThreadOutlineHost]); the ⋯ then has no Timeline. */
+    var railShown by mutableStateOf(false)
+        internal set
+
+    /** The sheet from the ⋯ menu's Timeline is open. */
+    var listOpen by mutableStateOf(false)
     private var newestRead = 0
-    private var olderRead: Job? = null
+    /** One older read at a time (web `olderReads`): a second caller waits for it, then reads on from there. */
+    private val olderReads = Mutex()
 
     /** The newest page: on opening the thread and on coming back to it. A failure keeps what was there. */
     suspend fun loadNewest() {
@@ -249,14 +350,22 @@ internal class ThreadOutlineState(
 
     /** The next older page, unless one is on its way or there is none. */
     suspend fun loadOlder() {
-        if (!hasMore || olderRead?.isActive == true) return
-        val oldestSeq = serverItems.firstOrNull()?.seq ?: return
-        val read = newestRead
-        val page = api.page(channelId, beforeSeq = oldestSeq) ?: return
-        // Not if the newest page was read again meanwhile: it starts over.
-        if (read != newestRead || serverItems.firstOrNull()?.seq != oldestSeq) return
-        serverItems = page.items.reversed() + serverItems
-        hasMore = page.hasMore
+        if (!hasMore) return
+        if (olderReads.isLocked) {
+            // The read on its way answers this call too (web: settles with the read under way).
+            olderReads.withLock { }
+            return
+        }
+        olderReads.withLock {
+            if (!hasMore) return
+            val oldestSeq = serverItems.firstOrNull()?.seq ?: return
+            val read = newestRead
+            val page = api.page(channelId, beforeSeq = oldestSeq) ?: return
+            // Not if the newest page was read again meanwhile: it starts over.
+            if (read != newestRead || serverItems.firstOrNull()?.seq != oldestSeq) return
+            serverItems = page.items.reversed() + serverItems
+            hasMore = page.hasMore
+        }
     }
 
     /** web `pageOutlineBackTo`: pages back until the outline reaches [seq], at most 10 pages. */
@@ -276,15 +385,17 @@ internal class ThreadOutlineState(
 internal data class ThreadOutlineViewport(val visibleMessageIds: List<String>)
 
 /**
- * The thread timeline beside a reply thread's message list. [channelId] is the thread's channel
- * (null: no outline). It reads [LocalThreadOutlineApi]; [viewport] is where the list is;
- * [jumpTargetId]/[jumpNonce] are the page's focus requests (a link, a search hit, this rail);
+ * The thread timeline beside a reply thread's message list: the rail in a wide window, and the
+ * sheet the ⋯ menu's Timeline opens anywhere else. [state] is the thread's
+ * ([LocalThreadOutlineState]; null: no outline); [viewport] is where the list is;
+ * [jumpTargetId]/[jumpNonce] are the page's focus requests (a link, a search hit, this outline);
  * [onJump] focuses a message the way a search hit does. [listWidth] is the list's.
  */
 @Composable
 internal fun ThreadOutlineHost(
-    channelId: String?,
-    active: Boolean,
+    state: ThreadOutlineState?,
+    /** The thread's parent message: the first item, known from the route before [origin] loads. */
+    leadingMessageId: String?,
     origin: RaftThreadMessageItem?,
     messages: List<RaftThreadMessageItem>,
     viewport: () -> ThreadOutlineViewport,
@@ -295,36 +406,85 @@ internal fun ThreadOutlineHost(
     onJump: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val api = LocalThreadOutlineApi.current ?: return
-    val threadChannelId = channelId?.takeIf { it.isNotBlank() } ?: return
-    // Phones: nothing, not even the read (artin: wide layouts only).
-    if (RaftTheme.scale != RaftScale.Wide) return
-    val state = remember(api, threadChannelId) { ThreadOutlineState(api, threadChannelId) }
-    LaunchedEffect(state, active) {
-        if (active) state.loadNewest()
-    }
-    val leadingMessageId = origin?.id
+    state ?: return
     val items =
         remember(state.serverItems, state.loaded, leadingMessageId, origin?.deletedAt, messages) {
             threadOutlineItems(state.serverItems, state.loaded, leadingMessageId, origin, messages)
         }
-    val shown = threadOutlineRailShown(RaftTheme.scale, listWidth, threadOutlineHasOutline(items, leadingMessageId))
-    if (!shown) return
-    val ownSenderIds =
-        remember(origin, messages) { (listOfNotNull(origin) + messages).filter { it.isOwn }.mapTo(mutableSetOf()) { it.authorId } }
-    ThreadOutlineRail(
-        state = state,
-        ownSenderIds = ownSenderIds,
-        items = items,
-        leadingMessageId = leadingMessageId,
-        messages = messages,
-        viewport = viewport,
-        jumpTargetId = jumpTargetId,
-        jumpNonce = jumpNonce,
-        formatTime = formatTime,
-        onJump = onJump,
-        modifier = modifier,
-    )
+    val hasOutline = threadOutlineHasOutline(items, leadingMessageId)
+    val railShown = threadOutlineRailShown(RaftTheme.scale, listWidth, hasOutline)
+    SideEffect { state.railShown = railShown }
+    DisposableEffect(state) { onDispose { state.railShown = false } }
+    // The sheet closes with the thread, and once the rail takes over (the window grew).
+    if (state.listOpen && (!hasOutline || railShown)) SideEffect { state.listOpen = false }
+    if (!railShown && !state.listOpen) return
+    // The reader's own ticks are darker: by their user id, as the web compares with `currentUserId`.
+    val currentUserId = LocalThreadActionCardSpecHost.current.viewerUserId
+    val ownSenderIds = remember(currentUserId) { setOfNotNull(currentUserId?.takeIf { it.isNotBlank() }) }
+    val position = rememberThreadOutlinePosition(state, items, leadingMessageId, messages, viewport, jumpTargetId, jumpNonce)
+    if (railShown) {
+        ThreadOutlineRail(
+            state = state,
+            ownSenderIds = ownSenderIds,
+            items = items,
+            position = position,
+            formatTime = formatTime,
+            onJump = onJump,
+            modifier = modifier,
+        )
+    } else if (hasOutline) {
+        ThreadOutlineSheet(
+            state = state,
+            ownSenderIds = ownSenderIds,
+            items = items,
+            currentId = items.getOrNull(position.currentIndex)?.id,
+            formatTime = formatTime,
+            onJump = { messageId ->
+                position.noteJump(messageId)
+                state.listOpen = false
+                onJump(messageId)
+            },
+        )
+    }
+}
+
+/** Where the reader is in [items] (web `useOutlinePosition`), shared by the rail and the sheet. */
+@Stable
+internal class ThreadOutlinePosition(
+    val currentIndex: Int,
+    val jumpedId: String?,
+    val noteJump: (String) -> Unit,
+)
+
+@Composable
+private fun rememberThreadOutlinePosition(
+    state: ThreadOutlineState,
+    items: List<ThreadOutlineItem>,
+    leadingMessageId: String?,
+    messages: List<RaftThreadMessageItem>,
+    viewport: () -> ThreadOutlineViewport,
+    jumpTargetId: String?,
+    jumpNonce: Int,
+): ThreadOutlinePosition {
+    val visibleIds by remember(viewport) { derivedStateOf { viewport().visibleMessageIds } }
+    val topId = visibleIds.firstOrNull()
+    val topSeq = remember(messages, topId) { messages.firstOrNull { it.id == topId }?.seq }
+    // A timeline older than the outline pages the outline back to it. Keyed on whether it is, not
+    // on the top message itself: scrolling doesn't cancel and restart the read under way.
+    val topIsLeading = topId != null && topId == leadingMessageId
+    val pageBackTarget = threadOutlinePageBackTarget(state.hasMore, state.serverItems.firstOrNull()?.seq, topIsLeading, topSeq)
+    val latestPageBackTarget by rememberUpdatedState(pageBackTarget)
+    LaunchedEffect(state, pageBackTarget != null) {
+        latestPageBackTarget?.let { state.pageBackTo(it) }
+    }
+    var jump by remember(state) { mutableStateOf<ThreadOutlineJump?>(null) }
+    // Every jump, wherever it came from (a link, a search hit, this outline).
+    LaunchedEffect(jumpTargetId, jumpNonce) {
+        jumpTargetId?.takeIf { it.isNotBlank() }?.let { jump = ThreadOutlineJump(it) }
+    }
+    LaunchedEffect(visibleIds) { jump = jump?.afterView(visibleIds) }
+    val currentIndex = threadOutlineCurrentIndex(items, leadingMessageId, topId, topSeq, jump?.messageId)
+    return ThreadOutlinePosition(currentIndex, jump?.messageId) { messageId -> jump = ThreadOutlineJump(messageId) }
 }
 
 @Composable
@@ -333,31 +493,13 @@ internal fun ThreadOutlineRail(
     /** The reader's own sender ids: their ticks are darker (web `own`). */
     ownSenderIds: Set<String>,
     items: List<ThreadOutlineItem>,
-    leadingMessageId: String?,
-    messages: List<RaftThreadMessageItem>,
-    viewport: () -> ThreadOutlineViewport,
-    jumpTargetId: String?,
-    jumpNonce: Int,
+    position: ThreadOutlinePosition,
     formatTime: (String) -> String,
     onJump: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val visibleIds by remember(viewport) { derivedStateOf { viewport().visibleMessageIds } }
-    val topId = visibleIds.firstOrNull()
-    val topSeq = remember(messages, topId) { messages.firstOrNull { it.id == topId }?.seq }
-    // A timeline older than the outline pages the outline back to it.
-    LaunchedEffect(state, topId == leadingMessageId, topSeq) {
-        if (topId != null && topId == leadingMessageId) state.pageBackTo(0) else topSeq?.let { state.pageBackTo(it) }
-    }
-    var jump by remember(state) { mutableStateOf<ThreadOutlineJump?>(null) }
-    // Every jump, wherever it came from (a link, a search hit, this rail).
-    LaunchedEffect(jumpTargetId, jumpNonce) {
-        jumpTargetId?.takeIf { it.isNotBlank() }?.let { jump = ThreadOutlineJump(it) }
-    }
-    LaunchedEffect(visibleIds) { jump = jump?.afterView(visibleIds) }
-    val currentIndex = threadOutlineCurrentIndex(items, leadingMessageId, topId, topSeq, jump?.messageId)
+    val currentIndex = position.currentIndex
     val currentId = items.getOrNull(currentIndex)?.id
-
     val finePointer = RaftTheme.pointerInput == RaftPointerInput.Fine
     var open by remember(state) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -370,22 +512,21 @@ internal fun ThreadOutlineRail(
             open = next
         }
     }
+    // Shares the pointer with the list under it: a drag over the rail still scrolls the list (and
+    // reveals times), and only a tap opens the card on a touch screen.
     val hover =
-        Modifier.pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull() ?: continue
-                    if (change.type != PointerType.Mouse) continue
-                    when (event.type) {
-                        PointerEventType.Enter -> { pointerInside = true; schedule(true) }
-                        PointerEventType.Exit -> { pointerInside = false; schedule(false) }
-                    }
-                }
-            }
-        }
+        Modifier.threadOutlinePointer(
+            onHover = { inside ->
+                pointerInside = inside
+                schedule(inside)
+            },
+            onTap = if (finePointer) null else ({ open = true }),
+            // Only the closed rail lets the list under it have the pointer too; the open card is a
+            // popover of its own, over the layer that closes it on a press outside.
+            shareWithSiblings = !open,
+        )
     val jumpTo: (String) -> Unit = { messageId ->
-        jump = ThreadOutlineJump(messageId)
+        position.noteJump(messageId)
         // A finger's card closes on the jump; a mouse's stays open while the pointer is on it (web).
         if (!finePointer || !pointerInside) open = false
         onJump(messageId)
@@ -396,18 +537,29 @@ internal fun ThreadOutlineRail(
     val label = stringResource(Res.string.thread_outline_label)
     Box(modifier.fillMaxSize()) {
         if (open && !finePointer) {
-            // Tap outside closes it, as a popover's does.
+            // A press outside closes it, as a popover's does (not a stylus hovering or a mouse moving).
             Box(
                 Modifier.fillMaxSize().pointerInput(Unit) {
                     awaitPointerEventScope {
-                        awaitPointerEvent(PointerEventPass.Main)
-                        open = false
+                        while (true) {
+                            if (awaitPointerEvent(PointerEventPass.Main).type == PointerEventType.Press) open = false
+                        }
                     }
                 }
             )
         }
+        val openLabel = stringResource(Res.string.thread_outline_list_title)
         Box(
-            Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).then(hover),
+            Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 8.dp)
+                .then(hover)
+                // One stop for assistive tech and the keyboard: the rail is a button that opens the
+                // card (web: the rail is the one Tab stop; its focus opens the card).
+                .onFocusChanged { focus ->
+                    if (finePointer && focus.hasFocus) open = true
+                    else if (finePointer && !focus.hasFocus && !pointerInside) schedule(false)
+                },
             contentAlignment = Alignment.CenterEnd,
         ) {
             if (open) {
@@ -416,7 +568,7 @@ internal fun ThreadOutlineRail(
                     ownSenderIds = ownSenderIds,
                     items = items,
                     currentId = currentId,
-                    jumpedId = jump?.messageId,
+                    jumpedId = position.jumpedId,
                     formatTime = formatTime,
                     onJump = jumpTo,
                 )
@@ -428,7 +580,8 @@ internal fun ThreadOutlineRail(
                     finePointer = finePointer,
                     label = label,
                     onTickClick = { messageId -> if (finePointer) jumpTo(messageId) else open = true },
-                    onRailTap = { open = true },
+                    onOpen = { open = true },
+                    openLabel = openLabel,
                 )
             }
         }
@@ -443,7 +596,8 @@ private fun ThreadOutlineTicks(
     finePointer: Boolean,
     label: String,
     onTickClick: (String) -> Unit,
-    onRailTap: () -> Unit,
+    onOpen: () -> Unit,
+    openLabel: String,
 ) {
     val railHeight = minOf(ThreadOutlineTickRow * items.size, ThreadOutlineRailMaxHeight)
     val railState = rememberLazyListState()
@@ -459,9 +613,17 @@ private fun ThreadOutlineTicks(
                 .width(ThreadOutlineRailWidth)
                 .height(railHeight)
                 .testTag(ThreadOutlineRailTestTag)
-                .semantics { contentDescription = label }
-                // A finger: the whole rail is one target that opens the card (the ticks are 10dp).
-                .then(if (finePointer) Modifier else Modifier.clickable(onClick = onRailTap)),
+                // One button for assistive tech ("Thread timeline", opens the list); the ticks are
+                // drawn only. A finger's tap reaches it through the rail's shared pointer input.
+                .clearAndSetSemantics {
+                    contentDescription = label
+                    role = Role.Button
+                    onClick(label = openLabel) {
+                        onOpen()
+                        true
+                    }
+                }
+                .then(if (finePointer) Modifier.focusable() else Modifier),
         userScrollEnabled = finePointer,
     ) {
         itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
@@ -616,4 +778,192 @@ private fun ThreadOutlineCardRow(
             ThreadOutlineTick(own = own, current = current, hovered = hovered)
         }
     }
+}
+
+internal const val ThreadOutlineSheetTestTag = "thread-outline-sheet"
+internal fun threadOutlineSheetRowTestTag(messageId: String): String = "thread-outline-sheet-row:$messageId"
+
+/** web SHEET_SNAP_POINTS[0]: the sheet opens at half the window, leaving the thread in sight. */
+private const val ThreadOutlineSheetHeightFraction = 0.5f
+/** The sheet's grab handle, title row and body padding above the rows. */
+private val ThreadOutlineSheetChrome = 72.dp
+private val ThreadOutlineSheetMinListHeight = 200.dp
+
+/**
+ * web OutlineList on a phone: a bottom sheet titled Timeline, half the window tall, one row per
+ * item: its text in up to two lines, then who and when (a touch screen has no tooltip for the
+ * rest), and the tick. It opens with the row before the current one at its top. A row jumps there
+ * and closes the sheet.
+ */
+@Composable
+private fun ThreadOutlineSheet(
+    state: ThreadOutlineState,
+    ownSenderIds: Set<String>,
+    items: List<ThreadOutlineItem>,
+    currentId: String?,
+    formatTime: (String) -> String,
+    onJump: (String) -> Unit,
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val windowHeight = with(density) { androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height.toDp() }
+    val listHeight = maxOf(windowHeight * ThreadOutlineSheetHeightFraction - ThreadOutlineSheetChrome, ThreadOutlineSheetMinListHeight)
+    val listState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex =
+                ((items.indexOfFirst { it.id == currentId }.takeIf { it >= 0 } ?: items.lastIndex) - 1).coerceAtLeast(0)
+        )
+    val latestState by rememberUpdatedState(state)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex < ThreadOutlineLoadOlderWithinRows }
+            .distinctUntilChanged()
+            .collect { nearOldest -> if (nearOldest) latestState.loadOlder() }
+    }
+    build.raft.designsystem.components.RaftSheet(
+        onDismissRequest = { state.listOpen = false },
+        title = stringResource(Res.string.thread_outline_list_title),
+        modifier = Modifier.testTag(ThreadOutlineSheetTestTag),
+        showClose = true,
+    ) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().height(listHeight)) {
+            itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
+                ThreadOutlineSheetRow(
+                    item = item,
+                    text = threadOutlineItemText(item),
+                    time = formatTime(item.createdAt),
+                    own = item.senderId in ownSenderIds,
+                    current = item.id == currentId,
+                    onClick = { onJump(item.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadOutlineSheetRow(
+    item: ThreadOutlineItem,
+    text: String,
+    time: String,
+    own: Boolean,
+    current: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val rowLabel = stringResource(Res.string.thread_outline_row_label, item.senderName, time, text)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .background(if (pressed) colors.brandSoft else colors.layerPopover, RoundedCornerShape(RaftRadius.Control))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .testTag(threadOutlineSheetRowTestTag(item.id))
+            .semantics(mergeDescendants = true) {
+                contentDescription = rowLabel
+                selected = current
+            }
+            .padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+            RaftText(
+                text = text,
+                style = typography.callout.let { if (current) it.copy(fontWeight = FontWeight.SemiBold) else it },
+                color = if (current || pressed) colors.foreground else colors.foregroundMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                Modifier.padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                RaftText(
+                    text = item.senderName,
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = typography.footnote,
+                    color = colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                RaftText(text = time, style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
+            }
+        }
+        ThreadOutlineTick(own = own, current = current)
+    }
+}
+
+
+/**
+ * The rail's pointer input: a mouse entering and leaving ([onHover]) and, on a touch screen, a tap
+ * ([onTap]: a press and release that didn't move past the touch slop). It consumes nothing and,
+ * with [shareWithSiblings], shares the pointer with the siblings under it, so a drag that starts
+ * on the rail still scrolls the message list (and drags its times in) instead of stopping there.
+ */
+private fun Modifier.threadOutlinePointer(
+    onHover: (Boolean) -> Unit,
+    onTap: (() -> Unit)?,
+    shareWithSiblings: Boolean,
+): Modifier = this then ThreadOutlinePointerElement(onHover, onTap, shareWithSiblings)
+
+private data class ThreadOutlinePointerElement(
+    val onHover: (Boolean) -> Unit,
+    val onTap: (() -> Unit)?,
+    val shareWithSiblings: Boolean,
+) : ModifierNodeElement<ThreadOutlinePointerNode>() {
+    override fun create() = ThreadOutlinePointerNode(onHover, onTap, shareWithSiblings)
+
+    override fun update(node: ThreadOutlinePointerNode) {
+        node.onHover = onHover
+        node.onTap = onTap
+        node.shareWithSiblings = shareWithSiblings
+    }
+}
+
+private class ThreadOutlinePointerNode(
+    var onHover: (Boolean) -> Unit,
+    var onTap: (() -> Unit)?,
+    var shareWithSiblings: Boolean,
+) : Modifier.Node(), PointerInputModifierNode, CompositionLocalConsumerModifierNode {
+    private var down: PointerId? = null
+    private var downAt = Offset.Zero
+
+    override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) {
+        if (pass != PointerEventPass.Main) return
+        val change = pointerEvent.changes.firstOrNull() ?: return
+        if (change.type == PointerType.Mouse) {
+            when (pointerEvent.type) {
+                PointerEventType.Enter -> onHover(true)
+                PointerEventType.Exit -> onHover(false)
+            }
+            return
+        }
+        val tap = onTap ?: return
+        when (pointerEvent.type) {
+            PointerEventType.Press -> {
+                down = change.id
+                downAt = change.position
+            }
+            PointerEventType.Move ->
+                if (down == change.id &&
+                    (change.position - downAt).getDistance() > currentValueOf(LocalViewConfiguration).touchSlop
+                ) {
+                    down = null
+                }
+            PointerEventType.Release ->
+                if (down == change.id) {
+                    down = null
+                    if (!change.isConsumed) tap()
+                }
+        }
+    }
+
+    override fun onCancelPointerInput() {
+        down = null
+    }
+
+    override fun sharePointerInputWithSiblings(): Boolean = shareWithSiblings
 }

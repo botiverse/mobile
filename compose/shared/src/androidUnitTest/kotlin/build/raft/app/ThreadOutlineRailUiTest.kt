@@ -1,14 +1,25 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.RaftThreadOutlineApi
 import build.raft.app.data.ThreadOutlineItem
 import build.raft.app.data.ThreadOutlinePage
@@ -24,7 +35,9 @@ import org.robolectric.annotation.Config
 
 /**
  * The thread timeline on a real composition (web conversationOutline.behavior.test.tsx): a touch
- * tablet taps the rail to open the list and a row to jump; a phone-width window shows nothing.
+ * tablet taps the rail to open the list and a row to jump; on a phone the reply thread's ⋯ has
+ * Timeline, which opens the sheet, and a row jumps and closes it; below four messages from people
+ * the ⋯ has no Timeline. The header and the outline are wired as ThreadPageContentContent wires them.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -33,37 +46,75 @@ class ThreadOutlineRailUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
-    /** The server's page: the thread's first message and four replies from people, newest first. */
-    private class FakeApi : RaftThreadOutlineApi {
+    /** The server's page: the thread's first message and [replies] replies from people, newest first. */
+    private class FakeApi(private val replies: Int = 4) : RaftThreadOutlineApi {
         var reads = 0
 
         override suspend fun page(channelId: String, beforeSeq: Long?): ThreadOutlinePage {
             reads++
-            val replies = (1..4).map { n ->
+            val rows = (1..replies).map { n ->
                 ThreadOutlineItem(id = "r$n", seq = 10L + n, createdAt = "2026-11-08T06:0$n:00.000Z", senderId = "u$n", senderName = "Ann", preview = "reply $n")
             }
             val lead = ThreadOutlineItem(id = "lead", seq = 900, createdAt = "2026-11-08T05:00:00.000Z", senderId = "u1", senderName = "Ann", preview = "the question")
-            return ThreadOutlinePage(items = replies.reversed() + lead, hasMore = false)
+            return ThreadOutlinePage(items = rows.reversed() + lead, hasMore = false)
         }
     }
 
-    private fun ComposeUiTest.showOutline(api: FakeApi, scale: RaftScale, jumps: MutableList<String>) =
+    private object QuietEventBus : build.raft.app.data.RaftEventBus {
+        override fun observe(eventName: String, crossProcess: Boolean, listener: (kotlinx.serialization.json.JsonObject?) -> Unit) =
+            build.raft.app.data.RealtimeSubscription {}
+
+        override fun post(eventName: String, eventData: kotlinx.serialization.json.JsonObject, crossProcess: Boolean, source: String) = Unit
+    }
+
+    /** The thread's first message as the page holds it once loaded. */
+    private val origin =
+        RaftThreadMessageItem(id = "lead", authorId = "agent-1", authorName = "Otter", authorKind = "agent", body = "the question", seq = 900)
+
+    private fun ComposeUiTest.showThread(
+        api: FakeApi,
+        scale: RaftScale,
+        jumps: MutableList<String>,
+        originMessage: RaftThreadMessageItem? = null,
+    ) =
         setContent {
-            RaftTheme(scale = scale, pointerInput = RaftPointerInput.Touch) {
-                CompositionLocalProvider(LocalThreadOutlineApi provides api) {
-                    Box(Modifier.size(width = 600.dp, height = 700.dp)) {
-                        ThreadOutlineHost(
-                            channelId = "thread-1",
-                            active = true,
-                            origin = null,
-                            messages = emptyList(),
-                            viewport = { ThreadOutlineViewport(emptyList()) },
-                            jumpTargetId = null,
-                            jumpNonce = 0,
-                            listWidth = 600.dp,
-                            formatTime = { "06:00" },
-                            onJump = { jumps += it },
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalThreadOutlineApi provides api,
+                LocalThreadHeaderMenuEventBus provides QuietEventBus,
+                LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(viewerUserId = "u1"),
+            ) {
+                RaftTheme(scale = scale, pointerInput = RaftPointerInput.Touch) {
+                    val outline = rememberThreadOutlineState("thread-1")
+                    LaunchedEffect(outline) { outline?.loadNewest() }
+                    Column(Modifier.fillMaxSize()) {
+                        ThreadPageHeader(
+                            payload = remember { RaftThreadScreenPayload(instanceId = "thread-1", surfaceKind = RaftThreadSurfaceKind.ReplyThread, status = "content") },
+                            headerDisplay = ThreadHeaderDisplayModel(title = "Thread", subtitle = null, surfaceKind = RaftThreadSurfaceKind.ReplyThread, channelKind = "channel"),
+                            applyTopSafeArea = false,
+                            onBack = {},
+                            onOpenInChannel = {},
+                            onOpenMemberProfile = {},
+                            onOpenSearch = {},
+                            onShowMembers = {},
+                            onShowSettings = {},
+                            onOpenTimeline = outline?.openTimelineAction(leadingMessageId = "lead", origin = originMessage, messages = emptyList()),
                         )
+                        Box(Modifier.weight(1f)) {
+                            ThreadOutlineHost(
+                                state = outline,
+                                leadingMessageId = "lead",
+                                origin = originMessage,
+                                messages = emptyList(),
+                                viewport = { ThreadOutlineViewport(emptyList()) },
+                                jumpTargetId = null,
+                                jumpNonce = 0,
+                                listWidth = if (scale == RaftScale.Wide) 600.dp else 390.dp,
+                                formatTime = { "06:00" },
+                                onJump = { jumps += it },
+                            )
+                        }
                     }
                 }
             }
@@ -73,7 +124,7 @@ class ThreadOutlineRailUiTest {
     fun aTouchTabletTapsTheRailToOpenTheListAndARowToJumpThere() =
         runRobolectricComposeUiTest {
             val jumps = mutableListOf<String>()
-            showOutline(FakeApi(), RaftScale.Wide, jumps)
+            showThread(FakeApi(), RaftScale.Wide, jumps)
             onNodeWithTag(ThreadOutlineCardTestTag).assertDoesNotExist()
             onNodeWithTag(ThreadOutlineRailTestTag).assertExists().performClick()
             onNodeWithTag(ThreadOutlineCardTestTag).assertExists()
@@ -85,11 +136,39 @@ class ThreadOutlineRailUiTest {
         }
 
     @Test
-    fun aPhoneWidthWindowShowsNoOutlineAndReadsNone() =
+    fun onAPhoneTheMenusTimelineOpensTheSheetAndARowJumpsAndClosesIt() =
         runRobolectricComposeUiTest {
-            val api = FakeApi()
-            showOutline(api, RaftScale.Compact, mutableListOf())
+            val jumps = mutableListOf<String>()
+            showThread(FakeApi(), RaftScale.Compact, jumps)
             onNodeWithTag(ThreadOutlineRailTestTag).assertDoesNotExist()
-            runOnIdle { assertEquals(0, api.reads) }
+            onNodeWithContentDescription("Thread panel menu").performClick()
+            onNodeWithText("Timeline").assertExists().performClick()
+            onNodeWithTag(ThreadOutlineSheetTestTag).assertExists()
+            onNodeWithTag(threadOutlineSheetRowTestTag("r3")).assertExists().performClick()
+            assertEquals(listOf("r3"), jumps)
+            onNodeWithTag(ThreadOutlineSheetTestTag).assertDoesNotExist()
+        }
+
+    @Test
+    fun belowFourMessagesFromPeopleTheMenuHasNoTimeline() =
+        runRobolectricComposeUiTest {
+            val api = FakeApi(replies = 3)
+            showThread(api, RaftScale.Compact, mutableListOf())
+            runOnIdle { assertEquals(1, api.reads) }
+            // The thread may have no ⋯ at all without Timeline; where it has one, Timeline isn't in it.
+            val menus = onAllNodesWithContentDescription("Thread panel menu").fetchSemanticsNodes()
+            if (menus.isNotEmpty()) onNodeWithContentDescription("Thread panel menu").performClick()
+            onNodeWithText("Timeline").assertDoesNotExist()
+        }
+
+    @Test
+    fun theFirstMessagesRowJumpsToIt() =
+        runRobolectricComposeUiTest {
+            val jumps = mutableListOf<String>()
+            showThread(FakeApi(), RaftScale.Wide, jumps, originMessage = origin)
+            onNodeWithTag(ThreadOutlineRailTestTag).performClick()
+            // The thread's first message is the list's first row, whoever wrote it.
+            onNodeWithTag(threadOutlineRowTestTag("lead")).assertExists().performClick()
+            assertEquals(listOf("lead"), jumps)
         }
 }

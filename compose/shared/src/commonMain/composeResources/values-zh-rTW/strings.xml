@@ -1032,6 +1032,7 @@
     <string name="thread_outline_attachments_one">1 個附件</string>
     <string name="thread_outline_attachments_many">%1$d 個附件</string>
     <string name="thread_outline_no_text">沒有文字</string>
+    <string name="thread_outline_list_title">時間軸</string>
     <string name="thread_jump_next_unread_thread">下一個未讀討論串（%1$d）</string>
     <string name="thread_jump_earliest_unread_thread">最早的未讀討論串（%1$d）</string>
     <string name="thread_jump_unread_thread_dismiss">關閉</string>

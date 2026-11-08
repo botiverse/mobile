@@ -61,7 +61,12 @@ internal data class ThreadTimelineSlice(
      * The channel or thread id the message pages are read from: where the Free plan's history
      * window is recorded ([build.raft.app.data.RaftHiddenHistoryStore]) for the history paywall.
      */
-    val historyChannelId: String? = null
+    val historyChannelId: String? = null,
+    /**
+     * A reply thread's parent message (the route's identity), known before [originMessage] loads:
+     * the thread timeline's first item (ThreadOutline.kt).
+     */
+    val parentMessageId: String? = null,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -100,6 +105,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
                 emptyDetail
             },
         sourceThreadId = sourceThreadId,
+        parentMessageId = parentMessageId?.takeIf { surfaceKind == RaftThreadSurfaceKind.ReplyThread && it.isNotBlank() },
         durableLastKnown = durableLastKnown,
         mainLoadFailed = mainLoadFailed,
         durableReachedOldest = durableReachedOldest,

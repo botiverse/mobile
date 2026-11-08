@@ -1034,6 +1034,7 @@
     <string name="thread_outline_attachments_one">添付ファイル 1 件</string>
     <string name="thread_outline_attachments_many">添付ファイル %1$d 件</string>
     <string name="thread_outline_no_text">テキストなし</string>
+    <string name="thread_outline_list_title">タイムライン</string>
     <string name="thread_jump_next_unread_thread">次の未読スレッド（%1$d）</string>
     <string name="thread_jump_earliest_unread_thread">最も古い未読スレッド（%1$d）</string>
     <string name="thread_jump_unread_thread_dismiss">閉じる</string>

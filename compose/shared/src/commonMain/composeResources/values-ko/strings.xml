@@ -1032,6 +1032,7 @@
     <string name="thread_outline_attachments_one">첨부 파일 1개</string>
     <string name="thread_outline_attachments_many">첨부 파일 %1$d개</string>
     <string name="thread_outline_no_text">텍스트 없음</string>
+    <string name="thread_outline_list_title">타임라인</string>
     <string name="thread_jump_next_unread_thread">다음 읽지 않은 스레드 (%1$d)</string>
     <string name="thread_jump_earliest_unread_thread">가장 오래된 읽지 않은 스레드 (%1$d)</string>
     <string name="thread_jump_unread_thread_dismiss">닫기</string>

@@ -9,6 +9,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runTest
+import build.raft.app.data.RaftThreadOutlineApi
+import build.raft.app.data.ThreadOutlinePage
 
 /** The thread timeline's rules, as the web's (botiverse/slock #13534, a9bf79d66). */
 class ThreadOutlineRulesTest {
@@ -118,5 +123,80 @@ class ThreadOutlineRulesTest {
         assertTrue(landed.landed)
         assertEquals(landed, landed.afterView(listOf("b", "c")))
         assertNull(landed.afterView(listOf("c")))
+    }
+
+    @Test
+    fun theOutlinePagesBackOnlyWhenTheTopMessageIsOlderThanWhatItHolds() {
+        assertEquals(5L, threadOutlinePageBackTarget(hasMore = true, oldestLoadedSeq = 10, topIsLeading = false, topSeq = 5))
+        assertNull(threadOutlinePageBackTarget(hasMore = true, oldestLoadedSeq = 10, topIsLeading = false, topSeq = 12))
+        assertEquals(0L, threadOutlinePageBackTarget(hasMore = true, oldestLoadedSeq = 10, topIsLeading = true, topSeq = null))
+        assertNull(threadOutlinePageBackTarget(hasMore = false, oldestLoadedSeq = 10, topIsLeading = true, topSeq = 5))
+    }
+
+    @Test
+    fun aJumpToTheFirstMessageLoadsTheThreadsStartThenPinsItsRow() {
+        fun step(canLoadMoreBefore: Boolean, status: String = "idle", shown: Boolean = true, request: Int = 1, consumed: Int = 0) =
+            threadOutlineOriginJumpStep(request, consumed, canLoadMoreBefore, status, shown)
+        assertEquals(ThreadOutlineOriginJumpStep.Idle, step(canLoadMoreBefore = true, request = 0))
+        assertEquals(ThreadOutlineOriginJumpStep.Idle, step(canLoadMoreBefore = false, request = 2, consumed = 2))
+        assertEquals(ThreadOutlineOriginJumpStep.LoadOlder, step(canLoadMoreBefore = true))
+        assertEquals(ThreadOutlineOriginJumpStep.Wait, step(canLoadMoreBefore = true, status = "loading"))
+        assertEquals(ThreadOutlineOriginJumpStep.GiveUp, step(canLoadMoreBefore = true, status = "error"))
+        assertEquals(ThreadOutlineOriginJumpStep.Pin, step(canLoadMoreBefore = false))
+        assertEquals(ThreadOutlineOriginJumpStep.Pin, step(canLoadMoreBefore = false, status = "error"))
+        assertEquals(ThreadOutlineOriginJumpStep.Wait, step(canLoadMoreBefore = false, shown = false))
+    }
+
+    @Test
+    fun theMenuOffersTimelineOnlyWithAnOutlineAndNoRail() {
+        assertTrue(threadOutlineMenuOffered(hasOutline = true, railShown = false))
+        assertFalse(threadOutlineMenuOffered(hasOutline = true, railShown = true))
+        assertFalse(threadOutlineMenuOffered(hasOutline = false, railShown = false))
+    }
+
+    /** Pages of 2 rows below seq 100; an older read waits on [gate] until the test releases it. */
+    private class PagedApi : RaftThreadOutlineApi {
+        val olderReads = mutableListOf<Long>()
+        var gate = CompletableDeferred<Unit>()
+
+        override suspend fun page(channelId: String, beforeSeq: Long?): ThreadOutlinePage {
+            val top = beforeSeq ?: 100L
+            if (beforeSeq != null) {
+                olderReads += beforeSeq
+                gate.await()
+            }
+            return ThreadOutlinePage(items = listOf(item("s${top - 1}", top - 1), item("s${top - 2}", top - 2)), hasMore = true)
+        }
+
+        private fun item(id: String, seq: Long) =
+            ThreadOutlineItem(id = id, seq = seq, createdAt = "", senderId = "u", senderName = "", preview = id)
+    }
+
+    @Test
+    fun olderReadsGoOneAtATime() = runTest {
+        val api = PagedApi()
+        val state = ThreadOutlineState(api, "thread-1")
+        state.loadNewest()
+        val first = async { state.loadOlder() }
+        val second = async { state.loadOlder() }
+        testScheduler.runCurrent()
+        assertEquals(listOf(98L), api.olderReads, "a second caller waits for the read on its way")
+        api.gate.complete(Unit)
+        first.await()
+        second.await()
+        assertEquals(listOf(98L), api.olderReads)
+        assertEquals(listOf(96L, 97L, 98L, 99L), state.serverItems.map { it.seq })
+    }
+
+    @Test
+    fun theMenusTimelineFollowsTheRouteParentBeforeTheFirstMessageLoads() = runTest {
+        val state = ThreadOutlineState(PagedApi(), "thread-1")
+        assertNull(state.openTimelineAction(leadingMessageId = "s99", origin = null, messages = emptyList()))
+        state.loadNewest() // s99, s98: the parent plus one reply
+        assertNull(state.openTimelineAction(leadingMessageId = "s99", origin = null, messages = emptyList()))
+        val replies = (101L..103L).map { message("m$it", it) }
+        val open = state.openTimelineAction(leadingMessageId = "s99", origin = null, messages = replies)!!
+        open()
+        assertTrue(state.listOpen)
     }
 }

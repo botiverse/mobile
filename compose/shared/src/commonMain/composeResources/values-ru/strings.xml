@@ -1032,6 +1032,7 @@
     <string name="thread_outline_attachments_one">1 вложение</string>
     <string name="thread_outline_attachments_many">Вложений: %1$d</string>
     <string name="thread_outline_no_text">Нет текста</string>
+    <string name="thread_outline_list_title">Хронология</string>
     <string name="thread_jump_next_unread_thread">Следующая непрочитанная ветка (%1$d)</string>
     <string name="thread_jump_earliest_unread_thread">Самая ранняя непрочитанная ветка (%1$d)</string>
     <string name="thread_jump_unread_thread_dismiss">Закрыть</string>

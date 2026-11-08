@@ -7947,9 +7947,8 @@ internal sealed interface SharedThreadIntent {
         /**
          * The unread-thread pill's jump (the default): it lands on the parent's replies summary and
          * holds the pill busy while it loads. False for any other jump (the thread timeline,
-         * botiverse/slock #13534): the target lands top-aligned as a link's focus does, and the
-         * thread's first message, which heads the panel without being among its replies, counts as
-         * loaded.
+         * botiverse/slock #13534): the target lands top-aligned as a link's focus does. (The
+         * thread's first message is not a reply: the page scrolls to its row itself.)
          */
         val unreadThreadPill: Boolean = true,
     ) : SharedThreadIntent
@@ -13071,13 +13070,13 @@ internal class SharedThreadStore(
     }
 
     /**
-     * A jump that is not the unread-thread pill's (the thread timeline): a loaded target, or the
-     * reply thread's first message, is focused in place; any other is loaded around first, as the
-     * pill's jump does, but top-aligned and without the pill's busy state.
+     * A jump that is not the unread-thread pill's (the thread timeline): a loaded target is focused
+     * in place; any other is loaded around first, as the pill's jump does, but top-aligned and
+     * without the pill's busy state.
      */
     private suspend fun jumpToMessageOutsidePill(target: String, switchToTab: String?) {
         val initial = _state.value.payload
-        if (initial.messages.any { it.id == target } || initial.originMessage?.id == target) {
+        if (initial.messages.any { it.id == target }) {
             focusMessage(target, switchToTab)
             return
         }

@@ -1451,6 +1451,18 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M9 19h6"),
                     ),
                 )
+            RaftLucideIconName.List ->
+                RaftLucideIconSpec(
+                    "list",
+                    listOf(
+                        RaftLucidePathSpec("M3 5h.01"),
+                        RaftLucidePathSpec("M3 12h.01"),
+                        RaftLucidePathSpec("M3 19h.01"),
+                        RaftLucidePathSpec("M8 5h13"),
+                        RaftLucidePathSpec("M8 12h13"),
+                        RaftLucidePathSpec("M8 19h13"),
+                    ),
+                )
             RaftLucideIconName.ListChecks ->
                 RaftLucideIconSpec(
                     "list-checks",
