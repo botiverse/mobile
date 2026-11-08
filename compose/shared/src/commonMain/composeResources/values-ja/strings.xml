@@ -3778,6 +3778,10 @@
     <string name="artifacts_card_comments_one">コメント 1 件</string>
     <string name="artifacts_card_comments_many">コメント %1$d 件</string>
     <string name="artifacts_card_loading">Artifact を読み込み中</string>
+    <string name="artifacts_card_excerpt_image">画像</string>
+    <string name="artifacts_card_excerpt_image_named">画像：%1$s</string>
+    <string name="artifacts_card_excerpt_images">画像 %1$d 枚</string>
+    <string name="artifacts_card_excerpt_diagram">図</string>
     <string name="artifacts_card_deleted_by">%1$s が%2$sに削除</string>
     <string name="artifacts_card_deleted_by_name">%1$s が削除</string>
     <string name="artifacts_card_deleted_at">%1$sに削除</string>

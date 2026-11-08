@@ -72,6 +72,72 @@ class ThreadArtifactMessageCardScreenshotTest {
     @Test
     fun artifactMessageCardScreenshotDark() = captureScreenshots("thread.artifact-message-cards.screenshot.dark", RaftAppAppearance.Dark)
 
+    @Test
+    fun artifactMessageCardExcerptLight() = captureExcerpts("thread.artifact-message-cards.excerpt", RaftAppAppearance.Light)
+
+    /**
+     * `thread.artifact-message-cards.excerpt`: Markdown cards with an excerpt where the screenshot
+     * goes (web `ArtifactCardExcerpt`, #13445 / #13472 / #13488): one from `preview.blocks` (a
+     * heading, a paragraph with bold, italic and code, a task list, a table, a quote and an image's
+     * label, a newer Server's `callout` left out) cut at 192dp with its foot faded; one whose blocks
+     * fail (a heading of level 9) drawn from its plain text, at the 96dp minimum. Neither repeats
+     * the excerpt as a description.
+     */
+    private fun captureExcerpts(name: String, appearance: RaftAppAppearance) {
+        val now = 1_792_635_000_000L
+        val timeContext = RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = raftEpochDayForDate(2026, 10, 22), nowEpochMillis = now)
+        val updatedAt = Instant.ofEpochMilli(now - 3 * 60 * 60 * 1000L).toString()
+        fun card(id: String, blocks: String): ArtifactSummary {
+            val body =
+                """{"kind":"artifact","summaries":[{"ref":{"id":"$id"},"ok":true,"summary":{
+                  "id":"$id","url":"https://app.raft.build/artifacts/x","title":"Launch plan","kind":"markdown",
+                  "version":2,"pinned":false,"latestVersion":2,
+                  "author":{"type":"agent","id":"a1","name":"lagoon","displayName":"Lagoon","avatarUrl":null},
+                  "createdAt":"$updatedAt","updatedAt":"$updatedAt","commentCount":1,
+                  "home":{"kind":"conversation","conversation":{"id":"c1","name":"proj-workspace","type":"channel"}},
+                  "facts":{"sizeBytes":4096,"pages":2},
+                  "preview":{"kind":"excerpt","text":"Launch plan\nShip on Friday with the v2 onboarding.","blocks":$blocks}}}]}"""
+            return (build.raft.app.data.parseArtifactSummariesAnswer(body)!![id] as build.raft.app.data.ArtifactSummaryAnswer.Ok).summary
+        }
+        val rich =
+            card(
+                "pt_1a2b3c4d-0000-4000-8000-000000000001",
+                """[
+                  {"type":"heading","level":1,"spans":[{"text":"Launch plan"}]},
+                  {"type":"paragraph","spans":[{"text":"Ship on "},{"text":"Friday","bold":true},{"text":" with the "},{"text":"v2","code":true},{"text":" onboarding, "},{"text":"if QA agrees","italic":true},{"text":"."}]},
+                  {"type":"callout","spans":[{"text":"A newer Server's block: left out"}]},
+                  {"type":"list","items":[
+                    {"level":0,"checked":true,"spans":[{"text":"Freeze the branch"}]},
+                    {"level":0,"checked":false,"spans":[{"text":"Run the release checklist"}]},
+                    {"level":1,"order":1,"spans":[{"text":"Android"}]}
+                  ]},
+                  {"type":"table","header":[[{"text":"Region"}],[{"text":"Sign-ups"}]],"rows":[[[{"text":"EU"}],[{"text":"1,204"}]]]},
+                  {"type":"quote","spans":[{"text":"Keep the scope small."}]},
+                  {"type":"image","alt":"Funnel chart"}
+                ]""",
+            )
+        val fallback = card("pt_1a2b3c4d-0000-4000-8000-000000000002", """[{"type":"heading","level":9,"spans":[{"text":"Launch plan"}]}]""")
+        val view =
+            ThreadArtifactMessageRefsView.Cards(
+                listOf(
+                    ThreadArtifactMessageRef.Card("a", ArtifactLinkTarget(rich.id), rich),
+                    ThreadArtifactMessageRef.Card("b", ArtifactLinkTarget(fallback.id), fallback),
+                ),
+            )
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+            CompositionLocalProvider(
+                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
+                LocalInspectionMode provides true,
+            ) {
+                RaftDesignSystemTheme {
+                    Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
+                        ThreadArtifactMessageRefsContent(view = view, onOpen = {}, onOpenInNewPage = {})
+                    }
+                }
+            }
+        }
+    }
+
     @OptIn(ExperimentalCoilApi::class)
     private fun captureScreenshots(name: String, appearance: RaftAppAppearance) {
         // As ThreadMessageAttachmentsScreenshotTest: the app's loader first, then Coil's preview handler.

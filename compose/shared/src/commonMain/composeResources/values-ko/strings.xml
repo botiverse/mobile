@@ -3771,6 +3771,10 @@
     <string name="artifacts_card_comments_one">댓글 1개</string>
     <string name="artifacts_card_comments_many">댓글 %1$d개</string>
     <string name="artifacts_card_loading">Artifact 불러오는 중</string>
+    <string name="artifacts_card_excerpt_image">이미지</string>
+    <string name="artifacts_card_excerpt_image_named">이미지: %1$s</string>
+    <string name="artifacts_card_excerpt_images">이미지 %1$d장</string>
+    <string name="artifacts_card_excerpt_diagram">다이어그램</string>
     <string name="artifacts_card_deleted_by">%1$s · %2$s 삭제</string>
     <string name="artifacts_card_deleted_by_name">%1$s 삭제</string>
     <string name="artifacts_card_deleted_at">%1$s 삭제</string>

@@ -3778,6 +3778,10 @@
     <string name="artifacts_card_comments_one">1 条评论</string>
     <string name="artifacts_card_comments_many">%1$d 条评论</string>
     <string name="artifacts_card_loading">正在加载 Artifact</string>
+    <string name="artifacts_card_excerpt_image">图片</string>
+    <string name="artifacts_card_excerpt_image_named">图片：%1$s</string>
+    <string name="artifacts_card_excerpt_images">%1$d 张图片</string>
+    <string name="artifacts_card_excerpt_diagram">图表</string>
     <string name="artifacts_card_deleted_by">%1$s 删除于 %2$s</string>
     <string name="artifacts_card_deleted_by_name">%1$s 删除</string>
     <string name="artifacts_card_deleted_at">删除于 %1$s</string>
