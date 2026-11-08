@@ -181,7 +181,7 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
  *
  * [pointerInput] picks the control metrics ([RaftPointerInput.controls]). Null inherits the
  * enclosing theme's; the outermost one follows the input in use ([RaftPointerInputState]): 44dp
- * for a finger, 32dp while a mouse or trackpad is in use. Pass either to pin it for the subtree
+ * for a finger, 34dp while a mouse or trackpad is in use. Pass either to pin it for the subtree
  * (tests, previews).
  *
  * This is not a Material theme: components read [RaftTheme], never `MaterialTheme`.

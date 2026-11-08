@@ -1,5 +1,11 @@
 package build.raft.designsystem
 
+import build.raft.designsystem.components.raftAppRailMetricsFor
+import build.raft.designsystem.components.RaftAppRailMetrics
+import build.raft.designsystem.components.RaftTopBarDefaults
+import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.RaftDialogSheetDefaults
+import build.raft.designsystem.components.RaftOptionHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -56,7 +62,7 @@ class RaftPointerInputTest {
     }
 
     /**
-     * A mouse switches the controls to the 32dp metrics as soon as it moves; a finger switches
+     * A mouse switches the controls to the 34dp metrics as soon as it moves; a finger switches
      * them back only when it lifts, so a control never resizes under the finger pressing it.
      */
     @Test
@@ -73,11 +79,11 @@ class RaftPointerInputTest {
             assertEquals(44.dp, height, "touch at rest")
             scene.sendPointerEvent(PointerEventType.Move, at, type = PointerType.Mouse)
             scene.render(16_000_000L)
-            assertEquals(32.dp, height, "a mouse moved")
+            assertEquals(34.dp, height, "a mouse moved")
             assertEquals(RaftPointerInput.Fine, RaftPointerInputState.current)
             scene.sendPointerEvent(PointerEventType.Press, at, type = PointerType.Touch)
             scene.render(32_000_000L)
-            assertEquals(32.dp, height, "a finger is down: nothing resizes under it")
+            assertEquals(34.dp, height, "a finger is down: nothing resizes under it")
             scene.sendPointerEvent(PointerEventType.Release, at, type = PointerType.Touch)
             scene.render(48_000_000L)
             assertEquals(44.dp, height, "the finger lifted")
@@ -86,6 +92,34 @@ class RaftPointerInputTest {
             scene.render(64_000_000L)
             assertEquals(44.dp, height, "a pen changes nothing")
         }
+    }
+
+    /**
+     * Sizing v12 (raft-ui 0.65 desktop density): what the components read follows the input. A
+     * finger keeps the touch sizes; a fine pointer takes the 34dp rows, 44dp heads, the 28dp bar
+     * button, the 44dp top bar and the compact rail at any window height.
+     */
+    @Test
+    fun densityFollowsTheInput() {
+        data class Read(val option: Dp, val head: Dp, val back: Dp, val topBar: Dp, val rail: RaftAppRailMetrics)
+        fun read(input: RaftPointerInput): Read {
+            var read: Read? = null
+            ImageComposeScene(width = 1200, height = 900, density = Density(1f)) {
+                RaftTheme(appearance = RaftAppearance.Light, systemDark = false, pointerInput = input) {
+                    read =
+                        Read(
+                            option = RaftOptionHeight,
+                            head = RaftDialogSheetDefaults.HeadHeight,
+                            back = RaftBackButtonDefaults.Size,
+                            topBar = RaftTopBarDefaults.height,
+                            rail = raftAppRailMetricsFor(900.dp),
+                        )
+                }
+            }.use { it.render() }
+            return read!!
+        }
+        assertEquals(Read(36.dp, 56.dp, 44.dp, 48.dp, RaftAppRailMetrics.Regular), read(RaftPointerInput.Touch))
+        assertEquals(Read(34.dp, 44.dp, 28.dp, 44.dp, RaftAppRailMetrics.Compact.copy(headerHeight = 44.dp)), read(RaftPointerInput.Fine))
     }
 
     @Test

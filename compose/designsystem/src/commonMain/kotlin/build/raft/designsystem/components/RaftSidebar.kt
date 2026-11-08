@@ -67,6 +67,14 @@ internal object RaftSidebarItemMetrics {
     /** `max-md:py-[8.5px]`, inside the 1.5dp border. */
     val PaddingVertical = 8.5.dp
 
+    /**
+     * Under a fine pointer (sizing v12, raft-ui 0.65 desktop density) the row takes the shared
+     * 34dp row height ([build.raft.designsystem.theme.RaftControlMetrics.rowHeight]) in place of
+     * [MinHeight], and this padding in place of [PaddingVertical]: (34 - 24) / 2 less the 1.5dp
+     * border, so one 24dp line fills it exactly.
+     */
+    val PointerPaddingVertical = 3.5.dp
+
     /** `--cell-pad-x` (12dp from the shape's edge), inside the 1.5dp border. */
     val PaddingStart = 10.5.dp
 
@@ -289,6 +297,8 @@ private fun RaftSidebarItemLayout(
     val titleWeight = if (selected || tone == RaftRowTone.Unread) FontWeight.Bold else FontWeight.SemiBold
     val surface = if (selected) RaftUiPalette.selected else RaftTheme.surfaceColor
     val edge = RaftStroke.Control
+    val pointerRow = RaftTheme.controls.rowHeight
+    val padY = if (pointerRow != null) RaftSidebarItemMetrics.PointerPaddingVertical else RaftSidebarItemMetrics.PaddingVertical
     CompositionLocalProvider(
         LocalRaftContentColor provides hintInk,
         LocalRaftSidebarItemHint provides hintInk,
@@ -302,7 +312,7 @@ private fun RaftSidebarItemLayout(
                 .raftSafeAreaHorizontalPadding()
                 .padding(vertical = RaftSidebarItemMetrics.MarginVertical)
                 .fillMaxWidth()
-                .heightIn(min = RaftSidebarItemMetrics.MinHeight)
+                .heightIn(min = pointerRow ?: RaftSidebarItemMetrics.MinHeight)
                 .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors)
                 // Over the sticker's fill (transparent unless selected, and a selected row
                 // lays nothing), under its edge.
@@ -333,8 +343,8 @@ private fun RaftSidebarItemLayout(
                 .padding(
                     start = RaftSidebarItemMetrics.PaddingStart + edge,
                     end = RaftSidebarItemMetrics.PaddingEnd + edge,
-                    top = RaftSidebarItemMetrics.PaddingVertical + edge,
-                    bottom = RaftSidebarItemMetrics.PaddingVertical + edge,
+                    top = padY + edge,
+                    bottom = padY + edge,
                 ),
             horizontalArrangement = Arrangement.spacedBy(RaftSidebarItemMetrics.Gap),
             verticalAlignment = Alignment.CenterVertically,

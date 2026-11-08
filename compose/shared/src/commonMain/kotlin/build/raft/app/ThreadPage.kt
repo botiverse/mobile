@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftControlMetrics
+import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.links.extractFirstQuotedRaftPermalink
 import build.raft.app.links.raftPermalinkHostnames
 import build.raft.app.data.RaftClientConfigAppHosts
@@ -2225,17 +2227,26 @@ private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
 // raft-ui `PanelAction` on a phone (`h-11 min-w-11`, `[&>svg]:size-[22px]`, text-foreground):
 // a 44dp frameless button carrying a 22dp glyph, so the hit area is the 44dp touch target.
-private val ThreadHeaderActionSize = 44.dp
+// Under a mouse or trackpad the head's bar button: 28dp with a 16dp glyph (sizing v12, raft-ui
+// 0.65 desktop density, RaftControlMetrics.barButtonSize).
+private val ThreadHeaderActionSize: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.barButtonSize
 // raft-ui `panelHeadActions` on a phone: `gap-0.5`. The 44dp buttons carry 11dp of empty
 // inset on each side, so neighbouring glyphs still sit 24dp apart.
 private val ThreadHeaderActionGroupSpacing = 2.dp
-private val ThreadHeaderActionIconSize = 22.dp
+private val ThreadHeaderActionIconSize: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.barIconSize
 private val ThreadHeaderActionLabelMinWidth = 44.dp
 // raft `panelHeadEdges` on a phone + `panelHeadActions mr-[-3px]` / Back `-ml-[13px]`: the
 // Back button and the last trailing action both sit 3dp from the screen edge, which puts each
 // 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
-// raft-ui 0.14: Back and the last trailing action keep their 22dp glyph boxes on the 16dp line.
-private val ThreadHeaderEdgeInset = RaftBackButtonDefaults.EdgeInset
+// raft-ui 0.14: Back and the last trailing action keep their 22dp glyph boxes on the 16dp line
+// (16dp glyphs in 28dp bar buttons, 10dp from the edge, under a mouse or trackpad: sizing v12).
+private val ThreadHeaderEdgeInset: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftBackButtonDefaults.EdgeInset
 
 /**
  * The side edge of a conversation shown as the detail pane of a split: web `COMPOSER_EDGE_CLASS`
@@ -20788,11 +20799,12 @@ internal fun threadHeaderVisibleActionGapDp(): Float =
 
 internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
 
-internal fun threadHeaderActionSizeDp(): Float = ThreadHeaderActionSize.value
+// The touch head's geometry (a finger's 44dp actions), which the spacing tests pin.
+internal fun threadHeaderActionSizeDp(): Float = RaftControlMetrics.Mobile.barButtonSize.value
 
-internal fun threadHeaderActionIconSizeDp(): Float = ThreadHeaderActionIconSize.value
+internal fun threadHeaderActionIconSizeDp(): Float = RaftControlMetrics.Mobile.barIconSize.value
 
-internal fun threadHeaderEdgeInsetDp(): Float = ThreadHeaderEdgeInset.value
+internal fun threadHeaderEdgeInsetDp(): Float = RaftControlMetrics.Mobile.barEdgeInset.value
 
 internal fun threadHeaderChannelTitleGapDp(): Float =
     (ThreadHeaderContentSpacing + ThreadHeaderChannelTitleGapExtra).value

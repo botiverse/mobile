@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -172,7 +173,10 @@ internal const val RaftImageLightboxTimeTag = "raft_image_lightbox_time"
 
 // The photo viewer's backdrop is near-black in every theme (Telegram, Photos).
 private val RaftImageLightboxBackdrop = Color(0xF0000000) // raft-color: photo viewer backdrop, dark in every theme
-private val RaftImageLightboxBarHeight = 56.dp
+// A head: 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+private val RaftImageLightboxBarHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headHeight
 private val RaftImageLightboxBarSidePadding = 16.dp
 private val RaftImageLightboxSideGutter = 64.dp
 private const val RaftImageLightboxMaxScale = 5f

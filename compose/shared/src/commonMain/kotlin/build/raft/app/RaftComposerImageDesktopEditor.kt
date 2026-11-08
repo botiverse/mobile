@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -56,7 +58,10 @@ import kotlin.math.exp
  */
 
 internal val RaftComposerImageDesktopBackdrop = Color(0xF0000000) // raft-color: photo viewer backdrop, dark in every theme
-private val RaftComposerImageDesktopBarHeight = 56.dp
+// A head: 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
+private val RaftComposerImageDesktopBarHeight: Dp
+    @Composable @ReadOnlyComposable
+    get() = RaftTheme.controls.headHeight
 
 /** Desktop chrome for [RaftFilePreviewComposerImageEditor]; [onCancel] is the top bar's Cancel and Esc. */
 internal class RaftComposerImageEditorDesktopChrome(val onCancel: () -> Unit)

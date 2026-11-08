@@ -12,14 +12,14 @@ import kotlinx.serialization.json.JsonPrimitive
 class RaftDesktopTitleBarTest {
     @Test fun `the custom title bar is as tall as the top bar and takes the runtime's controls width`() {
         assertEquals(
-            RaftDesktopTitleBarMetrics(band = 48.dp, controlsStart = 77.dp),
+            RaftDesktopTitleBarMetrics(band = 44.dp, controlsStart = 77.dp),
             raftDesktopTitleBarMetrics(customTitleBar = true, fullscreen = false, reportedControlsWidth = 77.dp),
         )
     }
 
     @Test fun `an unreported controls width falls back to the traffic lights' default corner`() {
         assertEquals(
-            RaftDesktopTitleBarMetrics(band = 48.dp, controlsStart = 70.dp),
+            RaftDesktopTitleBarMetrics(band = 44.dp, controlsStart = 70.dp),
             raftDesktopTitleBarMetrics(customTitleBar = true, fullscreen = false, reportedControlsWidth = 0.dp),
         )
     }

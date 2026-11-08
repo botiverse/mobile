@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftAppRailMetricsFor
 import build.raft.app.resources.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -17,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailMetrics
 import build.raft.designsystem.components.raftAppRailCompact
-import build.raft.designsystem.components.raftAppRailMetrics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
@@ -159,14 +159,14 @@ internal val RaftAppRailOuterWidth: Dp
     @Composable get() = raftAppRailWindowMetrics().width + RaftStroke.Hairline
 
 /**
- * The rail's metrics for this window, by the rail's own rule ([raftAppRailCompact] on the window
- * height): for what sits beside the rail outside its composition (its popovers), where
+ * The rail's metrics for this window, by the rail's own rule ([raftAppRailMetricsFor]: compact
+ * under a fine pointer, else by [raftAppRailCompact] on the window height): for what sits beside the rail outside its composition (its popovers), where
  * [RaftAppRailDefaults.metrics] would read the regular size.
  */
 @Composable
 internal fun raftAppRailWindowMetrics(): RaftAppRailMetrics {
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
-    return raftAppRailMetrics(raftAppRailCompact(windowHeight))
+    return raftAppRailMetricsFor(windowHeight)
 }
 
 /** A popover's gap from the rail's seam and from the window's edge (raft-ui `sideOffset` 8). */

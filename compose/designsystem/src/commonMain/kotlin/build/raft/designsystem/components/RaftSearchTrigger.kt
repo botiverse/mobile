@@ -31,6 +31,11 @@ import build.raft.designsystem.tokens.RaftStroke
 
 /** Metrics of [RaftSearchTrigger] (raft-ui `SearchTrigger`). */
 object RaftSearchTriggerDefaults {
+    /**
+     * The trigger with a finger: the top bar's 36dp item. Under a fine pointer it is the bar's
+     * 32dp item (sizing v12, raft-ui 0.65 desktop density): the trigger reads
+     * [RaftTopBarDefaults.itemSize].
+     */
     val Height: Dp = 36.dp
 
     /** `w-[clamp(360px,32vw,520px)]`. */
@@ -73,7 +78,7 @@ fun RaftSearchTrigger(
     Box(
         modifier
             .width(RaftSearchTriggerDefaults.width(windowWidth))
-            .height(RaftSearchTriggerDefaults.Height)
+            .height(RaftTopBarDefaults.itemSize)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .background(colors.layerCard, shape)
             .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Control)
