@@ -33,6 +33,8 @@ class AuthenticatedProductRouteTest {
                 RELEASE_NOTES_PAGE,
                 // The in-app Artifact viewer: its own authenticated page (sign-out replaces it with login).
                 RAFT_ARTIFACT_VIEWER_PAGE,
+                // The Artifacts home (workspace_artifacts_v0), pushed from the server panel.
+                ARTIFACTS_HOME_PAGE,
             )
 
         assertEquals(expected, authenticatedProductRoutePageNames)

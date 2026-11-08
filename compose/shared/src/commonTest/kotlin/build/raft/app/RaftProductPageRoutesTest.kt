@@ -62,8 +62,10 @@ class RaftProductPageRoutesTest {
         // The rail's Apps and Help have no value in the app's NAV_DESTINATIONS mirror yet.
         assertNull(appShellNavDestination("apps"))
         assertNull(appShellNavDestination("help"))
+        // Nor Artifacts (NAV_DESTINATIONS has no `artifacts` yet).
+        assertNull(appShellNavDestination("artifacts"))
         // Every other phone bar slot and rail entry has a destination.
-        (AppShellPhoneBottomBarKeys + AppShellRailTabKeys - "apps").forEach { key ->
+        (AppShellPhoneBottomBarKeys + AppShellRailTabKeys - "apps" - "artifacts").forEach { key ->
             assertEquals(true, appShellNavDestination(key) != null, key)
         }
     }
@@ -132,6 +134,7 @@ class RaftProductPageRoutesTest {
             AuthenticatedProductRoute.ThreadSettings,
             AuthenticatedProductRoute.ThreadForwardBundle,
             AuthenticatedProductRoute.FilePreview,
+            AuthenticatedProductRoute.ArtifactsHome,
         ).forEach { assertNull(page(it), it.name) }
     }
 

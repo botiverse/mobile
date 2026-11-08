@@ -35,7 +35,11 @@ data class ArtifactSummariesRequestWireDto(
     val refs: List<ArtifactObjectRefWireDto>,
 )
 
-/** `ArtifactShownActor` (`ArtifactActor`, with no `id` for a reader outside the Artifact's server). */
+/**
+ * `ArtifactShownActor` (`ArtifactActor`, with no `id` for a reader outside the Artifact's server).
+ * [gone] (`deleted` / `system`) and [onBehalfOf] (a personal assistant's person) are what the home
+ * page names (`workspaceArtifacts.ts` `ArtifactActor`); [count] is `dashboardAuthors`' own field.
+ */
 @Serializable
 data class ArtifactActorWireDto(
     val type: String,
@@ -43,6 +47,17 @@ data class ArtifactActorWireDto(
     val name: String,
     val displayName: String,
     val avatarUrl: String? = null,
+    val gone: String? = null,
+    val onBehalfOf: ArtifactActorBehalfWireDto? = null,
+    val count: Int? = null,
+)
+
+/** `ArtifactActor.onBehalfOf`: the person a personal assistant works for. */
+@Serializable
+data class ArtifactActorBehalfWireDto(
+    val id: String,
+    val name: String = "",
+    val displayName: String = "",
 )
 
 /** `ArtifactHome`: `conversation` (with its conversation), `server` or `public`. */
@@ -97,6 +112,8 @@ data class ArtifactCardWireDto(
     val home: ArtifactHomeWireDto,
     val preview: ArtifactPreviewWireDto? = null,
     val facts: ArtifactFactsWireDto? = null,
+    /** Another server's public Artifact read as an outsider (absent otherwise and from older servers). */
+    val fromAnotherServer: Boolean? = null,
 )
 
 /**

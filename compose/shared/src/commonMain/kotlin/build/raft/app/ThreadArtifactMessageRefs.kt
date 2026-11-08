@@ -320,7 +320,7 @@ internal sealed interface ArtifactCardScreenshotView {
  * only the rows on screen and just past it); one kept already is shown at once.
  */
 @Composable
-private fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactCardScreenshotView {
+internal fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactCardScreenshotView {
     val reader = LocalArtifactScreenshotReader.current ?: return ArtifactCardScreenshotView.None
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val fileId = artifactScreenshotFile(summary.screenshot, artifactScreenshotPhoneLayout(windowWidth)) ?: return ArtifactCardScreenshotView.None
@@ -352,7 +352,7 @@ internal fun artifactCardScreenshotHeightPx(widthPx: Int, maxHeightPx: Int): Int
  * read, the same box empty on `fill-muted`.
  */
 @Composable
-private fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
+internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
     val colors = RaftTheme.colors
     RaftMessageEmbedContent {
         Box(Modifier.artifactCardScreenshotSize().background(colors.fillMuted)) {

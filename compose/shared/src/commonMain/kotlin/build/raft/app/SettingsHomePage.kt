@@ -1024,12 +1024,14 @@ internal const val AppShellRailDraftsKey = "rail_drafts"
  */
 internal const val AppShellRailComputersKey = "rail_computers"
 internal const val AppShellRailAppsKey = "rail_apps"
+internal const val AppShellRailArtifactsKey = "rail_artifacts"
 
 /** The inline key a rail page destination opens as on the wide layout, or null. */
 internal fun appShellRailInlinePageKey(destination: RaftAppDestination?): String? =
     when (destination) {
         RaftAppDestination.Computers -> AppShellRailComputersKey
         RaftAppDestination.Apps -> AppShellRailAppsKey
+        RaftAppDestination.Artifacts -> AppShellRailArtifactsKey
         else -> null
     }
 
@@ -1038,6 +1040,7 @@ internal fun appShellRailInlinePageRailId(railInlineSecondaryDestination: String
     when (railInlineSecondaryDestination) {
         AppShellRailComputersKey -> RaftAppDestination.Computers.id
         AppShellRailAppsKey -> RaftAppDestination.Apps.id
+        AppShellRailArtifactsKey -> RaftAppDestination.Artifacts.id
         else -> null
     }
 
@@ -1046,6 +1049,8 @@ internal fun appShellRailInlinePage(railInlineSecondaryDestination: String?, sto
     when (railInlineSecondaryDestination) {
         AppShellRailComputersKey -> settingsWideDetailPage(SettingsDestinationComputers, storeScope)
         AppShellRailAppsKey -> settingsWideDetailPage(SettingsDestinationConnectedApps, storeScope)
+        // Its head without Back (the rail is the way out), as Computers.
+        AppShellRailArtifactsKey -> ARTIFACTS_HOME_PAGE to artifactsHomePageData(storeScope)
         else -> null
     }
 
@@ -6593,6 +6598,22 @@ private fun RaftAppShellReadyContent(
     // The menu belongs to the bar or the rail it rose from: it closes when they go (a pushed page
     // hides the bar, the window crosses the rail breakpoint).
     LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
+    // web `useArtifactsRailShown`: the Artifacts entries (server panel row, wide rail tab) only where the current server's
+    // workspace_artifacts_v0 is already loaded and on (the panel never asks for flags itself).
+    val artifactsFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val serverMenuArtifactsShown =
+        remember(serverMenuModel?.currentServer?.id, artifactsFlagRevision) {
+            appShellArtifactsShown(sharedStores.serverFeatureFlags, serverMenuModel?.currentServer?.id)
+        }
+    // Artifacts off for this server (or the flag turned off): its inline page closes and the wide
+    // history's arrows never reopen it (review L1).
+    LaunchedEffect(serverMenuArtifactsShown, readyServerId) {
+        if (serverMenuArtifactsShown) return@LaunchedEffect
+        val serverId = readyServerId ?: return@LaunchedEffect
+        wideNavHistories = wideNavHistories.withoutSurface(serverId, AppShellRailArtifactsKey)
+        if (railInlineSecondaryDestination == AppShellRailArtifactsKey) railInlineSecondaryDestination = null
+    }
+
     // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
     // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.
     val serverSwitchFailedMessage = stringResource(Res.string.home_server_switch_failed)
@@ -6659,8 +6680,9 @@ private fun RaftAppShellReadyContent(
     }
     // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
     // Activity, Tasks, Members, Computers, Apps; Members is a rail root there.
-    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention) {
+    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention, serverMenuArtifactsShown) {
         appShellRailTabs(
+            artifacts = serverMenuArtifactsShown,
             selectedTab = selectedTab,
             inlinePageRailId = appShellRailInlinePageRailId(railInlineSecondaryDestination),
             activityUnreadCount = activityTabUnreadCount,
@@ -7118,6 +7140,11 @@ private fun RaftAppShellReadyContent(
         bridge.log("app_shell_server_menu_open row=${entry.key} from=$selectedTab")
         if (!navRailActive) serverPageOrigin = appShellServerPageOrigin(selectedTab, serverPageOrigin)
         when (entry) {
+            RaftServerMenuEntry.Artifacts -> {
+                // web MobileServerTab `openArtifacts`: the page pushed over the shell.
+                if (!navRailActive) serverTabFocusOnPageReturn = true
+                pager.openArtifactsHomePage(storeScope)
+            }
             RaftServerMenuEntry.Members -> {
                 RaftProductEvents.navEntrySelected(
                     destination = RaftNavDestination.Members,
@@ -7199,6 +7226,7 @@ private fun RaftAppShellReadyContent(
                         serverMenuModel.entries,
                         wide = navRailActive,
                         guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
+                        artifacts = serverMenuArtifactsShown,
                     ),
                 onPick = ::onServerMenuPick,
                 switchPending = homeServerSwitchListPending(homeState.serverSwitchState.pendingServerId),

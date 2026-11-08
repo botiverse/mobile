@@ -114,6 +114,20 @@ internal enum class RaftAppDestination(
         route = RaftNavRoute.ShellTab,
         navEvent = RaftNavDestination.Search,
     ),
+    /**
+     * The Artifacts home (web LeftRail: after Tasks, only behind workspace_artifacts_v0,
+     * `useArtifactsRailShown`); a page in the content area beside the rail, like Computers. The
+     * phone opens it from the server panel ([RaftServerMenuEntry.Artifacts]). NAV_DESTINATIONS has
+     * no `artifacts` yet: no nav event.
+     */
+    Artifacts(
+        id = "artifacts",
+        label = Res.string.artifacts_dashboard_title,
+        icon = RaftNavIcon.Lucide(RaftLucideIconName.Artifact),
+        badge = RaftNavBadgeSource.None,
+        route = RaftNavRoute.Page,
+        navEvent = null,
+    ),
     Members(
         id = "members",
         label = Res.string.tab_members,
@@ -195,6 +209,7 @@ internal enum class RaftNavPresentation(
             RaftAppDestination.Chat,
             RaftAppDestination.Activity,
             RaftAppDestination.Tasks,
+            RaftAppDestination.Artifacts,
             RaftAppDestination.Members,
             RaftAppDestination.Computers,
             RaftAppDestination.Apps,
