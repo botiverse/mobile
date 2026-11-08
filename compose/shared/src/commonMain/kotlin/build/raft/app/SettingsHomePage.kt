@@ -3026,7 +3026,8 @@ private fun RaftAppShellReadyContent(
                 channelRepository = channelRepository,
                 prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
                 replyThreadContentCached = homeActivityReplyThreadPrewarmDataSource::hasCurrentReplyThreadContent,
-                onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
+                // Hidden Home folds these into one read when it shows (fb-52cc0499 request storm).
+                onUnreadCountsChanged = { homeStore.requestUnreadCountsReconcile(reason = "activity_unread_counts") },
                 // task #436: shared store — both call sites must use one identity.
                 diagnosticsLogger = sharedActivityStoreDiagnosticsLogger()
             )

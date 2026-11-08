@@ -301,6 +301,10 @@ internal class SharedHomeStore(
     private val readProjectionOwnerLock = SynchronizedObject()
     // A reply into a thread Home does not know reloads the summary once per window (web followedThreadsRefresh).
     private val followedThreadUnreadRefresh = HomeCoalescedRefresh(scope = scope) { refreshFollowedThreadUnread() }
+    // requestUnreadCountsReconcile: the running visible reconcile (its token) and whether asks came in meanwhile.
+    private val unreadReconcileLock = SynchronizedObject()
+    private var unreadReconcileOwner: Any? = null
+    private var unreadReconcilePending = false
 
     fun snapshotFor(serverId: ServerId): HomeSnapshot? =
         (_state.value.content as? SharedHomeContentState.Content)
@@ -498,6 +502,10 @@ internal class SharedHomeStore(
         conversationIdentityOwners.value = emptyMap()
         hiddenHomeSnapshotDirty = false
         followedThreadUnreadRefresh.cancel()
+        synchronized(unreadReconcileLock) {
+            unreadReconcileOwner = null
+            unreadReconcilePending = false
+        }
         synchronized(readProjectionOwnerLock) {
             readPredictionRevisions = emptyMap()
         }
@@ -1350,8 +1358,88 @@ internal class SharedHomeStore(
     }
 
     private fun scheduleReadStateReconcile() {
-        diagnosticsLogger("per_receiver_read_state_reconcile reason=incomplete_home_projection")
+        requestUnreadCountsReconcile(reason = "incomplete_home_projection")
+    }
+
+    /**
+     * Unread counts changed in a way Home cannot work out itself: a read-state fact Home or Activity
+     * accepted (they share the checkpoints, so only the first taker sees it), Activity's Done or Mark
+     * all read. Home reloads to take the server's counts.
+     *
+     * Storm fix (feedback fb-52cc0499): Activity reported every accepted read straight to
+     * [SharedHomeIntent.ForegroundRefresh], so each thread opened from Activity cost a whole Home
+     * bootstrap (channels, DMs, unread, unread summary, sidebar order; ~720 KB) while Home was not
+     * even on screen (75 of them in 28 minutes). Hidden Home now does what it already does for the
+     * realtime events it receives while hidden: mark itself dirty and read once when it shows again
+     * ([setHomeSurfaceVisible]). Visible Home reloads at once; asks that arrive while that reload runs
+     * fold into ONE reload after it, so the last ask still gets an answer read after it.
+     */
+    fun requestUnreadCountsReconcile(reason: String) {
+        if (!homeSurfaceVisible) {
+            val serverId = (_state.value.content as? SharedHomeContentState.Content)?.baseSnapshot?.server?.id
+            if (serverId == null) {
+                // Nothing loaded to correct; Home's own start reads the counts when it shows.
+                diagnosticsLogger("per_receiver_read_state_reconcile_deferred reason=$reason detail=no_content")
+                return
+            }
+            hiddenHomeSnapshotDirty = true
+            diagnosticsLogger("per_receiver_read_state_reconcile_deferred reason=$reason detail=surface_hidden")
+            markHomeRealtimeDirty(serverId, "read_state_reconcile")
+            return
+        }
+        val token = Any()
+        val launch =
+            synchronized(unreadReconcileLock) {
+                if (unreadReconcileOwner != null) {
+                    unreadReconcilePending = true
+                    false
+                } else {
+                    unreadReconcileOwner = token
+                    unreadReconcilePending = false
+                    true
+                }
+            }
+        if (!launch) {
+            diagnosticsLogger("per_receiver_read_state_reconcile_coalesced reason=$reason")
+            return
+        }
+        diagnosticsLogger("per_receiver_read_state_reconcile reason=$reason")
         dispatch(SharedHomeIntent.ForegroundRefresh)
+        val reconcileLoad = loadJob
+        scope.launch {
+            var handOff = false
+            try {
+                reconcileLoad?.join()
+                while (true) {
+                    val again =
+                        synchronized(unreadReconcileLock) {
+                            if (unreadReconcileOwner !== token) return@launch
+                            if (unreadReconcilePending) {
+                                unreadReconcilePending = false
+                                true
+                            } else {
+                                unreadReconcileOwner = null
+                                false
+                            }
+                        }
+                    if (!again) return@launch
+                    if (!homeSurfaceVisible) {
+                        handOff = true
+                        break
+                    }
+                    diagnosticsLogger("per_receiver_read_state_reconcile reason=coalesced_trailing")
+                    dispatch(SharedHomeIntent.ForegroundRefresh)
+                    loadJob?.join()
+                }
+            } finally {
+                // Cancelled (clear / reset) or handing off: never leave a dead owner behind.
+                synchronized(unreadReconcileLock) {
+                    if (unreadReconcileOwner === token) unreadReconcileOwner = null
+                }
+            }
+            // Hidden meanwhile: the trailing ask becomes Home's dirty mark.
+            if (handOff) requestUnreadCountsReconcile(reason = "coalesced_trailing")
+        }
     }
 
     private fun applyPerReceiverNotificationPrefsChanged(
