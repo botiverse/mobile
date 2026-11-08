@@ -1,6 +1,8 @@
 package build.raft.app
 
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactWebUrl
@@ -1386,7 +1388,7 @@ internal fun ActivityFilterMenuRows(selectedFilter: InboxFilter, onPick: (InboxF
 }
 
 @Composable
-private fun SharedActivityList(
+internal fun SharedActivityList(
     active: Boolean,
     snapshot: InboxSnapshot,
     selectedFilter: InboxFilter,
@@ -1516,20 +1518,21 @@ private fun SharedActivityList(
         if (!active) return@LaunchedEffect
         entryTopAnchorOwner.fenceUserScroll(snapshotFlow { listState.isScrollInProgress })
     }
+    // "At the top" is the web's (ThreadsInbox `scrollTop < 50`): within [ActivityNearTopThreshold].
+    val nearTopPx = with(LocalDensity.current) { ActivityNearTopThreshold.roundToPx() }
+    // The day headings' clock, read when a change lands (settleTopEdge's head signature).
+    val headTimeContext by rememberUpdatedState(currentRaftTimeContext(timeContext))
     // The reader reached the top themselves: nothing new is hidden above any more.
-    LaunchedEffect(listState, active) {
+    LaunchedEffect(listState, active, nearTopPx) {
         if (!active) return@LaunchedEffect
-        snapshotFlow {
-            activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
-        }
+        snapshotFlow { listState.activityNearTop(nearTopPx) }
             .collect { atTop -> if (atTop && newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet() }
     }
     fun shouldAnchorTop(pullRefreshOwnsTop: Boolean, genuineTopUpdate: Boolean): Boolean =
         activityShouldAnchorTopOnCanonicalSnapshot(
             entryOwnerArmed = entryTopAnchorOwner.armed,
             pullRefreshOwnsTop = pullRefreshOwnsTop,
-            parkedAtTop =
-                activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset),
+            parkedAtTop = listState.activityNearTop(nearTopPx),
             scrollInProgress = listState.isScrollInProgress,
             genuineTopUpdate = genuineTopUpdate,
             followParkedTop = !stableOrderEnabled,
@@ -1538,8 +1541,12 @@ private fun SharedActivityList(
     // LazyList cannot first re-anchor on the old head key and no delayed job exists.
     // [anchorTop] decides the ORDER (adopt the canonical rows now); the POSITION follows the root
     // rule in every mode: a list parked at the top stays at the top (keepTopIfParked, b205bd89).
+    // The head compared is the laid-out one (rows and day heading, activityListHeadSignature): LazyList
+    // anchors on the first laid-out key, which with day headings is a heading.
     fun settleTopEdge(previousItems: List<InboxItem>, nextItems: List<InboxItem>, anchorTop: Boolean) {
-        val keptTop = listState.keepTopIfParked(previousItems.firstOrNull()?.key, nextItems.firstOrNull()?.key)
+        fun head(items: List<InboxItem>) =
+            activityListHeadSignature(items.filterNot { it.hasUnopenableInternalJointParentSource() }, headTimeContext)
+        val keptTop = listState.keepTopIfParked(head(previousItems), head(nextItems), nearTopPx)
         if (keptTop) {
             // Feedback zip: where LazyList would have carried the list (the old head's new index).
             val previousHead = previousItems.firstOrNull()?.key
@@ -2216,7 +2223,7 @@ private fun SharedActivityList(
                     revealRequest += 1
                     savePresentation()
                 },
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).testTag(ActivityNewUpdatesPillTag),
             )
         } else if (newActivityAboveCount > 0) {
             // Task #47: newer rows landed above a reader who had already scrolled;
@@ -2231,7 +2238,7 @@ private fun SharedActivityList(
                     newActivityAboveKeys = emptySet()
                     revealRequest += 1
                 },
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp).testTag(ActivityNewUpdatesPillTag),
             )
         }
         swipeDoneUndo.pending?.let { pending ->

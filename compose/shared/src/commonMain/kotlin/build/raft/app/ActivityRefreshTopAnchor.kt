@@ -1,8 +1,11 @@
 package build.raft.app
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import build.raft.app.data.InboxItem
 import build.raft.app.data.activityUpdateRevisionMessageId
+import build.raft.app.model.RaftTimeContext
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -76,13 +79,71 @@ internal fun activityShouldAnchorTopOnCanonicalSnapshot(
  * the previous layout): a same-snapshot `requestScrollToItem(0)`, no animation, no delayed job.
  * Never while a scroll is in progress (a drag, a fling, an animation owns the viewport); a reader
  * scrolled away keeps their row. Returns whether it pinned.
+ *
+ * [nearTopPx] widens "parked" to the web's rule (ThreadsInbox: `scrollTop < 50` counts as the top,
+ * and a change then sets `scrollTop = 0`), [ActivityNearTopThreshold]; 0 keeps the very top only.
+ * The head keys are [activityListHeadSignature]s, so a new day heading at the top counts as a move.
  */
-internal fun LazyListState.keepTopIfParked(previousHeadKey: Any?, nextHeadKey: Any?): Boolean {
+internal fun LazyListState.keepTopIfParked(previousHeadKey: Any?, nextHeadKey: Any?, nearTopPx: Int = 0): Boolean {
     if (previousHeadKey == nextHeadKey || isScrollInProgress) return false
-    if (!activityListParkedAtTop(firstVisibleItemIndex, firstVisibleItemScrollOffset)) return false
+    if (!activityNearTop(nearTopPx)) return false
     requestScrollToItem(0)
     return true
 }
+
+/**
+ * How near the top still counts as "at the top" (web slock ThreadsInbox `isNearTopRef =
+ * scrollTop < 50`): a list within it follows new rows at the head and clears the pill.
+ */
+internal val ActivityNearTopThreshold: Dp = 50.dp
+
+/**
+ * How far the list is scrolled from its very top, in px: the first visible item's offset plus the
+ * laid-out size of every item before it ([laidOutSizeOf], e.g. a stuck day heading, which LazyList
+ * still lays out). Null when one of those items is not laid out (the list is further down).
+ */
+internal fun activityScrolledFromTopPx(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    laidOutSizeOf: (Int) -> Int?,
+): Int? {
+    var distance = firstVisibleItemScrollOffset
+    for (index in 0 until firstVisibleItemIndex) distance += laidOutSizeOf(index) ?: return null
+    return distance
+}
+
+/** The web's rule: at the very top, or less than [thresholdPx] from it. */
+internal fun activityListNearTop(scrolledFromTopPx: Int?, thresholdPx: Int): Boolean =
+    scrolledFromTopPx != null && (scrolledFromTopPx == 0 || scrolledFromTopPx < thresholdPx)
+
+/** [activityListNearTop] for this list's current layout. [thresholdPx] 0 means the very top only. */
+internal fun LazyListState.activityNearTop(thresholdPx: Int): Boolean {
+    if (activityListParkedAtTop(firstVisibleItemIndex, firstVisibleItemScrollOffset)) return true
+    if (thresholdPx <= 0) return false
+    val laidOut = layoutInfo.visibleItemsInfo
+    val distance =
+        activityScrolledFromTopPx(firstVisibleItemIndex, firstVisibleItemScrollOffset) { index ->
+            laidOut.firstOrNull { it.index == index }?.size
+        }
+    return activityListNearTop(distance, thresholdPx)
+}
+
+/**
+ * What the top edge rule compares across a change: the first LazyColumn key as laid out AND the
+ * first row's key. With day headings (#4410) the first laid-out item is a heading, and LazyList
+ * anchors on it: when the head row's new activity moves it under a new "Today" heading, the head
+ * row is unchanged but the old "Yesterday" heading (the anchor) moves down, and the list followed it,
+ * leaving the new heading and the head row above the viewport with no pill. [rows] are the rows the
+ * list lays out, in order.
+ */
+internal fun activityListHeadSignature(rows: List<InboxItem>, timeContext: RaftTimeContext?): String? {
+    val head = rows.firstOrNull() ?: return null
+    val firstLazyKey = activityConversationListEntries(listOf(head), timeContext).first().key
+    return "$firstLazyKey|${head.key}"
+}
+
+/** The "↑ N new updates" pill (web `data-testid="inbox-new-updates"`). */
+internal const val ActivityNewUpdatesPillTag = "activity-new-updates"
 
 /** The list is at its very top edge (first row fully at the top). */
 internal fun activityListParkedAtTop(firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int): Boolean =
