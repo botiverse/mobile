@@ -394,14 +394,14 @@ class AgentsApiTest {
             assertIs<DataResult.Content<AgentSummary>>(
                 RaftAgentsApiClient(RecordingAgentsApi(agentBody = failed)).agent(MemberId("agent-1"))
             ).data.toAgentDetailSummary()
-        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", lookupReason = "not_on_path"), detail.spawnFailure)
+        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", lookupReason = "not_on_path", autoRestartPaused = true), detail.spawnFailure)
         assertEquals("Codex CLI is not installed on this computer.", detail.lastRuntimeErrorMessage)
 
         // An older daemon sends no lookup verdict; a carrier beside another kind is not a failed start.
         val noVerdict = failed.replace(""","lookupReason":"not_on_path"""", "")
         val noVerdictDetail =
             assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = noVerdict)).agent(MemberId("agent-1"))).data
-        assertEquals(AgentSpawnFailure(reason = "runtime_not_found"), noVerdictDetail.spawnFailure)
+        assertEquals(AgentSpawnFailure(reason = "runtime_not_found", autoRestartPaused = true), noVerdictDetail.spawnFailure)
         val otherKind = failed.replace(""""activityDetailKind":"runtime_unavailable"""", """"activityDetailKind":"stopped"""")
         val otherDetail =
             assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = otherKind)).agent(MemberId("agent-1"))).data

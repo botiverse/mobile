@@ -4032,4 +4032,17 @@
     <string name="thread_composer_placeholder_named">%1$s へのメッセージ</string>
     <string name="thread_archived_notice">このチャンネルはアーカイブされています。</string>
     <string name="thread_archived_unarchive">アーカイブを解除</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">モデルを変更</string>
+    <string name="agent_status_model_unsupported">このランタイムのアカウントまたはプランには「%1$s」が含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>
+    <string name="agent_status_model_unsupported_default">このランタイムのアカウントまたはプランには、このエージェントのモデルが含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>
+    <string name="agent_status_repeated_failure_paused">起動後、同じ失敗を繰り返しました — 自動起動は一時停止中です。Raft が後で自動的に再試行します。今すぐ試すには、エージェントを再起動してください</string>
+    <string name="agent_status_repeated_failure_paused_at">起動後、同じ失敗を繰り返しました — 自動起動は一時停止中です。%1$sに Raft が自動的に再試行します。今すぐ試すには、エージェントを再起動してください</string>
+    <string name="agent_status_session_needs_reset">コンテキストが大きすぎ、自動での縮小でも解決しませんでした。セッションをリセットして再起動してください。1 件のメッセージ自体がとても大きい場合は、より大きなコンテキストを持つモデルに切り替えるか、内容を分割してください。</string>
+    <string name="agent_status_start_timeout_paused">%1$s — 自動起動は一時停止中です。Raft が後で自動的に再試行します。今すぐ再開するには、エージェントを再起動するかモデルを切り替えてください</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s — 自動起動は一時停止中です。%2$sに Raft が自動的に再試行します。今すぐ再開するには、エージェントを再起動するかモデルを切り替えてください</string>
+    <string name="agent_runtime_error_billing_exhausted">モデルサービスの残高が不足しています</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s は現在応答できません。このエージェントが使うモデルサービスの残高と請求状況を確認してから、もう一度起動してください。</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">モデル設定を表示</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">サーバー管理者に対応を依頼してください。</string>
 </resources>

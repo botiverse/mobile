@@ -4015,4 +4015,17 @@
     <string name="thread_composer_placeholder_named">Отправить сообщение: %1$s</string>
     <string name="thread_archived_notice">Этот канал в архиве.</string>
     <string name="thread_archived_unarchive">Вернуть из архива</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">Сменить модель</string>
+    <string name="agent_status_model_unsupported">Аккаунт или тариф этой среды выполнения не включает «%1$s». Смените модель или войдите в аккаунт, где она есть</string>
+    <string name="agent_status_model_unsupported_default">Аккаунт или тариф этой среды выполнения не включает модель этого агента. Смените модель или войдите в аккаунт, где она есть</string>
+    <string name="agent_status_repeated_failure_paused">После запуска агент раз за разом завершался с одной и той же ошибкой — автоматические пробуждения приостановлены, Raft сам попробует снова позже. Чтобы попробовать сейчас, перезапустите агента</string>
+    <string name="agent_status_repeated_failure_paused_at">После запуска агент раз за разом завершался с одной и той же ошибкой — автоматические пробуждения приостановлены, Raft сам попробует снова (следующая попытка: %1$s). Чтобы попробовать сейчас, перезапустите агента</string>
+    <string name="agent_status_session_needs_reset">Контекст слишком большой, и автоматическое сокращение не помогло. Сбросьте сеанс и перезапустите агента; если само сообщение очень большое, переключитесь на модель с большим контекстом или разбейте содержимое на части.</string>
+    <string name="agent_status_start_timeout_paused">%1$s — автоматические пробуждения приостановлены, Raft сам попробует снова позже. Чтобы возобновить работу сейчас, перезапустите агента или смените его модель</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s — автоматические пробуждения приостановлены, Raft сам попробует снова (следующая попытка: %2$s). Чтобы возобновить работу сейчас, перезапустите агента или смените его модель</string>
+    <string name="agent_runtime_error_billing_exhausted">Недостаточно средств в сервисе модели</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s сейчас не может ответить. Проверьте баланс и оплату сервиса модели, который использует этот агент, затем запустите его снова.</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">Открыть настройки модели</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">Попросите администратора сервера это исправить.</string>
 </resources>

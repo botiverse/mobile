@@ -834,18 +834,34 @@ internal fun ToolStuckDto?.toAgentToolStuck(
  * The fields of shared `WakeCrashLoopActivityDiagnostic` the client shows (botiverse/slock
  * 24873fd5be37 packages/shared/src/index.ts; `lastExitReason` from #10860, absent on older servers).
  */
-/** The fields of shared `SpawnFailureActivityDiagnostic` the client shows (botiverse/slock task #1123, #1242). */
+/** The fields of shared `SpawnFailureActivityDiagnostic` the client shows (botiverse/slock task #1123, #1242, #13460). */
 @Serializable
 internal data class SpawnFailureDto(
     val reason: String? = null,
     val lookupReason: String? = null,
+    /** The agent's model the start failed on (`model_not_found`, `model_unsupported`). */
+    val model: String? = null,
+    /** The server paused automatic restarts after this failure. */
+    val autoRestartPaused: Boolean? = null,
+    /**
+     * Server-written epoch ms of the next automatic try, only while a pause that retries by itself
+     * is in effect (botiverse/slock #13460, filled by #13486). Read as a number so a fractional
+     * value never fails the whole frame.
+     */
+    val pauseRetryAtMs: Double? = null,
 )
 
 /** The start-failure carrier of a `runtime_unavailable` status (web agentStore); null for any other kind or without a reason. */
 internal fun SpawnFailureDto?.toAgentSpawnFailure(detailKind: String?): AgentSpawnFailure? {
     if (this == null || detailKind?.trim() != AgentActivityDetailKindRuntimeUnavailable) return null
     val failureReason = reason?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    return AgentSpawnFailure(reason = failureReason, lookupReason = lookupReason?.trim()?.takeIf { it.isNotEmpty() })
+    return AgentSpawnFailure(
+        reason = failureReason,
+        lookupReason = lookupReason?.trim()?.takeIf { it.isNotEmpty() },
+        model = model?.trim()?.takeIf { it.isNotEmpty() },
+        autoRestartPaused = autoRestartPaused == true,
+        pauseRetryAtMs = pauseRetryAtMs?.takeIf { it.isFinite() && it > 0.0 }?.toLong(),
+    )
 }
 
 @Serializable

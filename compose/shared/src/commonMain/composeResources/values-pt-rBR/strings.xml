@@ -3938,4 +3938,17 @@
     <string name="thread_composer_placeholder_named">Mensagem para %1$s</string>
     <string name="thread_archived_notice">Este canal está arquivado.</string>
     <string name="thread_archived_unarchive">Desarquivar</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">Alterar modelo</string>
+    <string name="agent_status_model_unsupported">A conta ou o plano deste runtime não inclui “%1$s”. Troque o modelo ou entre com uma conta que o inclua</string>
+    <string name="agent_status_model_unsupported_default">A conta ou o plano deste runtime não inclui o modelo deste agente. Troque o modelo ou entre com uma conta que o inclua</string>
+    <string name="agent_status_repeated_failure_paused">Depois de iniciar, falhou várias vezes do mesmo jeito — as ativações automáticas estão pausadas; o Raft tenta de novo sozinho mais tarde. Reinicie o agente para tentar agora</string>
+    <string name="agent_status_repeated_failure_paused_at">Depois de iniciar, falhou várias vezes do mesmo jeito — as ativações automáticas estão pausadas; o Raft tenta de novo sozinho (próxima tentativa: %1$s). Reinicie o agente para tentar agora</string>
+    <string name="agent_status_session_needs_reset">O contexto está grande demais, e reduzi-lo automaticamente não resolveu. Redefina a sessão e reinicie; se uma mensagem for muito grande por si só, troque para um modelo com contexto maior ou divida o conteúdo.</string>
+    <string name="agent_status_start_timeout_paused">%1$s — as ativações automáticas estão pausadas; o Raft tenta de novo sozinho mais tarde. Reinicie o agente ou troque o modelo dele para retomar agora</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s — as ativações automáticas estão pausadas; o Raft tenta de novo sozinho (próxima tentativa: %2$s). Reinicie o agente ou troque o modelo dele para retomar agora</string>
+    <string name="agent_runtime_error_billing_exhausted">Saldo insuficiente no serviço de modelos</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s não pode responder agora. Verifique o saldo e o faturamento do serviço de modelos que este agente usa e inicie-o de novo.</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">Ver configurações do modelo</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">Peça a um administrador do servidor para resolver isso.</string>
 </resources>

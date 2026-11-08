@@ -4032,4 +4032,17 @@
     <string name="thread_composer_placeholder_named">发送消息至 %1$s</string>
     <string name="thread_archived_notice">该频道已归档。</string>
     <string name="thread_archived_unarchive">取消归档</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">更换模型</string>
+    <string name="agent_status_model_unsupported">这个运行时的账号或套餐不包含模型「%1$s」。请更换模型，或登录包含该模型的账号</string>
+    <string name="agent_status_model_unsupported_default">这个运行时的账号或套餐不包含这个 Agent 的模型。请更换模型，或登录包含该模型的账号</string>
+    <string name="agent_status_repeated_failure_paused">启动后多次以同样的方式失败——已暂停自动唤醒，Raft 稍后会自动重试；重启 Agent 可立即重试</string>
+    <string name="agent_status_repeated_failure_paused_at">启动后多次以同样的方式失败——已暂停自动唤醒，Raft 会在 %1$s 自动重试；重启 Agent 可立即重试</string>
+    <string name="agent_status_session_needs_reset">上下文太大，自动缩减没能解决。可以重置会话后重启；如果某条消息本身很大，换一个上下文更大的模型，或把内容拆小。</string>
+    <string name="agent_status_start_timeout_paused">%1$s——已暂停自动唤醒，Raft 稍后会自动重试；重启 Agent 或换一个模型可立即恢复</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s——已暂停自动唤醒，Raft 会在 %2$s 自动重试；重启 Agent 或换一个模型可立即恢复</string>
+    <string name="agent_runtime_error_billing_exhausted">模型服务余额不足</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s 暂时无法回复。请检查这个 agent 所用模型服务的余额和计费状态，处理好后再启动。</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">查看模型配置</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">请联系服务器管理员处理。</string>
 </resources>

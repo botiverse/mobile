@@ -1068,7 +1068,17 @@ data class AgentActivitySubscribed(
 @Serializable
 data class AgentSpawnFailure(
     val reason: String,
-    val lookupReason: String? = null
+    val lookupReason: String? = null,
+    /** The agent's model the start failed on (`model_not_found`, `model_unsupported`); null when not sent. */
+    val model: String? = null,
+    /** The server paused automatic restarts after this failure (shared `autoRestartPaused`). */
+    val autoRestartPaused: Boolean = false,
+    /**
+     * When the paused agent's next automatic try starts, epoch ms (shared `pauseRetryAtMs`,
+     * botiverse/slock #13460): server-written, only while a pause that retries by itself is in
+     * effect; null when no time is known.
+     */
+    val pauseRetryAtMs: Long? = null
 )
 
 /**

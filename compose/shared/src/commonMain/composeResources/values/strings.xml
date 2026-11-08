@@ -4032,4 +4032,17 @@
     <string name="thread_composer_placeholder_named">Message %1$s</string>
     <string name="thread_archived_notice">This channel is archived.</string>
     <string name="thread_archived_unarchive">Unarchive</string>
+    <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
+    <string name="agent_status_change_model">Change model</string>
+    <string name="agent_status_model_unsupported">This runtime's account or plan doesn't include "%1$s". Change the model, or sign in with an account that includes it</string>
+    <string name="agent_status_model_unsupported_default">This runtime's account or plan doesn't include this agent's model. Change the model, or sign in with an account that includes it</string>
+    <string name="agent_status_repeated_failure_paused">Kept failing the same way after starting — automatic wakes are paused; Raft tries again by itself later. Restart the agent to try now</string>
+    <string name="agent_status_repeated_failure_paused_at">Kept failing the same way after starting — automatic wakes are paused; Raft tries again by itself at %1$s. Restart the agent to try now</string>
+    <string name="agent_status_session_needs_reset">The context is too large and shrinking it automatically didn't fix it. Reset the session and restart; if one message is itself very large, switch to a model with a larger context or split the content.</string>
+    <string name="agent_status_start_timeout_paused">%1$s — automatic wakes are paused; Raft tries again by itself later. Restart the agent or switch its model to resume now</string>
+    <string name="agent_status_start_timeout_paused_at">%1$s — automatic wakes are paused; Raft tries again by itself at %2$s. Restart the agent or switch its model to resume now</string>
+    <string name="agent_runtime_error_billing_exhausted">Model service balance too low</string>
+    <string name="agent_runtime_error_billing_exhausted_body">%1$s can't reply right now. Check the balance and billing for the model service this agent uses, then start it again.</string>
+    <string name="agent_runtime_error_billing_exhausted_view_model_settings">View model settings</string>
+    <string name="agent_runtime_error_billing_exhausted_ask_admin">Ask a server admin to fix this.</string>
 </resources>
