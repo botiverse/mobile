@@ -25888,8 +25888,16 @@ private fun ThreadMessagesListContent(
         // One line whenever an input of the "Back to bottom" pill changes (not on every scroll frame),
         // with the raw list position at that moment: reversed lists left the pill on after a local send
         // (HuaTuo, #raft-mobile-reconcile:6dbbf8b9) and the pill's inputs were not logged anywhere.
+        val bottomJumpCount =
+            threadBottomJumpCount(
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                conversationUnreadCount = jumpInputs.conversationUnreadCount,
+                newMessagesBelow = newMessagesBelow.count,
+            )
         val backToBottomPillInputs =
-            "visible=$shouldShowBackToBottomButton reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
+            "visible=$shouldShowBackToBottomButton count=$bottomJumpCount newBelow=${newMessagesBelow.count} " +
+                "laidOut=${backToBottomViewportSignals.latestItemLaidOut} " +
+                "reverse=${listState.reverse} allow=$allowBottomAutoAnchor " +
                 "canScrollForward=${backToBottomViewportSignals.canScrollTowardBottom} " +
                 "latestItemOffBottom=${backToBottomViewportSignals.latestItemOffBottom} " +
                 "tailMissing=${renderPayload.canLoadMoreAfter} kbd=$pendingKeyboardBottomAnchor " +
@@ -25978,26 +25986,20 @@ private fun ThreadMessagesListContent(
             }
         }
         // Web ChatPanel `newMessageCount`: arrivals below while the Back to Bottom pill shows.
-        val newMessagesTailSignature = renderPayload.messages.size to renderPayload.messages.lastOrNull()?.id
-        LaunchedEffect(threadInstanceKey, newMessagesTailSignature, shouldShowBackToBottomButton, renderPayload.canLoadMoreAfter) {
-            val next =
-                reduceThreadNewMessagesBelow(
-                    state = newMessagesBelow,
-                    messages =
-                        renderPayload.messages.map { message ->
-                            ThreadJumpArrival(messageId = message.id, countable = !message.hasLocalSendState())
-                        },
-                    awayFromBottom = shouldShowBackToBottomButton,
-                    canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                )
-            if (next != newMessagesBelow) newMessagesBelow = next
-        }
-        val bottomJumpCount =
-            threadBottomJumpCount(
-                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                conversationUnreadCount = jumpInputs.conversationUnreadCount,
-                newMessagesBelow = newMessagesBelow.count,
-            )
+        ThreadNewMessagesBelowEffect(
+            instanceKey = threadInstanceKey,
+            tailSignature = renderPayload.messages.size to renderPayload.messages.lastOrNull()?.id,
+            awayFromBottom = shouldShowBackToBottomButton,
+            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+            viewportMeasured = backToBottomViewportSignals.latestItemLaidOut,
+            current = { newMessagesBelow },
+            onChange = { newMessagesBelow = it },
+            arrivals = {
+                renderPayload.messages.map { message ->
+                    ThreadJumpArrival(messageId = message.id, countable = !message.hasLocalSendState())
+                }
+            },
+        )
         val unreadThreadJumpActive =
             jumpInputs.unreadThreadPillEnabled &&
                 routeActive &&
@@ -28675,7 +28677,13 @@ internal fun threadRepliesFocusedItemScrollOffset(
 
 internal data class ThreadBackToBottomViewportSignals(
     val canScrollTowardBottom: Boolean,
-    val latestItemOffBottom: Boolean
+    val latestItemOffBottom: Boolean,
+    /**
+     * The layout has measured row `latestItemIndex`, i.e. the current list. False for the
+     * composition in which rows were appended (the layout still holds the previous list), when
+     * [latestItemOffBottom] reads false whatever the scroll position.
+     */
+    val latestItemLaidOut: Boolean = true
 )
 
 /**
@@ -28691,10 +28699,41 @@ internal fun rememberThreadBackToBottomViewportSignals(
         derivedStateOf {
             ThreadBackToBottomViewportSignals(
                 canScrollTowardBottom = listState.canScrollForward,
-                latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
+                latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
+                latestItemLaidOut = latestItemIndex <= 0 || listState.layoutInfo.totalItemsCount > latestItemIndex
             )
         }
     }
+
+/**
+ * Web ChatPanel `newMessageCount`: reduces the arrivals below while the Back to Bottom pill shows
+ * ([reduceThreadNewMessagesBelow]), once per change of the list's tail or the pill's inputs.
+ * [arrivals] is read only when it runs, not on every composition.
+ */
+@Composable
+internal fun ThreadNewMessagesBelowEffect(
+    instanceKey: Any?,
+    tailSignature: Any?,
+    awayFromBottom: Boolean,
+    canLoadMoreAfter: Boolean,
+    viewportMeasured: Boolean,
+    current: () -> ThreadNewMessagesBelow,
+    onChange: (ThreadNewMessagesBelow) -> Unit,
+    arrivals: () -> List<ThreadJumpArrival>,
+) {
+    LaunchedEffect(instanceKey, tailSignature, awayFromBottom, canLoadMoreAfter, viewportMeasured) {
+        val state = current()
+        val next =
+            reduceThreadNewMessagesBelow(
+                state = state,
+                messages = arrivals(),
+                awayFromBottom = awayFromBottom,
+                canLoadMoreAfter = canLoadMoreAfter,
+                viewportMeasured = viewportMeasured,
+            )
+        if (next != state) onChange(next)
+    }
+}
 
 private fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
