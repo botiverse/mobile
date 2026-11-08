@@ -19,6 +19,29 @@ class AppShellRailOrderTest {
         assertEquals(phoneOrder.filter { it in railOrder }, railOrder.filter { it in phoneOrder })
     }
 
+    /** Review H1: the shell sorts the rail twice (phone-bar order, then the saved order); Artifacts survives both and a drag. */
+    @Test fun artifactsFollowsTasksThroughBothSortsAndADragKeepsIt() {
+        fun drawn(order: List<String>, artifacts: Boolean) =
+            appShellRailTabs(selectedTab = "home", labelFor = { it }, artifacts = artifacts)
+                .orderedLikePhoneBar { it.key }
+                .orderedLikeRailTabOrder(order)
+                .map { it.key }
+        val default = build.raft.app.data.normalizeRaftRailTabOrder(null)
+        assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), drawn(default, artifacts = true))
+
+        // Artifacts dragged to the top: saved, and drawn there next time.
+        val dragged = listOf("artifacts", "home", "activity", "tasks", "members", "computers", "apps")
+        val saved = build.raft.app.data.raftRailTabOrderWithVisibleOrder(default, dragged.mapNotNull(::raftRailTabIdForKey))
+        assertEquals(listOf("search", "artifacts", "chat", "activity", "tasks", "members", "computers", "apps", "assistant"), saved)
+        assertEquals(dragged, drawn(saved, artifacts = true))
+
+        // A server without Artifacts draws no tab; a drag there keeps the placement made elsewhere.
+        val withoutTab = listOf("activity", "home", "tasks", "members", "computers", "apps")
+        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), drawn(saved, artifacts = false))
+        val resaved = build.raft.app.data.raftRailTabOrderWithVisibleOrder(saved, withoutTab.mapNotNull(::raftRailTabIdForKey))
+        assertEquals(1, resaved.indexOf("artifacts"))
+    }
+
     @Test fun dmsStayBesideHome() {
         assertEquals(
             listOf("home", "dms", "activity", AppShellRailSearchKey, "more"),

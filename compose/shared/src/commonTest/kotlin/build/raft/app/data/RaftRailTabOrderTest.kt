@@ -31,7 +31,7 @@ class RaftRailTabOrderTest {
     @Test
     fun `a saved order from before Apps gets it right after Computers instead of at the end`() {
         assertEquals(
-            listOf("computers", "apps", "tasks", "chat", "search", "activity", "members", "assistant"),
+            listOf("computers", "apps", "tasks", "artifacts", "chat", "search", "activity", "members", "assistant"),
             normalizeRaftRailTabOrder(listOf("computers", "tasks", "chat", "search", "activity", "members", "assistant")),
         )
     }
@@ -39,18 +39,27 @@ class RaftRailTabOrderTest {
     @Test
     fun `other left-out tabs follow at the end in default order and unknown ids drop`() {
         assertEquals(
-            listOf("tasks", "chat", "search", "activity", "members", "computers", "apps", "assistant"),
+            listOf("tasks", "artifacts", "chat", "search", "activity", "members", "computers", "apps", "assistant"),
             normalizeRaftRailTabOrder(listOf("tasks", "wiki", "chat", "tasks")),
         )
         assertEquals(
-            listOf("tasks", "computers", "apps", "chat", "search", "activity", "members", "assistant"),
+            listOf("tasks", "artifacts", "computers", "apps", "chat", "search", "activity", "members", "assistant"),
             normalizeRaftRailTabOrder(listOf("tasks", "computers", "chat")),
         )
     }
 
     @Test
+    fun `a saved order from before Artifacts gets it right after Tasks`() {
+        // web railTabOrder.ts INSERTED_AFTER (slock staging aae2b7a89).
+        assertEquals(
+            listOf("chat", "tasks", "artifacts", "search", "activity", "members", "computers", "apps", "assistant"),
+            normalizeRaftRailTabOrder(listOf("chat", "tasks", "search", "activity", "members", "computers", "apps", "assistant")),
+        )
+    }
+
+    @Test
     fun `a saved order that places Apps keeps it there`() {
-        val order = listOf("apps", "chat", "search", "activity", "tasks", "members", "computers", "assistant")
+        val order = listOf("apps", "chat", "search", "activity", "tasks", "members", "artifacts", "computers", "assistant")
         assertEquals(order, normalizeRaftRailTabOrder(order))
     }
 
@@ -59,11 +68,12 @@ class RaftRailTabOrderTest {
         // The top bar holds Search and the app has no assistant: the rail draws the other six.
         val full = listOf("search", "chat", "activity", "tasks", "members", "computers", "apps", "assistant")
         assertEquals(
-            listOf("search", "apps", "chat", "activity", "tasks", "members", "computers", "assistant"),
+            // Artifacts (not drawn on this server) keeps its slot: the fifth.
+            listOf("search", "apps", "chat", "activity", "artifacts", "tasks", "members", "computers", "assistant"),
             raftRailTabOrderWithVisibleOrder(full, listOf("apps", "chat", "activity", "tasks", "members", "computers")),
         )
         // A drawn order that isn't a permutation of the drawn tabs changes nothing.
-        assertEquals(full, raftRailTabOrderWithVisibleOrder(full, listOf("apps", "apps")))
+        assertEquals(normalizeRaftRailTabOrder(full), raftRailTabOrderWithVisibleOrder(full, listOf("apps", "apps")))
     }
 
     @Test

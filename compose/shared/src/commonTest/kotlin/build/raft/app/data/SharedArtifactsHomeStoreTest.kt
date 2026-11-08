@@ -281,6 +281,66 @@ class SharedArtifactsHomeStoreTest {
         assertEquals(listOf("user:u-2", "user:u-1"), store.state.value.shownAuthorChoices.map { it.filterValue }, "most frequent first")
     }
 
+    /** Review H2: an answer for the server the page left never shows under the next one. */
+    @Test
+    fun aLateAnswerFromTheServerLeftIsDropped() = runTest {
+        val api = FakeDashboardApi()
+        val late = CompletableDeferred<ArtifactsHomeLoad<ArtifactsHomePage>>()
+        api.answer = { _, _ -> late.await() }
+        val store = store(api)
+        store.dispatch(ArtifactsHomeIntent.Start("server-a"))
+        runCurrent()
+
+        // Server B, its flag still unknown: nothing read yet.
+        store.dispatch(ArtifactsHomeIntent.Start(null))
+        late.complete(ok(rows("from-a"), counts = ArtifactsHomeCounts(9, 9, 1)))
+        advanceUntilIdle()
+
+        assertNull(store.state.value.rows)
+        assertNull(store.state.value.counts)
+        assertEquals(ArtifactsHomeStatus.Idle, store.state.value.status)
+
+        // B's flag resolves on: B's own list.
+        api.answer = { _, _ -> ok(rows("from-b")) }
+        store.dispatch(ArtifactsHomeIntent.Start("server-b"))
+        advanceUntilIdle()
+        assertEquals(listOf("from-b"), store.state.value.rows?.map { it.summary.id })
+    }
+
+    /** Review M2: a filter that fails is the failed state; it doesn't put the sort back or say the sort failed. */
+    @Test
+    fun aFailedFilterReadLeavesTheSortAlone() = runTest {
+        val api = FakeDashboardApi()
+        val chosen = mutableListOf<ArtifactsHomeSort>()
+        val store = started(api, onSortChosen = { chosen += it })
+        val events = mutableListOf<ArtifactsHomeEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.events.toList(events) }
+
+        api.answer = { query, _ -> if (query.relevant) ArtifactsHomeLoad.Failed(ScreenError("x")) else ok(rows("a")) }
+        // The sort changes, then the toggle before the sort's read answers: the read that fails is the filter's.
+        store.dispatch(ArtifactsHomeIntent.SetSort(ArtifactsHomeSort.Updated))
+        store.dispatch(ArtifactsHomeIntent.SetRelevant(true))
+        advanceUntilIdle()
+
+        assertEquals(ArtifactsHomeStatus.Failed, store.state.value.status)
+        assertEquals(ArtifactsHomeSort.Updated, store.state.value.query.sort)
+        assertEquals(listOf(ArtifactsHomeSort.Updated), chosen)
+        assertEquals(emptyList(), events)
+    }
+
+    /** Review L2: a page that lists one twice still shows it once. */
+    @Test
+    fun aPageWithARepeatShowsItOnce() = runTest {
+        val api = FakeDashboardApi()
+        api.answer = { _, cursor -> if (cursor == null) ok(rows("a"), next = "c1") else ok(rows("b", "b", "a")) }
+        val store = store(api)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1"))
+        advanceUntilIdle()
+        store.dispatch(ArtifactsHomeIntent.LoadMore)
+        advanceUntilIdle()
+        assertEquals(listOf("a", "b"), store.state.value.rows?.map { it.summary.id })
+    }
+
     private fun TestScope.store(api: FakeDashboardApi, onSortChosen: (ArtifactsHomeSort) -> Unit = {}) =
         // Not backgroundScope: advanceUntilIdle runs only foreground work. A scope of no job on the test's
         // scheduler runs with the test's clock and is never waited for when the test ends.

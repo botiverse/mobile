@@ -118,6 +118,13 @@ internal class SharedArtifactsHomeStore(
         if (serverId == current.serverId && current.status != ArtifactsHomeStatus.Idle) return
         if (serverId != current.serverId) {
             // Both filters name someone or somewhere in one server: another's list starts with neither.
+            // An answer still on its way is the old server's: it must never land under the new one
+            // (review H2), even while the new one's flag is still unknown (Start(null)).
+            generation++
+            readJob?.cancel()
+            pageJob?.cancel()
+            activityRead = ActivityRead.Idle
+            answeredSort = current.query.sort
             searchJob?.cancel()
             choiceJobs.values.forEach { it.cancel() }
             choiceJobs.clear()
@@ -152,12 +159,15 @@ internal class SharedArtifactsHomeStore(
         if (next == current.query) return
         mutableState.value = current.copy(query = next)
         if (current.serverId == null || current.status == ArtifactsHomeStatus.Off) return
-        read(keepRows = readFor == filterKey(current.serverId, next))
+        // Only a change of the sort alone goes back when it fails (review M2): a filter's failure
+        // is the ordinary failed state, its sort untouched.
+        val sortOnly = next.copy(sort = current.query.sort) == current.query
+        read(keepRows = readFor == filterKey(current.serverId, next), sortOnly = sortOnly)
     }
 
     private fun filterKey(serverId: String?, query: ArtifactsHomeQuery): String = "$serverId|${query.copy(sort = ArtifactsHomeSort.Default)}"
 
-    private fun read(keepRows: Boolean, keepCounts: Boolean = true): Job? {
+    private fun read(keepRows: Boolean, keepCounts: Boolean = true, sortOnly: Boolean = false): Job? {
         val current = mutableState.value
         val serverId = current.serverId ?: return null
         val query = current.query
@@ -204,7 +214,7 @@ internal class SharedArtifactsHomeStore(
                         val error = load.errorOrNull() ?: ScreenError("artifacts_home_failed")
                         mutableState.value = latest.copy(status = ArtifactsHomeStatus.Failed, error = error)
                         // The sort control goes back with the rows, which that sort never replaced.
-                        if (answeredSort != query.sort) {
+                        if (sortOnly && answeredSort != query.sort) {
                             mutableEvents.tryEmit(ArtifactsHomeEvent.SortFailed(error))
                             val back = answeredSort
                             onSortChosen(back)
@@ -243,7 +253,8 @@ internal class SharedArtifactsHomeStore(
                 val seen = latest.rows.mapTo(HashSet()) { it.summary.id }
                 mutableState.value =
                     latest.copy(
-                        rows = latest.rows + load.value.rows.filter { it.summary.id !in seen },
+                        // Keyset paging may list one twice, even within a page (review L2).
+                        rows = (latest.rows + load.value.rows.filter { it.summary.id !in seen }).distinctBy { it.summary.id },
                         nextCursor = load.value.nextCursor,
                         paging = false,
                         extended = true,
