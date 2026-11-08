@@ -134,6 +134,20 @@ ruby -e '
     release_steps.fetch(identity_index).fetch("run").include?("signed-aab/build-identity.json")
   raise "uploader bypasses signed AAB" unless upload_env.fetch("AAB_PATH") == "${{ steps.sign-aab.outputs.aab_path }}"
   raise "upload pin is not derived from verified AAB" unless upload_env.fetch("UPLOAD_KEY_CERT_SHA256") == "${{ steps.sign-aab.outputs.upload_key_cert_sha256 }}"
+  # A build registered through the artifact upload (every Play build) gets no mapping or
+  # native symbols from create_hands_draft, so the build job must attach them itself.
+  attach_index = release_steps.index { |step| step["name"] == "Attach R8 mapping + native symbols to the Hands build" }
+  raise "Hands artifact build is left without its R8 mapping and native symbols" unless attach_index && attach_index > upload_index
+  attach_step = release_steps.fetch(attach_index)
+  raise "symbol attach is not bound to the uploaded build" unless attach_step.fetch("if").to_s.include?("steps.hands-artifacts.outputs.build_id") &&
+    attach_step.fetch("env").fetch("HANDS_BUILD_ID") == "${{ steps.hands-artifacts.outputs.build_id }}"
+  raise "symbol attach skips Play builds" if attach_step.fetch("if").to_s.include?("play")
+  attach_run = attach_step.fetch("run")
+  raise "symbol attach does not attach the R8 mapping" unless attach_run.include?("--kind proguard-mapping") &&
+    attach_run.include?("compose/androidApp/build/outputs/mapping/${ANDROID_VARIANT}/mapping.txt")
+  raise "symbol attach does not attach Android native symbols" unless attach_run.include?("--kind native-symbols --platform android") &&
+    attach_step.fetch("env").fetch("SYMBOL_ARCHIVE") == "${{ steps.native-symbols.outputs.archive }}"
+  raise "symbol attach helper is not workflow-owned" unless stage_run.include?("scripts/lib/hands_retry.sh")
   raise "repair dispatch can schedule normal build" unless resolve_job.fetch("if").include?("inputs.aab_signing_repair == " + 39.chr + 39.chr)
   repair = jobs.fetch("sign_existing_aab")
   raise "repair is not dispatch-only" unless repair.fetch("if").include?("github.event_name == " + 39.chr + "workflow_dispatch" + 39.chr)

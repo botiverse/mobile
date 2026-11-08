@@ -344,6 +344,7 @@ jobs:
             .github/gradle-cache-epoch \
             .github/gradle-cache-quarantine \
             scripts/upload_android_hands_artifacts.sh \
+            scripts/lib/hands_retry.sh \
             scripts/sign_android_aab.sh \
             scripts/verify_android_aab.sh \
             scripts/VerifyAndroidAab.java \
@@ -716,6 +717,40 @@ jobs:
               echo "Closed, open and production tracks still need artin's approval. Never publish the Hands draft this creates."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      # The artifact upload above registers the build with its AAB + APK only, and
+      # create_hands_draft (whose publish-android attaches mapping + symbols) never runs
+      # for Play. Attach this run's R8 mapping and native symbols here so every build
+      # uploaded through this path can be symbolicated on Hands. The AAB already embeds
+      # the mapping (BUNDLE-METADATA/.../proguard.map), so Play gets it from the bundle.
+      # CLI >= 0.5.40 for --platform: older attach-symbols labels native symbols "ios".
+      - name: Attach R8 mapping + native symbols to the Hands build
+        if: ${{ steps.hands-artifacts.outputs.build_id != '' }}
+        env:
+          HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
+          HANDS_ANDROID_APP_ID: ${{ secrets.HANDS_ANDROID_APP_ID }}
+          HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+          HANDS_BUILD_ID: ${{ steps.hands-artifacts.outputs.build_id }}
+          ANDROID_VARIANT: ${{ needs.resolve.outputs.android_variant }}
+          SYMBOL_ARCHIVE: ${{ steps.native-symbols.outputs.archive }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAPPING="compose/androidApp/build/outputs/mapping/${ANDROID_VARIANT}/mapping.txt"
+          if [ ! -s "${MAPPING}" ] && [ "${ANDROID_VARIANT}" != "debug" ]; then
+            echo "R8 mapping missing for minified variant ${ANDROID_VARIANT}: ${MAPPING}" >&2
+            exit 1
+          fi
+          npm install -g @botiverse/hands-cli@0.5.43
+          # shellcheck source=/dev/null
+          source scripts/lib/hands_retry.sh
+          APP="${HANDS_ANDROID_APP_ID:-raft-android}"
+          if [ -s "${MAPPING}" ]; then
+            hands_retry hands builds attach-symbols "${APP}" "${HANDS_BUILD_ID}" "${MAPPING}" --kind proguard-mapping
+            echo "pg_map_id: $(sed -nE '1,40s/^# pg_map_id: ([0-9a-f]+).*/\1/p' "${MAPPING}" | head -n 1)"
+          fi
+          hands_retry hands builds attach-symbols "${APP}" "${HANDS_BUILD_ID}" "${SYMBOL_ARCHIVE}" \
+            --kind native-symbols --platform android
 
       - name: Upload signed AAB and verification receipt
         if: ${{ needs.resolve.outputs.android_variant != 'debug' || needs.resolve.outputs.upload_android_artifacts == 'true' }}
