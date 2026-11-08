@@ -142,7 +142,7 @@ private fun Modifier.excerptFade(): Modifier {
             if (overflowing) {
                 val fade = ArtifactCardExcerptFade.toPx()
                 drawRect(
-                    brush = Brush.verticalGradient(listOf(Color.Black, Color.Transparent), startY = size.height - fade, endY = size.height),
+                    brush = Brush.verticalGradient(listOf(Color.Black, Color.Transparent), startY = size.height - fade, endY = size.height), // raft-color: DstIn alpha mask for the fade; only alpha is used
                     topLeft = Offset(0f, size.height - fade),
                     blendMode = BlendMode.DstIn,
                 )
