@@ -38,7 +38,10 @@ internal data class CreateAgentRequest(
     val external: Boolean,
     val avatarUrl: String? = null,
     /** Runtime form v2 create (the server assembles the runtimeConfig); null only for an external agent. */
-    val runtimeFormV2: RuntimeFormV2SubmitBody? = null
+    val runtimeFormV2: RuntimeFormV2SubmitBody? = null,
+    /** Cloud agent ([external] too); [hostedModel] null means the provider's default. */
+    val hostedProvider: String? = null,
+    val hostedModel: String? = null
 )
 
 internal class SharedCreateAgentCoordinator(
@@ -62,14 +65,16 @@ internal class SharedCreateAgentCoordinator(
                     v2
                 )
             } else {
-                // External agent: no Computer and no runtime form.
+                // External or cloud agent: no Computer and no runtime form.
                 buildCreateAgentBody(
                     CreateAgentBody(
                         name = request.name,
                         description = request.description,
                         machineId = request.machineId,
                         avatarUrl = request.avatarUrl,
-                        external = request.external.takeIf { it }
+                        external = request.external.takeIf { it },
+                        provider = request.hostedProvider,
+                        hostedModel = request.hostedModel
                     )
                 )
             }
