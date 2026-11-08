@@ -1116,6 +1116,12 @@
     <string name="thread_share_copy_markdown">Copiar Markdown</string>
     <string name="thread_share_generate_image">Generar imagen</string>
     <string name="thread_share_download">Descargar</string>
+    <string name="thread_share_width_label">Ancho de la imagen</string>
+    <string name="thread_share_width_phone">Teléfono</string>
+    <string name="thread_share_width_tablet">Tableta</string>
+    <string name="thread_share_width_wide">Ancho</string>
+    <string name="thread_share_width_custom">Personalizado</string>
+    <string name="thread_share_rendering">Componiendo la imagen…</string>
     <string name="thread_task_candidate_current">Actual</string>
     <string name="thread_task_candidate_untitled">Tarea sin título</string>
     <string name="thread_task_candidate_unknown_channel">Canal desconocido</string>
