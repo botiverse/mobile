@@ -15,7 +15,13 @@ class RaftServerMenuModelTest {
     fun wideScreenPopoverHasNoPagesRowThePhoneKeepsIt() {
         // raft-design #741 (navigation.md, "The server in the apps' desktop mode").
         val all = RaftServerMenuEntry.entries
-        assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = false), "the phone keeps every page")
+        assertEquals(all - RaftServerMenuEntry.Artifacts, raftServerMenuEntriesFor(all, wide = false, guest = false), "the phone keeps every page")
+        // web MobileServerTab: Artifacts first, only behind workspace_artifacts_v0, guests too.
+        assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = false, artifacts = true))
+        assertEquals(
+            listOf(RaftServerMenuEntry.Artifacts, RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers, RaftServerMenuEntry.Settings),
+            raftServerMenuEntriesFor(all, wide = false, guest = true, artifacts = true),
+        )
         assertEquals(
             listOf(RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers, RaftServerMenuEntry.Settings),
             raftServerMenuEntriesFor(all, wide = false, guest = true),
@@ -46,10 +52,10 @@ class RaftServerMenuModelTest {
         assertEquals("s1", model.currentServer.id)
         assertEquals("Botiverse", model.currentServer.name)
         assertEquals(
-            listOf(RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers, RaftServerMenuEntry.Apps, RaftServerMenuEntry.Settings),
+            listOf(RaftServerMenuEntry.Artifacts, RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers, RaftServerMenuEntry.Apps, RaftServerMenuEntry.Settings),
             model.entries,
         )
-        assertEquals(listOf("members", SettingsDestinationComputers, "apps", "settings"), model.entries.map { it.key })
+        assertEquals(listOf("artifacts", "members", SettingsDestinationComputers, "apps", "settings"), model.entries.map { it.key })
     }
 
     @Test

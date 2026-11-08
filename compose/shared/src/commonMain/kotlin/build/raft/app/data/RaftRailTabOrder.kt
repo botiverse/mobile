@@ -11,6 +11,9 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+// slock staging aae2b7a89 `railTabOrder.ts` adds `artifacts` after `tasks` (RAIL_TAB_IDS and
+// INSERTED_AFTER): the app keeps it in the order whether or not its server draws the tab.
+//
 // The wide rail's tabs in the person's own order, saved on their account: one order for every
 // server and device (botiverse/slock #10279, 1cfdc489e1; contract read at staging 4ca2f2e6cb):
 //
@@ -25,13 +28,13 @@ import kotlinx.serialization.json.Json
  * assistant) has no rail entry in the app: it keeps its place in the order without being drawn.
  */
 internal val RaftRailTabIds: List<String> =
-    listOf("search", "chat", "activity", "tasks", "members", "computers", "apps", "assistant")
+    listOf("search", "chat", "activity", "tasks", "artifacts", "members", "computers", "apps", "assistant")
 
 /**
  * Tabs added after people had saved orders, and the tab they follow by default (slock
  * `INSERTED_AFTER`): a saved order without one gets it right after that tab instead of at the end.
  */
-private val RaftRailTabInsertedAfter: Map<String, String> = mapOf("apps" to "computers")
+private val RaftRailTabInsertedAfter: Map<String, String> = mapOf("apps" to "computers", "artifacts" to "tasks")
 
 /**
  * slock `normalizeRailTabOrder`: [order] as a full order of every tab. Known ids in the given

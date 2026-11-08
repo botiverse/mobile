@@ -138,6 +138,19 @@ internal data class RaftWideNavHistory(
     }
 
     /**
+     * The history without [surface]'s entries (a destination that went away: the Artifacts tab when
+     * its server's flag turns off), so Back / Forward never reopen it. The current place stays the
+     * nearest kept entry at or before it; a restore of a dropped entry ends.
+     */
+    fun withoutSurface(surface: String): RaftWideNavHistory {
+        if (entries.none { it.surface == surface }) return this
+        val kept = entries.filter { it.surface != surface }
+        val keptBefore = entries.take(index + 1).count { it.surface != surface }
+        val nextIndex = if (kept.isEmpty()) -1 else (keptBefore - 1).coerceIn(0, kept.lastIndex)
+        return copy(entries = kept, index = nextIndex, pendingRestore = pendingRestore?.takeIf { it.surface != surface })
+    }
+
+    /**
      * Ends a restore that did not arrive (the destination could not open, or is still loading):
      * [showing], what the shell shows now, is recorded as usual.
      */
@@ -166,6 +179,9 @@ internal data class RaftWideNavHistories(
 
     fun settle(serverId: String, showing: RaftWideNavEntry?): RaftWideNavHistories =
         with(serverId, of(serverId).settle(showing?.takeIf { it.serverId == serverId }))
+
+    /** Every server's history without [surface] in [serverId] ([RaftWideNavHistory.withoutSurface]). */
+    fun withoutSurface(serverId: String, surface: String): RaftWideNavHistories = with(serverId, of(serverId).withoutSurface(surface))
 
     private fun with(serverId: String, history: RaftWideNavHistory): RaftWideNavHistories =
         if (byServer[serverId] == history) this else copy(byServer = byServer + (serverId to history))

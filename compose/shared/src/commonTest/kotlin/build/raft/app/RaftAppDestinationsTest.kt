@@ -16,6 +16,7 @@ class RaftAppDestinationsTest {
                 RaftAppDestination.Activity to "activity",
                 RaftAppDestination.Tasks to "tasks",
                 RaftAppDestination.Search to "search",
+                RaftAppDestination.Artifacts to "artifacts",
                 RaftAppDestination.Members to "members",
                 RaftAppDestination.Computers to "computers",
                 RaftAppDestination.Apps to "apps",
@@ -52,7 +53,7 @@ class RaftAppDestinationsTest {
         assertEquals(RaftNavPresentation.PhoneBar, raftNavPresentation(navRailActive = false))
         assertEquals(RaftNavPresentation.Rail, raftNavPresentation(navRailActive = true))
         assertEquals(
-            listOf("home", "activity", "tasks", "members", "computers", "apps"),
+            listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"),
             RaftNavPresentation.Rail.destinations.map { it.id },
         )
         assertEquals(listOf("help", "settings"), RaftNavPresentation.Rail.footer.map { it.id })
@@ -81,7 +82,7 @@ class RaftAppDestinationsTest {
     @Test
     fun routesSayWhatATapDoes() {
         assertEquals(
-            setOf(RaftAppDestination.Computers, RaftAppDestination.Apps),
+            setOf(RaftAppDestination.Artifacts, RaftAppDestination.Computers, RaftAppDestination.Apps),
             RaftAppDestination.entries.filter { it.route == RaftNavRoute.Page }.toSet(),
         )
         assertEquals(RaftNavRoute.Menu, RaftAppDestination.Help.route)
