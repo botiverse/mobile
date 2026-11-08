@@ -21,6 +21,10 @@ import kotlinx.coroutines.ensureActive
  * The window is short on purpose: an ask is usually made because something changed, and a request sent
  * well before that change may answer without it. Only requests started together are shared.
  *
+ * Write barrier: a write (any non-GET) of the same account on the same environment, started or
+ * finished after a GET was sent, closes that GET to joiners. A read acked mid-flight followed by a
+ * reconcile of `channels/unread` must not take the counts read before the read ([noteWrite]).
+ *
  * Cancellation: the request runs in the coroutine of the caller that sent it. If that caller is
  * cancelled, the callers waiting on it do not inherit the cancellation; the first of them sends the
  * request again. A waiter's own cancellation only cancels its wait.
@@ -29,6 +33,9 @@ internal class RaftInFlightGetDedupe(
     private val joinWindowMillis: Long = RaftInFlightGetJoinWindowMillis,
     private val nowMillis: () -> Long = monotonicMillisClock(),
 ) {
+    /** Writes of one account on one environment order the GETs of that account there. */
+    data class WriteScope(val baseUrl: String, val sessionUserId: String?)
+
     data class Key(
         val baseUrl: String,
         val path: String,
@@ -39,9 +46,11 @@ internal class RaftInFlightGetDedupe(
         /** Whose request it is when the server comes from the session (no override). */
         val sessionUserId: String?,
         val sessionServerId: String?,
-    )
+    ) {
+        val writeScope: WriteScope get() = WriteScope(baseUrl, sessionUserId)
+    }
 
-    private class Flight(val startedAtMillis: Long) {
+    private class Flight(val startedAtMillis: Long, val writeSequence: Long) {
         val answer = CompletableDeferred<HomeNetworkResponse>()
     }
 
@@ -50,6 +59,22 @@ internal class RaftInFlightGetDedupe(
 
     private val lock = SynchronizedObject()
     private val flights = mutableMapOf<Key, Flight>()
+    private val writeSequences = mutableMapOf<WriteScope, Long>()
+
+    /** A write of [scope] starts or ends: GETs of [scope] already sent can no longer be joined. */
+    fun noteWrite(scope: WriteScope) {
+        synchronized(lock) { writeSequences[scope] = (writeSequences[scope] ?: 0L) + 1L }
+    }
+
+    /** Runs the write [send], closing the GETs of [scope] sent before it, both when it starts and ends. */
+    suspend fun <T> write(scope: WriteScope, send: suspend () -> T): T {
+        noteWrite(scope)
+        try {
+            return send()
+        } finally {
+            noteWrite(scope)
+        }
+    }
 
     /** GETs sent / GETs that took another request's answer, for tests and diagnostics. */
     var sent: Long = 0L
@@ -63,12 +88,18 @@ internal class RaftInFlightGetDedupe(
             var mine: Flight? = null
             val joinedFlight =
                 synchronized(lock) {
+                    val writeSequence = writeSequences[key.writeScope] ?: 0L
                     val existing = flights[key]
-                    if (existing != null && !existing.answer.isCompleted && now - existing.startedAtMillis <= joinWindowMillis) {
+                    if (
+                        existing != null &&
+                        !existing.answer.isCompleted &&
+                        now - existing.startedAtMillis <= joinWindowMillis &&
+                        existing.writeSequence == writeSequence
+                    ) {
                         joined += 1
                         existing
                     } else {
-                        Flight(now).also { flight ->
+                        Flight(now, writeSequence).also { flight ->
                             flights[key] = flight
                             mine = flight
                             sent += 1

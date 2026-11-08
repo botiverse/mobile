@@ -115,10 +115,13 @@ internal class ProcessActivityUnreadStore(
      */
     private val throttleMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
     /**
-     * The window for a read only realtime events asked for (`invalidate:realtime:*`,
-     * `invalidate:activity:*`, `fact_reconcile`), measured from the last read like [throttleMillis].
-     * Any other ask in the same round (the person's read, a route attach, a return) keeps
-     * [throttleMillis]. Null keeps [throttleMillis] for every read. The process host passes
+     * The window for a read only "ambient" realtime asked for, measured from the last read like
+     * [throttleMillis]: new / edited messages, thread and task changes, object rows
+     * ([processActivityUnreadRealtimeSink]) and Activity's own realtime patches
+     * ([submitInvalidation] with a realtime source). Any other ask in the same round keeps
+     * [throttleMillis]: the person's own actions (read, Done, Mark all read, follow), a route attach,
+     * a return, a reconnect catch-up (`sync:resume`, refresh-required) and a read or Done on another
+     * device. Null keeps [throttleMillis] for every read. The process host passes
      * [ActivityUnreadRealtimeMinIntervalMillis] (feedback fb-52cc0499).
      */
     private val realtimeMinIntervalMillis: Long? = null,
@@ -224,14 +227,21 @@ internal class ProcessActivityUnreadStore(
      * pending or in-flight fetch round is coalesced; markers retire when that round's fetch
      * completes, so a later identical hint still fetches again.
      */
-    fun invalidate(owner: ProcessActivityUnreadOwner, reason: String, eventMarker: Any? = null) {
+    fun invalidate(
+        owner: ProcessActivityUnreadOwner,
+        reason: String,
+        eventMarker: Any? = null,
+        /** Only ambient realtime asked (see [realtimeMinIntervalMillis]); false reads in the short window. */
+        realtimeOnly: Boolean = false
+    ) {
         request(
             serverId = ServerId(owner.serverId),
             foregroundEpoch = null,
             force = true,
             reason = "invalidate:$reason",
             expectedOwner = owner,
-            eventMarker = eventMarker
+            eventMarker = eventMarker,
+            realtimeOnly = realtimeOnly
         )
     }
 
@@ -325,7 +335,11 @@ internal class ProcessActivityUnreadStore(
             )
             return
         }
-        invalidate(owner, reason = "activity:${invalidation.source}")
+        invalidate(
+            owner,
+            reason = "activity:${invalidation.source}",
+            realtimeOnly = invalidation.source.isRealtimeOnlyActivitySummarySource()
+        )
     }
 
     suspend fun invalidateAll(reason: String) {
@@ -344,7 +358,8 @@ internal class ProcessActivityUnreadStore(
         force: Boolean,
         reason: String,
         expectedOwner: ProcessActivityUnreadOwner?,
-        eventMarker: Any? = null
+        eventMarker: Any? = null,
+        realtimeOnly: Boolean = false
     ) {
         val normalizedServerId = serverId.value.trim()
         if (normalizedServerId.isBlank()) return
@@ -415,7 +430,7 @@ internal class ProcessActivityUnreadStore(
                     return@withLock
                 }
                 entry.pendingReason = reason
-                if (!reason.isRealtimeOnlySummaryAsk()) entry.pendingUrgent = true
+                if (!realtimeOnly) entry.pendingUrgent = true
                 if (entry.active) {
                     entry.pending = true
                     entry.projection =
@@ -634,6 +649,8 @@ internal class ProcessActivityUnreadStore(
                     } else if (factChanged && entry.canonicalDirty && !entry.pending) {
                         entry.pending = true
                         entry.pendingReason = "fact_reconcile"
+                        // A local fact (the person's action in Activity) landed mid-read: not ambient.
+                        entry.pendingUrgent = true
                     }
                     logger(
                         "process_activity_unread_load result=${result.resultLabel()} ${owner.diagnosticsKey} " +
@@ -762,9 +779,27 @@ internal class ProcessActivityUnreadStore(
     )
 }
 
-/** An ask only realtime made (`invalidate:realtime:*`, `invalidate:activity:*`, `fact_reconcile`). */
-private fun String.isRealtimeOnlySummaryAsk(): Boolean =
-    activityUnreadSummaryFetchReason(this) == InboxFetchReason.RealtimeFallback
+/**
+ * Activity's summary invalidation sources (`activity:<intent>`, [SharedActivityStore]) that only
+ * ambient realtime causes. Everything else Activity reports (Done, Mark all read, read, unread,
+ * follow, undo, a remote Done) is the person's action, here or on another device.
+ */
+private val RealtimeOnlyActivitySummarySources = setOf("realtime", "realtime_summary")
+
+internal fun String.isRealtimeOnlyActivitySummarySource(): Boolean =
+    removePrefix("activity:") in RealtimeOnlyActivitySummarySources
+
+/**
+ * The realtime events the badge may read for in the long window: ambient activity. A reconnect
+ * catch-up (`sync:resume`, refresh-required) and a read on another device are read promptly.
+ */
+internal fun RealtimeEvent.isAmbientActivityUnreadEvent(): Boolean =
+    when (this) {
+        is SyncResumeResponse,
+        is RealtimeRefreshRequired,
+        is PerReceiverReadStateChanged -> false
+        else -> true
+    }
 
 private fun DataResult<ActivityUnreadSummarySnapshot>.resultLabel(): String =
     when (this) {
@@ -799,7 +834,8 @@ internal fun processActivityUnreadRealtimeSink(
             store.invalidate(
                 owner,
                 reason = "realtime:${event::class.simpleName.orEmpty()}",
-                eventMarker = event
+                eventMarker = event,
+                realtimeOnly = event.isAmbientActivityUnreadEvent()
             )
         }
     }

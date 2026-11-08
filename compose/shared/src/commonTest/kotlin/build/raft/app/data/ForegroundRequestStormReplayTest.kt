@@ -176,7 +176,7 @@ class ForegroundRequestStormReplayTest {
             when (kind) {
                 "R1", "R2" -> {
                     val serverKey = kind.substring(1)
-                    badge.invalidate(owners.getValue(serverKey), reason = "realtime:MessageNew", eventMarker = Any())
+                    badge.invalidate(owners.getValue(serverKey), reason = "realtime:MessageNew", eventMarker = Any(), realtimeOnly = true)
                     if (serverKey == "1") {
                         activity.dispatch(
                             SharedActivityIntent.ApplyRealtimeEvent(ActivityChanged(ServerId("server-1"), "message_new"))

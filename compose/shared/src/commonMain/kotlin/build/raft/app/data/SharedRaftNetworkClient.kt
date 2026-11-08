@@ -168,11 +168,15 @@ internal class SharedRaftNetworkClient(
         val send: suspend () -> HomeNetworkResponse = {
             sendRequest(priority, path, method, query, serverIdOverride, bodyText, expectedAuthority, extraHeaders)
         }
-        if (!method.equals("GET", ignoreCase = true) || bodyText != null) return send()
         val session = sessionStore.readSession()
+        val baseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
+        if (!method.equals("GET", ignoreCase = true) || bodyText != null) {
+            // A write closes this account's GETs already in flight to later joiners (read-after-write).
+            return inFlightGets.write(RaftInFlightGetDedupe.WriteScope(baseUrl, session?.user?.id), send)
+        }
         val key =
             RaftInFlightGetDedupe.Key(
-                baseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl(),
+                baseUrl = baseUrl,
                 path = path,
                 query = query,
                 serverIdOverride = serverIdOverride?.value,

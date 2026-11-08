@@ -57,6 +57,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.TimeSource
 
@@ -218,6 +219,8 @@ class SharedActivityStore internal constructor(
             delayMillis = staleRecoveryDelayMillis
         )
     /** Between [SharedActivityIntent.SurfaceHidden] and the next load the surface asks for. */
+    // Written from the UI thread (dispatch), read by the reconcile loop under realtimeOwnerLock.
+    @Volatile
     private var activitySurfaceHidden = false
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var onThreadUnfollowProjection: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit = onThreadUnfollowProjection
@@ -1487,7 +1490,9 @@ class SharedActivityStore internal constructor(
             return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
         }
         realtimeBackgroundReconcileDirty = true
-        hiddenFoldLoads = if (activitySurfaceHidden) resetLoadsStarted else null
+        // Only with a hidden window configured: without one the store behaves exactly as before.
+        hiddenFoldLoads =
+            if (activitySurfaceHidden && hiddenRealtimeBackgroundRefreshIntervalMillis != null) resetLoadsStarted else null
         realtimeBackgroundReconcileJob?.let { return it }
         // Leading + trailing throttle (web requestInboxBackgroundRefresh): the
         // first request after a quiet window fetches immediately; requests inside

@@ -1358,13 +1358,14 @@ internal class SharedHomeStore(
     }
 
     private fun scheduleReadStateReconcile() {
-        requestUnreadCountsReconcile(reason = "incomplete_home_projection")
+        diagnosticsLogger("per_receiver_read_state_reconcile reason=incomplete_home_projection")
+        dispatch(SharedHomeIntent.ForegroundRefresh)
     }
 
     /**
-     * Unread counts changed in a way Home cannot work out itself: a read-state fact Home or Activity
-     * accepted (they share the checkpoints, so only the first taker sees it), Activity's Done or Mark
-     * all read. Home reloads to take the server's counts.
+     * Activity changed unread counts Home cannot work out itself: a read-state fact Activity accepted
+     * (Home and Activity share the checkpoints, so only the first taker sees it), Activity's Done or
+     * Mark all read. Home reloads to take the server's counts.
      *
      * Storm fix (feedback fb-52cc0499): Activity reported every accepted read straight to
      * [SharedHomeIntent.ForegroundRefresh], so each thread opened from Activity cost a whole Home
@@ -1373,8 +1374,16 @@ internal class SharedHomeStore(
      * realtime events it receives while hidden: mark itself dirty and read once when it shows again
      * ([setHomeSurfaceVisible]). Visible Home reloads at once; asks that arrive while that reload runs
      * fold into ONE reload after it, so the last ask still gets an answer read after it.
+     *
+     * Only Activity's callback comes here; Home's own read-state reconciles stay immediate. Callable
+     * from any thread: the work runs on the store [scope] (serial), so it is ordered with
+     * [setHomeSurfaceVisible] and load commits.
      */
     fun requestUnreadCountsReconcile(reason: String) {
+        scope.launch { reconcileUnreadCountsOnStore(reason) }
+    }
+
+    private fun reconcileUnreadCountsOnStore(reason: String) {
         if (!homeSurfaceVisible) {
             val serverId = (_state.value.content as? SharedHomeContentState.Content)?.baseSnapshot?.server?.id
             if (serverId == null) {
@@ -1406,9 +1415,9 @@ internal class SharedHomeStore(
         diagnosticsLogger("per_receiver_read_state_reconcile reason=$reason")
         dispatch(SharedHomeIntent.ForegroundRefresh)
         val reconcileLoad = loadJob
-        scope.launch {
-            var handOff = false
-            try {
+        val follower =
+            scope.launch {
+                var handOff = false
                 reconcileLoad?.join()
                 while (true) {
                     val again =
@@ -1431,14 +1440,19 @@ internal class SharedHomeStore(
                     dispatch(SharedHomeIntent.ForegroundRefresh)
                     loadJob?.join()
                 }
-            } finally {
-                // Cancelled (clear / reset) or handing off: never leave a dead owner behind.
-                synchronized(unreadReconcileLock) {
-                    if (unreadReconcileOwner === token) unreadReconcileOwner = null
+                // Hidden meanwhile: the trailing ask becomes Home's dirty mark.
+                if (handOff) {
+                    synchronized(unreadReconcileLock) {
+                        if (unreadReconcileOwner === token) unreadReconcileOwner = null
+                    }
+                    reconcileUnreadCountsOnStore("coalesced_trailing")
                 }
             }
-            // Hidden meanwhile: the trailing ask becomes Home's dirty mark.
-            if (handOff) requestUnreadCountsReconcile(reason = "coalesced_trailing")
+        // Runs even when the scope was cancelled before the follower started: never leave a dead owner.
+        follower.invokeOnCompletion {
+            synchronized(unreadReconcileLock) {
+                if (unreadReconcileOwner === token) unreadReconcileOwner = null
+            }
         }
     }
 
