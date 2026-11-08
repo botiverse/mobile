@@ -16,7 +16,9 @@ class RaftMemoryTelemetryTest {
             foreground = true,
             foregroundChangedAtMillis = 2_000L,
             sampledAtMillis = 29_000L,
+            rssKb = 450_000L,
             pssKb = 400_000L,
+            pssSampledAtMillis = 10_000L,
             javaHeapUsedKb = 90_000L,
             javaHeapMaxKb = 262_144L,
             nativeHeapKb = 70_000L,
@@ -36,12 +38,30 @@ class RaftMemoryTelemetryTest {
     }
 
     @Test
-    fun corruptOrForeignValuesDecodeToNothing() {
+    fun corruptOrOlderFormatValuesDecodeToNothing() {
         assertNull(MemoryTelemetrySnapshot.decode(null))
         assertNull(MemoryTelemetrySnapshot.decode(""))
-        assertNull(MemoryTelemetrySnapshot.decode("2," + sample.encode().substringAfter(',')))
+        assertNull(MemoryTelemetrySnapshot.decode("1," + sample.encode().substringAfter(',')))
         assertNull(MemoryTelemetrySnapshot.decode(sample.encode() + ",1"))
         assertNull(MemoryTelemetrySnapshot.decode(sample.encode().replace("4321", "x")))
+    }
+
+    @Test
+    fun ringKeepsOneEntryPerProcessNewestFirstAndSkipsCorruptEntries() {
+        val processes = (1..8).map { i -> MemoryTelemetrySnapshot(i, i * 1_000L, i * 1_000L, false, i * 1_000L) }
+        var ring = emptyList<MemoryTelemetrySnapshot>()
+        processes.forEach { ring = MemoryTelemetryRing.merge(ring, it) }
+        assertEquals((3..8).toList(), ring.map { it.pid })
+
+        // The same process writing again replaces its entry.
+        val updated = processes.last().copy(foreground = true, writtenAtMillis = 9_999L)
+        ring = MemoryTelemetryRing.merge(ring, updated)
+        assertEquals(MemoryTelemetryRing.Capacity, ring.size)
+        assertEquals(updated, ring.last())
+
+        val decoded = MemoryTelemetryRing.decode(MemoryTelemetryRing.encode(ring) + ";garbage;;")
+        assertEquals(ring, decoded)
+        assertTrue(MemoryTelemetryRing.decode(null).isEmpty())
     }
 
     @Test
@@ -61,8 +81,8 @@ class RaftMemoryTelemetryTest {
         assertEquals(
             "previous_process_exit timestampMillis=31000 reason=other reasonCode=13 status=0 importance=400 " +
                 "pssKb=0 rssKb=0 traceAvailable=false pid=4321 telemetry=matched sinceLaunchMs=30000 " +
-                "foreground=true foregroundChangeAgeMs=29000 sampleAgeMs=2000 lastPssKb=400000 " +
-                "heapUsedKb=90000 heapMaxKb=262144 nativeHeapKb=70000 systemAvailKb=500000 " +
+                "foreground=true foregroundChangeAgeMs=29000 sampleAgeMs=2000 lastRssKb=450000 lastPssKb=400000 " +
+                "pssAgeMs=21000 heapUsedKb=90000 heapMaxKb=262144 nativeHeapKb=70000 systemAvailKb=500000 " +
                 "systemThresholdKb=216000 systemLowMemory=true trimLevel=5 trim=running_moderate " +
                 "maxTrimLevel=15 trimAgeMs=6000",
             formatHistoricalProcessExit(exit, sample)
@@ -83,6 +103,22 @@ class RaftMemoryTelemetryTest {
     }
 
     @Test
+    fun pssIsReadOnTrimsTheFirstSampleAndEveryFiveMinutesOnly() {
+        val interval = RaftMemoryTelemetry.PssIntervalMillis
+        assertTrue(shouldSamplePss(nowMillis = 0L, lastPssMillis = -1L, intervalMillis = interval, trim = false))
+        assertFalse(shouldSamplePss(30_000L, 0L, interval, trim = false))
+        assertTrue(shouldSamplePss(30_000L, 0L, interval, trim = true))
+        assertTrue(shouldSamplePss(interval, 0L, interval, trim = false))
+    }
+
+    @Test
+    fun statmResidentPagesAreTheSecondField() {
+        assertEquals(36_912L, parseStatmResidentPages("1234567 36912 12000 5 0 400000 0\n"))
+        assertEquals(-1L, parseStatmResidentPages(""))
+        assertEquals(-1L, parseStatmResidentPages("12 x"))
+    }
+
+    @Test
     fun writeGateRateLimitsPeriodicSamplesButNotForegroundChangesOrHigherTrims() {
         val gate = MemoryTelemetryWriteGate(minPeriodicIntervalMillis = 15_000L)
 
@@ -93,7 +129,6 @@ class RaftMemoryTelemetryTest {
         assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Periodic, 30_000L))
 
         assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_001L, trimLevel = 5))
-        // The same level again within the interval waits; an escalation does not.
         assertFalse(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_002L, trimLevel = 5))
         assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_003L, trimLevel = 15))
         assertFalse(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_004L, trimLevel = 10))

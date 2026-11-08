@@ -19,7 +19,8 @@ import java.util.Locale
  * The rest are counted, and one `diagnostics_coalesced` line with the count replaces them when the
  * window closes. Warn/error lines and events not listed here are never touched.
  *
- * Thread-safe: [admit] runs on the diagnostics dispatch thread, [drain] on export threads.
+ * Thread-safe: [admit] runs on the diagnostics dispatch thread, [drain] on export threads and
+ * [checkpoint] on the memory-telemetry thread every 30s while the app is in the foreground.
  */
 internal class RaftDiagnosticsCoalescer(
     private val rules: Map<String, Rule> = DefaultRules,
@@ -59,6 +60,21 @@ internal class RaftDiagnosticsCoalescer(
             val summaries = ArrayList<String>()
             windows.values.forEach { window -> window.summary(nowMillis)?.let(summaries::add) }
             windows.clear()
+            summaries
+        }
+
+    /**
+     * Writes out the counts suppressed so far without closing the windows (budgets and shapes stay),
+     * so a kill loses at most the counts since the last checkpoint. Each count is reported once:
+     * a later checkpoint or the window's closing line covers only what was suppressed after it.
+     */
+    fun checkpoint(nowMillis: Long): List<String> =
+        synchronized(lock) {
+            val summaries = ArrayList<String>()
+            windows.values.forEach { window ->
+                window.summary(nowMillis, partial = true)?.let(summaries::add)
+                window.suppressed = 0L
+            }
             summaries
         }
 
@@ -117,10 +133,10 @@ internal class RaftDiagnosticsCoalescer(
         }
     }
 
-    private fun Window.summary(nowMillis: Long): String? {
+    private fun Window.summary(nowMillis: Long, partial: Boolean = false): String? {
         if (suppressed <= 0L) return null
         return "$SummaryEvent key=${key.replace(' ', ':')} suppressed=$suppressed kept=$kept " +
-            "windowMs=${(nowMillis - startMillis).coerceAtLeast(0L)}"
+            "windowMs=${(nowMillis - startMillis).coerceAtLeast(0L)}" + if (partial) " partial=true" else ""
     }
 
     companion object {

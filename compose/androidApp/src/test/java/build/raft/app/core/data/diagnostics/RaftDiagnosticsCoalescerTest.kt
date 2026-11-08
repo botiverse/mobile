@@ -140,4 +140,23 @@ class RaftDiagnosticsCoalescerTest {
             )
         )
     }
+
+    @Test
+    fun checkpointPersistsCountsSoFarWithoutResettingTheBudgetAndNeverCountsTwice() {
+        val coalescer = coalescer()
+        repeat(10) { i -> coalescer.admit("info", "SlockRealtimeDomain", "$skip$i", i.toLong()) }
+
+        assertEquals(
+            listOf(
+                "diagnostics_coalesced key=SlockRealtimeDomain:realtime_domain_accept_skip " +
+                    "suppressed=7 kept=3 windowMs=30000 partial=true"
+            ),
+            coalescer.checkpoint(30_000L)
+        )
+        // The budget is still spent: further repeats in the window stay suppressed.
+        assertFalse(coalescer.admit("info", "SlockRealtimeDomain", "${skip}11", 30_001L).persist)
+        assertTrue(coalescer.checkpoint(30_002L).single().contains("suppressed=1 kept=3"))
+        assertTrue(coalescer.checkpoint(30_003L).isEmpty())
+        assertTrue(coalescer.drain(30_004L).isEmpty())
+    }
 }

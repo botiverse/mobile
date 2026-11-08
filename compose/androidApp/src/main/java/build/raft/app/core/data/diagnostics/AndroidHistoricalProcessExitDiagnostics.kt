@@ -27,8 +27,8 @@ internal fun newestEligibleHistoricalProcessExit(
 }
 
 /**
- * [previousTelemetry] is the memory telemetry the previous process persisted
- * ([RaftMemoryTelemetry]); its fields are appended only when it belongs to the exited pid.
+ * [previousTelemetry] is the memory telemetry the exited process persisted ([RaftMemoryTelemetry],
+ * matched by [MemoryTelemetryRing.match]); null appends nothing, a different pid says so.
  */
 internal fun formatHistoricalProcessExit(
     snapshot: HistoricalProcessExitSnapshot,
@@ -84,7 +84,7 @@ internal object AndroidHistoricalProcessExitDiagnostics {
     private const val LastReportedTimestampKey = "last-reported-timestamp-millis"
     private const val MaxHistoricalExits = 8
 
-    fun recordLatest(context: Context, previousTelemetry: MemoryTelemetrySnapshot? = null) {
+    fun recordLatest(context: Context, previousTelemetry: List<MemoryTelemetrySnapshot> = emptyList()) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val appContext = context.applicationContext
         runCatching {
@@ -153,7 +153,12 @@ internal object AndroidHistoricalProcessExitDiagnostics {
             RaftAndroidLocalDiagnostics.recordLog(
                 level = "warn",
                 tag = Tag,
-                message = formatHistoricalProcessExit(latest, previousTelemetry)
+                message =
+                    formatHistoricalProcessExit(
+                        latest,
+                        MemoryTelemetryRing.match(previousTelemetry, latest.pid, latest.timestampMillis)
+                            ?: previousTelemetry.maxByOrNull { it.processStartMillis }
+                    )
             )
         }.onFailure { error ->
             RaftAndroidLocalDiagnostics.recordLog(

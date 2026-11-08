@@ -21,6 +21,7 @@ import org.json.JSONObject
  */
 object RaftAndroidLocalDiagnostics {
     private const val Tag = "SlockAndroidDiagnostics"
+    private const val InFlightTag = "SlockSharedNetwork"
     private const val FeedbackDirName = "raft-feedback"
     private const val FeedbackFilePrefix = "raft-feedback-"
     private const val FeedbackZipExtension = ".zip"
@@ -31,6 +32,7 @@ object RaftAndroidLocalDiagnostics {
     private const val MaxQueuedThreadNameLength = 128
 
     private val coalescer = RaftDiagnosticsCoalescer()
+    private val inFlightRequests = RaftInFlightRequests()
 
     private val dispatchQueue =
         RaftDiagnosticsDispatchQueue(processor = ::processPendingLog)
@@ -38,10 +40,17 @@ object RaftAndroidLocalDiagnostics {
     fun init(context: Context) {
         RaftGeneralLogRing.init(context.applicationContext)
         RaftAuthCriticalJournal.init(context.applicationContext)
-        // Reads the previous process's memory telemetry before this process starts overwriting it.
-        val previousTelemetry =
-            (context.applicationContext as? Application)?.let(RaftMemoryTelemetry::install)
-        AndroidHistoricalProcessExitDiagnostics.recordLatest(context.applicationContext, previousTelemetry)
+        // On the telemetry thread, with the earlier processes' memory telemetry, before this
+        // process writes its own (also keeps the exit-history binder call off the main thread).
+        val appContext = context.applicationContext
+        val application = appContext as? Application
+        if (application != null) {
+            RaftMemoryTelemetry.install(application) { previous ->
+                AndroidHistoricalProcessExitDiagnostics.recordLatest(appContext, previous)
+            }
+        } else {
+            AndroidHistoricalProcessExitDiagnostics.recordLatest(appContext)
+        }
         RaftAppLog.d(
             Tag,
             "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl hands=crash"
@@ -128,6 +137,7 @@ object RaftAndroidLocalDiagnostics {
         val authEvent = classifyAuthCriticalEvent(sanitized.message)
         if (!shouldEmitDiagnostic(entry.includeNonCritical, authEvent)) return
         writeLogcat(sanitized.level, sanitized.tag, sanitized.message)
+        inFlightRequests.observe(sanitized.message, sanitized.timestampMillis)
         if (authEvent != null) {
             RaftAuthCriticalJournal.record(sanitized, authEvent)
         } else if (RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
@@ -143,9 +153,21 @@ object RaftAndroidLocalDiagnostics {
         }
     }
 
-    /** Writes the counts of lines the coalescer is still holding back, before an export reads the ring. */
+    /**
+     * Before an export reads the ring: the counts the coalescer is still holding back, and the
+     * requests that started and have not finished (their start lines are not persisted).
+     */
     private fun drainCoalescedSummaries() {
-        coalescer.drain(System.currentTimeMillis()).forEach { summary ->
+        val now = System.currentTimeMillis()
+        coalescer.drain(now).forEach { summary ->
+            recordLog("info", RaftDiagnosticsCoalescer.SummaryTag, summary)
+        }
+        inFlightRequests.unfinished(now).forEach { line -> recordLog("warn", InFlightTag, line) }
+    }
+
+    /** Persists the coalescer's counts so far (memory-telemetry thread, every 30s in foreground). */
+    internal fun checkpointCoalescedCounts() {
+        coalescer.checkpoint(System.currentTimeMillis()).forEach { summary ->
             recordLog("info", RaftDiagnosticsCoalescer.SummaryTag, summary)
         }
     }
