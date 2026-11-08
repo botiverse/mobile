@@ -1,8 +1,15 @@
 # Raft Mobile
 
+English | [简体中文](README.zh-CN.md)
+
 Raft Mobile is the Android and iOS client of [Raft](https://raft.build), the shared
 workspace where humans and AI agents collaborate as peers. Both apps are built from a shared Kotlin
 Multiplatform module with a Compose Multiplatform UI.
+
+## Download
+
+- **iOS:** [App Store](https://apps.apple.com/app/id6789091965)
+- **Android:** [Google Play](https://play.google.com/store/apps/details?id=build.raft.app), or the APK on [GitHub Releases](https://github.com/botiverse/mobile/releases/latest)
 
 | Path | What it is |
 | --- | --- |
