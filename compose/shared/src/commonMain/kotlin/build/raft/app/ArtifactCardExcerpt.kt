@@ -190,6 +190,7 @@ private fun ExcerptBlock(block: ArtifactExcerptBlock, first: Boolean, base: Text
                     2 -> ExcerptType.heading2
                     else -> ExcerptType.smallHeading
                 }
+            // common-map-compat: allow-nonmap-merge (TextStyle.merge)
             RaftText(words(block.spans), Modifier.blockGap(first, heading = true), style = base.merge(style))
         }
         is ArtifactExcerptBlock.Paragraph -> RaftText(words(block.spans), Modifier.blockGap(first), style = base)
@@ -214,6 +215,7 @@ private fun ExcerptBlock(block: ArtifactExcerptBlock, first: Boolean, base: Text
                 RaftText(
                     block.lines.joinToString("\n"),
                     Modifier.wrapContentWidth(Alignment.Start, unbounded = true),
+                    // common-map-compat: allow-nonmap-merge (TextStyle.merge)
                     style = base.merge(ExcerptType.code).copy(fontFamily = RaftTheme.typography.monoCode.fontFamily),
                     softWrap = false,
                 )
