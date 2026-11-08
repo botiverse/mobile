@@ -3456,6 +3456,8 @@
     <string name="joint_create_failed">共同チャンネルを作成できませんでした</string>
     <string name="agent_stop_turn">現在のターンを停止</string>
     <string name="agent_status_tool_stuck">%1$s で停止中 · %2$d 分間出力なし</string>
+    <string name="agent_model_limits_defaults_warning_title">このモデルは Raft のデフォルト上限を使っている可能性があります</string>
+    <string name="agent_model_limits_defaults_warning_body">Computer の報告によると、このモデルの上限のうち少なくとも 1 つは一致するカタログ項目から取得できなかったため、Raft がデフォルト値で補いました。現在のセッションが実際に使っている上限は、まだ Raft では確認できません。プロバイダーの実際の上限を確認してください。この通知自体はエージェントの実行を止めません。</string>
     <string name="agent_status_tool_stuck_waiting_one">1 件のメッセージが待機中</string>
     <string name="agent_status_tool_stuck_waiting_other">%1$d 件のメッセージが待機中</string>
     <string name="agent_status_tool_stuck_hint">このエージェントが実行したコマンドがしばらく何も出力していません。新しいメッセージは、コマンドが終わるかこのターンを停止するまで待機します。</string>

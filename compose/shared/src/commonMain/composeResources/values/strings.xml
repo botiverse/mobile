@@ -3456,6 +3456,8 @@
     <string name="joint_create_failed">Failed to create joint channel</string>
     <string name="agent_stop_turn">Stop Current Turn</string>
     <string name="agent_status_tool_stuck">Stuck on %1$s · no output for %2$d min</string>
+    <string name="agent_model_limits_defaults_warning_title">This model may be using Raft default limits</string>
+    <string name="agent_model_limits_defaults_warning_body">The Computer has reported that at least one limit for this model wasn't available from a matching catalog entry, so Raft filled it in with a default value. Raft can't yet confirm the limits the current session uses. Check your provider's actual limits. This notice doesn't stop the agent from running.</string>
     <string name="agent_status_tool_stuck_waiting_one">1 message waiting</string>
     <string name="agent_status_tool_stuck_waiting_other">%1$d messages waiting</string>
     <string name="agent_status_tool_stuck_hint">A command started by this agent has produced no output for a while. New messages wait until it ends or this turn is stopped.</string>

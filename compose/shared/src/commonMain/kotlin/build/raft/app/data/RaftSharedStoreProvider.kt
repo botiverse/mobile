@@ -623,6 +623,9 @@ internal class RaftSharedStoreProvider private constructor(
     internal val agentDetailCache: RaftAgentDetailCache =
         raftAgentDetailCache(offlineResourceCache.resource(AgentDetailResourceSpec))
 
+    /** Realtime `agent:updated` for open agent Profiles (they re-read `GET /agents/:id`). */
+    internal val agentUpdatedSignals: RaftAgentUpdatedSignals = RaftAgentUpdatedSignals()
+
     /**
      * Realtime `channel:members-updated`: every members store reloads its held list or drops a stored one
      * ([channelId] null: every list of the server). [admission]: the grant the event was admitted under

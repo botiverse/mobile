@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.isFor
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
@@ -3094,6 +3095,8 @@ private class MemberDetailRouteProvider(
     val agentControlsApi: RaftAgentControlsApi? = null,
     /** Data-layer plan step 5: last canonical agent details, keyed by account + server + agent. */
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
+    /** Realtime `agent:updated`: the open Profile re-reads its agent. */
+    val agentUpdatedSignals: build.raft.app.data.RaftAgentUpdatedSignals? = null,
     /** Synchronous (environment, account) of the process auth binding, for first-frame reads. */
     val accountBinding: () -> Pair<String, String>? = { null },
     /** DM opens: Home's DM at once, else one request per server + peer for any number of taps. */
@@ -3162,7 +3165,9 @@ private class MemberDetailRouteProvider(
 
     suspend fun applyRuntimeConfigProjection(
         authority: MembersAgentProfileEditAuthority,
-        config: RuntimeConfig
+        config: RuntimeConfig,
+        /** The read-back's `modelLimits.defaultsReported`: the signal for the saved config. */
+        modelLimitsDefaultsReported: Boolean? = null
     ): Boolean {
         val expectedOwner = authority.ownerOrNull() ?: return false
         if (currentAgentDetailOwner(authority.serverId, requireCurrentServer = true) != expectedOwner) return false
@@ -3171,7 +3176,8 @@ private class MemberDetailRouteProvider(
                 owner = expectedOwner,
                 agentId = authority.memberId,
                 config = config,
-                profileGeneration = authority.profileGeneration
+                profileGeneration = authority.profileGeneration,
+                modelLimitsDefaultsReported = modelLimitsDefaultsReported
             )
         )
         val projection = agentDetailStore.state.value.runtimeConfigProjection
@@ -3951,6 +3957,7 @@ private fun rememberMemberDetailRouteProvider(
             activityOverviewRepository = activityOverviewRepository,
             agentControlsApi = agentControlsApi,
             agentDetailCache = sharedStores.agentDetailCache,
+            agentUpdatedSignals = sharedStores.agentUpdatedSignals,
             accountBinding = { sharedStores.currentAccountBindingOrNull() }
         )
     }
@@ -4366,6 +4373,41 @@ internal fun MemberDetailPageContent(
         routeState = loaded
         // The canonical detail request already includes the freshly merged durable/current
         // activity snapshot. Do not immediately repeat the same visible activity request.
+    }
+    // Realtime `agent:updated { agentId }` (a profile edit, or botiverse/slock #13492: the agent's
+    // modelLimits signal may have changed): the app shell re-reads the roster, and the open Profile
+    // re-reads this agent's detail in the background, keeping what it shows until the answer lands.
+    LaunchedEffect(provider, memberIdentity) {
+        val signals = provider.agentUpdatedSignals ?: return@LaunchedEffect
+        val identity = memberIdentity?.takeIf { it.kind == MemberKind.Agent } ?: return@LaunchedEffect
+        signals.events.collect { signal ->
+            val route = routeState as? MemberDetailRouteState.Agent ?: return@collect
+            if (route.accessMode != MemberDetailAccessMode.LocalFull) return@collect
+            if (!signal.isFor(route.server.id.value, identity.memberId.value)) return@collect
+            val state = provider.agentDetailStore.state.value
+            val owner = state.detailOwner ?: return@collect
+            // A first load (or a cache replay still refreshing) brings the fresh answer itself.
+            if (
+                state.agentId != identity.memberId ||
+                state.detailFromCache ||
+                state.detailLoadStatus != SharedAgentDetailLoadStatus.Content
+            ) {
+                return@collect
+            }
+            val generation = state.detailProfileGeneration
+            val requestGeneration = agentProfileRequestGeneration
+            val current = {
+                agentProfileRequestGeneration == requestGeneration &&
+                    provider.agentDetailStore.state.value.let {
+                        it.agentId == identity.memberId && it.detailProfileGeneration == generation
+                    }
+            }
+            val loaded = provider.loadMember(identity, owner, generation, current, hasCachedAgentDetail = true)
+            if (!current() || (loaded as? MemberDetailRouteState.Error)?.error?.code == "member_request_stale") {
+                return@collect
+            }
+            routeState = loaded
+        }
     }
     LaunchedEffect(provider.serverMembersStore, statusResolverServerId) {
         val serverId = statusResolverServerId ?: return@LaunchedEffect
@@ -6213,7 +6255,7 @@ private class MembersAgentDetailCallbacks(
     val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     val onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     val onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean = { _, _, _ -> false },
     val onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
     val onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
     val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction, AgentArchiveWorkspaceChoice) -> DataResult<AgentLifecycleActionResult>)?,
@@ -10598,7 +10640,7 @@ private fun MembersAgentRuntimeConfigSection(
     edit: MembersAgentProfileEditInputs,
     runtimeModels: MembersAgentRuntimeModelInputs,
     createAgentFormStore: SharedCreateAgentFormStore?,
-    onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean
+    onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean
 ) {
     val canEdit = edit.canEdit
     val agentProfileEditAuthority = edit.agentProfileEditAuthority
@@ -10728,7 +10770,8 @@ private fun MembersAgentRuntimeConfigSection(
                             as? MembersAgentRuntimeConfigResolution.Content)?.config
                         val authority = runtimeEditorAuthority
                         val projected =
-                            config != null && authority != null && onApplyAgentRuntimeConfigProjection(authority, config)
+                            config != null && authority != null &&
+                                onApplyAgentRuntimeConfigProjection(authority, config, stored?.modelLimitsDefaultsReported)
                         closeRuntimeEditor()
                         // The save landed; only the read-back failed, so the rows may lag until a refresh.
                         if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
@@ -10791,6 +10834,11 @@ private fun MembersAgentRuntimeConfigSection(
                 canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get),
             machineId = summary?.machineId ?: member.membersComputerId
         )
+        // Web AgentProfileInfo: under the runtime rows (`mt-3`), before Environment Variables, only
+        // when the server says the session reported Raft default limits (botiverse/slock #13492).
+        if (summary?.modelLimitsDefaultsReported == true) {
+            MembersAgentModelLimitsWarning(Modifier.padding(top = MembersProfileEnvVarsGap - MembersInfoItemGap))
+        }
         MembersAgentRuntimeEnvVars(summary, modifier = Modifier.padding(top = MembersProfileEnvVarsGap - MembersInfoItemGap))
     }
 
@@ -10824,6 +10872,7 @@ private fun MembersAgentRuntimeConfigSection(
             runtimeId = session.config.runtime,
             machineRuntimeIds = agentMachineRuntimes,
             activeAgent = activeAgent,
+            modelLimitsDefaultsReported = summary?.modelLimitsDefaultsReported == true,
             saving = savingRuntimeConfig,
             error = runtimeConfigError,
             errorFieldKeys = runtimeFormV2ErrorFields,
@@ -11007,7 +11056,7 @@ private fun MembersAgentProfileTab(
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     onApplyAgentRuntimeConfigProjection:
-        suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
+        suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean = { _, _, _ -> false },
     agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     archiveInputs: MembersAgentArchiveInputs = MembersAgentArchiveInputs(),
     externalSetupServerUrl: String? = null,

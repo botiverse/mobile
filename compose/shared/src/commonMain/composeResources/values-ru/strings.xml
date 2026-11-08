@@ -3450,6 +3450,8 @@
     <string name="joint_create_failed">Не удалось создать общий канал</string>
     <string name="agent_stop_turn">Остановить текущий ход</string>
     <string name="agent_status_tool_stuck">Завис: %1$s · нет вывода уже %2$d мин</string>
+    <string name="agent_model_limits_defaults_warning_title">Эта модель, возможно, использует лимиты Raft по умолчанию</string>
+    <string name="agent_model_limits_defaults_warning_body">Computer сообщил, что как минимум один лимит этой модели не удалось взять из подходящей записи каталога, поэтому Raft подставил значение по умолчанию. Raft пока не может подтвердить лимиты, которые использует текущий сеанс. Уточните реальные лимиты у провайдера. Само это уведомление не мешает агенту работать.</string>
     <string name="agent_status_tool_stuck_waiting_one">1 сообщение в очереди</string>
     <string name="agent_status_tool_stuck_waiting_other">сообщений в очереди: %1$d</string>
     <string name="agent_status_tool_stuck_hint">Команда, запущенная этим агентом, уже какое-то время ничего не выводит. Новые сообщения будут ждать, пока она не завершится или пока этот ход не будет остановлен.</string>

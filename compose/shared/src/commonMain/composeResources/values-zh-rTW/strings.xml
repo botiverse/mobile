@@ -3453,6 +3453,8 @@
     <string name="joint_create_failed">無法建立聯合頻道</string>
     <string name="agent_stop_turn">停止目前這一輪</string>
     <string name="agent_status_tool_stuck">卡在 %1$s · %2$d 分鐘沒有輸出</string>
+    <string name="agent_model_limits_defaults_warning_title">這個模型可能在用 Raft 預設上限</string>
+    <string name="agent_model_limits_defaults_warning_body">Computer 回報過，這個模型至少有一項上限沒有從相符的目錄設定裡取得，由 Raft 用預設值補上。現在還不能確認目前工作階段實際用的上限，請到服務商那邊確認實際上限。這則提示本身不會阻止 Agent 執行。</string>
     <string name="agent_status_tool_stuck_waiting_one">1 則訊息在等待</string>
     <string name="agent_status_tool_stuck_waiting_other">%1$d 則訊息在等待</string>
     <string name="agent_status_tool_stuck_hint">這個 Agent 執行的一個指令已經很久沒有輸出。新訊息會一直等到指令結束，或停止這一輪。</string>
