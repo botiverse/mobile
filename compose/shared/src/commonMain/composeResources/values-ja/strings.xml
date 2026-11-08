@@ -565,6 +565,9 @@
     <string name="thread_error_open_target">%1$s を開けませんでした</string>
     <string name="thread_error_open_thread_ref">スレッドを開けません。利用できないか、削除された可能性があります。</string>
     <string name="thread_error_open_task_number">#%1$s を開けませんでした</string>
+    <string name="thread_error_ref_not_found">%1$s が見つかりません。削除された可能性があります。</string>
+    <string name="thread_error_ref_no_access">%1$s へのアクセス権がありません。</string>
+    <string name="thread_error_ref_other_server">%1$s はこのサーバーにありません。</string>
     <string name="thread_error_attachment_picker">添付ファイルの選択画面を利用できません</string>
     <string name="thread_error_file_source">ファイルソースを利用できません</string>
     <string name="thread_feedback_copied">コピーしました</string>

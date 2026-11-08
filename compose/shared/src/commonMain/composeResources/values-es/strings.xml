@@ -563,6 +563,9 @@
     <string name="thread_error_open_target">No se puede abrir %1$s</string>
     <string name="thread_error_open_thread_ref">No se puede abrir el hilo. Es posible que no esté disponible o que se haya eliminado.</string>
     <string name="thread_error_open_task_number">No se puede abrir #%1$s</string>
+    <string name="thread_error_ref_not_found">No se encontró %1$s. Es posible que se haya eliminado.</string>
+    <string name="thread_error_ref_no_access">No tienes acceso a %1$s.</string>
+    <string name="thread_error_ref_other_server">%1$s no está en este servidor.</string>
     <string name="thread_error_attachment_picker">El selector de archivos adjuntos no está disponible</string>
     <string name="thread_error_file_source">El origen del archivo no está disponible</string>
     <string name="thread_feedback_copied">Copiado</string>

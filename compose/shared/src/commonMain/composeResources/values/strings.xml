@@ -563,6 +563,9 @@
     <string name="thread_error_open_target">Unable to open %1$s</string>
     <string name="thread_error_open_thread_ref">Unable to open thread. It may be unavailable or deleted.</string>
     <string name="thread_error_open_task_number">Unable to open #%1$s</string>
+    <string name="thread_error_ref_not_found">%1$s wasn't found. It may have been deleted.</string>
+    <string name="thread_error_ref_no_access">You don't have access to %1$s.</string>
+    <string name="thread_error_ref_other_server">%1$s isn't in this server.</string>
     <string name="thread_error_attachment_picker">Attachment picker unavailable</string>
     <string name="thread_error_file_source">File source unavailable</string>
     <string name="thread_feedback_copied">Copied</string>

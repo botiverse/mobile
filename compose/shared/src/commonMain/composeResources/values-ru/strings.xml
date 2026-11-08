@@ -563,6 +563,9 @@
     <string name="thread_error_open_target">Не удалось открыть: %1$s</string>
     <string name="thread_error_open_thread_ref">Не удалось открыть ветку. Возможно, она недоступна или удалена.</string>
     <string name="thread_error_open_task_number">Не удалось открыть задачу #%1$s</string>
+    <string name="thread_error_ref_not_found">%1$s не найдено. Возможно, оно удалено.</string>
+    <string name="thread_error_ref_no_access">Нет доступа к %1$s.</string>
+    <string name="thread_error_ref_other_server">%1$s нет на этом сервере.</string>
     <string name="thread_error_attachment_picker">Выбор вложений недоступен</string>
     <string name="thread_error_file_source">Источник файлов недоступен</string>
     <string name="thread_feedback_copied">Скопировано</string>

@@ -563,6 +563,9 @@
     <string name="thread_error_open_target">Não foi possível abrir %1$s</string>
     <string name="thread_error_open_thread_ref">Não foi possível abrir a thread. Ela pode estar indisponível ou ter sido excluída.</string>
     <string name="thread_error_open_task_number">Não foi possível abrir #%1$s</string>
+    <string name="thread_error_ref_not_found">%1$s não foi encontrado. Ele pode ter sido excluído.</string>
+    <string name="thread_error_ref_no_access">Você não tem acesso a %1$s.</string>
+    <string name="thread_error_ref_other_server">%1$s não está neste servidor.</string>
     <string name="thread_error_attachment_picker">O seletor de anexos não está disponível</string>
     <string name="thread_error_file_source">A origem do arquivo não está disponível</string>
     <string name="thread_feedback_copied">Copiado</string>

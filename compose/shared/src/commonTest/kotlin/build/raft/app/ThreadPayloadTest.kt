@@ -7437,6 +7437,44 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun markdownTaskNumberNetworkStepsRunInTheSharedReferenceFetchPhase() = runBlocking {
+        // A joint v2 task: the number lookup and the `POST /tasks/:id/conversation` are both
+        // network, so the shared spinner must cover each of them, and nothing after.
+        val resolver = build.raft.app.data.SharedReferenceResolver()
+        val busyDuring = mutableMapOf<String, Boolean>()
+        val api =
+            FakeMarkdownTaskNumberApi(
+                channelTaskBody =
+                    """{"task":{"id":"task-77","channelId":"parent-channel","channelType":"joint","conversationChannelId":"joint-canonical","conversationAnchored":true,"taskNumber":77,"title":"Joint task","status":"in_progress"}}""",
+                serverTasksBody = """{"tasks":[]}""",
+                onRequest = { request -> busyDuring[request] = resolver.isFetching("message-a:task") }
+            )
+
+        openMarkdownTaskNumberPayload(
+            serverId = ServerId("server-1"),
+            taskNumber = 77,
+            currentPayload =
+                RaftThreadScreenPayload(
+                    status = "content",
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    channelKind = "channel",
+                    sourceThreadId = "parent-channel",
+                    streamChannelId = "parent-channel"
+                ),
+            currentTaskChannelId = ChannelId("parent-channel"),
+            tasksDataSource = SharedTasksDataSource(api),
+            tasksDataStore = null,
+            taskV2Enabled = true,
+            referenceResolver = resolver,
+            actionId = "message-a:task"
+        )
+
+        assertEquals(listOf("taskByNumber:server-1:parent-channel:77", "openConversation:task-77"), api.calls)
+        assertEquals(mapOf("taskByNumber" to true, "openConversation" to true), busyDuring)
+        assertTrue(resolver.inFlight.value.isEmpty(), "the spinner ends with the open")
+    }
+
+    @Test
     fun markdownTaskNumberOpenUsesLoadedServerStoreWithoutNetwork() = runBlocking {
         val store = SharedTasksDataStore()
         store.publishSnapshot(
@@ -9482,15 +9520,24 @@ class ThreadPayloadTest {
 
     private class FakeMarkdownTaskNumberApi(
         private val channelTaskBody: String,
-        private val serverTasksBody: String
+        private val serverTasksBody: String,
+        /** Runs inside every request (reads the reference resolver's fetch phase). */
+        private val onRequest: (String) -> Unit = {}
     ) : RaftTasksApi {
         val calls = mutableListOf<String>()
+
+        override suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): HomeNetworkResponse {
+            calls += "openConversation:${taskId.value}"
+            onRequest("openConversation")
+            return HomeNetworkResponse(code = 200, bodyText = """{"conversationChannelId":"joint-local-conversation"}""")
+        }
 
         override suspend fun serverTasks(
             serverId: ServerId,
             priority: DataRequestPriority
         ): HomeNetworkResponse {
             calls += "serverTasks:${serverId.value}"
+            onRequest("serverTasks")
             return HomeNetworkResponse(code = 200, bodyText = serverTasksBody)
         }
 
@@ -9501,6 +9548,7 @@ class ThreadPayloadTest {
             priority: DataRequestPriority
         ): HomeNetworkResponse {
             calls += "taskByNumber:${serverId.value}:${channelId.value}:$taskNumber"
+            onRequest("taskByNumber")
             return HomeNetworkResponse(code = 200, bodyText = channelTaskBody)
         }
 
