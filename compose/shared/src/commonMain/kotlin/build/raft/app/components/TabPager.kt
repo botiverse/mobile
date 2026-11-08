@@ -3,6 +3,7 @@ package build.raft.app.components
 import androidx.compose.runtime.Composable
 import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,7 +22,9 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -104,6 +107,16 @@ fun TabPager(
     // not report those — track the programmatic target and suppress reports
     // until the pager arrives.
     val programmaticTarget = remember { mutableStateOf<Int?>(null) }
+    // A pager with no page size (laid out at 0x0, as the phone stack lays out a covered page)
+    // resolves currentPage to the LAST page: every page sits at the same offset. That is layout,
+    // not user intent, so the sync below neither reports it nor scrolls while it lasts, and once
+    // the pager has a page size again the selection drives it back (the agent profile showed Apps
+    // after a DM opened over it was closed). [keepLastSizeWhileCollapsed] keeps a pager that has
+    // been on screen from ever being measured that way; this covers one that never was.
+    val pagerHasPageSize by remember(pagerState) {
+        derivedStateOf { pagerState.layoutInfo.pageSize > 0 }
+    }
+    val lastSize = remember { TabPagerLastSize() }
 
     // Tab tap (or any external selection change) -> move the pager over.
     // animateScrollToPage with a scrollToPage fallback, each swallowing its
@@ -112,9 +125,9 @@ fun TabPager(
     // highlight never followed). scrollToPage is the fork-proven path
     // (RaftPagerScrollProbePage); a cancellation mid-animation must not be
     // treated as failure, so CancellationException rethrows.
-    LaunchedEffect(pagerState, selectedIndex) {
+    LaunchedEffect(pagerState, selectedIndex, pagerHasPageSize) {
         onDebugEvent?.invoke("sel-effect sel=$selectedIndex cur=${pagerState.currentPage}")
-        if (selectedIndex in 0 until pageCount && selectedIndex != pagerState.currentPage) {
+        if (pagerHasPageSize && selectedIndex in 0 until pageCount && selectedIndex != pagerState.currentPage) {
             programmaticTarget.value = selectedIndex
             try {
                 pagerState.animateScrollToPage(selectedIndex)
@@ -185,6 +198,10 @@ fun TabPager(
             if (currentPage == pending) programmaticTarget.value = null
             return@LaunchedEffect
         }
+        if (pagerState.layoutInfo.pageSize <= 0) {
+            onDebugEvent?.invoke("no page size, not reported")
+            return@LaunchedEffect
+        }
         if (currentPage != selectedIndex && currentPage in 0 until pageCount) {
             onSelectedIndexChange(currentPage)
             onDebugEvent?.invoke("report -> $currentPage")
@@ -230,7 +247,7 @@ fun TabPager(
         enabled = gesturePolicy.swipeEnabled,
         nestedDrags = nestedDrags,
     )
-    Column(modifier = modifier) {
+    Column(modifier = modifier.keepLastSizeWhileCollapsed(lastSize)) {
         tabBar()
         Box(
             modifier = Modifier
@@ -300,6 +317,35 @@ fun TabPager(
         }
     }
 }
+
+/** The last size a [TabPager] was laid out at with room to show a page. Plain fields: layout only. */
+private class TabPagerLastSize {
+    var width = 0
+    var height = 0
+}
+
+/**
+ * Collapsed to nothing (the phone stack lays a covered page out at 0x0), the pager is still
+ * measured at its last size and placed nowhere: it draws nothing and takes no input, but its pages
+ * keep their size, so its current page (and the selection synced from it) stays where the user
+ * left it. Measured at 0x0 every page sits at offset 0 and the pager's current page jumps to the
+ * last one.
+ */
+private fun Modifier.keepLastSizeWhileCollapsed(last: TabPagerLastSize): Modifier =
+    layout { measurable, constraints ->
+        val collapsed = constraints.maxWidth == 0 || constraints.maxHeight == 0
+        if (collapsed && last.width > 0 && last.height > 0) {
+            measurable.measure(Constraints.fixed(last.width, last.height))
+            layout(0, 0) {}
+        } else {
+            val placeable = measurable.measure(constraints)
+            if (placeable.width > 0 && placeable.height > 0) {
+                last.width = placeable.width
+                last.height = placeable.height
+            }
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
+    }
 
 /**
  * How far (in dp) a pointer born inside an edge inset must travel before the
