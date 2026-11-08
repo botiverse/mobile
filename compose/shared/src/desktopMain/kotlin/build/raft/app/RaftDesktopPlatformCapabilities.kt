@@ -111,6 +111,8 @@ internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = false
 // desktop app reports as the web app (the web and the Electron app send no kind, which is web).
 internal actual fun raftFeedbackWebViewClientKind(): String = "web"
 
+internal actual fun raftComposerCameraAvailable(): Boolean = false
+
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f

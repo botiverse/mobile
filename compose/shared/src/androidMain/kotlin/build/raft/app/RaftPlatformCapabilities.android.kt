@@ -120,6 +120,8 @@ internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = true
 
 internal actual fun raftFeedbackWebViewClientKind(): String = "android"
 
+internal actual fun raftComposerCameraAvailable(): Boolean = true
+
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = -1.5f
 
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
