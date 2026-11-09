@@ -252,7 +252,7 @@ private suspend fun RaftNetworkClient.sendMessage(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
-    request(priority, "messages", method = "POST", bodyText = bodyText)
+    request(priority, SendMessagePath, method = "POST", bodyText = bodyText)
 
 private suspend fun RaftNetworkClient.executePendingMentionActions(
     priority: DataRequestPriority,
@@ -1461,7 +1461,11 @@ class RealConversationRepository private constructor(
                             body = body,
                             deliveryState = MessageDeliveryState.Sent
                         )
-                SendMessageResult(message, pendingMentionActions = sentPayload.pendingMentionActions)
+                SendMessageResult(
+                    message,
+                    pendingMentionActions = sentPayload.pendingMentionActions,
+                    unresolvedMentionHandles = sentPayload.unresolvedMentionHandles
+                )
             }
         )
     }

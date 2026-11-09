@@ -98,7 +98,7 @@ class ThreadPendingSendStoreIntegrationTest {
             )
             val randomId = restored.pendingSendContext?.randomId
             assertNotNull(randomId)
-            api.sendResponseBody = sentMessageResponse(randomId)
+            api.sendResponseBody = sentMessageV2Response(randomId)
             val retryResult =
                 second.dataSource.sendMessage(
                     channelId = restored.pendingSendContext!!.channelId,
@@ -394,7 +394,7 @@ class ThreadPendingSendStoreIntegrationTest {
             // The resend commits server-side, so the page-entry refresh's latest page carries it.
             val api =
                 FakeThreadApi(bodyText = latestPageWithDelivered("random-orphan")).apply {
-                    sendResponseBody = sentMessageResponse("random-orphan")
+                    sendResponseBody = sentMessageV2Response("random-orphan")
                 }
             val second = open(path, api, identity, threadParseDispatcher = Dispatchers.Unconfined)
             second.store.accept(SharedThreadIntent.Start(routePayload))
@@ -454,7 +454,7 @@ class ThreadPendingSendStoreIntegrationTest {
 
             val api =
                 FakeThreadApi(bodyText = latestPageWithDelivered("random-mention")).apply {
-                    sendResponseBody = sentMessageResponse("random-mention")
+                    sendResponseBody = sentMessageV2Response("random-mention")
                 }
             val second = open(path, api, identity, threadParseDispatcher = Dispatchers.Unconfined)
             second.store.accept(SharedThreadIntent.Start(routePayload))
@@ -757,7 +757,14 @@ class ThreadPendingSendStoreIntegrationTest {
             canLoadMoreAfter = null,
         )
 
-    /** Canonical POST /messages response shape from packages/server/src/routes/messages.ts. */
+    /**
+     * Canonical `POST /api/v2/messages` answer (routes/messages.ts `createHumanMessage(…, "v2")`):
+     * the message always wrapped; a replayed randomId carries no sender-only extras.
+     */
+    private fun sentMessageV2Response(randomId: String): String =
+        """{"message": ${sentMessageResponse(randomId)}}"""
+
+    /** The created message row (a list row, and the `message` of a send answer). */
     private fun sentMessageResponse(randomId: String): String =
         """
         {

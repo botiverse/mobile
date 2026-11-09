@@ -1569,6 +1569,7 @@ private fun String.networkDiagnosticsCategory(): String {
         normalized.startsWith("members") -> "members"
         normalized.startsWith("messages/search") -> "message_search"
         normalized.startsWith("messages") -> "messages"
+        normalized == "v2/messages" -> "messages"
         normalized.startsWith("saved") -> "saved_items"
         normalized.startsWith("attachments/upload") -> "attachments_upload"
         normalized.startsWith("tasks") -> "tasks"

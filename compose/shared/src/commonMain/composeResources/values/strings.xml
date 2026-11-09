@@ -673,6 +673,8 @@
     <string name="thread_composer_mention_batch_error_surface">That person cannot be added from this mention action.</string>
     <string name="thread_composer_mention_batch_error_human_authority">Ask a human member to add that person.</string>
     <string name="thread_composer_mention_batch_error_member_authority">Only channel admins can add that person.</string>
+    <string name="thread_composer_unresolved_mentions">Not notified: %1$s. Select a person or agent from the mention picker and try again if needed.</string>
+    <string name="thread_composer_dismiss_unresolved_mentions">Dismiss unnotified mention warning</string>
     <string name="thread_composer_mention_batch_error_permission">This action is unavailable for the current channel state.</string>
     <string name="thread_composer_mention_batch_error_already_member">That person is already in the channel.</string>
     <string name="thread_composer_mention_batch_error_target_unavailable">That person is no longer available.</string>

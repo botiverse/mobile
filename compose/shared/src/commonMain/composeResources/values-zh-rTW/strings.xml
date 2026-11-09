@@ -673,6 +673,8 @@
     <string name="thread_composer_mention_batch_error_surface">無法透過此提及操作新增此對象。</string>
     <string name="thread_composer_mention_batch_error_human_authority">請由真人成員新增此對象。</string>
     <string name="thread_composer_mention_batch_error_member_authority">只有頻道管理員可以新增此對象。</string>
+    <string name="thread_composer_unresolved_mentions">未通知：%1$s。如需通知，請從提及選單中選擇對應的成員或 Agent，然後再試一次。</string>
+    <string name="thread_composer_dismiss_unresolved_mentions">關閉未通知提及的警告</string>
     <string name="thread_composer_mention_batch_error_permission">目前的頻道狀態不支援此操作。</string>
     <string name="thread_composer_mention_batch_error_already_member">此對象已在頻道中。</string>
     <string name="thread_composer_mention_batch_error_target_unavailable">此對象已無法使用。</string>

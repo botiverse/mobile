@@ -40,7 +40,11 @@ internal fun raftNetworkMethodClass(
     }
     return if (
         serverScoped && normalizedMethod == "POST" &&
-        (path.endsWith("/api/messages") || path.endsWith("/api/attachments/upload"))
+        (
+            path.endsWith("/api/messages") ||
+                path.endsWith("/api/v2/messages") ||
+                path.endsWith("/api/attachments/upload")
+            )
     ) {
         RaftNetworkMethodClass.ProcessMutation
     } else {

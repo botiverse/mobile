@@ -35,7 +35,10 @@ private val threadApiJson = Json {
  *  - `packages/server/src/routes/messages.ts`:
  *      GET messages → `{ messages, historyLimited }` (no `hasMore`/`hasNextPage`)
  *      GET messages/sync → root array
- *      POST messages → created message object (`{ id, content, seq, ... }`)
+ *      POST v2/messages ([SendMessagePath]) → `{ message, pendingMentionActions?,
+ *        unresolvedMentionHandles?, deliveryWarnings? }` (`messageV2Router`, web
+ *        `messageStore.sendMessage`). A bare created message (the v1 `POST messages` shape) is
+ *        still accepted.
  *  - `packages/server/src/routes/files.ts`: `{ url, expiresAt? }`.
  *  - `packages/server/src/routes/threads.ts`: `{ threadChannelId,
  *    parentMessageId?, created? }`.
@@ -383,7 +386,7 @@ internal class NetworkRaftThreadApi(
     ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
-            path = "messages",
+            path = SendMessagePath,
             method = "POST",
             bodyText =
                 buildSharedThreadSendMessageBody(
@@ -405,7 +408,7 @@ internal class NetworkRaftThreadApi(
     ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
-            path = "messages",
+            path = SendMessagePath,
             method = "POST",
             bodyText =
                 buildSharedThreadSendMessageBody(
@@ -564,7 +567,12 @@ internal data class ThreadMessagesPage(
     val messages: List<WireMessage>,
     val canLoadMoreBefore: Boolean?,
     val canLoadMoreAfter: Boolean?,
-    val pendingMentionActions: List<PendingMentionAction> = emptyList()
+    val pendingMentionActions: List<PendingMentionAction> = emptyList(),
+    /**
+     * A send's `unresolvedMentionHandles` (`POST v2/messages`): the `@handle` tokens, `@` included,
+     * that reached nobody, in the server's order. Sender-only and never on a replayed `randomId`.
+     */
+    val unresolvedMentionHandles: List<String> = emptyList()
 ) {
     val messageCount: Int
         get() = messages.size
@@ -780,7 +788,8 @@ private fun HomeNetworkResponse.mapThreadSendBodySync(contractCode: String): Thr
             messages = listOf(message),
             canLoadMoreBefore = null,
             canLoadMoreAfter = null,
-            pendingMentionActions = wrapped.pendingMentionActions.mapNotNull { it.toDomain() }
+            pendingMentionActions = wrapped.pendingMentionActions.mapNotNull { it.toDomain() },
+            unresolvedMentionHandles = wrapped.unresolvedMentionHandles.sendUnresolvedMentionHandles()
         )
     )
 }
@@ -862,7 +871,9 @@ private data class CreateOrOpenThreadResponseDto(
 @Serializable
 private data class SendMessageResponseDto(
     val message: WireMessage? = null,
-    val pendingMentionActions: List<PendingMentionActionDto> = emptyList()
+    val pendingMentionActions: List<PendingMentionActionDto> = emptyList(),
+    /** Kept raw: web keeps only the string items, and a stray item must not fail the send. */
+    val unresolvedMentionHandles: JsonElement? = null
 )
 
 @Serializable
@@ -1048,6 +1059,28 @@ private data class PendingMentionActionExecuteRequestBody(
     val action: String,
     val resolutionIds: List<String>
 )
+
+/**
+ * Every human send: `POST /api/v2/messages` (botiverse/slock `app.ts` mounts `messageV2Router`;
+ * `routes/messages.ts` `createHumanMessage(…, "v2")`), the endpoint web `messageStore.sendMessage`
+ * posts to. Same request body as v1 `POST /api/messages`; the response always wraps the message and
+ * adds the sender-only `unresolvedMentionHandles`. Web has no v1 fallback, so neither has the app.
+ */
+internal const val SendMessagePath = "v2/messages"
+
+/**
+ * `unresolvedMentionHandles` of a send response, as web `normalizeSendMessageResponse` reads it:
+ * the string items of an array (anything else is dropped), here also without blanks.
+ */
+internal fun JsonElement?.sendUnresolvedMentionHandles(): List<String> =
+    (this as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { item ->
+            (item as? kotlinx.serialization.json.JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.takeIf { it.isNotBlank() }
+        }
+        .orEmpty()
 
 internal fun buildSharedThreadSendMessageBody(
     channelId: String,

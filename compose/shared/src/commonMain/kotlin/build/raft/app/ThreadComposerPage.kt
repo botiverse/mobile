@@ -9,6 +9,9 @@ import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftComposerUploadDisplay
 import build.raft.app.transfer.RaftComposerUploadPhase
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftSeparator
@@ -455,6 +458,7 @@ private val threadComposerContentPayloadKeys =
         "statusLabel",
         "pendingAttachments",
         "pendingMentionActions",
+        "unresolvedMentionHandles",
         "mentionActionNoticeTitle",
         "mentionActionNotice",
         "mentionActionStates",
@@ -489,6 +493,8 @@ internal data class RaftThreadComposerPayload(
     val statusLabel: String? = null,
     val pendingAttachments: List<RaftPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+    /** The last send's `unresolvedMentionHandles` (the "Not notified" banner); empty: none. */
+    val unresolvedMentionHandles: List<String> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -587,6 +593,8 @@ internal data class ThreadComposerUiState(
     val statusLabel: String? = null,
     val pendingAttachments: List<RaftPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+    /** The last send's `unresolvedMentionHandles` (the "Not notified" banner); empty: none. */
+    val unresolvedMentionHandles: List<String> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -2069,6 +2077,7 @@ internal fun RaftThreadComposerPayload.toThreadComposerUiState(): ThreadComposer
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
         pendingMentionActions = pendingMentionActions,
+        unresolvedMentionHandles = unresolvedMentionHandles,
         mentionActionNoticeTitle = mentionActionNoticeTitle,
         mentionActionNotice = mentionActionNotice,
         mentionActionStates = mentionActionStates,
@@ -3052,6 +3061,14 @@ internal fun ThreadComposerContentLeaf(
                     }
                 localizedMentionActionNotice?.let { notice ->
                     MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
+                }
+                // web MessageInput: `{!isDmComposer && unresolvedMentionHandles.length > 0 && <Banner …>}`,
+                // between the mention notice and the pending mention actions.
+                if (surface.showsUnresolvedMentionNotice() && state.unresolvedMentionHandles.isNotEmpty()) {
+                    UnresolvedMentionsNotice(
+                        handles = state.unresolvedMentionHandles,
+                        onDismiss = { onEvent(ThreadComposerDismissUnresolvedMentionsEvent, null, null, null) }
+                    )
                 }
                 if (state.pendingMentionActions.isNotEmpty()) {
                     PendingMentionActionBanner(
@@ -4251,6 +4268,38 @@ private fun ComposerSuggestionSoftBadge(label: String) {
             maxLines = 1
         )
     }
+}
+
+/** Web hides the "Not notified" banner in a DM composer (`isDmComposer`: the composer's own channel is a DM). */
+internal fun ThreadComposerSurface.showsUnresolvedMentionNotice(): Boolean =
+    kind != RaftThreadSurfaceKind.DirectMessage
+
+/** Composer event of the "Not notified" banner's × ([SharedThreadComposerDraftIntent.DismissUnresolvedMentions]). */
+internal const val ThreadComposerDismissUnresolvedMentionsEvent = "dismissUnresolvedMentions"
+
+/** Web `message.composer.unresolvedMentions`: the handles as the server sent them, joined by ", ". */
+internal fun threadComposerUnresolvedMentionHandlesLabel(handles: List<String>): String = handles.joinToString(", ")
+
+/**
+ * Web MessageInput's unresolved-mention notice: `<Banner intent="warning" density="sm" onClose
+ * closeLabel="Dismiss unnotified mention warning">Not notified: {handles}. …</Banner>`. It stays
+ * until its ×, the next send or a composer switch (no timeout, as on web).
+ */
+@Composable
+private fun UnresolvedMentionsNotice(
+    handles: List<String>,
+    onDismiss: () -> Unit,
+) {
+    RaftBanner(
+        description = stringResource(
+            Res.string.thread_composer_unresolved_mentions,
+            threadComposerUnresolvedMentionHandlesLabel(handles)
+        ),
+        status = RaftBannerStatus.Warning,
+        size = RaftBannerSize.Sm,
+        onDismiss = onDismiss,
+        dismissLabel = stringResource(Res.string.thread_composer_dismiss_unresolved_mentions),
+    )
 }
 
 @Composable

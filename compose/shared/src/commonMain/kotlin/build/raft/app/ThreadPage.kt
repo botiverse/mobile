@@ -10725,11 +10725,17 @@ private fun SharedThreadRouteContentContent(
                 if (sendAuthorityStillCurrent()) {
                     if (startedFromComposer) {
                         composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
+                            SharedThreadComposerDraftIntent.CompleteSend(
+                                pendingMentionActions = pendingMentionActions,
+                                unresolvedMentionHandles = sentPage.unresolvedMentionHandles
+                            )
                         )
                     } else {
                         composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                            SharedThreadComposerDraftIntent.ApplyPendingMentionActions(
+                                pendingMentionActions = pendingMentionActions,
+                                unresolvedMentionHandles = sentPage.unresolvedMentionHandles
+                            )
                         )
                     }
                 } else {
@@ -15139,6 +15145,9 @@ private fun SharedThreadRouteContentContent(
                 "dismissMentionNotice" -> {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
                 }
+                ThreadComposerDismissUnresolvedMentionsEvent -> {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissUnresolvedMentions)
+                }
                 "addAllMentions" -> {
                     if (!pendingMentionActionBatchRequestGate.tryBegin()) return@ThreadPageContent
                     val eligibleActions =
@@ -16628,6 +16637,7 @@ private fun RaftThreadComposerPayload.withThreadComposerDraftState(
             },
         statusLabel = statusLabel,
         pendingMentionActions = draftState.pendingMentionActions,
+        unresolvedMentionHandles = draftState.unresolvedMentionHandles,
         mentionActionNoticeTitle = draftState.mentionActionNoticeTitle,
         mentionActionNotice = draftState.mentionActionNotice,
         mentionActionStates = draftState.mentionActionStates,
@@ -20302,6 +20312,7 @@ internal fun ThreadComposerUiState.isThreadComposerAtRest(): Boolean =
     seedText.isBlank() &&
         pendingAttachments.isEmpty() &&
         pendingMentionActions.isEmpty() &&
+        unresolvedMentionHandles.isEmpty() &&
         statusLabel == null &&
         memberSuggestions.isEmpty() &&
         channelSuggestions.isEmpty()

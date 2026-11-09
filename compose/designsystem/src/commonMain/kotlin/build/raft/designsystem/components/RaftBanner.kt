@@ -116,7 +116,8 @@ private val RaftBannerSmClosablePaddingY = 10.dp
  * 32dp `Default` button (never pink), with a ghost Dismiss before it when the banner can be
  * dismissed: at the end of the last line while the text fits beside it in a wide banner,
  * otherwise on its own line under the text, aligned to the end (raft-ui 0.19). [onDismiss]
- * adds the frameless × of a banner with no [action] (raft-ui `BannerClose`).
+ * adds the frameless × of a banner with no [action] (raft-ui `BannerClose`), labelled
+ * [dismissLabel] (raft-ui `closeLabel`; the shared "Dismiss" when null).
  *
  * [pending] (raft-ui 0.22, #709): while something is still pending, such as a computer that
  * hasn't connected yet, a spinner takes the icon's place, centred in the icon's column on
@@ -136,7 +137,11 @@ fun RaftBanner(
     action: (@Composable RowScope.() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     pending: Boolean = false,
-) = RaftBanner(AnnotatedString(description), status, modifier, title, size, showIcon, action, onDismiss, pending)
+    dismissLabel: String? = null,
+) = RaftBanner(
+    AnnotatedString(description), status, modifier, title, size, showIcon, action, onDismiss, pending,
+    dismissLabel = dismissLabel,
+)
 
 /**
  * [RaftBanner] whose [description] carries a text action inside the sentence: a strong
@@ -154,6 +159,7 @@ fun RaftBanner(
     action: (@Composable RowScope.() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     pending: Boolean = false,
+    dismissLabel: String? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
@@ -221,7 +227,7 @@ fun RaftBanner(
         if (onDismiss != null && action == null) {
             RaftIconButton(
                 onClick = onDismiss,
-                tooltip = LocalRaftStrings.current.dismiss,
+                tooltip = dismissLabel ?: LocalRaftStrings.current.dismiss,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Md,
                 // banner.tsx `close`: `-my-[calc((--spacing(8)-1lh)/2)] -me-icon-inset`. Centred on

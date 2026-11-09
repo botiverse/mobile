@@ -20,6 +20,11 @@ class RaftNetworkRequestLifetimeCoordinatorTest {
             RaftNetworkMethodClass.ProcessMutation,
             raftNetworkMethodClass("POST", "https://example.test/api/messages", serverScoped = true)
         )
+        // Every human send now goes to `POST /api/v2/messages`: still process-bound.
+        assertEquals(
+            RaftNetworkMethodClass.ProcessMutation,
+            raftNetworkMethodClass("POST", "https://example.test/api/v2/messages", serverScoped = true)
+        )
         assertEquals(
             RaftNetworkMethodClass.ProcessMutation,
             raftNetworkMethodClass(

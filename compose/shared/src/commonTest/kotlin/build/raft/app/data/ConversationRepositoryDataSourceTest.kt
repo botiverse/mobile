@@ -947,7 +947,7 @@ class ConversationRepositoryDataSourceTest {
             FakeConversationNetworkClient(
                 responses =
                     mapOf(
-                        "POST messages" to messageJson("sent-1", "channel-1", content = "ship it"),
+                        "POST v2/messages" to messageJson("sent-1", "channel-1", content = "ship it"),
                         "POST channels/channel-1/threads" to """{"threadChannelId":"thread-1","replyCount":0,"ok":true}""",
                         "POST channels/threads/follow" to """{"threadChannelId":"thread-1","replyCount":4,"ok":true}""",
                         "POST channels/threads/unfollow" to """{"threadChannelId":"thread-1","replyCount":4,"ok":true}"""
@@ -983,15 +983,46 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun sendMessagePostsToV2AndReadsUnresolvedMentionHandles() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "POST v2/messages" to
+                            """{"message": ${messageJson("sent-1", "channel-1", content = "hi @ghost @ada")},""" +
+                            """ "unresolvedMentionHandles": ["@ghost", 7, "", "@nobody"]}""",
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val sent =
+            repository.sendMessage(
+                channelId = ChannelId("channel-1"),
+                body = "hi @ghost @ada",
+                randomId = "rid-v2"
+            )
+
+        val result = assertIs<DataResult.Content<SendMessageResult>>(sent).data
+        assertEquals("sent-1", result.message.id.value)
+        // web `normalizeSendMessageResponse`: only the string items, in the server's order.
+        assertEquals(listOf("@ghost", "@nobody"), result.unresolvedMentionHandles)
+        assertEquals(
+            listOf("""{"channelId":"channel-1","content":"hi @ghost @ada","attachmentIds":[],"asTask":false,"randomId":"rid-v2"}"""),
+            network.bodies
+        )
+    }
+
+    @Test
     fun sendMessageRejectsUnknownProjectedSenderInsteadOfInventingCurrentUserMessage() = runBlocking {
         val logs = mutableListOf<String>()
         val network =
             FakeConversationNetworkClient(
                 responses =
                     mapOf(
-                        "POST messages" to
+                        // The v2 answer wraps the message; its projection is still checked.
+                        "POST v2/messages" to
                             """
-                            {
+                            {"message": {
                               "id": "secret-message-id",
                               "channelId": "channel-1",
                               "senderType": "future-member",
@@ -999,7 +1030,7 @@ class ConversationRepositoryDataSourceTest {
                               "senderName": "Secret Sender",
                               "messageType": "chat",
                               "content": "private body"
-                            }
+                            }, "unresolvedMentionHandles": ["@ghost"]}
                             """.trimIndent(),
                     ),
             )

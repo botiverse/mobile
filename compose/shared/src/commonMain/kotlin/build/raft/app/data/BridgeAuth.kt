@@ -994,7 +994,7 @@ internal interface SharedThreadNetworkApi {
         randomId: String? = null
     ): HomeNetworkResponse
 
-    /** `POST /messages` with structured `mentions` ([ThreadSendMessageMention]); fakes may keep the plain send. */
+    /** `POST v2/messages` with structured `mentions` ([ThreadSendMessageMention]); fakes may keep the plain send. */
     suspend fun sendMessageWithMentions(
         channelId: String,
         body: String,
