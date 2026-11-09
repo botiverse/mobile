@@ -21,19 +21,22 @@ import kotlin.test.assertEquals
 class TaskInReviewRetiredTest {
     private val withoutInReview = listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Closed)
 
-    /** Every status a menu offers: Backlog waits for its reason input (a later version), Unknown is never a choice. */
+    /** A task v2 task's menu: Backlog first (slock #12963), no In Review. */
+    private val v2Choices = listOf(TaskStatus.Backlog) + withoutInReview
+
+    /** A pre-v2 task's menu: every status but Backlog (task v2 only); Unknown is never a choice. */
     private val everyChoice = listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed)
 
     @Test
     fun aV2TaskIsNotOfferedInReviewWithTaskV2On() {
-        assertEquals(withoutInReview, task().statusMenuChoices(taskV2Enabled = true))
+        assertEquals(v2Choices, task().statusMenuChoices(taskV2Enabled = true))
         // A task made the v2 way opens as its conversation even where the flag is off (web `isTaskV2Task`).
-        assertEquals(withoutInReview, task(conversationAnchored = true).statusMenuChoices(taskV2Enabled = false))
+        assertEquals(v2Choices, task(conversationAnchored = true).statusMenuChoices(taskV2Enabled = false))
     }
 
     @Test
     fun aTaskStillInReviewKeepsItAsItsCurrentOption() {
-        assertEquals(everyChoice, task(status = TaskStatus.InReview).statusMenuChoices(taskV2Enabled = true))
+        assertEquals(TaskStatus.known, task(status = TaskStatus.InReview).statusMenuChoices(taskV2Enabled = true))
     }
 
     @Test
@@ -47,8 +50,8 @@ class TaskInReviewRetiredTest {
         fun barStatuses(task: TaskSummary) =
             task.taskConversationHeaderBarModel(TaskConversationHeaderState(ChannelId("conv-1")), statusUpdating = false)
                 .statusOptions.map(TaskStatusOption::status)
-        assertEquals(withoutInReview, barStatuses(task(conversationAnchored = true)))
-        assertEquals(everyChoice, barStatuses(task(status = TaskStatus.InReview, conversationAnchored = true)))
+        assertEquals(v2Choices, barStatuses(task(conversationAnchored = true)))
+        assertEquals(TaskStatus.known, barStatuses(task(status = TaskStatus.InReview, conversationAnchored = true)))
         // Closed -> Todo still reads "Reopen to Todo".
         val closed =
             task(status = TaskStatus.Closed, conversationAnchored = true)

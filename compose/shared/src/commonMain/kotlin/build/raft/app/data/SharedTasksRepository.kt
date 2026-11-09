@@ -45,6 +45,10 @@ interface SharedTasksRepository {
 
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
+    /** A move into Backlog with its [reason] (slock #12962); the default (fakes) drops the reason. */
+    suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus, reason: String?): DataResult<TaskActionResult> =
+        updateTaskStatus(serverId, taskId, status)
+
     /**
      * Assign/unassign a task. `assignee == null` unassigns. `expectedRevision`
      * is the OCC token from the projected task (omitted when the projection has
@@ -58,6 +62,10 @@ interface SharedTasksRepository {
     ): DataResult<TaskActionResult>
 
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
+
+    /** Task v2: every task starts in [status] (slock #12963); the default (fakes) drops the status. */
+    suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>, status: TaskStatus?): DataResult<TaskSnapshot> =
+        createTasks(serverId, channelId, titles)
 }
 
 class SharedTasksDataRepository(
@@ -105,8 +113,15 @@ class SharedTasksDataRepository(
         serverId: ServerId,
         taskId: TaskId,
         status: TaskStatus
+    ): DataResult<TaskActionResult> = updateTaskStatus(serverId, taskId, status, reason = null)
+
+    override suspend fun updateTaskStatus(
+        serverId: ServerId,
+        taskId: TaskId,
+        status: TaskStatus,
+        reason: String?
     ): DataResult<TaskActionResult> {
-        val result = remoteDataSource.updateTaskStatus(serverId, taskId, status)
+        val result = remoteDataSource.updateTaskStatus(serverId, taskId, status, reason)
         if (result is DataResult.Content) {
             localDataSource.upsertTask(serverId, result.data.task)
         }
@@ -130,8 +145,15 @@ class SharedTasksDataRepository(
         serverId: ServerId,
         channelId: ChannelId,
         titles: List<String>
+    ): DataResult<TaskSnapshot> = createTasks(serverId, channelId, titles, status = null)
+
+    override suspend fun createTasks(
+        serverId: ServerId,
+        channelId: ChannelId,
+        titles: List<String>,
+        status: TaskStatus?
     ): DataResult<TaskSnapshot> {
-        val result = remoteDataSource.createTasks(serverId, channelId, titles)
+        val result = remoteDataSource.createTasks(serverId, channelId, titles, status)
         if (result is DataResult.Content) {
             val channelScope = SharedTasksScope.Channel(channelId)
             localDataSource.mergeTasks(serverId, channelScope, result.data)
@@ -180,6 +202,10 @@ interface SharedTasksRemoteDataSource {
 
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
+    /** A move into Backlog with its [reason] (slock #12962); the default (fakes) drops the reason. */
+    suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus, reason: String?): DataResult<TaskActionResult> =
+        updateTaskStatus(serverId, taskId, status)
+
     /** See [SharedTasksRepository.assignTask]. */
     suspend fun assignTask(
         serverId: ServerId,
@@ -189,6 +215,10 @@ interface SharedTasksRemoteDataSource {
     ): DataResult<TaskActionResult>
 
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
+
+    /** Task v2: every task starts in [status] (slock #12963); the default (fakes) drops the status. */
+    suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>, status: TaskStatus?): DataResult<TaskSnapshot> =
+        createTasks(serverId, channelId, titles)
 }
 
 private data class SharedTasksCacheKey(

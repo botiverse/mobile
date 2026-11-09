@@ -200,6 +200,7 @@ import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.taskStatusChoices
+import build.raft.app.data.taskStatusPickAsksBacklogReason
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
@@ -1736,6 +1737,7 @@ internal fun threadEventRequiresWriteAccess(action: String): Boolean =
             "removeMember",
             "convertMessageToTask",
             "setTaskStatus",
+            "moveTaskToBacklog",
             "setTaskAssignee",
             "markTaskDone",
             "reopenTask",
@@ -12614,12 +12616,14 @@ private fun SharedThreadRouteContentContent(
             submitting = createTaskFromMessage.submitting,
             errorText = createTaskFromMessage.errorText,
             onDismiss = { createTaskFromMessage.dismiss() },
-            onSubmit = { titles ->
+            // Task v2 Create Task's Status field (web: shown with the task v2 flag on).
+            statusField = taskV2Enabled,
+            onSubmit = { titles, status ->
                 val serverId = currentServerId?.takeIf { it.isNotBlank() }
                 if (serverId != null && !createTaskFromMessage.submitting) {
                     coroutineScope.launch {
                         val outcome =
-                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel)
+                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel, status)
                         bridge.log(
                             "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
                                 "messageId=${source.messageId.value}"
@@ -13015,6 +13019,9 @@ private fun SharedThreadRouteContentContent(
                         timeContext = taskConversationTimeContext,
                         onUpdateStatus = { status ->
                             taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).updateStatus(taskConversationTask, status) }
+                        },
+                        onMoveToBacklog = { reason ->
+                            taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).moveToBacklog(taskConversationTask, reason) }
                         },
                         onAssign = { member ->
                             taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).assign(taskConversationTask, member) }
@@ -14788,6 +14795,16 @@ private fun SharedThreadRouteContentContent(
                     }
                     tasksViewModel.dispatch(intent)
                 }
+                // A move into Backlog with the reason asked for it (web TaskBacklogReasonPopover);
+                // tab carries the reason, "" for none.
+                action == "moveTaskToBacklog" && !itemId.isNullOrBlank() -> {
+                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, TaskStatus.Backlog, tab)
+                    if (tasksViewModel == null || intent == null) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    tasksViewModel.dispatch(intent)
+                }
                 // Task #258: inline task detail panel assignee row. tab carries the
                 // assignee filter id ("unassigned" sentinel or member filter id);
                 // resolve against the same current-channel options rendered by the picker.
@@ -16415,6 +16432,9 @@ internal fun RaftThreadScreenPayload.parentMessageContextLoadingPayload(
 
 private fun RaftThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
     status == "loading" || (status == "error" && items.isEmpty())
+
+/** The task a message's task menu is moving into Backlog, while its reason is asked. */
+internal data class ThreadTaskBacklogReasonTarget(val taskId: String, val taskNumber: Int?)
 
 private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     when (trim().lowercase().replace("-", "").replace("_", "").replace(" ", "")) {
@@ -22694,6 +22714,8 @@ private fun ThreadMessagesListContent(
         }
     }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // A move into Backlog picked from a message's task menu: its reason is asked first (web TaskBacklogReasonPopover).
+    var taskBacklogReasonTarget by remember(threadInstanceKey) { mutableStateOf<ThreadTaskBacklogReasonTarget?>(null) }
     // Add Reaction: the message whose full emoji picker is open (web hover-toolbar picker).
     var reactionPickerMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Where the message menu was, kept for the picker: on wide screens it opens there, like web's.
@@ -26627,7 +26649,7 @@ private fun ThreadMessagesListContent(
                             threadTaskStatusMenuItems(
                                 taskStatusChoices(
                                     selectedStatus.status,
-                                    inReviewRetired = linkedTasksProjection.taskV2Enabled
+                                    v2Task = linkedTasksProjection.taskV2Enabled
                                 )
                             ),
                         selectedId = selectedStatus.key,
@@ -26637,7 +26659,11 @@ private fun ThreadMessagesListContent(
                             val taskId = message.taskId?.takeIf { it.isNotBlank() }
                             val status = selectedId.toSharedThreadTaskStatus()
                             if (taskId != null && status != null && status.name != selectedStatus.key) {
-                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                if (taskStatusPickAsksBacklogReason(selectedStatus.status, status)) {
+                                    taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, message.taskNumber)
+                                } else {
+                                    onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                }
                             }
                         }
                     )
@@ -26653,7 +26679,11 @@ private fun ThreadMessagesListContent(
                             val taskId = linkedTask.id.value
                             val status = selectedId.toSharedThreadTaskStatus()
                             if (taskId.isNotBlank() && status != null && status.name != selectedStatus.key) {
-                                onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                if (taskStatusPickAsksBacklogReason(linkedTask.status, status)) {
+                                    taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, linkedTask.taskNumber ?: message.taskNumber)
+                                } else {
+                                    onThreadEvent("setTaskStatus", taskId, null, selectedId)
+                                }
                             }
                         },
                         onAssigneeSelect = { assignee ->
@@ -26671,6 +26701,17 @@ private fun ThreadMessagesListContent(
                     )
                 }
             }
+        }
+        taskBacklogReasonTarget?.let { target ->
+            TaskBacklogReasonDialog(
+                taskNumber = target.taskNumber,
+                onDismiss = { taskBacklogReasonTarget = null },
+                onConfirm = { reason ->
+                    taskBacklogReasonTarget = null
+                    // The reason rides in `tab` ("" for none), as setTaskAssignee's member id does.
+                    onThreadEvent("moveTaskToBacklog", target.taskId, null, reason.orEmpty())
+                }
+            )
         }
     }
     }

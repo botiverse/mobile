@@ -59,7 +59,7 @@ internal fun TaskSummary.opensAsTaskConversation(taskV2Enabled: Boolean): Boolea
 
 /** Web `getTaskStatusOptions(task, ..., taskV2)`: what this task's status menu offers (no In Review on a v2 task). */
 internal fun TaskSummary.statusMenuChoices(taskV2Enabled: Boolean): List<TaskStatus> =
-    taskStatusChoices(status, inReviewRetired = opensAsTaskConversation(taskV2Enabled))
+    taskStatusChoices(status, v2Task = opensAsTaskConversation(taskV2Enabled))
 
 /** The launch identity of a task conversation: a flat, root-less stream keyed by its channel id. */
 internal fun taskConversationLaunchIdentity(conversationChannelId: ChannelId): ThreadLaunchConversationIdentity =

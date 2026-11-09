@@ -2143,6 +2143,11 @@
     <string name="tasks_create_from_message_title_many">从消息创建任务</string>
     <string name="tasks_create_title_placeholder">任务 %1$d</string>
     <string name="tasks_create_submit_many">创建 %1$d 个任务</string>
+    <string name="tasks_create_status_applies_to_all">状态将应用到全部 %1$d 个任务。</string>
+    <string name="tasks_backlog_reason_title">将 #%1$d 移到暂缓</string>
+    <string name="tasks_backlog_reason_label">原因（可以不写）</string>
+    <string name="tasks_backlog_reason_placeholder">什么情况下会恢复？</string>
+    <string name="tasks_backlog_reason_confirm">移到暂缓</string>
     <string name="tasks_create_failed">创建任务失败</string>
     <string name="home_action_view">查看</string>
     <string name="home_action_retry">重试</string>

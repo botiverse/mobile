@@ -1841,7 +1841,7 @@
     <string name="tasks_create_hint">새 작업 버튼으로 만들 수 있어요.</string>
     <string name="tasks_empty_filtered_detail">필터 조합을 바꾸거나 현재 선택을 해제해 보세요.</string>
     <string name="tasks_empty_server_detail">서버 전체 보기에는 DM과 에이전트 작업 보드를 의도적으로 포함하지 않아요.</string>
-    <string name="tasks_empty_backlog">백로그 작업이 없어요</string>
+    <string name="tasks_empty_backlog">보류 중인 작업이 없어요</string>
     <string name="tasks_empty_unknown">이 상태의 작업이 없어요</string>
     <string name="tasks_empty_todo">할 일 작업이 없어요</string>
     <string name="tasks_empty_in_progress">진행 중인 작업이 없어요</string>
@@ -1870,7 +1870,7 @@
     <string name="tasks_assignee_unassigned">담당자 없음</string>
     <string name="tasks_detail_task_identifier">작업 #%1$d</string>
     <string name="tasks_state_updating">업데이트 중</string>
-    <string name="tasks_status_backlog">백로그</string>
+    <string name="tasks_status_backlog">보류</string>
     <string name="tasks_status_unknown">알 수 없음</string>
     <string name="tasks_status_todo">할 일</string>
     <string name="tasks_status_in_progress">진행 중</string>
@@ -2140,6 +2140,11 @@
     <string name="tasks_create_from_message_title_many">메시지로 작업 만들기</string>
     <string name="tasks_create_title_placeholder">작업 %1$d</string>
     <string name="tasks_create_submit_many">작업 %1$d개 만들기</string>
+    <string name="tasks_create_status_applies_to_all">상태는 작업 %1$d개 모두에 적용됩니다.</string>
+    <string name="tasks_backlog_reason_title">#%1$d을(를) 보류로 이동</string>
+    <string name="tasks_backlog_reason_label">사유 (선택)</string>
+    <string name="tasks_backlog_reason_placeholder">어떤 경우에 다시 진행하나요?</string>
+    <string name="tasks_backlog_reason_confirm">보류로 이동</string>
     <string name="tasks_create_failed">작업을 만들지 못했어요</string>
     <string name="home_action_view">보기</string>
     <string name="home_action_retry">다시 시도</string>

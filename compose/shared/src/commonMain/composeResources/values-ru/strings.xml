@@ -1838,7 +1838,7 @@
     <string name="tasks_create_hint">Создайте задачу кнопкой «Новая задача».</string>
     <string name="tasks_empty_filtered_detail">Попробуйте другое сочетание фильтров или сбросьте выбор.</string>
     <string name="tasks_empty_server_detail">Доски задач личных чатов и агентов намеренно не входят в это общее представление сервера.</string>
-    <string name="tasks_empty_backlog">Нет задач в бэклоге</string>
+    <string name="tasks_empty_backlog">Нет отложенных задач</string>
     <string name="tasks_empty_unknown">Нет задач с этим статусом</string>
     <string name="tasks_empty_todo">Нет задач к выполнению</string>
     <string name="tasks_empty_in_progress">Нет задач в работе</string>
@@ -1867,7 +1867,7 @@
     <string name="tasks_assignee_unassigned">Без исполнителя</string>
     <string name="tasks_detail_task_identifier">Задача #%1$d</string>
     <string name="tasks_state_updating">Обновление…</string>
-    <string name="tasks_status_backlog">Бэклог</string>
+    <string name="tasks_status_backlog">Отложено</string>
     <string name="tasks_status_unknown">Неизвестно</string>
     <string name="tasks_status_todo">К выполнению</string>
     <string name="tasks_status_in_progress">В работе</string>
@@ -2137,6 +2137,11 @@
     <string name="tasks_create_from_message_title_many">Создать задачи из сообщения</string>
     <string name="tasks_create_title_placeholder">Задача %1$d</string>
     <string name="tasks_create_submit_many">Создать задачи (%1$d)</string>
+    <string name="tasks_create_status_applies_to_all">Статус будет применён ко всем задачам (%1$d).</string>
+    <string name="tasks_backlog_reason_title">Отложить задачу #%1$d</string>
+    <string name="tasks_backlog_reason_label">Причина (необязательно)</string>
+    <string name="tasks_backlog_reason_placeholder">Что должно случиться, чтобы к ней вернуться?</string>
+    <string name="tasks_backlog_reason_confirm">Отложить</string>
     <string name="tasks_create_failed">Не удалось создать задачу</string>
     <string name="home_action_view">Открыть</string>
     <string name="home_action_retry">Повторить</string>

@@ -259,7 +259,7 @@ internal fun RaftTaskStatusMenuTouchVisualScreen() {
             RaftTaskStatusMenuOverlay(
                 anchor = resolvedAnchor,
                 items =
-                    build.raft.app.data.taskStatusChoices(selectedStatus, inReviewRetired = false).map { status ->
+                    build.raft.app.data.taskStatusChoices(selectedStatus, v2Task = false).map { status ->
                         RaftBaseMenuItem(id = status.name, label = status.touchFixtureLabel())
                     },
                 selectedId = selectedStatus.name,

@@ -2140,6 +2140,11 @@
     <string name="tasks_create_from_message_title_many">從訊息建立任務</string>
     <string name="tasks_create_title_placeholder">任務 %1$d</string>
     <string name="tasks_create_submit_many">建立 %1$d 個任務</string>
+    <string name="tasks_create_status_applies_to_all">狀態會套用到全部 %1$d 個任務。</string>
+    <string name="tasks_backlog_reason_title">將 #%1$d 移到暫緩</string>
+    <string name="tasks_backlog_reason_label">原因（選填）</string>
+    <string name="tasks_backlog_reason_placeholder">什麼情況下會恢復？</string>
+    <string name="tasks_backlog_reason_confirm">移到暫緩</string>
     <string name="tasks_create_failed">無法建立任務</string>
     <string name="home_action_view">檢視</string>
     <string name="home_action_retry">重試</string>

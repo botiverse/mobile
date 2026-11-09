@@ -36,6 +36,9 @@ import build.raft.app.data.KeyValueTasksViewPreferenceRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.taskStatusChoices
+import build.raft.app.data.taskStatusPickAsksBacklogReason
+import build.raft.app.data.currentTaskSummary
+import build.raft.app.data.DefaultTaskCreateStatus
 import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationIntent
 import build.raft.app.data.TasksPresentationState
@@ -549,6 +552,8 @@ private fun SharedTasksLoadedBodyContent(
     // coordinate after a LazyColumn scroll; reconstructing it from item layout offsets
     // moves the menu away from the chip and can leave the menu under the touch barrier.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
+    // A move into Backlog picked from the status menu: its reason is asked first (web TaskBacklogReasonPopover).
+    var backlogReasonTask by remember { mutableStateOf<TaskSummary?>(null) }
     var statusMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var assigneeMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
     var assigneeMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
@@ -976,7 +981,26 @@ private fun SharedTasksLoadedBodyContent(
                     statusMenuTask = null
                     val next = TaskStatus.values().firstOrNull { it.name == selectedId }
                     if (!updating && next != null && next != task.status) {
-                        onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
+                        if (taskStatusPickAsksBacklogReason(task.status, next)) {
+                            backlogReasonTask = task
+                        } else {
+                            onIntent(SharedTasksRouteIntent.UpdateStatus(task, next))
+                        }
+                    }
+                }
+            )
+        }
+
+        backlogReasonTask?.takeIf { it.readOnlyReason == null && !state.standIn }?.let { task ->
+            TaskBacklogReasonDialog(
+                taskNumber = task.taskNumber,
+                onDismiss = { backlogReasonTask = null },
+                onConfirm = { reason ->
+                    backlogReasonTask = null
+                    // Someone else may have parked it meanwhile: then there is nothing left to write.
+                    val current = state.currentTaskSummary(task.id.value) ?: task
+                    if (current.status != TaskStatus.Backlog) {
+                        onIntent(SharedTasksRouteIntent.UpdateStatus(current, TaskStatus.Backlog, reason))
                     }
                 }
             )
@@ -1037,16 +1061,18 @@ private fun SharedTasksLoadedBodyContent(
 
         if (createDialogOpen && createTasksChannelId != null && !state.standIn) {
             TasksCreateDialog(
+                // Task v2: a task can start in Backlog, Todo or In Progress (web Create Task's Status field).
+                statusField = taskV2Enabled,
                 loading = createLoading,
                 errorCode = state.createErrorCode.takeIf { createFailureVisible && !createLoading },
                 onDismiss = {
                     if (!createLoading) createDialogOpen = false
                 },
-                onSubmit = { titles ->
+                onSubmit = { titles, status ->
                     if (!createLoading) {
                         createFailureVisible = false
                         createSubmitted = true
-                        onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
+                        onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles, status))
                     }
                 }
             )
@@ -1916,7 +1942,7 @@ private fun TasksStatusDialog(
                     color = RaftColor.TextBlack.copy(alpha = 0.65f)
                 )
             }
-            val choices = taskStatusChoices(task.status, inReviewRetired = false)
+            val choices = taskStatusChoices(task.status, v2Task = false)
             items(choices.size) { idx ->
                 val status = choices[idx]
                 val selected = status == task.status
@@ -1942,13 +1968,17 @@ private fun TasksStatusDialog(
 }
 
 @Composable
-private fun TasksCreateDialog(
+internal fun TasksCreateDialog(
     loading: Boolean,
     errorCode: String?,
     onDismiss: () -> Unit,
-    onSubmit: (List<String>) -> Unit
+    /** The titles, and the Status field's value (null without the field: the server's default). */
+    onSubmit: (List<String>, TaskStatus?) -> Unit,
+    /** Task v2: the Status field (Backlog, Todo or In Progress; Todo by default). Off, titles only. */
+    statusField: Boolean = false
 ) {
     var titles by remember { mutableStateOf(listOf("")) }
+    var status by remember { mutableStateOf(DefaultTaskCreateStatus) }
     val anyNonBlank = titles.any { it.isNotBlank() }
     RaftUnifiedDialog(
         title = stringResource(Res.string.tasks_label_new_tasks),
@@ -2004,6 +2034,16 @@ private fun TasksCreateDialog(
                     leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) }
                 )
             }
+            if (statusField) {
+                item {
+                    TaskCreateStatusField(
+                        value = status,
+                        onValueChange = { status = it },
+                        titleCount = titles.count { it.isNotBlank() },
+                        enabled = !loading
+                    )
+                }
+            }
             errorCode?.takeIf { it.isNotBlank() }?.let { code ->
                 item {
                     Text(
@@ -2032,7 +2072,7 @@ private fun TasksCreateDialog(
                     },
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.Check) },
                 enabled = anyNonBlank && !loading,
-                onClick = { onSubmit(titles) },
+                onClick = { onSubmit(titles, status.takeIf { statusField }) },
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg
             )

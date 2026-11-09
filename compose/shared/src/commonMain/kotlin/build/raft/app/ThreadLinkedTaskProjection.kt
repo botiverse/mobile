@@ -112,8 +112,10 @@ internal fun emptyThreadLinkedTasksProjection(): ThreadLinkedTasksProjection =
 internal fun ThreadLinkedTasksProjection.statusUpdateIntent(
     taskId: String,
     status: TaskStatus,
+    /** A move into Backlog: what would bring it back (blank: none). */
+    reason: String? = null,
 ): SharedTasksRouteIntent.UpdateStatus? =
-    taskById(taskId)?.let { task -> SharedTasksRouteIntent.UpdateStatus(task, status) }
+    taskById(taskId)?.let { task -> SharedTasksRouteIntent.UpdateStatus(task, status, reason?.trim()?.takeIf { it.isNotEmpty() }) }
 
 // Task #258: thread inline task chip opens the combined task detail panel; the
 // assignee row mutates through the same typed SharedTasksRouteIntent seam the
