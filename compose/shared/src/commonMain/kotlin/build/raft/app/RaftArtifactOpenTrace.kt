@@ -40,13 +40,17 @@ internal object RaftArtifactOpenTrace {
     private fun emit(segment: String, detail: String) {
         val since = sinceTapMillis() ?: 0L
         val suffix = if (detail.isBlank()) "" else " $detail"
-        raftTraceToPlatformLog(
-            RAFT_ARTIFACT_OPEN_TRACE_TAG,
-            "artifact_open seg=$segment open=$currentOpen sinceTapMs=$since epochMs=${defaultNowMillis()}$suffix",
-        )
+        val line = "artifact_open seg=$segment open=$currentOpen sinceTapMs=$since epochMs=${defaultNowMillis()}$suffix"
+        raftTraceToPlatformLog(RAFT_ARTIFACT_OPEN_TRACE_TAG, line)
+        // Also into the persistent diagnostics ring (feedback archives): the logcat line above
+        // bypasses it, so a reported "Artifact does not load" had no viewer line at all.
+        raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, line)
     }
 
     private fun String.traceSafeId(): String = filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(48)
 }
 
 internal const val RAFT_ARTIFACT_OPEN_TRACE_TAG = "RaftArtifactOpen"
+
+/** Persistent diagnostics tag of the Artifact viewer (the open trace's copy and the viewer's own lines). */
+internal const val RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG = "SlockArtifactViewer"
