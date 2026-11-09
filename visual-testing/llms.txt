@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-08 22:43:20 UTC
-Latest run: 590aade5-20261108215926
-Latest commit: 590aade5-20261108215926
-Commit subject: fix(android): window theme follows the app's light/dark choice (#4446)
+Generated: 2026-11-09 22:04:36 UTC
+Latest run: 41a40027-20261109220201
+Latest commit: 41a40027-20261109220201
+Commit subject: fix(webview): stalled or crashed in-app web pages show an error with Retry (dm #102)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 122, same 0, pass 1, basic-pass 8, different 76, missing 37
-AI analysis: ready 38 / total 122, pending 84
+AI analysis: ready 34 / total 122, pending 88
 Visual coverage matrix: active 131 / total 151, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 41a40027-20261109220201: react vs android, total 122, pass 1, basic-pass 8, different 76, matrix runs/41a40027-20261109220201/component-matrix.json, page runs/41a40027-20261109220201/
 - 590aade5-20261108215926: react vs android, total 122, pass 1, basic-pass 8, different 76, matrix runs/590aade5-20261108215926/component-matrix.json, page runs/590aade5-20261108215926/
 - 40815d3e-20261107215920: react vs android, total 106, pass 1, basic-pass 8, different 76, matrix runs/40815d3e-20261107215920/component-matrix.json, page runs/40815d3e-20261107215920/
 - 1e916283-20261105220131: react vs android, total 92, pass 1, basic-pass 8, different 76, matrix runs/1e916283-20261105220131/component-matrix.json, page runs/1e916283-20261105220131/

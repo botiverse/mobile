@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.ui.typography.specimen",
+  "image": "visual-testing-results/react/components.ui.typography.specimen.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.ui.typography.specimen']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 300
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 300
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-09T21:38:49.294Z"
+}

@@ -1,0 +1,46 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.settings.appearance.page",
+  "image": "visual-testing-results/react/components.settings.appearance.page.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.settings.appearance.page']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "outset": null
+  },
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 844,
+    "initialOverflowPx": 0,
+    "residualOverflowPx": 0,
+    "iterations": 0,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": null
+  },
+  "capturedAt": "2026-11-09T21:41:38.740Z"
+}
