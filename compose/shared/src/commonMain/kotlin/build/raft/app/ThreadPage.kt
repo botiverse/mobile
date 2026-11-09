@@ -30366,6 +30366,7 @@ private fun ThreadMessageCardContent(
                                     typedPending = message.id in pendingActionCardIds,
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
                                     modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                    askerName = localizedAuthorName,
                                     onAction = { elementId ->
                                         when (val press = threadActionCardSpecPress(shownActionCard, specCard, elementId, viewerServerId)) {
                                             ThreadActionCardSpecPress.Ignore -> Unit

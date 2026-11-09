@@ -132,6 +132,10 @@ enum class RaftMessageActionCardStatusTone(internal val color: Color) {
  * [expanded] is false; pass [onExpandedChange] to offer the toggle (named [toggleLabel], "Show
  * or hide details"). Without it the card stays open, as raft-ui's card without a
  * CollapseTrigger. Fold a done or view-only card by default.
+ *
+ * A slim card (a question card, design 2026-11) passes [showIcon] false: no icon tile, the title
+ * starts at the edge. A blank [title] draws no title line (the [description] leads). [statusColor]
+ * inks the status word in a theme colour (a question's green "Answered"); null keeps it muted.
  */
 @Composable
 fun RaftMessageActionCard(
@@ -144,6 +148,8 @@ fun RaftMessageActionCard(
     expanded: Boolean = true,
     onExpandedChange: ((Boolean) -> Unit)? = null,
     toggleLabel: String? = null,
+    showIcon: Boolean = true,
+    statusColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -166,6 +172,8 @@ fun RaftMessageActionCard(
             open = open,
             onExpandedChange = onExpandedChange,
             toggleLabel = toggleLabel,
+            showIcon = showIcon,
+            statusColor = statusColor,
         )
         AnimatedVisibility(
             visible = open,
@@ -191,6 +199,8 @@ private fun RaftMessageActionCardHeader(
     open: Boolean,
     onExpandedChange: ((Boolean) -> Unit)?,
     toggleLabel: String?,
+    showIcon: Boolean = true,
+    statusColor: Color? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -203,21 +213,23 @@ private fun RaftMessageActionCardHeader(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(
-            Modifier
-                .size(line)
-                .background(colors.fillMuted, RoundedCornerShape(RaftRadius.Sticker))
-                .clearAndSetSemantics { },
-            contentAlignment = Alignment.Center,
-        ) {
-            CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted) {
-                if (icon != null) icon() else RaftGlyphIcon(RaftGlyph.Zap, size = RaftMessageActionCardDefaults.HeaderGlyphSize)
+        if (showIcon) {
+            Box(
+                Modifier
+                    .size(line)
+                    .background(colors.fillMuted, RoundedCornerShape(RaftRadius.Sticker))
+                    .clearAndSetSemantics { },
+                contentAlignment = Alignment.Center,
+            ) {
+                CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted) {
+                    if (icon != null) icon() else RaftGlyphIcon(RaftGlyph.Zap, size = RaftMessageActionCardDefaults.HeaderGlyphSize)
+                }
             }
         }
         Column(Modifier.weight(1f).padding(top = ((line - lineHeightOf(titleStyle)) / 2).coerceAtLeast(0.dp))) {
-            RaftText(title, Modifier.semantics { heading() }, style = titleStyle, color = colors.foreground)
+            if (title.isNotBlank()) RaftText(title, Modifier.semantics { heading() }, style = titleStyle, color = colors.foreground)
             if (description != null) {
-                Box(Modifier.padding(top = 2.dp)) { description() }
+                Box(Modifier.padding(top = if (title.isNotBlank()) 2.dp else 0.dp)) { description() }
             }
         }
         if (status != null) {
@@ -227,7 +239,7 @@ private fun RaftMessageActionCardHeader(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RaftStatusDot(size = RaftStatusSize.Md, color = statusTone.color)
-                RaftText(status, style = statusStyle, color = colors.foregroundMuted, maxLines = 1)
+                RaftText(status, style = statusStyle, color = statusColor ?: colors.foregroundMuted, maxLines = 1)
             }
         }
         if (onExpandedChange != null) {
