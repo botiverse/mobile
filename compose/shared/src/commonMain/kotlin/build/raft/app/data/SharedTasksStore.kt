@@ -8,6 +8,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -365,8 +366,17 @@ internal class SharedTasksViewModel(
     private val statusLoadJobs = mutableMapOf<TaskStatus, Job>()
     /** Single-flight for the per-status cursor seed (task #363). */
     private var statusSeedJob: Job? = null
-    /** Set by the Board entering; consumed by the next completed load (task #363). */
-    private var seedStatusPagesOnNext = false
+    /**
+     * Set by the Board entering; consumed by the next completed load (task #363).
+     * Atomic read-and-clear: [dispatch] (EnterBoard) and the load coroutine may run
+     * on different threads, and a plain check-then-clear let BOTH observe `true`
+     * and seed every column twice (duplicate first-page requests).
+     */
+    private val seedStatusPagesOnNext = atomic(false)
+
+    /** Claims a pending Board seed; true for exactly one caller per arm. */
+    private fun consumeBoardSeedRequest(): Boolean =
+        seedStatusPagesOnNext.compareAndSet(expect = true, update = false)
 
     /**
      * Follow the server cursor for one more page (task #345). Single-flight and
@@ -679,12 +689,14 @@ internal class SharedTasksViewModel(
             is SharedTasksRouteIntent.LoadMoreStatus ->
                 loadMoreStatus(action.status)
             SharedTasksRouteIntent.EnterBoard -> {
-                seedStatusPagesOnNext = true
+                seedStatusPagesOnNext.value = true
                 // If content is already loaded (Board toggled after a List load),
                 // seed now instead of waiting for an unrelated refresh.
                 // Not on the stored stand-in: the columns seed after the network answer replaces it.
-                if (state.value.hasCompletedTasksSnapshot() && !state.value.standIn) {
-                    seedStatusPagesOnNext = false
+                val seedNow = state.value.hasCompletedTasksSnapshot() && !state.value.standIn
+                diagnosticsLogger("tasks_board_enter seedNow=$seedNow")
+                // A load completing concurrently may already have claimed the seed.
+                if (seedNow && consumeBoardSeedRequest()) {
                     seedStatusPages(boardSeedStatuses())
                 }
             }
@@ -941,8 +953,7 @@ internal class SharedTasksViewModel(
                     // task #363: per-status seeding is driven by the ACTIVE view
                     // (see SharedTasksRouteIntent.EnterBoard), never by a
                     // construction flag — so List mode cannot seed.
-                    if (seedStatusPagesOnNext) {
-                        seedStatusPagesOnNext = false
+                    if (consumeBoardSeedRequest()) {
                         seedStatusPages(boardSeedStatuses())
                     }
                 }
