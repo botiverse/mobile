@@ -487,8 +487,18 @@ fun RaftSegmentedControl(
      * when every [RaftSegment] has an `icon` or `iconsOnlyIcon`: one without keeps its label.
      */
     iconsOnlyWhenLabelsDontFit: Boolean = false,
+    /**
+     * raft-ui `iconsOnlyBelow="md"` below that width: every segment shows only its icon,
+     * whatever room it has (a phone's toolbar or head, web Artifacts home's grid/list). The same
+     * rule as [iconsOnlyWhenLabelsDontFit] for which segments may: one without an icon keeps its label.
+     */
+    iconsOnly: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
+    if (iconsOnly) {
+        RaftSegmentedTrack(modifier, iconsOnly = true, content)
+        return
+    }
     if (!iconsOnlyWhenLabelsDontFit) {
         RaftSegmentedTrack(modifier, iconsOnly = false, content)
         return
