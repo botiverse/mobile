@@ -3983,6 +3983,11 @@
     <string name="thread_archived_unarchive">取消封存</string>
     <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
     <string name="agent_status_change_model">更換模型</string>
+    <string name="agent_status_retry">重試</string>
+    <string name="agent_status_retrying">重新啟動中…</string>
+    <string name="agent_status_retry_failed">無法重設 Agent</string>
+    <string name="agent_status_computer_access_revoked">電腦的存取權已撤銷：請把 Agent 移到另一台電腦（重新加入會新增一台電腦）</string>
+    <string name="agent_migration_place_from_revoked_computer_note">這個 Agent 所在的電腦已失去伺服器的存取權，無法帶走它的檔案。它會移到你選擇的電腦，並在下次收到訊息時在那裡開始新的工作階段。</string>
     <string name="agent_status_model_unsupported">這個執行環境的帳號或方案不包含模型「%1$s」。請更換模型，或登入包含該模型的帳號</string>
     <string name="agent_status_model_unsupported_default">這個執行環境的帳號或方案不包含這個 Agent 的模型。請更換模型，或登入包含該模型的帳號</string>
     <string name="agent_status_repeated_failure_paused">啟動後多次以同樣的方式失敗——自動喚醒已暫停，Raft 稍後會自動重試；重新啟動 Agent 即可立即重試</string>

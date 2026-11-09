@@ -105,8 +105,10 @@ private data class AgentMigrationStatusResponseDto(val migration: AgentMigration
 
 @Serializable
 private data class AgentMigrationStartResponseDto(
-    val migrationRef: String,
-    val state: String
+    /** Null when the agent was placed without its source (`outcome: "placed_without_source"`). */
+    val migrationRef: String? = null,
+    val state: String,
+    val outcome: String? = null
 )
 
 @Serializable
@@ -142,10 +144,20 @@ internal fun parseSharedAgentMigrationStatus(bodyText: String): AgentMigrationSt
 
 internal data class AgentMigrationStatusSnapshot(val migration: AgentMigrationNotice?)
 
-internal fun parseSharedAgentMigrationStart(bodyText: String): String? =
-    runCatching {
-        migrationJson.decodeFromString(AgentMigrationStartResponseDto.serializer(), bodyText).migrationRef
-    }.getOrNull()?.takeIf { it.isNotBlank() }
+/**
+ * A `POST /agents/:id/migrate` that went through: a migration to follow ([migrationRef]), or an
+ * agent with nothing to bring over (its Computer's access was revoked) already placed on the
+ * target ([placedWithoutSource]; web `outcome === "placed_without_source"`, botiverse/slock #13575).
+ */
+internal data class AgentMigrationStartResult(val migrationRef: String?, val placedWithoutSource: Boolean = false)
+
+internal fun parseSharedAgentMigrationStart(bodyText: String): AgentMigrationStartResult? {
+    val dto = runCatching { migrationJson.decodeFromString(AgentMigrationStartResponseDto.serializer(), bodyText) }.getOrNull()
+        ?: return null
+    if (dto.outcome == "placed_without_source") return AgentMigrationStartResult(migrationRef = null, placedWithoutSource = true)
+    val ref = dto.migrationRef?.takeIf { it.isNotBlank() } ?: return null
+    return AgentMigrationStartResult(migrationRef = ref)
+}
 
 /** Web AgentMigrationDialog: `{ targetComputer }` or `{ target: { kind: "hosted" } }` (server default model). */
 internal fun agentMigrationStartRequestBody(target: AgentMigrationTarget): String =

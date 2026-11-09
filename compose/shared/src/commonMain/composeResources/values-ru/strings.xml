@@ -4036,6 +4036,11 @@
     <string name="thread_archived_unarchive">Вернуть из архива</string>
     <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
     <string name="agent_status_change_model">Сменить модель</string>
+    <string name="agent_status_retry">Повторить</string>
+    <string name="agent_status_retrying">Перезапуск…</string>
+    <string name="agent_status_retry_failed">Не удалось сбросить агента</string>
+    <string name="agent_status_computer_access_revoked">Доступ компьютера отозван: перенесите агента на другой компьютер (повторное подключение добавит новый компьютер)</string>
+    <string name="agent_migration_place_from_revoked_computer_note">Компьютер этого агента потерял доступ к серверу, поэтому его файлы перенести нельзя. Агент переедет на выбранный компьютер и начнёт там новый сеанс, когда получит следующее сообщение.</string>
     <string name="agent_status_model_unsupported">Аккаунт или тариф этой среды выполнения не включает «%1$s». Смените модель или войдите в аккаунт, где она есть</string>
     <string name="agent_status_model_unsupported_default">Аккаунт или тариф этой среды выполнения не включает модель этого агента. Смените модель или войдите в аккаунт, где она есть</string>
     <string name="agent_status_repeated_failure_paused">После запуска агент раз за разом завершался с одной и той же ошибкой — автоматические пробуждения приостановлены, Raft сам попробует снова позже. Чтобы попробовать сейчас, перезапустите агента</string>

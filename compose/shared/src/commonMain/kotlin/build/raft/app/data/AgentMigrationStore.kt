@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 
 internal interface AgentMigrationDataSource {
     suspend fun migrationStatus(agentId: MemberId, priority: DataRequestPriority): DataResult<AgentMigrationStatusSnapshot>
-    suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<String>
+    suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<AgentMigrationStartResult>
     suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
     suspend fun confirmHostedMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
     suspend fun billingPlan(): DataResult<RaftBillingPlanSnapshot>
@@ -224,6 +224,11 @@ internal class AgentMigrationStore(
             val result = guarded { dataSource.startMigration(agentId, target) }
             if (mutableState.value.agentId != agentId) return@launch
             when {
+                result is DataResult.Content && result.data.placedWithoutSource -> {
+                    // Placed on the target at once, nothing to follow: the agent moved (web reloads agents).
+                    update { it.copy(starting = false, effect = AgentMigrationEffect.AgentPlacementChanged) }
+                    refresh(DataRequestPriority.Foreground)
+                }
                 result is DataResult.Content -> {
                     update { it.copy(starting = false, effect = AgentMigrationEffect.Started) }
                     refresh(DataRequestPriority.Foreground)

@@ -414,6 +414,13 @@ data class MemberProfile(
      */
     val agentLifecycleStatus: String? = null,
     /**
+     * The agent list's `blockedReason` (`GET /agents` and its incremental-sync rows; never
+     * `GET /agents/:id`): why the server runs this agent nowhere, raw. Only
+     * `computer_access_revoked` changes what the app shows ([build.raft.app.data.agentBlockedState]);
+     * any other value keeps the agent's ordinary state, as the web does for one it doesn't know.
+     */
+    val agentBlockedReason: String? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via

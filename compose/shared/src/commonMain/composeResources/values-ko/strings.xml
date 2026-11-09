@@ -3983,6 +3983,11 @@
     <string name="thread_archived_unarchive">보관 취소</string>
     <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
     <string name="agent_status_change_model">모델 변경</string>
+    <string name="agent_status_retry">다시 시도</string>
+    <string name="agent_status_retrying">재시작 중…</string>
+    <string name="agent_status_retry_failed">에이전트를 초기화하지 못했어요</string>
+    <string name="agent_status_computer_access_revoked">컴퓨터 접근 권한이 취소되었어요. 에이전트를 다른 컴퓨터로 옮겨 주세요(다시 연결하면 새 컴퓨터로 추가돼요)</string>
+    <string name="agent_migration_place_from_revoked_computer_note">이 에이전트의 컴퓨터가 서버 접근 권한을 잃어서 파일을 가져올 수 없어요. 선택한 컴퓨터로 옮겨지고, 다음 메시지를 받을 때 그곳에서 새 세션을 시작해요.</string>
     <string name="agent_status_model_unsupported">이 런타임의 계정이나 플랜에 ‘%1$s’ 모델이 포함되어 있지 않아요. 모델을 변경하거나 이 모델이 포함된 계정으로 로그인하세요</string>
     <string name="agent_status_model_unsupported_default">이 런타임의 계정이나 플랜에 이 에이전트의 모델이 포함되어 있지 않아요. 모델을 변경하거나 이 모델이 포함된 계정으로 로그인하세요</string>
     <string name="agent_status_repeated_failure_paused">시작한 뒤 같은 방식으로 계속 실패했어요 — 자동 깨우기가 일시 중지됐어요. Raft가 잠시 후 자동으로 다시 시도해요. 지금 시도하려면 에이전트를 재시작하세요</string>

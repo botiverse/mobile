@@ -1386,7 +1386,7 @@ private fun AddChannelMemberRequest.toBodyText(): String =
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
 
 @Serializable
-private data class MemberErrorBody(val error: String? = null)
+private data class MemberErrorBody(val error: String? = null, val code: String? = null)
 
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): SharedNetworkServerContext? {
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
@@ -1405,6 +1405,13 @@ private fun authRequired(serverMessage: String?): DataResult.NoPermission =
 
 private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
     val serverMessage = memberServerErrorTextOrNull()
+    // botiverse/slock #13604: the agent's Computer lost its access, so its workspace cannot be
+    // read; it never comes back by itself, so it is not retryable.
+    if (code == 409 && memberServerErrorCodeOrNull() == ComputerAccessRevokedErrorCode) {
+        return DataResult.Error(
+            ScreenError(code = ComputerAccessRevokedErrorCode, retryable = false, serverMessage = serverMessage)
+        )
+    }
     return when (code) {
         401 -> authRequired(serverMessage)
         403 ->
@@ -1433,6 +1440,13 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
                 )
             )
     }
+}
+
+private fun HomeNetworkResponse.memberServerErrorCodeOrNull(): String? {
+    val payload = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+        memberRepositoryJson.decodeFromString(MemberErrorBody.serializer(), payload).code?.trim()?.takeIf { it.isNotEmpty() }
+    }.getOrNull()
 }
 
 private fun HomeNetworkResponse.memberServerErrorTextOrNull(): String? {
