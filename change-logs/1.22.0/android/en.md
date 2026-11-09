@@ -17,6 +17,8 @@
 - The app now supports 64-bit Android phones only. Phones that run only 32-bit apps (mostly entry-level models) can no longer install it; on those phones earlier versions closed as soon as they opened
 
 🐛 Fixed
+- Fixed Activity rows for some threads showing an old reply: after a new reply in a thread of a shared channel (including your own), the row's time updated but its preview stayed on an earlier reply, so you only saw the new replies after opening it. The row now shows the latest reply once the list refreshes
+- After you send the first message in a task that had no discussion yet, opening the task again now takes you to its discussion with that message, instead of the empty "no discussion yet" page. When a task was created by an agent from another workspace, the task head now shows that agent's own avatar instead of the default one
 - In dark mode, pages opened inside the app (web pages, Artifacts, release notes) and system dialogs and pickers are now dark too, following the app's appearance setting instead of always showing light
 - When you are at or near the top of Activity and new activity arrives, the list now stays at the top and shows the new conversations there, instead of adding them above the screen and leaving you on the second screen. This also holds when a conversation's new activity starts a new Today heading. If you have scrolled further down, your place is kept and a "↑ N new updates" button appears; tap it to go back to the top
 - When you've scrolled up in a channel, DM or thread and new messages arrive below, the pill at the bottom now shows "↓ N new messages", as on the web. Before, it often said only "Back to Bottom". Tap it to jump to the latest; the count clears once you reach the bottom
