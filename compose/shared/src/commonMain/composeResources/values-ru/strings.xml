@@ -4109,6 +4109,16 @@
     <string name="action_card_question_answer_line">%1$s: %2$s</string>
     <string name="action_card_question_answered">Отвечено</string>
     <string name="action_card_question_someone">Кто-то</string>
+    <string name="action_card_question_expired_line">%1$s: нет ответа за %2$s. Агент %3$s уведомлён.</string>
+    <string name="action_card_question_expired_line_anyone">За %1$s никто не ответил. Агент %2$s уведомлён.</string>
+    <string name="action_card_question_withdrawn_line_one">Агент %1$s отозвал этот вопрос.</string>
+    <string name="action_card_question_withdrawn_line_other">Агент %1$s отозвал эти вопросы.</string>
+    <string name="action_card_question_wait_days_one">%1$d день</string>
+    <string name="action_card_question_wait_days_other">%1$d дн.</string>
+    <string name="action_card_question_wait_hours_one">%1$d час</string>
+    <string name="action_card_question_wait_hours_other">%1$d ч</string>
+    <string name="action_card_question_wait_minutes_one">%1$d минуту</string>
+    <string name="action_card_question_wait_minutes_other">%1$d мин</string>
     <string name="action_card_question_asker_has_questions_one">%1$s: %2$d вопрос</string>
     <string name="action_card_question_asker_has_questions_other">%1$s: вопросов — %2$d</string>
 </resources>

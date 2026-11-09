@@ -3808,6 +3808,16 @@
     <string name="action_card_question_answer_line">%1$s: %2$s</string>
     <string name="action_card_question_answered">Respondida</string>
     <string name="action_card_question_someone">Alguien</string>
+    <string name="action_card_question_expired_line">%1$s no respondió en %2$s. Se avisó a %3$s.</string>
+    <string name="action_card_question_expired_line_anyone">Nadie respondió en %1$s. Se avisó a %2$s.</string>
+    <string name="action_card_question_withdrawn_line_one">%1$s retiró esta pregunta.</string>
+    <string name="action_card_question_withdrawn_line_other">%1$s retiró estas preguntas.</string>
+    <string name="action_card_question_wait_days_one">%1$d día</string>
+    <string name="action_card_question_wait_days_other">%1$d días</string>
+    <string name="action_card_question_wait_hours_one">%1$d hora</string>
+    <string name="action_card_question_wait_hours_other">%1$d horas</string>
+    <string name="action_card_question_wait_minutes_one">%1$d minuto</string>
+    <string name="action_card_question_wait_minutes_other">%1$d minutos</string>
     <string name="action_card_question_asker_has_questions_one">%1$s tiene %2$d pregunta</string>
     <string name="action_card_question_asker_has_questions_other">%1$s tiene %2$d preguntas</string>
     <string name="artifacts_app_name">Artifacts</string>

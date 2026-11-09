@@ -298,4 +298,33 @@ class ThreadActionCardQuestionInlineUiTest {
         onNodeWithText("Answered").assertExists()
         onNodeWithText("Answer Question").assertDoesNotExist()
     }
+
+    @Test
+    fun anExpiredButtonRowKeepsTheQuestionAndSaysWhoDidntAnswerWithNoButtons() = runRobolectricComposeUiTest {
+        showCard(mayaCard(state = "expired").copy(questionExpiresInMinutes = 3 * 1_440), viewer = "u-maya")
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Maya didn't answer within 3 days. Fixer was told.").assertExists()
+        // No buttons, not even disabled ones, and no "waiting" hint.
+        onNodeWithText("Fix all 4 on a branch").assertDoesNotExist()
+        onNodeWithText("Other").assertDoesNotExist()
+        onNodeWithText("Fixer is waiting for your answer", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun aWithdrawnButtonRowSaysTheAgentWithdrewIt() = runRobolectricComposeUiTest {
+        showCard(mayaCard(state = "withdrawn"), viewer = "u-ada")
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Fixer withdrew this question.").assertExists()
+        onNodeWithText("Just list them for me").assertDoesNotExist()
+    }
+
+    @Test
+    fun anExpiredSlimCardFoldsToOneLineAskedOfAnyone() = runRobolectricComposeUiTest {
+        val json = ActionCardSpecFixtures.questionCardJson(options = listOf("Fix all 4 on a branch", "One at a time, ask me each", "Just list them for me", "Skip them", "Ask Ada"))
+        val card = mayaCard(json, state = "expired").copy(questionAddresseeUserId = null, questionAddresseeHandle = null, questionAsksAnyone = true, questions = listOf(ThreadActionCardQuestion("single", 5)))
+        showCard(card, viewer = "u-maya")
+        onNodeWithText("Nobody answered within 7 days. Fixer was told.").assertExists()
+        onNodeWithText("Expired").assertExists()
+        onNodeWithText("Skip them").assertDoesNotExist() // folded
+    }
 }

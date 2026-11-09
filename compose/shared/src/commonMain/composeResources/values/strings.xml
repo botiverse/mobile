@@ -3817,6 +3817,16 @@
     <string name="action_card_question_answer_line">%1$s: %2$s</string>
     <string name="action_card_question_answered">Answered</string>
     <string name="action_card_question_someone">Someone</string>
+    <string name="action_card_question_expired_line">%1$s didn't answer within %2$s. %3$s was told.</string>
+    <string name="action_card_question_expired_line_anyone">Nobody answered within %1$s. %2$s was told.</string>
+    <string name="action_card_question_withdrawn_line_one">%1$s withdrew this question.</string>
+    <string name="action_card_question_withdrawn_line_other">%1$s withdrew these questions.</string>
+    <string name="action_card_question_wait_days_one">%1$d day</string>
+    <string name="action_card_question_wait_days_other">%1$d days</string>
+    <string name="action_card_question_wait_hours_one">%1$d hour</string>
+    <string name="action_card_question_wait_hours_other">%1$d hours</string>
+    <string name="action_card_question_wait_minutes_one">%1$d minute</string>
+    <string name="action_card_question_wait_minutes_other">%1$d minutes</string>
     <string name="action_card_question_asker_has_questions_one">%1$s has %2$d question</string>
     <string name="action_card_question_asker_has_questions_other">%1$s has %2$d questions</string>
     <string name="artifacts_app_name">Artifacts</string>

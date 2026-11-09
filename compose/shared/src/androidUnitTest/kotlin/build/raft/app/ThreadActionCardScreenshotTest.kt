@@ -75,6 +75,17 @@ class ThreadActionCardScreenshotTest {
     @Test
     fun questionCardsAnsweredDark() = capture("thread.action-cards.question.answered.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = true) }
 
+    /**
+     * The same cards ended unanswered, each keeping its shape (raft-design "When it ends
+     * unanswered"): C expired / withdrawn, the question over its one status line, no buttons; B
+     * expired (asked of anyone) / withdrawn, folded to that line.
+     */
+    @Test
+    fun questionCardsEndedLight() = capture("thread.action-cards.question.ended", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = false, ended = true) }
+
+    @Test
+    fun questionCardsEndedDark() = capture("thread.action-cards.question.ended.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = false, ended = true) }
+
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ThreadActionCardsVisualContent() }) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
@@ -241,7 +252,7 @@ private fun ThreadActionCardsExpiredVisualContent() {
 
 /** Who the question cards ask and who looks: Maya is asked; Ada only reads. */
 @Composable
-private fun ThreadQuestionCardsVisualContent(answered: Boolean) {
+private fun ThreadQuestionCardsVisualContent(answered: Boolean, ended: Boolean = false) {
     // 2026-11-09 10:03 UTC; the cards expire 7 days later.
     val timeContext = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = raftEpochDayForDate(2026, 11, 9), nowEpochMillis = 1_794_218_580_000L)
     val names = ThreadActionCardNameLookup { kind, id -> if (kind == ThreadActionCardEntityKind.Human && id == "u-maya") "Maya" else null }
@@ -278,6 +289,23 @@ private fun ThreadQuestionCardsVisualContent(answered: Boolean) {
         LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
         LocalThreadActionCardNames provides names,
     ) {
+        if (ended) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                Show(card(ActionCardSpecFixtures.questionCardJson(), 3).copy(state = "expired", questionExpiresInMinutes = 3 * 1_440), viewer = "u-maya")
+                Show(card(ActionCardSpecFixtures.questionCardJson(), 3).copy(state = "withdrawn"), viewer = "u-ada")
+                Show(
+                    card(ActionCardSpecFixtures.questionCardJson(options = fiveOptions), 5)
+                        .copy(state = "expired", questionAddresseeUserId = null, questionAddresseeHandle = null, questionAsksAnyone = true),
+                    viewer = "u-maya",
+                )
+                val several = Json.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), ActionCardSpecFixtures.rawCard("question_card"))
+                Show(
+                    card(several, 3).copy(state = "withdrawn", questions = listOf(ThreadActionCardQuestion("single", 3), ThreadActionCardQuestion("multiple", 3), ThreadActionCardQuestion("text"))),
+                    viewer = "u-maya",
+                )
+            }
+            return@CompositionLocalProvider
+        }
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Show(card(ActionCardSpecFixtures.questionCardJson(), 3), viewer = "u-maya")
             Show(card(ActionCardSpecFixtures.questionCardJson(), 3), viewer = "u-ada")

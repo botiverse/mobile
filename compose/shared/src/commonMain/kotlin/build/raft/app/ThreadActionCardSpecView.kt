@@ -322,7 +322,7 @@ internal fun ThreadActionCardSpecView(
         displayLocale = displayLocale,
         linkNavigable = { button -> button.actionCardSpecLinkNavigable(card.sourceServerId, viewerServerId) },
         fitLabels = inline != null,
-        slim = question?.let { RaftActionCardSlim(title = it.slimTitle, description = it.slimDescription, answeredLine = it.slimAnswered) },
+        slim = question?.let { RaftActionCardSlim(title = it.slimTitle, description = it.slimDescription, answeredLine = it.slimAnswered, endedLine = it.endedLine) },
         footer =
             inline?.let { form ->
                 {
@@ -349,6 +349,7 @@ internal fun ThreadActionCardSpecView(
  * - [single] / [text]: whether it asks one question, and that question's text;
  * - C: [buttonRowHint] ("Fixer is waiting for your answer · 7 days left", or "Waiting for Maya to
  *   answer") and [buttonRowAnswered] ("Maya answered Postgres");
+ * - ended unanswered: [endedLine] ("Mei didn't answer within 3 days. Scout was told.", "Scout withdrew these questions.");
  * - B: [slimTitle] (the one question, or "Fixer has 3 questions", raft-design #1095), [slimDescription] ("Fixer is asking you · 7 days left", or "Waiting for Maya") and
  *   [slimAnswered] ("Maya: Postgres").
  */
@@ -361,6 +362,8 @@ internal data class QuestionCardWords(
     val slimTitle: String?,
     val slimDescription: String?,
     val slimAnswered: String?,
+    /** Ended without an answer: the one line where the question's options (C) or the card (B, folded) were. */
+    val endedLine: String?,
 )
 
 /**
@@ -399,12 +402,15 @@ private fun rememberQuestionCardWords(
     val waiting = card.actionCardSpecStatus() == RaftActionCardStatus.Prepared || card.isFrozen
     val answerer = card.executedByUserName?.takeIf { it.isNotBlank() } ?: addressee
     val answer = spec.questionAnswerText(displayLocale)
+    // Expired: the person asked by name; asked of anyone (or no addressee on the card), "Nobody answered".
+    val endedLine = card.questionEndedLine(asker, addressee.takeIf { card.questionAddresseeUserId != null }, count.coerceAtLeast(1))
     return QuestionCardWords(
         asked = asked,
         single = single,
         text = text,
         buttonRowHint =
             when {
+                endedLine != null -> endedLine
                 !waiting -> null
                 asked -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_waiting_for_your_answer, asker), timeLeft)
                 else -> stringResource(Res.string.action_card_question_waiting_for_answer, addressee)
@@ -423,6 +429,7 @@ private fun rememberQuestionCardWords(
                 else -> stringResource(Res.string.action_card_question_waiting_for, addressee)
             },
         slimAnswered = answer?.let { stringResource(Res.string.action_card_question_answer_line, answerer, it) },
+        endedLine = endedLine,
     )
 }
 

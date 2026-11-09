@@ -3817,6 +3817,16 @@
     <string name="action_card_question_answer_line">%1$s：%2$s</string>
     <string name="action_card_question_answered">回答済み</string>
     <string name="action_card_question_someone">誰か</string>
+    <string name="action_card_question_expired_line">%1$s は %2$s 以内に回答しませんでした。%3$s に伝えました。</string>
+    <string name="action_card_question_expired_line_anyone">%1$s 以内に誰も回答しませんでした。%2$s に伝えました。</string>
+    <string name="action_card_question_withdrawn_line_one">%1$s が質問を取り下げました。</string>
+    <string name="action_card_question_withdrawn_line_other">%1$s が質問を取り下げました。</string>
+    <string name="action_card_question_wait_days_one">%1$d 日</string>
+    <string name="action_card_question_wait_days_other">%1$d 日</string>
+    <string name="action_card_question_wait_hours_one">%1$d 時間</string>
+    <string name="action_card_question_wait_hours_other">%1$d 時間</string>
+    <string name="action_card_question_wait_minutes_one">%1$d 分</string>
+    <string name="action_card_question_wait_minutes_other">%1$d 分</string>
     <string name="action_card_question_asker_has_questions_one">%1$s から %2$d 件の質問</string>
     <string name="action_card_question_asker_has_questions_other">%1$s から %2$d 件の質問</string>
     <string name="artifacts_app_name">Artifacts</string>

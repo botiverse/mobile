@@ -35,7 +35,6 @@ import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.checkActionCardFormValues
-import build.raft.app.data.codePointLength
 import build.raft.app.data.renderActionCardMsgText
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -63,8 +62,12 @@ internal enum class QuestionCardLayout {
 /** At most this many options (Other not counted) are drawn as C's button row. */
 internal const val QUESTION_BUTTON_ROW_MAX_OPTIONS: Int = 4
 
-/** C's button row takes options of at most this many characters each (Other not counted), raft-design #1095. */
-internal const val QUESTION_BUTTON_ROW_MAX_OPTION_CHARS: Int = 32
+/**
+ * C's options are at most this many columns wide each (Other not counted; a CJK or fullwidth
+ * character counts 2): the server's `questionAskPlacement` limit, checked here only where the form
+ * that carried `placement` is gone.
+ */
+internal const val QUESTION_BUTTON_ROW_MAX_OPTION_COLUMNS: Int = 32
 
 /** The server's Msg key of a Choice's Other label; drawn with the app's "Other" (never "Other…"). */
 internal const val QUESTION_OTHER_MSG_KEY: String = "actionCard.question.other"
@@ -75,22 +78,23 @@ internal const val QUESTION_FOR_MSG_KEY: String = "actionCard.question.for"
 /**
  * The layout of [this] question card ([QuestionCardLayout]), or null for any other card.
  *
- * C needs exactly one question, single choice, the server's `placement: "inline"` (the server's
- * own "short" call, never recomputed here), and on top of it at most [QUESTION_BUTTON_ROW_MAX_OPTIONS]
- * options of at most [QUESTION_BUTTON_ROW_MAX_OPTION_CHARS] characters each (Other not counted).
- * Every other case is B. An answered card's spec keeps no form (the server drops it with the
- * answers), so there the stored action's questions decide: one `single` question with at most 4
- * options of at most 32 characters. An ended
- * (expired, withdrawn) card or one waiting on Confirm again keeps the slim card's existing states.
+ * C needs exactly one question, single choice, at most [QUESTION_BUTTON_ROW_MAX_OPTIONS] options,
+ * and what the server's `questionAskPlacement` calls inline: no pages, every option label at most
+ * [QUESTION_BUTTON_ROW_MAX_OPTION_COLUMNS] columns. An open card carries that as `placement:
+ * "inline"`, which is trusted, never re-measured. An answered card's spec keeps no form (the server
+ * drops it with the answers), and an ended (expired, withdrawn) card keeps the shape it had when
+ * asked (Jasper, raft-design #triage:#261), so for both the stored action decides with the same
+ * rule ([ThreadActionCard.questions], [ThreadActionCard.questionHasPages]). Every other case, and a
+ * card waiting on Confirm again, is B.
  */
 internal fun ThreadActionCard.questionCardLayout(spec: ActionCardSpecCard): QuestionCardLayout? {
     if (!type.equals(QuestionAskActionCardType, ignoreCase = true)) return null
-    if (hasEnded || needsReconfirmation) return QuestionCardLayout.SlimCard
-    if (isExecuted) {
+    if (needsReconfirmation) return QuestionCardLayout.SlimCard
+    if (isExecuted || hasEnded) {
         val only = questions.singleOrNull()
         return if (
-            only != null && only.kind == "single" && only.options in 1..QUESTION_BUTTON_ROW_MAX_OPTIONS &&
-            only.longestOption <= QUESTION_BUTTON_ROW_MAX_OPTION_CHARS
+            !questionHasPages && only != null && only.kind == "single" && only.options in 1..QUESTION_BUTTON_ROW_MAX_OPTIONS &&
+            only.widestOptionColumns <= QUESTION_BUTTON_ROW_MAX_OPTION_COLUMNS
         ) {
             QuestionCardLayout.ButtonRow
         } else {
@@ -99,9 +103,8 @@ internal fun ThreadActionCard.questionCardLayout(spec: ActionCardSpecCard): Ques
     }
     val inline = spec.inlineQuestionForm() ?: return QuestionCardLayout.SlimCard
     val only = inline.fields.singleOrNull() ?: return QuestionCardLayout.SlimCard
-    val shortOptions =
-        only.options.all { option -> codePointLength(renderActionCardMsgText(option.label, ActionCardFormDefaultLocale)) <= QUESTION_BUTTON_ROW_MAX_OPTION_CHARS }
-    return if (!only.multiple && only.options.size <= QUESTION_BUTTON_ROW_MAX_OPTIONS && shortOptions) QuestionCardLayout.ButtonRow else QuestionCardLayout.SlimCard
+    // `placement: "inline"` already says no pages and every label within 32 columns.
+    return if (!only.multiple && only.options.size <= QUESTION_BUTTON_ROW_MAX_OPTIONS) QuestionCardLayout.ButtonRow else QuestionCardLayout.SlimCard
 }
 
 /**
@@ -406,3 +409,58 @@ private fun QuestionButtons(
         QuestionHint(hint)
     }
 }
+
+/** The default wait of a question card (shared `QUESTION_ASK_LIMITS.expiresInMinutes.default`, 7 days). */
+internal const val QUESTION_DEFAULT_EXPIRES_IN_MINUTES: Int = 10_080
+
+/** How long a question card waited, in the largest whole unit (web `formatQuestionWait`): 3 days, 12 hours, 90 minutes. */
+internal sealed interface QuestionWait {
+    data class Days(val days: Int) : QuestionWait
+
+    data class Hours(val hours: Int) : QuestionWait
+
+    data class Minutes(val minutes: Int) : QuestionWait
+}
+
+/** [minutes] (`expiresInMinutes`; null or not positive: the default 7 days) in its largest whole unit. */
+internal fun questionWait(minutes: Int?): QuestionWait {
+    val wait = minutes?.takeIf { it > 0 } ?: QUESTION_DEFAULT_EXPIRES_IN_MINUTES
+    return when {
+        wait % 1_440 == 0 -> QuestionWait.Days(wait / 1_440)
+        wait % 60 == 0 -> QuestionWait.Hours(wait / 60)
+        else -> QuestionWait.Minutes(wait)
+    }
+}
+
+@Composable
+internal fun questionWaitText(wait: QuestionWait): String =
+    when (wait) {
+        is QuestionWait.Days ->
+            if (wait.days == 1) stringResource(Res.string.action_card_question_wait_days_one, wait.days) else stringResource(Res.string.action_card_question_wait_days_other, wait.days)
+        is QuestionWait.Hours ->
+            if (wait.hours == 1) stringResource(Res.string.action_card_question_wait_hours_one, wait.hours) else stringResource(Res.string.action_card_question_wait_hours_other, wait.hours)
+        is QuestionWait.Minutes ->
+            if (wait.minutes == 1) stringResource(Res.string.action_card_question_wait_minutes_one, wait.minutes) else stringResource(Res.string.action_card_question_wait_minutes_other, wait.minutes)
+    }
+
+/**
+ * The one line an ended question card says where its question or options were (web
+ * `QuestionCardEndedLine`, raft-design "When it ends unanswered"): withdrawn, "Scout withdrew these
+ * questions."; expired, "Mei didn't answer within 3 days. Scout was told." ([addressee] null: asked
+ * of anyone, "Nobody answered within …"). Null for a card that hasn't ended.
+ */
+@Composable
+internal fun ThreadActionCard.questionEndedLine(asker: String, addressee: String?, questionCount: Int): String? =
+    when {
+        isWithdrawn ->
+            if (questionCount == 1) stringResource(Res.string.action_card_question_withdrawn_line_one, asker) else stringResource(Res.string.action_card_question_withdrawn_line_other, asker)
+        isExpired -> {
+            val duration = questionWaitText(questionWait(questionExpiresInMinutes))
+            if (addressee != null) {
+                stringResource(Res.string.action_card_question_expired_line, addressee, duration, asker)
+            } else {
+                stringResource(Res.string.action_card_question_expired_line_anyone, duration, asker)
+            }
+        }
+        else -> null
+    }

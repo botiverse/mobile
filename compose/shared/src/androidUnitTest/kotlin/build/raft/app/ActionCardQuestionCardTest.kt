@@ -4,6 +4,7 @@ import build.raft.app.data.ActionCardSpecDisplayElement
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardQuestion
+import build.raft.app.data.questionLabelColumns
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.toMessageMetadata
@@ -36,25 +37,33 @@ class ActionCardQuestionCardTest {
     }
 
     @Test
-    fun anOptionOverThirtyTwoCharactersMakesItTheSlimCard() {
-        val thirtyTwo = "x".repeat(32)
-        assertEquals(
-            QuestionCardLayout.ButtonRow,
-            card().questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson(options = listOf("A", thirtyTwo)))),
-        )
-        assertEquals(
-            QuestionCardLayout.SlimCard,
-            card().questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson(options = listOf("A", thirtyTwo + "x")))),
-        )
-        // Characters, not UTF-16 units: 32 emoji are 32 characters.
-        assertEquals(32, build.raft.app.data.codePointLength("😀".repeat(32)))
-        // Answered: the stored question's longest label decides.
-        val answered = { longest: Int ->
-            card(state = "executed", questions = listOf(ThreadActionCardQuestion("single", options = 3, longestOption = longest)))
-                .questionCardLayout(ActionCardSpecFixtures.card("question_card"))
+    fun aFormGoneCardMeasuresItsStoredLabelsInColumnsAsTheServerDoes() {
+        // Columns as questionAskPlacement counts them: CJK and fullwidth characters are 2.
+        assertEquals(32, questionLabelColumns("x".repeat(32)))
+        assertEquals(34, questionLabelColumns("部".repeat(17)))
+        assertEquals(32, questionLabelColumns("部".repeat(16)))
+        val stored = { label: String, state: String ->
+            card(state = state, questions = listOf(ThreadActionCardQuestion("single", options = 3, widestOptionColumns = questionLabelColumns(label))))
+                .questionCardLayout(spec(ActionCardSpecFixtures.questionCardAnsweredJson()))
         }
-        assertEquals(QuestionCardLayout.ButtonRow, answered(32))
-        assertEquals(QuestionCardLayout.SlimCard, answered(33))
+        for (state in listOf("executed", "expired", "withdrawn")) {
+            assertEquals(QuestionCardLayout.ButtonRow, stored("x".repeat(32), state), "32 ASCII, $state")
+            assertEquals(QuestionCardLayout.SlimCard, stored("x".repeat(33), state), "33 ASCII, $state")
+            assertEquals(QuestionCardLayout.SlimCard, stored("部".repeat(17), state), "17 CJK = 34 columns, $state")
+            assertEquals(QuestionCardLayout.ButtonRow, stored("部".repeat(16), state), "16 CJK = 32 columns, $state")
+        }
+        // A paged action is never inline, however short.
+        val paged = card(state = "executed", questions = listOf(ThreadActionCardQuestion("single", 2, widestOptionColumns = 1))).copy(questionHasPages = true)
+        assertEquals(QuestionCardLayout.SlimCard, paged.questionCardLayout(spec(ActionCardSpecFixtures.questionCardAnsweredJson())))
+        assertEquals(QuestionCardLayout.SlimCard, paged.copy(state = "expired").questionCardLayout(spec(ActionCardSpecFixtures.questionCardAnsweredJson())))
+    }
+
+    @Test
+    fun anOpenCardTrustsPlacementAndNeverReMeasuresItsLabels() {
+        // `placement: "inline"` is the server's call (no pages, labels within 32 columns): not measured again.
+        val long = "An option label far longer than thirty-two characters"
+        assertEquals(QuestionCardLayout.ButtonRow, card().questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson(options = listOf(long, "B")))))
+        assertEquals(QuestionCardLayout.ButtonRow, card().questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson(options = listOf("部".repeat(17), "B")))))
     }
 
     @Test
@@ -67,15 +76,37 @@ class ActionCardQuestionCardTest {
         assertEquals(QuestionCardLayout.SlimCard, card().questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson(multiple = true))))
         assertEquals(QuestionCardLayout.SlimCard, card().questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson(inline = false))))
         assertEquals(QuestionCardLayout.SlimCard, card().questionCardLayout(ActionCardSpecFixtures.card("question_card")))
-        // Ended cards keep the slim card's existing Expired / Withdrawn states.
-        assertEquals(QuestionCardLayout.SlimCard, card(state = "expired").questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())))
-        assertEquals(QuestionCardLayout.SlimCard, card(state = "withdrawn").questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())))
+        // A card waiting on Confirm again is B.
+        assertEquals(
+            QuestionCardLayout.SlimCard,
+            card(state = "reconfirm_required", questions = listOf(ThreadActionCardQuestion("single", 3, widestOptionColumns = 10)))
+                .questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())),
+        )
     }
 
     @Test
-    fun theClientNeverMeasuresLabelsItTrustsPlacement() {
-        val long = "An option label far longer than thirty-two characters"
-        assertEquals(QuestionCardLayout.ButtonRow, card().questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson(options = listOf(long, "B")))))
+    fun expiredAndWithdrawnCardsKeepTheShapeTheyHadWhenAskedFromTheStoredQuestions() {
+        val short = listOf(ThreadActionCardQuestion("single", 3, widestOptionColumns = 26))
+        for (state in listOf("expired", "withdrawn")) {
+            // The stored questions decide, as for an answered card, whatever the spec still holds.
+            assertEquals(QuestionCardLayout.ButtonRow, card(state, short).questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())), state)
+            assertEquals(QuestionCardLayout.ButtonRow, card(state, short).questionCardLayout(spec(ActionCardSpecFixtures.questionCardAnsweredJson())), state)
+            assertEquals(QuestionCardLayout.SlimCard, card(state, listOf(ThreadActionCardQuestion("single", 5, widestOptionColumns = 10))).questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())), state)
+            assertEquals(QuestionCardLayout.SlimCard, card(state, listOf(ThreadActionCardQuestion("single", 3, widestOptionColumns = 33))).questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())), state)
+            assertEquals(QuestionCardLayout.SlimCard, card(state, listOf(ThreadActionCardQuestion("multiple", 3, widestOptionColumns = 10))).questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())), state)
+            assertEquals(QuestionCardLayout.SlimCard, card(state, short + short).questionCardLayout(ActionCardSpecFixtures.card("question_card")), state)
+            assertEquals(QuestionCardLayout.SlimCard, card(state).questionCardLayout(spec(ActionCardSpecFixtures.questionCardJson())), "$state without stored questions")
+        }
+    }
+
+    @Test
+    fun theWaitIsSaidInItsLargestWholeUnit() {
+        assertEquals(QuestionWait.Days(3), questionWait(3 * 1_440))
+        assertEquals(QuestionWait.Days(7), questionWait(null), "an older card waited the default 7 days")
+        assertEquals(QuestionWait.Days(7), questionWait(0))
+        assertEquals(QuestionWait.Hours(12), questionWait(720))
+        assertEquals(QuestionWait.Hours(36), questionWait(36 * 60))
+        assertEquals(QuestionWait.Minutes(90), questionWait(90))
     }
 
     @Test
@@ -162,15 +193,17 @@ class ActionCardQuestionCardTest {
                     {"kind":"action-card","state":"prepared","expiresAt":"2026-11-16T10:03:00.000Z",
                      "action":{"type":"question:ask","to":"maya","addressee":{"kind":"user","userId":"u-maya","handle":"Maya"},
                        "questions":[{"id":"how","kind":"single","text":"How?","options":[{"value":"a","label":"A"},{"value":"b","label":"B"}]}],
-                       "expiresAt":"2026-11-16T10:03:00.000Z"}}
+                       "expiresInMinutes":4320,"expiresAt":"2026-11-16T10:03:00.000Z"}}
                     """.trimIndent(),
                 ).toThreadActionCard(),
             )
         assertEquals("u-maya", user.questionAddresseeUserId)
         assertEquals("Maya", user.questionAddresseeHandle)
         assertFalse(user.questionAsksAnyone)
-        assertEquals(listOf(ThreadActionCardQuestion("single", 2, longestOption = 1)), user.questions)
+        assertEquals(listOf(ThreadActionCardQuestion("single", 2, widestOptionColumns = 1)), user.questions)
         assertEquals("2026-11-16T10:03:00.000Z", user.expiresAt)
+        assertEquals(4_320, user.questionExpiresInMinutes)
+        assertFalse(user.questionHasPages)
         assertEquals(user, actionCardFromMessageMetadata(user.toMessageMetadata()))
 
         val anyone =
@@ -184,6 +217,17 @@ class ActionCardQuestionCardTest {
         assertNull(anyone.questionAddresseeUserId)
         assertEquals(listOf(ThreadActionCardQuestion("text", 0)), anyone.questions)
         assertEquals(anyone, actionCardFromMessageMetadata(anyone.toMessageMetadata()))
+
+        val paged =
+            assertNotNull(
+                json.decodeFromString(
+                    WireActionCardMetadata.serializer(),
+                    """{"kind":"action-card","action":{"type":"question:ask","questions":[{"id":"a","kind":"single","text":"A?","options":[{"value":"x","label":"部署"}]}],"pages":[["a"]]}}""",
+                ).toThreadActionCard(),
+            )
+        assertTrue(paged.questionHasPages)
+        assertEquals(listOf(ThreadActionCardQuestion("single", 1, widestOptionColumns = 4)), paged.questions)
+        assertEquals(paged, actionCardFromMessageMetadata(paged.toMessageMetadata()))
     }
 
     @Test

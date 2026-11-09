@@ -76,13 +76,16 @@ internal data class RaftActionCardFrameState(
  * question(s)" title. [title] replaces the card's (a single question's text; null: no title line),
  * [description] is the line under it while the card waits ("Fixer is asking you · 7 days left",
  * "Waiting for Maya"); once answered the header is the one [answeredLine] ("Maya: Postgres") with a
- * green "Answered", folded over the record. A view-only reader gets no "View only" word: the
+ * green "Answered", folded over the record. Ended unanswered, the folded header is the one
+ * [endedLine] ("Mei didn't answer within 3 days. Scout was told.") beside its Expired / Withdrawn
+ * status. A view-only reader gets no "View only" word: the
  * description already says who answers.
  */
 internal data class RaftActionCardSlim(
     val title: String?,
     val description: String?,
     val answeredLine: String?,
+    val endedLine: String? = null,
 )
 
 /**
@@ -182,11 +185,13 @@ internal fun RaftActionCardView(
     val context = context(inSpecOfExecutedCard = executed)
     val cardTitle = actionCardMsgPlainMentions(card.title, context)
     val answeredLine = slim?.answeredLine?.takeIf { executed && it.isNotBlank() }
+    val slimEndedLine = slim?.endedLine?.takeIf { ended && it.isNotBlank() }
     val slimDescription = slim?.description?.takeIf { !executed && !ended && it.isNotBlank() }
     val title =
         when {
             slim == null -> cardTitle
             answeredLine != null -> answeredLine
+            slimEndedLine != null -> slimEndedLine
             slim.title != null -> slim.title
             // Several questions: no title line while a description leads; otherwise the card's own.
             slimDescription != null && state.blockedReason == null -> ""
@@ -206,7 +211,7 @@ internal fun RaftActionCardView(
             description =
                 when {
                     // The answered slim card says it all in its one line.
-                    answeredLine != null -> null
+                    answeredLine != null || slimEndedLine != null -> null
                     executed -> state.record?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
                     ended -> state.endedLine?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     else ->
