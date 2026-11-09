@@ -382,17 +382,73 @@ jobs:
             caches/jars-*
             caches/transforms-*
             caches/*/transforms
-      # One Gradle invocation for the whole Android gate: one JVM start, one configuration phase
-      # and one up-to-date pass. --continue keeps going past a failing task, so a red unit test
-      # cannot hide a compile failure elsewhere (or the reverse), and every failure is reported in
-      # the same run. No --parallel: :androidApp:generate*OssLicenses resolves :shared's
-      # configurations at execution time, which Gradle rejects under parallel project execution
-      # ("resolution ... was attempted without an exclusive lock", run 40073308446).
+      # Memory budget for the 16 GB ubuntu-latest runner. Two big JVMs must never be live at once.
+      # With the project defaults (compose/gradle.properties) a Gradle build forks a separate
+      # Kotlin compile daemon (BuildToolsApiCompilationWork) that stays up, heap still grown,
+      # until that Gradle invocation ends. When compile and tests ran in one invocation that was
+      # Gradle 4g + Kotlin daemon 4g + three Robolectric test forks, and the kernel OOM killer took
+      # the Gradle daemon ("Gradle build daemon disappeared unexpectedly" in :shared:testDebugUnitTest
+      # / compile, runs 42516165273, 42559441881, 42569489997). And 4g is too small for the Kotlin
+      # compile itself: run 42571118161 (job 129008585080) GC-thrashed 31 min in
+      # :shared:compileDebugKotlinAndroid and died with "e: java.lang.OutOfMemoryError: Java heap
+      # space"; a local build needed a 6g Kotlin heap. On the APK tier the $GRADLE_USER_HOME
+      # jvmargs line dropped the project's -Dkotlin.daemon.jvm.options, so the Kotlin daemon
+      # inherited Gradle's -Xmx6g: 6g + 6g in one invocation.
+      #
+      # So: Kotlin compiles in-process (kotlin.compiler.execution.strategy=in-process, as
+      # android-release.yml and android-testbox.yml already do) and the Gradle heap is sized per
+      # invocation through $GRADLE_USER_HOME/gradle.properties, which outranks the project file:
+      #   compile (+ APK) invocation: Gradle -Xmx8g, one JVM (~9.5 GB RSS with metaspace/code cache)
+      #   test invocation:            Gradle -Xmx4g (compiles up to date) + 3 test forks at Gradle's
+      #                               default 512m maxHeapSize (~1.5 GB RSS each) = ~10 GB
+      # gradle-heap.sh rewrites the jvmargs line (setup-gradle may restore this directory, and
+      # appending blindly would stack duplicate entries) and stops any Kotlin daemon a previous
+      # invocation left behind (buildSrc / included builds), so the next one starts alone.
+      - name: Configure Gradle memory budget
+        run: |
+          set -euo pipefail
+          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$GUH"
+          script="$RUNNER_TEMP/gradle-heap.sh"
+          cat > "$script" <<'EOF'
+          #!/usr/bin/env bash
+          # Usage: gradle-heap.sh <Xmx>. Sets the Gradle JVM heap for the next ./gradlew call.
+          set -euo pipefail
+          props="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+          touch "$props"
+          grep -v -e '^org\.gradle\.jvmargs=' -e '^kotlin\.compiler\.execution\.strategy=' "$props" > "$props.tmp" || true
+          mv "$props.tmp" "$props"
+          printf '%s\n' \
+            "org.gradle.jvmargs=-Xmx$1 -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            'kotlin.compiler.execution.strategy=in-process' >> "$props"
+          if pkill -f 'org\.jetbrains\.kotlin\.daemon\.KotlinCompileDaemon'; then
+            echo "Stopped a leftover Kotlin compile daemon"
+            for _ in $(seq 1 30); do
+              pgrep -f 'org\.jetbrains\.kotlin\.daemon\.KotlinCompileDaemon' >/dev/null || break
+              sleep 1
+            done
+            pkill -9 -f 'org\.jetbrains\.kotlin\.daemon\.KotlinCompileDaemon' || true
+          fi
+          echo "== $props"; cat "$props"
+          free -m
+          EOF
+          chmod +x "$script"
+          echo "GRADLE_HEAP=$script" >> "$GITHUB_ENV"
+
+      # Two Gradle invocations for the Android gate, compile first (memory budget above): the
+      # Kotlin compile peak and the test JVMs never share the runner. --continue keeps each going
+      # past a failing task, so one broken module cannot hide a compile failure elsewhere, and a
+      # red unit test cannot hide another; a compile failure stops the step before the tests. No
+      # --parallel: :androidApp:generate*OssLicenses resolves :shared's configurations at execution
+      # time, which Gradle rejects under parallel project execution ("resolution ... was attempted
+      # without an exclusive lock", run 40073308446).
       #
       # - Compiling the unit-test source sets closes the gap where a broken commonTest (or an API
       #   change that breaks tests) sailed through green CI (#198 follow-up).
       #   :androidApp:compileDebugKotlin gates the Android host too: #57 merged green while breaking
       #   every local assembleDebug because only :shared was compiled here (task #217 follow-up).
+      #   Every test source set the test invocation needs is compiled here, so that invocation only
+      #   finds up-to-date compile outputs.
       # - Hard run gate since #215 cleared the legacy failures: the shared JVM suite must pass, and
       #   the androidApp unit tests run in the same gate so stale Android host tests cannot stay
       #   hidden until a local developer run. :designsystem:verifyRoborazziDesktop is the CMP design system's
@@ -416,40 +472,37 @@ jobs:
             :shared:compileDebugKotlinAndroid
             :shared:compileDebugUnitTestKotlinAndroid
             :androidApp:compileDebugKotlin
+            :androidApp:compileDebugUnitTestKotlin
+            :ui-cmp:compileAndroidHostTest
+            :designsystem:compileTestKotlinDesktop
           )
+          compile=("${tasks[@]}")
           if [ "$BUILD_CONNECTED_APKS" = true ]; then
             # HandsCrash installs from Application.onCreate, before the actual-host page can bind
             # its dynamic blackhole. Keep that SDK on loopback too so the target-UID non-loopback
             # counter is a meaningful zero. (defaultConfig, so the debug unit-test build sees it as
             # well on these tiers; no unit test reads BuildConfig.HANDS_BASE_URL.)
             export SLOCK_HANDS_BASE_URL=https://127.0.0.1:1
-            # Assembling the three test APKs makes D8 merge their dex in the Gradle heap that
-            # compose/gradle.properties sizes for a single Kotlin/Native link (4g). On 2026-10-18 it
-            # died with "D8: java.lang.OutOfMemoryError: Java heap space" inside
-            # :androidApp:mergeLibDexConnectedTest while the runner reported 12 GiB available.
-            # Raised through $GRADLE_USER_HOME/gradle.properties, which outranks the project file
-            # (ios-simulator-app.yml and ios-release.yml lift the same ceiling the same way).
-            GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
-            mkdir -p "$GUH"
-            # Drop any previous line first: setup-gradle may restore this directory, and appending
-            # blindly would stack duplicate org.gradle.jvmargs entries across runs.
-            if [ -f "$GUH/gradle.properties" ]; then
-              grep -v '^org\.gradle\.jvmargs=' "$GUH/gradle.properties" > "$GUH/gradle.properties.tmp" || true
-              mv "$GUH/gradle.properties.tmp" "$GUH/gradle.properties"
-            fi
-            printf '%s\n' 'org.gradle.jvmargs=-Xmx6g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> "$GUH/gradle.properties"
-            # Its own invocation, before the tests: run together, the APK build's D8/R8 work in the
-            # 6g daemon overlapped the :shared test JVMs and the runner killed the job ~2 min into
-            # :shared:testDebugUnitTest (task #proj-mobile#74; runs 41812394919, 41825428986). The
-            # test invocation below finds these compile outputs up to date.
-            ./gradlew "${tasks[@]}" \
-              :shared:assembleDebugAndroidTest \
-              :androidApp:assembleConnectedTest \
-              :androidApp:assembleConnectedTestAndroidTest \
-              --no-daemon \
-              --console=plain \
-              --stacktrace
+            # Assembling the three test APKs makes D8 merge their dex in the Gradle heap. On
+            # 2026-10-18 it died at 4g with "D8: java.lang.OutOfMemoryError: Java heap space" inside
+            # :androidApp:mergeLibDexConnectedTest while the runner reported 12 GiB available; the
+            # 8g compile heap covers it. Built in the compile invocation, before the tests: run
+            # together, the APK build's D8/R8 work overlapped the :shared test JVMs and the runner
+            # killed the job ~2 min into :shared:testDebugUnitTest (task #proj-mobile#74; runs
+            # 41812394919, 41825428986).
+            compile+=(
+              :shared:assembleDebugAndroidTest
+              :androidApp:assembleConnectedTest
+              :androidApp:assembleConnectedTestAndroidTest
+            )
           fi
+          "$GRADLE_HEAP" 8g
+          ./gradlew "${compile[@]}" \
+            --continue \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+          "$GRADLE_HEAP" 4g
           tasks+=(
             :core:testAndroidHostTest
             :shared:testDebugUnitTest
@@ -471,13 +524,16 @@ jobs:
       # never sees the configuration that ships: release, fixtures off (src/visualFixturesOff,
       # fixture data back in commonTest). On the full tier (nightly, full-ci, scope=full) compile
       # that configuration too, so a break shows up before release day. Its own invocation: the
-      # fixture flag changes :shared's source sets.
+      # fixture flag changes :shared's source sets. A full :shared Kotlin compile, so it gets the
+      # 8g in-process compile heap (memory budget above).
       - name: Compile Android release configuration (fixtures off)
         if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
         working-directory: compose
         env:
           SLOCK_VISUAL_FIXTURES: "false"
         run: |
+          set -euo pipefail
+          "$GRADLE_HEAP" 8g
           ./gradlew \
             -PslockVisualFixtures=false \
             :shared:compileReleaseKotlinAndroid \
