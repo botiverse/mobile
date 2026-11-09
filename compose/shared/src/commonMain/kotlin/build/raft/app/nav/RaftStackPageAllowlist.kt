@@ -128,6 +128,8 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 // Batch 2.
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_ACCOUNT_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_HANDS_FEEDBACK_PAGE),
+                // The native ticket list (1.23); it opens the submit form above over itself.
+                RaftStackPageRule(pageName = build.raft.app.SETTINGS_FEEDBACK_TICKETS_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_STORAGE_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.RELEASE_NOTES_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),

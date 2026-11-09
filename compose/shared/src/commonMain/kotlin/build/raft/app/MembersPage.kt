@@ -4963,11 +4963,11 @@ internal fun MemberDetailPageContent(
                             onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
                             onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
                             onReportAgentIssue = agentDetailActions::reportIssue,
-                            // Web "View Ticket" opens Settings › Feedback on the ticket; the app's
-                            // Feedback page is the same web workspace, hosted in a WebView.
+                            // Web "View Ticket" opens Settings › Feedback on the ticket: the native
+                            // ticket page on Android / iOS, the web page on Compose desktop.
                             onOpenFeedbackTicket = { ticketId ->
                                 provider.bridge.log("member_detail_feedback_ticket_open")
-                                pager.openSettingsFeedbackWebViewPage(provider.storeScope, ticketId = ticketId)
+                                pager.openSettingsFeedbackPage(provider.storeScope, ticketId = ticketId)
                             }
                         ),
                         timeContext = timeContext,

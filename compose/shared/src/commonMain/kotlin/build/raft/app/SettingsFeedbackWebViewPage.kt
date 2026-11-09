@@ -57,6 +57,16 @@ internal fun raftFeedbackCardEntryOrNull(
     return RaftFeedbackCardEntry(actionCardMessageId = id, serverId = server)
 }
 
+/**
+ * Whether a done `feedback:submit` card's "View in Settings" can open its ticket on
+ * [viewingServerId]: the native ticket page wherever Feedback is native (Android, iOS; 1.23, no
+ * server needed), else the web page the card entry opens ([raftFeedbackCardEntryEnabled]).
+ */
+internal fun raftFeedbackTicketPageAvailable(
+    viewingServerId: String?,
+    feedbackWeb: Boolean = settingsFeedbackUsesWebPage(),
+): Boolean = !feedbackWeb || raftFeedbackCardEntryEnabled(viewingServerId, feedbackWeb)
+
 /** Whether a prepared `feedback:submit` card's button opens the Feedback page. */
 internal fun ThreadActionCard.opensFeedbackCardEntry(): Boolean = isFeedbackSubmitAction() && !isExecuted
 

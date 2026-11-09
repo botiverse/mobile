@@ -113,6 +113,7 @@ internal fun authenticatedProductPageView(
             }
         AuthenticatedProductRoute.SettingsAccount -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Account)
         AuthenticatedProductRoute.SettingsHandsFeedback -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)
+        AuthenticatedProductRoute.SettingsFeedbackTickets -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)
         AuthenticatedProductRoute.SettingsStorage -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Storage)
         AuthenticatedProductRoute.SettingsNativeDetail ->
             settingsNativeDetailRoute(params)?.page?.productSettingsTab()?.let { RaftProductPageView(RaftPageRoute.Settings, it) }

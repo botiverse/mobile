@@ -116,6 +116,21 @@ interface RaftNetworkClient {
     ): HomeNetworkBytesResponse =
         HomeNetworkBytesResponse(code = 501)
 
+    /**
+     * [requestBytes] with extra request headers (the feedback attachment route's
+     * `X-Raft-Client-Kind`). Auth and server-binding headers still come from the client and win
+     * over a same-named extra header. Clients that cannot send extra headers fall back to the
+     * plain read.
+     */
+    suspend fun requestBytesWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        serverIdOverride: ServerId? = null,
+        maxBytes: Int = RAFT_NETWORK_BYTES_DEFAULT_MAX,
+    ): HomeNetworkBytesResponse =
+        requestBytes(priority = priority, path = path, serverIdOverride = serverIdOverride, maxBytes = maxBytes)
+
     /** Server-authoritative direct attachment-session operations. */
     suspend fun createAttachmentUploadSession(
         priority: DataRequestPriority,

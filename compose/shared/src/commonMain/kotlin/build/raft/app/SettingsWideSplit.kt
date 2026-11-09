@@ -70,7 +70,7 @@ internal val SettingsWideNativeDetailKeys: Set<String> =
 /**
  * The web-backed Settings sections that open in the wide detail pane too (artin 2026-10-29: like
  * the native ones, not a page over the rail). Feedback joins them only when it is the web page
- * ([settingsFeedbackUsesWebPage]); the native Hands feedback page keeps being pushed.
+ * ([settingsFeedbackUsesWebPage]); the native ticket list keeps being pushed.
  */
 internal val SettingsWideWebDetailKeys: Set<String> =
     setOf(
@@ -83,9 +83,9 @@ internal val SettingsWideWebDetailKeys: Set<String> =
 
 /**
  * Whether Settings > Feedback is the ticket web page: only on a host that cannot submit Hands
- * feedback itself (the Compose desktop app). Android and iOS open the native submit form (artin,
- * 1.22.0: the ticket web page goes back out; the ticket list is rewritten natively). No server
- * flag. `feedback:submit` cards follow the same rule ([raftFeedbackCardEntryEnabled]).
+ * feedback itself (the Compose desktop app). Android and iOS open the native ticket list (1.23,
+ * SettingsFeedbackTicketsPage; its New Feedback is the native submit form). No server flag.
+ * `feedback:submit` cards follow the same rule ([raftFeedbackCardEntryEnabled]).
  */
 internal fun settingsFeedbackUsesWebPage(
     nativeSubmit: Boolean = raftPlatformSupportsHandsFeedbackSubmit(),

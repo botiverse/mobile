@@ -97,8 +97,9 @@ internal fun ThreadActionCard.actionCardSpecToRender(
  * the viewer ([viewerUserId]) is the one who sent it (`executedByUserId`), and the ticket was
  * filed into this App's own Hands app (`result.source` == [clientOs], `android` / `ios`:
  * `featureFlagClientOs`). A ticket is read only through its own app. [feedbackPageAvailable]: the
- * App's Settings › Feedback ticket web page can be opened ([raftFeedbackCardEntryEnabled]: Compose
- * desktop only, once the viewing server is known; Android and iOS open the native submit form).
+ * App's Settings › Feedback ticket page can be opened ([raftFeedbackTicketPageAvailable]: the
+ * native ticket page on Android and iOS, the web page on Compose desktop once the viewing server
+ * is known).
  */
 internal fun ThreadActionCard.showsFeedbackTicket(viewerUserId: String?, clientOs: String, feedbackPageAvailable: Boolean): Boolean {
     if (!feedbackPageAvailable || !isExecuted || !isFeedbackSubmitAction()) return false
