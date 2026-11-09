@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 
 /**
  * Task #14b on the real SQLite schema: the Activity prewarm's reply page is written as the thread's
- * window through the enter loader's gates (flag, server-confirmed parent, scope writer), never
+ * window through the enter loader's gates (server-confirmed parent, scope writer), never
  * regresses a newer stored window, and leaves the following enter snapshot its usual behavior.
  * Every positive has a twin whose inputs differ in one fact.
  *
@@ -41,18 +41,6 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             assertEquals(Triple("channel", "channel-1", "m30"), Triple(thread.cursor.parentScopeKind, thread.cursor.parentScopeId, thread.cursor.rootMessageId))
             assertTrue(thread.cursor.hasLoadedOldest, "3 < limit 30")
             assertTrue(rig.logs.none { "canonical_v2_canary enter=" in it }, "no realtime baseline is registered by a prewarm")
-        }
-    }
-
-    @Test
-    fun flagOffPrewarmWritesNothingAndNeverTouchesTheNetwork() = withFreshDatabase { database ->
-        // Twin of the positive above: identical page and wire, flag off.
-        val rig = Rig(database, flagOn = false)
-        runBlocking {
-            rig.prewarm(replyPageArray(50, 60, 70), limit = 30)
-            assertTrue(rig.logs.any { skipped("flag_off") in it }, rig.logs.toString())
-            assertTrue(rig.network.paths.isEmpty())
-            assertNull(Rig(database).reader.readReplyThread(partition, "thread-1", parent))
         }
     }
 
@@ -223,7 +211,6 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
 
     private class Rig(
         database: RaftSqlDatabase,
-        flagOn: Boolean = true,
         threadParentMessageId: String = "m30",
         enterPage: String = replyPage(replyNode(50), replyNode(60), replyNode(70)),
     ) {
@@ -254,13 +241,12 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flagOn }, generationEngine = engine, logger = logs::add)
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true }, logger = logs::add)
+        private val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine, logger = logs::add)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store, logger = logs::add)
         val loader = CanonicalMessageV2EnteredScopeLoader(
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { flagOn },
             logger = logs::add,
         )
 

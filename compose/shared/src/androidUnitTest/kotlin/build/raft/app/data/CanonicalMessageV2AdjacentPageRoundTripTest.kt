@@ -150,13 +150,12 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        private val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         private val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { true },
             logger = logs::add,
         )
 
@@ -175,7 +174,6 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
                         body, channelIds = setOf(channelId), channelType = channelType, parentChannelId = parentChannelId,
                     ),
                 ),
-                isEnabledForServer = { true },
             ).loadOnEnter(partition, channelId) { true }
         }
 

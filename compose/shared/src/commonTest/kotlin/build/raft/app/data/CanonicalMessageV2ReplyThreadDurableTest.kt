@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
 class CanonicalMessageV2ReplyThreadDurableTest {
     @Test
     fun replyThreadOpenPersistsItsRepliesUnderTheConfirmedParent() = runBlocking {
-        val h = harness(flagOn = true)
+        val h = harness()
         h.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
 
         // Phase 2b: the page is the thread store's own request; the writer then has the server confirm the parent.
@@ -58,18 +58,9 @@ class CanonicalMessageV2ReplyThreadDurableTest {
     }
 
     @Test
-    fun flagOffReplyThreadOpenWritesNothingAndNeverTouchesTheNetwork() = runBlocking {
-        // Twin of the test above: identical wire and call, flag off.
-        val h = harness(flagOn = false)
-        h.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-        assertEquals(emptyList(), h.network.paths)
-        assertEquals(0, h.store.snapshots.size)
-    }
-
-    @Test
     fun serverNamingAnotherRootRefusesTheThreadBeforeItsPage() = runBlocking {
         // Twin of the positive: identical page, but the server says the thread hangs off `root-2`.
-        val h = harness(flagOn = true, threadParentMessageId = "root-2")
+        val h = harness(threadParentMessageId = "root-2")
         h.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
         assertEquals(listOf("messages/channel/thread-1", "channels/thread-1"), h.network.paths)
         assertEquals(0, h.store.snapshots.size)
@@ -78,13 +69,12 @@ class CanonicalMessageV2ReplyThreadDurableTest {
 
     @Test
     fun aNonThreadScopeOrANestedReplyIsRefused() = runBlocking {
-        val topLevel = harness(flagOn = true, threadType = "channel")
+        val topLevel = harness(threadType = "channel")
         topLevel.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
         assertEquals(0, topLevel.store.snapshots.size)
         assertTrue(topLevel.logs.any { "outcome=canonical_v2_scope_not_thread" in it }, topLevel.logs.toString())
 
         val nested = harness(
-            flagOn = true,
             page = replyPage(replyNode(20), adjacentPageNode("r30", 30, channelId = "thread-1", threadId = "thread-9")),
         )
         nested.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
@@ -95,14 +85,14 @@ class CanonicalMessageV2ReplyThreadDurableTest {
 
     @Test
     fun identityChangeOrPartitionClearDuringTheThreadFetchWritesNothing() = runBlocking {
-        val identity = harness(flagOn = true)
+        val identity = harness()
         var current = true
         identity.network.onPageRequested = { current = false }
         identity.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { current }
         assertEquals(0, identity.store.snapshots.size)
         assertTrue(identity.logs.any { "scopeKind=thread outcome=identity_changed" in it }, identity.logs.toString())
 
-        val cleared = harness(flagOn = true)
+        val cleared = harness()
         cleared.network.onPageRequested = { cleared.engine.clearPartition(partition) }
         cleared.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
         assertEquals(0, cleared.store.snapshots.size)
@@ -111,7 +101,7 @@ class CanonicalMessageV2ReplyThreadDurableTest {
 
     @Test
     fun adjacentOlderReplyPageExtendsTheThreadWindow() = runBlocking {
-        val h = harness(flagOn = true)
+        val h = harness()
         h.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
         h.extend(anchorSeq = 30, page = replyPageArray(5, 10, 20), replyParent = parent)
 
@@ -128,7 +118,7 @@ class CanonicalMessageV2ReplyThreadDurableTest {
 
     @Test
     fun threadWindowIsExtendedOnlyByItsOwnParentAndNeverAsATopLevelWindow() = runBlocking {
-        val h = harness(flagOn = true)
+        val h = harness()
         h.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
 
         h.extend(anchorSeq = 30, page = replyPageArray(5, 10, 20), replyParent = null)
@@ -147,7 +137,7 @@ class CanonicalMessageV2ReplyThreadDurableTest {
     fun topLevelWindowIsNeverExtendedAsAReplyThread() = runBlocking {
         // A channel window with an identical page: the top-level caller commits; a reply caller
         // naming the same id finds no thread window.
-        val h = harness(flagOn = true)
+        val h = harness()
         h.seedChannelWindow()
         val channelPage = adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10))
         val window = pagingWindowFor(ThreadDurablePageDirection.Older, 20, channelPage)
@@ -191,7 +181,6 @@ class CanonicalMessageV2ReplyThreadDurableTest {
      * top-level writer tests.
      */
     private fun harness(
-        flagOn: Boolean,
         threadType: String = "thread",
         threadParentMessageId: String = "root-1",
         page: String = replyPage(replyNode(20), replyNode(30), replyNode(40)),
@@ -214,17 +203,15 @@ class CanonicalMessageV2ReplyThreadDurableTest {
         val writerEngine = engine()
         val logs = mutableListOf<String>()
         val loader = CanonicalMessageV2EnteredScopeLoader(
-            canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flagOn }, generationEngine = loaderEngine),
+            canary = CanonicalMessageV2ProductionCanary(generationEngine = loaderEngine),
             generationEngine = loaderEngine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { flagOn },
             logger = logs::add,
         )
         val writer = CanonicalMessageV2AdjacentPageWriter(
-            canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flagOn }, generationEngine = writerEngine),
+            canary = CanonicalMessageV2ProductionCanary(generationEngine = writerEngine),
             generationEngine = writerEngine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { flagOn },
             logger = logs::add,
         )
         return Harness(network, store, loaderEngine, loader, writer, logs)

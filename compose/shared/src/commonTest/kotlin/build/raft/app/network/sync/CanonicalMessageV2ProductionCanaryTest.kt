@@ -30,19 +30,8 @@ class CanonicalMessageV2ProductionCanaryTest {
     private val threadScope = SyncScopeKey(partition, "thread-1", "thread")
 
     @Test
-    fun flagOffDoesZeroV2Work() = runBlocking {
-        val fixture = Fixture(enabled = false)
-
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m1", 1L)))
-        assertEquals(0, fixture.store.snapshotCalls)
-        assertEquals(0, fixture.store.incrementalCalls)
-        assertEquals(0, fixture.store.reads)
-        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(scope))
-    }
-
-    @Test
     fun aScopeWithoutAWindowIsDisplayOnlyWithoutTouchingTheStore() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m1", 1L)))
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m2", 2L)))
         assertEquals(0, fixture.store.snapshotCalls)
@@ -52,7 +41,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun anEnteredWindowAppendsTheNextNewIncrementally() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enter(1L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(fixture.input("m2", 2L)))
@@ -63,7 +52,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun everyWindowedChannelIsWrittenNotOnlyOne() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enter(1L)
         fixture.enter(1L, channelId = "channel-2")
 
@@ -74,7 +63,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun unsupportedProducerMetadataMakesTheWindowDiscontinuous() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enter(1L)
         val unsupported = fixture.input("m2", 2L).copy(
             row = fixture.input("m2", 2L).row.copy(
@@ -94,20 +83,8 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun flagRevokeClearsTheWindowWithoutANetworkBarrierAndReturnsTheScopeToLegacy() = runBlocking {
-        val fixture = Fixture(enabled = true)
-        fixture.enter(1L)
-        assertEquals(1, fixture.store.restore(scope).envelopes.size)
-
-        fixture.enabled = false
-        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(fixture.input("m2", 2L)))
-        assertEquals(emptyList(), fixture.store.restore(scope).envelopes)
-        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(scope))
-    }
-
-    @Test
     fun aThreadReplyIsNeverWrittenIntoAChannelWindow() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enter(1L)
         val threadInput = fixture.input("reply-1", 2L).copy(
             row = fixture.input("reply-1", 2L).row.copy(
@@ -127,7 +104,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aReconnectMakesTheWindowDisplayOnlyUntilTheNextEnter() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
@@ -150,7 +127,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun withoutAReconnectTheNextFrameStaysIncremental() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
@@ -164,13 +141,13 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aRestoredWindowIsDisplayOnlyAfterProcessRestartUntilOpened() = runBlocking {
         val store = FakeStore()
-        val beforeRestart = Fixture(enabled = true, store = store)
+        val beforeRestart = Fixture(store = store)
         beforeRestart.enter(1L)
         beforeRestart.accept(beforeRestart.input("m2", 2L))
         assertEquals(1, store.incrementalCalls)
 
         // New process: same durable store, fresh canary and engine. Frames may have been missed meanwhile.
-        val afterRestart = Fixture(enabled = true, store = store)
+        val afterRestart = Fixture(store = store)
         val readsBefore = store.reads
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, afterRestart.accept(afterRestart.input("m4", 4L)))
         assertEquals(1, store.incrementalCalls, "a restored window is never appended onto")
@@ -183,7 +160,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aReconnectOnAnotherServerOrAccountDoesNotTouchThisWindow() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.enter(1L)
 
@@ -196,7 +173,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aRestartedTransportCountingFromOneIsStillAReconnect() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(5L)
         fixture.enter(1L)
 
@@ -209,7 +186,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aReconnectDuringTheEnterFetchKeepsTheNewWindowDisplayOnly() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         // The request is sent under epoch 1; the socket reconnects as epoch 2 before the page commits.
         fixture.enter(1L, beforeCommit = { fixture.connect(2L) })
@@ -218,7 +195,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(0, fixture.store.incrementalCalls, "the page predates epoch 2")
 
         // Twin: no reconnect during the fetch.
-        val twin = Fixture(enabled = true)
+        val twin = Fixture()
         twin.connect(1L)
         twin.enter(1L)
         assertEquals(CanonicalMessageV2CanaryOutcome.Committed, twin.accept(twin.input("m2", 2L)))
@@ -227,7 +204,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun anEnterRightAfterAReconnectIsDisplayOnlyUntilRoomsJoinedArrivedForThatConnection() = runBlocking {
         // Before rooms:joined the page may predate the connect-time room join: display only.
-        val before = Fixture(enabled = true)
+        val before = Fixture()
         before.connect(2L, roomsJoined = false)
         before.enter(1L)
         assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, before.canary.continuityOf(scope))
@@ -235,7 +212,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(0, before.store.incrementalCalls)
 
         // rooms:joined recorded for an OLDER connection only: still display only.
-        val older = Fixture(enabled = true)
+        val older = Fixture()
         older.connect(1L)
         older.connect(2L, roomsJoined = false)
         older.enter(1L)
@@ -243,7 +220,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(0, older.store.incrementalCalls)
 
         // Twin: the same open once rooms:joined arrived for the current connection appends.
-        val after = Fixture(enabled = true)
+        val after = Fixture()
         after.connect(2L, roomsJoined = false)
         after.canary.noteRoomsJoined(partition, 2L)
         after.enter(1L)
@@ -253,7 +230,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aCatchUpBaselineIsRegisteredOnlyForAMemberWhoseConnectionSawRoomsJoined() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(2L, roomsJoined = false)
         assertEquals(null, fixture.canary.beginCatchUpBaseline(partition, "channel-1", nonMember = false), "before rooms:joined")
         fixture.canary.noteRoomsJoined(partition, 2L)
@@ -269,7 +246,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aFrameFromTheNewConnectionIsDisplayOnlyEvenWhenItBeatsTheReconnectSignal() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L), transportEpoch = 1L)
@@ -286,7 +263,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aLateFrameOfAnOlderConnectionIsShownButNeverWrittenAndChangesNothing() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(2L)
         fixture.enter(104L)
 
@@ -306,7 +283,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun framesWithoutATransportEpochStillFollowTheReconnectSignal() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.enter(1L)
         fixture.accept(fixture.input("m2", 2L))
@@ -332,7 +309,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aReplyOfAnEnteredThreadIsDisplayOnlyBecauseThreadDeliveryIsUnconfirmed() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enterThread(1L)
 
         // The enter page itself is written (enter / paging writers are unchanged).
@@ -366,7 +343,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aReplyOfAThreadNeverEnteredInThisProcessIsDisplayOnlyWithoutAStoreRead() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enterThread(1L)
         val readsBefore = fixture.store.reads
 
@@ -377,7 +354,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, fixture.canary.continuityOf(threadScope.copy(scopeId = "thread-2")))
 
         // Entering it again in a new process over the same store still never makes it continuous.
-        val afterRestart = Fixture(enabled = true, store = fixture.store)
+        val afterRestart = Fixture(store = fixture.store)
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, afterRestart.accept(afterRestart.reply("s3", 3L)))
         afterRestart.enterThread(3L)
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, afterRestart.accept(afterRestart.reply("s4", 4L)))
@@ -392,7 +369,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aThreadEnterWhoseCommittedCursorNamesAnotherParentEndsParentMismatch() = runBlocking {
         fun run(cursorParentId: String): Fixture = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.enterThread(1L, cursorParentId = cursorParentId)
             fixture.accept(fixture.reply("r2", 2L))
             fixture
@@ -414,7 +391,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aRoomLeaveDuringTheThreadFetchCountsTheThreadAndItsParentRoom() = runBlocking {
         fun reasonAfterLeaving(leftRoom: String): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.enterThread(1L, beforeCommit = { fixture.canary.noteRoomLeft("server-1", leftRoom) })
             fixture.accept(fixture.reply("r2", 2L))
             assertEquals(0, fixture.store.incrementalCalls)
@@ -429,7 +406,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aThreadUnderANonMemberParentEndsParentNonMemberAndTheThreadsOwnFlagOnlyUnderAFollowerOnlyParent() = runBlocking {
         fun reason(nonMember: Boolean = false, parentNonMember: Boolean = false, parentKind: String = "channel"): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.enterThread(1L, nonMember = nonMember, parentNonMember = parentNonMember, parentKind = parentKind)
             fixture.accept(fixture.reply("r2", 2L, parentKind = parentKind))
             assertEquals(0, fixture.store.incrementalCalls)
@@ -447,7 +424,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aReplyDuringTheThreadEnterFetchIsDisplayedButNeverReplayed() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enterThread(1L, beforeCommit = {
             assertEquals(
                 CanonicalMessageV2CanaryOutcome.Pending,
@@ -487,7 +464,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aPublicParentThreadAckedBeforeTheEnterIsContinuousAndWritesTheProductionReplyPartial() = runBlocking {
         fun run(ack: Boolean): Fixture = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             if (ack) fixture.joinAck(1L)
             fixture.enterThread(1L)
@@ -519,7 +496,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun anAckArrivingOnlyDuringTheEnterFetchDoesNotMakeThatEnterContinuousButTheNextOne() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.enterThread(1L, beforeCommit = { fixture.joinAck(1L) })
         // The server may have read the page before it joined the room: a reply between is in neither.
@@ -537,7 +514,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun anAckOfAnOlderConnectionNeverMakesTheThreadContinuous() = runBlocking {
         fun run(ackEpoch: Long): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             fixture.joinAck(ackEpoch)
             fixture.connect(2L)
@@ -554,7 +531,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun anAckForAnotherThreadHasNoEffect() = runBlocking {
         fun run(ackedThread: String): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             fixture.joinAck(1L, threadId = ackedThread)
             fixture.enterThread(1L)
@@ -567,7 +544,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aJoinDeniedEndsJoinDeniedBeforeDuringOrAfterTheEnter() = runBlocking {
         // Denied as the latest answer before the enter (an ack before it is overridden).
-        val before = Fixture(enabled = true)
+        val before = Fixture()
         before.connect(1L)
         before.joinAck(1L)
         before.joinAck(1L, joined = false)
@@ -577,14 +554,14 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals(0, before.store.incrementalCalls)
 
         // Denied while the fetch is in flight, after an ack that would have made it continuous.
-        val during = Fixture(enabled = true)
+        val during = Fixture()
         during.connect(1L)
         during.joinAck(1L)
         during.enterThread(1L, beforeCommit = { during.joinAck(1L, joined = false) })
         assertEquals("discontinuous reason=join_denied", threadEnterReason(during))
 
         // Denied after a continuous commit: the window stops being written.
-        val after = Fixture(enabled = true)
+        val after = Fixture()
         after.connect(1L)
         after.joinAck(1L)
         after.enterThread(1L)
@@ -598,7 +575,7 @@ class CanonicalMessageV2ProductionCanaryTest {
             after.logs.toString(),
         )
         // Twin: a denial of an OLDER connection does not touch the window committed on the current one.
-        val stale = Fixture(enabled = true)
+        val stale = Fixture()
         stale.connect(2L)
         stale.joinAck(2L)
         stale.enterThread(1L)
@@ -609,7 +586,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aPrivateDmOrJointParentThreadStaysFollowerOnlyEvenWithAnAck() = runBlocking {
         for (parentKind in listOf("private", "dm", "joint")) {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             fixture.joinAck(1L)
             fixture.enterThread(1L, parentKind = parentKind)
@@ -621,7 +598,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aReconnectAfterAContinuousThreadEnterMakesItDisplayOnlyUntilTheNextEnter() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.joinAck(1L)
         fixture.enterThread(1L)
@@ -642,7 +619,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aLeaveOfTheThreadRoomAfterTheAckVoidsIt() = runBlocking {
         fun run(leaveAfterAck: Boolean, rejoinAck: Boolean = false): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             fixture.joinAck(1L)
             if (leaveAfterAck) fixture.canary.noteRoomLeft("server-1", "thread-1")
@@ -665,7 +642,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aLeaveNotedBeforeTheNewSocketsEpochStillVoidsItsLaterAck() = runBlocking {
         fun reconnected(leave: Boolean): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             // Socket E2: the host rejoined the thread room, the server acked; the user closed the thread (leave)
             // before shared processed E2's epoch; then the ack, then the epoch; the user reopens.
@@ -682,7 +659,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals("continuous", reconnected(leave = false))
 
         fun firstConnection(leave: Boolean): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             // The leave is noted before any epoch was recorded.
             if (leave) fixture.canary.noteRoomLeft("server-1", "thread-1")
             fixture.connect(1L)
@@ -697,7 +674,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun theThreadsOwnNonMembershipYieldsToTheAckButTheParentsNeverDoes() = runBlocking {
         fun run(nonMember: Boolean, parentNonMember: Boolean, ack: Boolean): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             if (ack) fixture.joinAck(1L)
             fixture.enterThread(1L, nonMember = nonMember, parentNonMember = parentNonMember)
@@ -718,7 +695,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aMembershipFlagFlippingAtCommitIsLoggedAndOnlyTheParentsEndsNonMember() = runBlocking {
         fun commitLine(nonMemberAtCommit: Boolean, parentNonMemberAtCommit: Boolean): String = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             fixture.connect(1L)
             fixture.enterThread(
                 1L,
@@ -768,7 +745,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun anAckDuringTheEnterFetchRequestsOneCatchUpThatCommitsContinuous() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         withOpenPage(fixture) { received ->
             fixture.connect(1L)
             fixture.enterThread(1L, beforeCommit = { fixture.joinAck(1L) })
@@ -805,7 +782,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aLateAckAfterTheCommitRequestsTheCatchUpOnlyOnTheWindowsOwnConnection() = runBlocking {
         fun run(ackEpoch: Long): Pair<Int, String> = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             withOpenPage(fixture) { received ->
                 fixture.connect(1L)
                 fixture.connect(2L)
@@ -823,7 +800,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun aLateAckWithNoOpenPageIsDroppedAndNeverReplayed() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.connect(1L)
         fixture.enterThread(1L)
         fixture.joinAck(1L)
@@ -840,7 +817,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     @Test
     fun oneAckRequestsAtMostOneCatchUpAndAFailedCatchUpIsNotRetried() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         withOpenPage(fixture) { received ->
             fixture.connect(1L)
             fixture.enterThread(1L, beforeCommit = { fixture.joinAck(1L) })
@@ -862,7 +839,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         // A catch-up registered BEFORE the ack (e.g. a resume) commits `thread_join_ack_after_request` like an enter,
         // but never arms another catch-up: only an enter does. Twin: the same ack during an ENTER requests one.
         fun requested(viaCatchUp: Boolean): Int = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             withOpenPage(fixture) { received ->
                 fixture.connect(1L)
                 if (viaCatchUp) {
@@ -887,7 +864,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     @Test
     fun aLeftThreadRoomNeverRequestsTheFutileCatchUp() = runBlocking {
         fun run(leave: Boolean): Pair<Int, Boolean> = runBlocking {
-            val fixture = Fixture(enabled = true)
+            val fixture = Fixture()
             withOpenPage(fixture) { received ->
                 fixture.connect(1L)
                 fixture.enterThread(1L)
@@ -912,7 +889,7 @@ class CanonicalMessageV2ProductionCanaryTest {
      */
     @Test
     fun aRealThreadReplyIsDisplayOnlyAndTheSameWireOnAChannelIsWrittenAsAPartialFact() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enterThread(1L)
 
         assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, fixture.accept(wireReply(extraKeys = "")))
@@ -942,7 +919,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     /** Twin: the same channel wire also without `mentions` (not in the allowed set) is never written and says why. */
     @Test
     fun theSameWireAlsoMissingMentionsIsNeverWrittenAndSaysWhy() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enter(1L)
 
         val noMentions = wireReply(extraKeys = "", mentionsKey = "", channel = true)
@@ -970,7 +947,7 @@ class CanonicalMessageV2ProductionCanaryTest {
     /** Twin: the identical channel wire plus the two keys the producer contract lists for `message:new` is written full. */
     @Test
     fun theSameWireCarryingSenderDescriptionAndReactionsIsWrittenFull() = runBlocking {
-        val fixture = Fixture(enabled = true)
+        val fixture = Fixture()
         fixture.enter(1L)
 
         val full = wireReply(extraKeys = """"senderDescription":null,"reactions":[],""", channel = true)
@@ -1046,7 +1023,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         return CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.New, carry)
     }
 
-    private inner class Fixture(var enabled: Boolean = true, val store: FakeStore = FakeStore()) {
+    private inner class Fixture(val store: FakeStore = FakeStore()) {
         private val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
@@ -1054,7 +1031,6 @@ class CanonicalMessageV2ProductionCanaryTest {
         )
         val logs = mutableListOf<String>()
         val canary = CanonicalMessageV2ProductionCanary(
-            isEnabledForServer = { this.enabled },
             generationEngine = engine,
             logger = { logs += it },
         )

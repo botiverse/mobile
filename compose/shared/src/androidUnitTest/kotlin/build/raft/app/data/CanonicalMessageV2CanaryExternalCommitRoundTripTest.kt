@@ -259,7 +259,6 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         val canary = CanonicalMessageV2ProductionCanary(
-            isEnabledForServer = { true },
             generationEngine = engine,
             logger = { logs += it },
         )
@@ -270,7 +269,6 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
                 RecordingNetworkClient(canonicalV2TestPage()).also { networks += it },
                 { logs += it },
             ),
-            isEnabledForServer = { true },
             logger = writerLogger ?: { logs += it },
         )
 
@@ -296,7 +294,6 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
                 canary = canary,
                 generationEngine = engine,
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(network),
-                isEnabledForServer = { true },
                 logger = { logs += it },
             ).loadOnEnter(partition, "channel-1") { true }
         }
@@ -317,7 +314,6 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         private fun coldStartReader() =
             CanonicalMessageV2DurableLastKnownReader(
                 SqlDelightCanonicalMessageV2Store(database = database, now = { 2L }),
-                isEnabledForServer = { true },
             )
 
         suspend fun coldStartSeqs(): List<Long> =

@@ -29,13 +29,12 @@ import kotlin.test.assertTrue
 
 /**
  * Task #168 step 2b on the real SQLite schema: the window the enter snapshot committed is paged
- * older offline through the real V2 reader, and the server flag still gates every read.
+ * older offline through the real V2 reader.
  */
 class SharedThreadDurableOlderPagingRoundTripTest {
     @Test
-    fun offlineStandInPagesThroughTheCommittedWindowAndTheFlagGatesIt() = withFreshDatabase { database ->
+    fun offlineStandInPagesThroughTheCommittedWindow() = withFreshDatabase { database ->
         runBlocking {
-            var flagOn = true
             val sqlStore = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
             val engine = CanonicalMessageV2GenerationEngine(
                 coordinator = CanonicalMessageV2BaselineCoordinator(),
@@ -50,7 +49,7 @@ class SharedThreadDurableOlderPagingRoundTripTest {
                     sessionStore = InMemoryRaftAuthSessionStore(owner.session),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     replyCacheIdentityAuthority = { owner },
-                    durableLastKnownReader = CanonicalMessageV2DurableLastKnownReader(sqlStore, isEnabledForServer = { flagOn }),
+                    durableLastKnownReader = CanonicalMessageV2DurableLastKnownReader(sqlStore),
                     diagnosticsLogger = logs::add,
                 )
             val partition = assertNotNull(
@@ -61,10 +60,9 @@ class SharedThreadDurableOlderPagingRoundTripTest {
             // The real enter loader commits 70 messages (seq 1..70) as the window; 70 < 200 ⇒ it
             // reaches the channel's start.
             CanonicalMessageV2EnteredScopeLoader(
-                canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+                canary = CanonicalMessageV2ProductionCanary(generationEngine = engine),
                 generationEngine = engine,
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(page((1..70).toList()))),
-                isEnabledForServer = { true },
             ).loadOnEnter(partition, "channel-1") { true }
 
             // Same single-threaded confinement as production (see SharedThreadStoreDurableOlderPagingTest).
@@ -82,20 +80,12 @@ class SharedThreadDurableOlderPagingRoundTripTest {
             assertTrue(store.state.value.payload.canLoadMoreBefore)
             assertEquals(1, api.channelMessageCalls, "served from disk, not the network")
 
-            // Flag revoked: the next older load reads nothing from disk and goes to the network.
-            flagOn = false
-            store.accept(SharedThreadIntent.LoadOlder)
-            assertEquals(60, store.state.value.payload.messages.size, "no rows from disk with the flag off")
-            assertEquals(2, api.channelMessageCalls)
-            assertTrue(logs.any { "thread_durable_older_page" in it && "reason=no_frame" in it }, logs.toString())
-
-            // Twin: flag back on ⇒ the last 10 come from disk and paging closes at the start.
-            flagOn = true
+            // The last 10 come from disk too and paging closes at the start.
             store.accept(SharedThreadIntent.LoadOlder)
             val last = store.state.value.payload
             assertEquals((1..70).map { "hello m$it" }, last.messages.map { it.body })
             assertFalse(last.canLoadMoreBefore)
-            assertEquals(2, api.channelMessageCalls)
+            assertEquals(1, api.channelMessageCalls)
             scopeJob.cancelAndJoin()
         }
     }

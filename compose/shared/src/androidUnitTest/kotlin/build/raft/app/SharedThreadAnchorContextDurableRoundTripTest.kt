@@ -89,36 +89,11 @@ class SharedThreadAnchorContextDurableRoundTripTest {
         }
     }
 
-    @Test
-    fun writerFlagOffLeavesTheOfflineOpenOnTheNewestPage() = withFreshDatabase { database ->
-        // Twin of the test above: identical online open and context page, the writer's server flag is off.
-        runBlocking {
-            val online = Phase(database, "ctx-online-2", contextResult = DataResult.Content(contextSnapshot()), writerFlag = false)
-            online.seedLatestPage()
-            online.open()
-            online.awaitLog("canonical_v2_context_page")
-            assertTrue(
-                online.logs.any {
-                    it == "canonical_v2_context_page server=server-1 scope=channel-1 anchor=m30 outcome=skipped reason=flag_off facts=0"
-                },
-                online.logs.toString(),
-            )
-            online.close()
-
-            val offline = Phase(database, "ctx-offline-2", contextResult = contextUnavailable, enterReachable = false)
-            val payload = offline.open()
-            assertTrue(payload.durableLastKnown)
-            assertEquals(listOf("m50", "m60", "m70", "m80"), payload.messages.map { it.id })
-            offline.close()
-        }
-    }
-
     /** One process lifetime over the shared database: its own engine, canary, payload memory and store. */
     private class Phase(
         database: RaftSqlDatabase,
         name: String,
         contextResult: DataResult<ThreadSnapshot>,
-        writerFlag: Boolean = true,
         enterReachable: Boolean = true,
     ) {
         val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
@@ -128,8 +103,8 @@ class SharedThreadAnchorContextDurableRoundTripTest {
             store = sqlStore,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
-        val reader = CanonicalMessageV2DurableLastKnownReader(sqlStore, isEnabledForServer = { true })
+        private val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
+        val reader = CanonicalMessageV2DurableLastKnownReader(sqlStore)
         val sessionStore = InMemoryRaftAuthSessionStore(session)
         val repository =
             ReplyThreadAccessConversationRepositoryRecorder(
@@ -143,7 +118,6 @@ class SharedThreadAnchorContextDurableRoundTripTest {
                     canary = canary,
                     generationEngine = engine,
                     fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(canonicalV2TestPage()), logs::add),
-                    isEnabledForServer = { writerFlag },
                     logger = logs::add,
                 ),
             ) { repository.parentRequests.size.toLong() }
@@ -154,7 +128,6 @@ class SharedThreadAnchorContextDurableRoundTripTest {
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(enterNetwork, logs::add),
-            isEnabledForServer = { true },
             logger = logs::add,
         )
 

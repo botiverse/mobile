@@ -244,16 +244,13 @@ private class CanonicalMessageV2CanaryScopeState(
 }
 
 private sealed interface CanonicalMessageV2Route {
-    /** No window and no enter in flight (or flag off without a window): display only, zero V2 work. */
+    /** No window and no enter in flight: display only, zero V2 work. */
     data object None : CanonicalMessageV2Route
 
     /** Buffered for the channel's loading enter snapshot. */
     data object Buffered : CanonicalMessageV2Route
 
     data class Window(val scope: SyncScopeKey) : CanonicalMessageV2Route
-
-    /** The flag went off for a scope that has a window. */
-    data class Revoke(val scope: SyncScopeKey) : CanonicalMessageV2Route
 }
 
 private sealed interface CanonicalMessageV2Plan {
@@ -274,7 +271,7 @@ private sealed interface CanonicalMessageV2AppendResult {
 
 /**
  * Task #168 step 3: realtime messages are written to the durable offline cache for EVERY top-level channel /
- * DM that has a window committed in this process, behind the existing `sync_core_messages` flag.
+ * DM that has a window committed in this process.
  *
  * Message storage Phase 3a: this class is the [CanonicalMessageV2LiveCoverageTracker]. "Display only" below means
  * "no claim": production hands every frame the canary does not commit to
@@ -441,7 +438,6 @@ private const val CHANNEL_JOIN_SIGNAL_MEMORY = 256
 private const val THREAD_JOIN_CONFIRMATION_BUFFER = 16
 
 internal class CanonicalMessageV2ProductionCanary(
-    private val isEnabledForServer: (String) -> Boolean,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
     private val logger: (String) -> Unit = {},
 ) : CanonicalMessageV2LiveCoverageTracker {
@@ -507,15 +503,12 @@ internal class CanonicalMessageV2ProductionCanary(
             CanonicalMessageV2Route.None -> return CanonicalMessageV2CanaryOutcome.NotSelected
             CanonicalMessageV2Route.Buffered -> return CanonicalMessageV2CanaryOutcome.Pending
             is CanonicalMessageV2Route.Window -> route.scope
-            is CanonicalMessageV2Route.Revoke -> route.scope
         }
         return generationEngine.withScopeWriter(scope) writer@{
             // Re-routed inside the writer: an enter commit may have replaced the state meanwhile.
             when (val route = stateMutex.withLock { routeLocked(partition, delivery) }) {
                 CanonicalMessageV2Route.None -> CanonicalMessageV2CanaryOutcome.NotSelected
                 CanonicalMessageV2Route.Buffered -> CanonicalMessageV2CanaryOutcome.Pending
-                is CanonicalMessageV2Route.Revoke ->
-                    if (route.scope == scope) revokeInsideWriter(scope) else CanonicalMessageV2CanaryOutcome.NotSelected
                 is CanonicalMessageV2Route.Window ->
                     if (route.scope == scope) acceptInsideWriter(scope, partition, delivery)
                     else CanonicalMessageV2CanaryOutcome.NotSelected
@@ -536,9 +529,6 @@ internal class CanonicalMessageV2ProductionCanary(
             // No producer context (or a reply context without its parent): the frame names only its channel
             // id. It can never be written, but a window of that channel id must not silently miss it.
             stateByScope.keys.singleOrNull { it.partition == partition && it.scopeId == input.row.channelId }
-        }
-        if (!isEnabledForServer(partition.serverId)) {
-            return if (scope != null && scope in stateByScope) CanonicalMessageV2Route.Revoke(scope) else CanonicalMessageV2Route.None
         }
         val baseline = enterBaselineByChannel[partition to input.row.channelId]
         if (baseline != null && !baseline.closed) {
@@ -1261,7 +1251,7 @@ internal class CanonicalMessageV2ProductionCanary(
     }
 
     /**
-     * Task #168: [baseline]'s enter snapshot will not commit (failed fetch, identity / flag change, refused
+     * Task #168: [baseline]'s enter snapshot will not commit (failed fetch, identity change, refused
      * commit). No-op once committed. Frames displayed during the fetch are not on disk, so any window of that
      * channel is discontinuous from here on.
      */
@@ -1450,17 +1440,6 @@ internal class CanonicalMessageV2ProductionCanary(
             "canonical_v2_canary discontinuous server=${scope.serverId} scope=${scope.scopeId}${scope.kindLabel()} " +
                 "reason=$reason",
         )
-    }
-
-    /**
-     * The flag went off for a scope with a window: drop its V2 window and hand the scope back to the legacy
-     * path. Never loads.
-     */
-    private suspend fun revokeInsideWriter(scope: SyncScopeKey): CanonicalMessageV2CanaryOutcome {
-        generationEngine.clearScope(scope)
-        stateMutex.withLock { stateByScope.remove(scope) }
-        logger("canonical_v2_canary mode=off server=${scope.serverId} scope=${scope.scopeId} reason=flag_revoked")
-        return CanonicalMessageV2CanaryOutcome.NotSelected
     }
 
     private suspend fun onPartitionRevoked(partition: DurablePartitionKey) {

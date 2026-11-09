@@ -479,13 +479,12 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
  * Production [ThreadEnteredScopeSnapshotLoader] (task #1124, Phase 2-2).
  *
  * Order of gates, each answering "write nothing" on failure:
- * 1. server flag off → return before any network request;
- * 2. same (partition, channel) already in flight → return (one page per entry, not per Start storm);
- * 3. REST page must be a full-V2 top-level page (shared fetcher) — or, for a reply thread
+ * 1. same (partition, channel) already in flight → return (one page per entry, not per Start storm);
+ * 2. REST page must be a full-V2 top-level page (shared fetcher) — or, for a reply thread
  *    ([loadReplyThreadOnEnter], task #168 step 3), a full-V2 reply page of this thread whose parent
  *    the server confirmed;
- * 4. `stillCurrent()` re-read under the scope writer, after the network round trip;
- * 5. `applySnapshot` bound to the partition generation captured before the fetch, so a partition
+ * 3. `stillCurrent()` re-read under the scope writer, after the network round trip;
+ * 4. `applySnapshot` bound to the partition generation captured before the fetch, so a partition
  *    cleared in between (sign-out) is refused by the engine rather than repopulated.
  *
  * Task #168 step 3: the enter snapshot is the realtime canary's ONLY baseline. For a top-level channel it
@@ -510,7 +509,6 @@ internal class CanonicalMessageV2EnteredScopeLoader(
     private val canary: CanonicalMessageV2ProductionCanary,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
     internal val fetcher: CanonicalMessageV2RestSnapshotFetcher,
-    private val isEnabledForServer: (serverId: String) -> Boolean,
     private val logger: (String) -> Unit = {},
     /**
      * Whether the conversation directory says the user is NOT a member of (serverId, channelId). Unknown =
@@ -534,7 +532,6 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         if (partition.consumerId != SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) return null
         if (channelId.isBlank() || channelId != channelId.trim()) return null
         if (replyParent != null && replyParent.parentChannelId == channelId) return null
-        if (!isEnabledForServer(partition.serverId)) return null
         // Read BEFORE the baseline is registered: a cancellation or failure here leaves no open baseline behind.
         // Read before the fetch: a fact written after this point (also a realtime loose one) is newer and stays.
         val taken = stamp?.takeIf { it.partition == partition } ?: requestStamp(partition)
@@ -578,14 +575,14 @@ internal class CanonicalMessageV2EnteredScopeLoader(
     /**
      * Phase 2b: the thread store's own page, written through. Gates, each answering "write nothing" (and
      * abandoning the baseline):
-     * 1. flag; the page is the ticket's channel;
+     * 1. the page is the ticket's channel;
      * 2. the scope: a reply thread's parent is the stored, server-confirmed header's when it names the route's
      *    parent, else confirmed with the server ([CanonicalMessageV2RestSnapshotFetcher.confirmReplyParent]); a
      *    top-level kind comes from the page itself (its rows' `conversationContext`), else the channel detail the
      *    same load fetched, else the stored header, else `channels/{id}` — the only request this writer may make
      *    besides the reply counts of an old server's page and a reply thread's first confirmation;
      * 3. rows convert one by one; a left-out row splits the page's claim ([CanonicalMessageV2PageRows]);
-     * 4. under the scope writer: `stillCurrent()` and flag rechecked; a thread header naming another parent is
+     * 4. under the scope writer: `stillCurrent()` rechecked; a thread header naming another parent is
      *    cleared; [CanonicalMessageV2GenerationEngine.applyCoverage] with the ticket's generation and revision. Only
      *    a page whose (split) claim still reaches the head, and whose head claim no horizonReset voided since the
      *    ticket ([CanonicalMessageV2GenerationEngine.applyCoverageReportingBaseline]), is the realtime baseline
@@ -602,7 +599,6 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         val replyThread = replyParent != null
         fun log(outcome: String) = log(partition, scopeId, replyThread, outcome)
         try {
-            if (!isEnabledForServer(partition.serverId)) return log("flag_off")
             if (page.channelId != scopeId) return log("page_mismatch")
             val scope: SyncScopeKey
             val threadParent: CanonicalMessageV2ReplyParentScope?
@@ -661,7 +657,6 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             }
             generationEngine.withScopeWriter(scope) {
                 if (!stillCurrent()) return@withScopeWriter log("identity_changed")
-                if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
                 try {
                     generationEngine.clearHeaderOfAnotherParent(scope, cursorParent)?.let(::log)
                     // Phase 2a (P1): the page is added, never a rebaseline — older stored pages stay.
@@ -754,7 +749,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
     /**
      * Task #14b, gates in order, each answering "write nothing + one `canonical_v2_prewarm_page
      * outcome=skipped` line":
-     * 1. malformed thread id / server flag off / non-positive limit / parent equal to the thread → before any I/O;
+     * 1. malformed thread id / non-positive limit / parent equal to the thread → before any I/O;
      * 2. an ENTER of the same (partition, thread) in flight → `enter_in_flight` (it writes a page fetched
      *    later, so at least as new); a second prewarm of it → `in_flight`. A prewarm never makes an enter wait
      *    or skip: the enter keeps its own [inFlight] set;
@@ -763,7 +758,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
      *    [CanonicalMessageV2RestSnapshotFetcher.confirmReplyParent]. Never taken from the Activity row;
      * 4. the page converts as a whole into envelopes of this thread scope (shared
      *    [CanonicalMessageV2RestSnapshotFetcher.replyThreadFrame]);
-     * 5. under the scope writer (serialized with the enter / paging writers): `stillCurrent()` and flag
+     * 5. under the scope writer (serialized with the enter / paging writers): `stillCurrent()`
      *    rechecked; `superseded` when the scope's commit generation moved since the caller read it before the
      *    page fetch ([replyThreadCommitGeneration]: a deletion seen by a later enter is never undone); race
      *    guard — a stored window whose parent differs, or whose newest edge is at or past
@@ -809,7 +804,6 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         }
         fun skip(reason: String) = log("skipped", reason)
         if (threadChannelId.isBlank() || threadChannelId != threadChannelId.trim()) return skip("invalid_scope_id")
-        if (!isEnabledForServer(partition.serverId)) return skip("flag_off")
         if (requestedLimit <= 0) return skip("invalid_limit")
         if (replyParent.parentChannelId == threadChannelId) return skip("parent_mismatch")
         val key = partition to threadChannelId
@@ -851,7 +845,6 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             if (foreign) return skip("foreign_scope")
             generationEngine.withScopeWriter(scope) {
                 if (!stillCurrent()) return@withScopeWriter skip("identity_changed")
-                if (!isEnabledForServer(partition.serverId)) return@withScopeWriter skip("flag_revoked")
                 // Any write of this scope since the prewarm read the generation (before its page fetch) — e.g. an
                 // enter whose page no longer has a reply deleted meanwhile — makes the page stale: the seq guard
                 // below cannot see a deletion, and extending would write the deleted reply back.
@@ -925,7 +918,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     private val canary: CanonicalMessageV2ProductionCanary,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
     private val fetcher: CanonicalMessageV2RestSnapshotFetcher,
-    private val isEnabledForServer: (serverId: String) -> Boolean,
     private val logger: (String) -> Unit = {},
     /** Same rule as the enter loader's: unknown = member. */
     private val isKnownNonMember: (serverId: String, channelId: String) -> Boolean = { _, _ -> false },
@@ -938,7 +930,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     ): CanonicalMessageV2EnterBaseline? {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         if (channelId.isBlank() || channelId != channelId.trim()) return null
-        if (!isEnabledForServer(partition.serverId)) return null
         if (replyParent != null && replyParent.parentChannelId == channelId) return null
         return canary.beginCatchUpBaseline(
             partition,
@@ -984,7 +975,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             )
         }
         if (channelId.isBlank() || channelId != channelId.trim()) return log("invalid_channel_id")
-        if (!isEnabledForServer(partition.serverId)) return log("flag_off")
         // An empty page claims nothing. Its window is no range (coveredAfterSeq is the high-water with no row), and it
         // can only follow a page whose claim could not reach the oldest. `after` says nothing about the head either.
         if (rawMessages.isEmpty()) return log("empty_page")
@@ -1057,7 +1047,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
 
         generationEngine.withScopeWriter(scope) {
             if (!stillCurrent()) return@withScopeWriter log("identity_changed")
-            if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
             try {
                 val stored = generationEngine.storedCursor(scope) ?: return@withScopeWriter log("no_window")
                 if (routeParent != null && storedReplyParentOrNull(stored, routeParent) != storedParent) {
@@ -1223,7 +1212,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             logger("canonical_v2_latest_page server=${partition.serverId} scope=$channelId$kindLabel outcome=$outcome")
         }
         if (channelId.isBlank() || channelId != channelId.trim()) return log("invalid_channel_id")
-        if (!isEnabledForServer(partition.serverId)) return log("flag_off")
         if (rawMessages.isEmpty()) return log("empty_page")
         if (requestedLimit <= 0) return log("invalid_limit")
 
@@ -1272,7 +1260,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
 
         generationEngine.withScopeWriter(scope) {
             if (!stillCurrent()) return@withScopeWriter log("identity_changed")
-            if (!isEnabledForServer(partition.serverId)) return@withScopeWriter log("flag_revoked")
             try {
                 val stored = generationEngine.storedCursor(scope) ?: return@withScopeWriter log("no_window")
                 if (replyParent != null && storedReplyParentOrNull(stored, replyParent) != storedParent) {
@@ -1363,7 +1350,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         }
         fun skip(reason: String) = log("skipped", reason)
         if (channelId.isBlank() || channelId != channelId.trim()) return skip("invalid_channel_id")
-        if (!isEnabledForServer(partition.serverId)) return skip("flag_off")
         if (rawMessages.isEmpty()) return skip("empty_page")
         if (replyParent != null && replyParent.parentChannelId == channelId) return skip("parent_mismatch")
 
@@ -1401,7 +1387,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
 
         generationEngine.withScopeWriter(scope) {
             if (!stillCurrent()) return@withScopeWriter skip("identity_changed")
-            if (!isEnabledForServer(partition.serverId)) return@withScopeWriter skip("flag_revoked")
             try {
                 val threadParent = parent?.let { CanonicalMessageV2ThreadParent(it.parentScopeKind, it.parentScopeId, it.rootMessageId) }
                 generationEngine.clearHeaderOfAnotherParent(scope, threadParent)?.let { rewritten -> log("parent_rewritten", rewritten) }

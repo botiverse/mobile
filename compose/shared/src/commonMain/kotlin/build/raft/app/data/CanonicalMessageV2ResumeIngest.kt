@@ -74,7 +74,6 @@ internal data class CanonicalMessageV2ResumeIngestResult(
 internal class CanonicalMessageV2ResumeIngest(
     private val tracker: CanonicalMessageV2LiveCoverageTracker,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
-    private val isEnabledForServer: (serverId: String) -> Boolean,
     logger: (String) -> Unit = {},
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
@@ -93,8 +92,6 @@ internal class CanonicalMessageV2ResumeIngest(
     /** The generation a commit of [partition] is bound to; read it under the exact current grant. */
     suspend fun partitionGeneration(partition: DurablePartitionKey): Long = generationEngine.partitionGeneration(partition)
 
-    fun isEnabledFor(serverId: String): Boolean = isEnabledForServer(serverId)
-
     /** Stores [resume]'s rows; the returned job is never cancelled by a caller that stops awaiting it. */
     fun commitDetached(
         partition: DurablePartitionKey,
@@ -106,7 +103,7 @@ internal class CanonicalMessageV2ResumeIngest(
     /**
      * In-memory only: reports the resume's holes to the tracker. The owner's commit calls it FIRST, before any disk
      * work is queued (an earlier resume may still hold the disk), so a live frame after this resume can never
-     * extend a window across its holes; with the flag off it is all that runs.
+     * extend a window across its holes.
      */
     suspend fun noteUnrecorded(partition: DurablePartitionKey, resume: SyncResumeResponse) {
         withContext(NonCancellable) { reportHoles(partition, resume) }
@@ -165,10 +162,6 @@ internal class CanonicalMessageV2ResumeIngest(
         }
         val rows = resume.decodedCanonical.sortedBy { it.row.seq }
         if (resume.canonicalDecodeMisses.isNotEmpty()) skip("undecodable", resume.canonicalDecodeMisses.size)
-        if (!isEnabledForServer(partition.serverId)) {
-            if (rows.isNotEmpty()) skip("flag_off", rows.size)
-            return finish(partition, resume, rows.size, 0, skipped)
-        }
         // Resolve every row's scope, reading each channel id's header once.
         val headers = mutableMapOf<String, StoredHeader>()
         val batches = LinkedHashMap<Pair<SyncScopeKey, CanonicalMessageV2ThreadParent?>, LinkedHashMap<String, CanonicalMessageV2EnvelopeConversion.Converted>>()
@@ -369,8 +362,6 @@ internal class RealtimeResumeCanonicalMessageV2Gateway(
             return null
         }
         val partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
-        // Flag off: nothing is stored, but the hole is still reported (in memory) so no window claims across it.
-        if (!ingest.isEnabledFor(partition.serverId)) return { ingest.noteUnrecorded(partition, resume) }
         val expectedGeneration = ingest.partitionGeneration(partition)
         return {
             // Memory only and first: the holes are on record before any disk work (which may queue behind an earlier

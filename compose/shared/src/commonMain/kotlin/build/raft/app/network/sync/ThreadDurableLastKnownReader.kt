@@ -21,7 +21,7 @@ internal data class ThreadDurableLastKnownFrame(
  *
  * The reader is deliberately read-only and identity-strict. It never widens what the writer selected,
  * never touches the baseline coordinator, and answers `null` (no frame) for every non-positive case:
- * server flag off, no committed baseline for the channel, an ambiguous scope kind, or a poisoned
+ * no committed baseline for the channel, an ambiguous scope kind, or a poisoned
  * scope. Callers must treat `null` as "render the ordinary loading shell", never as an error.
  *
  * A committed baseline with no facts is a frame with empty [ThreadDurableLastKnownFrame.envelopes]
@@ -50,7 +50,7 @@ internal interface ThreadDurableLastKnownReader {
 
     /**
      * Offline paging (task #168 step 2b): the newest [limit] facts of the stored window that are
-     * older than [beforeSeq], in ascending seq order. Same gates as [read] (it is built on it: flag,
+     * older than [beforeSeq], in ascending seq order. Same gates as [read] (it is built on it:
      * baseline, scope kind, poison), so `null` means "no frame". The store restores a whole scope in
      * one query (at most the retention cap of 500 facts), so filtering the restored frame IS the
      * `before` query; there is no cheaper SQL path to add.
@@ -132,7 +132,6 @@ internal val CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS: Set<String> = setOf(
 
 internal class CanonicalMessageV2DurableLastKnownReader(
     private val store: CanonicalMessageV2Store,
-    private val isEnabledForServer: (serverId: String) -> Boolean,
     private val logger: (String) -> Unit = {},
     override val replyWindowCache: RaftThreadReplyWindowCache? = null,
 ) : ThreadDurableLastKnownReader {
@@ -165,7 +164,6 @@ internal class CanonicalMessageV2DurableLastKnownReader(
     ): ThreadDurableLastKnownFrame? {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         if (scopeId.isBlank() || scopeId != scopeId.trim()) return null
-        if (!isEnabledForServer(partition.serverId)) return null
         val kinds = store.baselinedScopeKinds(partition, scopeId).filter { it in allowedKinds }
         val scopeKind = when (kinds.size) {
             0 -> return null

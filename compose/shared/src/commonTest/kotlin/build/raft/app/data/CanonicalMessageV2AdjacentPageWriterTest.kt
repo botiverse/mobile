@@ -273,7 +273,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(before, h.store.cursors.getValue(scope), "no mirror column moves")
         assertTrue(h.logs.any { "outcome=committed reason=island_stored facts=2" in it }, h.logs.toString())
 
-        val reader = CanonicalMessageV2DurableLastKnownReader(h.store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(h.store)
         assertEquals(listOf(20L, 30L, 40L), reader.read(partition, "channel-1")?.envelopes?.map { it.fact.seq }, "users see the same window")
     }
 
@@ -303,7 +303,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         assertEquals(null, cursor.oldestLoadedSeq)
         assertEquals(null, cursor.newestLoadedSeq)
         assertEquals(null, cursor.latestSeq)
-        val reader = CanonicalMessageV2DurableLastKnownReader(h.store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(h.store)
         assertEquals(null, reader.read(partition, "channel-1"), "offline stays what it was")
         assertEquals(emptyList<String>(), h.network.paths, "the caller named the type: no extra request")
     }
@@ -451,22 +451,14 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun identityChangeOrFlagOffWritesNothing() = runBlocking {
+    fun identityChangeWritesNothing() = runBlocking {
         val changed = harness()
         changed.seedWindow()
         changed.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3, stillCurrent = { false })
         assertEquals(listOf(20L, 30L, 40L), changed.store.seqs(scope))
         assertTrue(changed.logs.any { "outcome=identity_changed" in it }, changed.logs.toString())
 
-        var flagOn = true
-        val off = harness(flag = { flagOn })
-        off.seedWindow()
-        flagOn = false
-        off.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3)
-        assertEquals(listOf(20L, 30L, 40L), off.store.seqs(scope))
-        assertTrue(off.logs.any { "outcome=flag_off" in it }, off.logs.toString())
-
-        // Twin: same seed, current identity, flag on.
+        // Twin: same seed, current identity.
         val on = harness()
         on.seedWindow()
         on.extend(ThreadDurablePageDirection.Older, 20, adjacentPageOf(adjacentPageNode("m5", 5)), limit = 3)
@@ -732,7 +724,6 @@ class CanonicalMessageV2AdjacentPageWriterTest {
      * a cold start.
      */
     private fun harness(
-        flag: () -> Boolean = { true },
         channelIds: Set<String> = setOf("channel-1"),
         threadSummariesBody: String? = "{}",
         sameEngineForWriter: Boolean = false,
@@ -755,13 +746,12 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         )
         val seedEngine = engine()
         val writerEngine = if (sameEngineForWriter) seedEngine else engine()
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flag() }, generationEngine = writerEngine)
+        val canary = CanonicalMessageV2ProductionCanary(generationEngine = writerEngine)
         val logs = mutableListOf<String>()
         val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = writerEngine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { flag() },
             logger = logs::add,
             nowMs = nowMs,
         )

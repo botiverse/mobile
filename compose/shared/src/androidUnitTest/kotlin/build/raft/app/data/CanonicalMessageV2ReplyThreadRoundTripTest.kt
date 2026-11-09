@@ -135,20 +135,18 @@ class CanonicalMessageV2ReplyThreadRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true }, logger = logs::add)
+        private val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store, logger = logs::add)
         val loader = CanonicalMessageV2EnteredScopeLoader(
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { true },
             logger = logs::add,
         )
         val writer = CanonicalMessageV2AdjacentPageWriter(
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { true },
             logger = logs::add,
         )
     }

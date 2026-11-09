@@ -25,20 +25,15 @@ import kotlin.test.assertTrue
 
 /**
  * Task #1124 write entry: the enter-snapshot loader fetches the entered channel's REST page and
- * commits it as that channel's V2 baseline — only when the server flag is on, only for a scope the
- * canary does not own, only while the identity that entered is still current.
+ * commits it as that channel's V2 baseline — only for a scope the canary does not own, only while the
+ * identity that entered is still current.
  */
 class CanonicalMessageV2EnteredScopeLoaderTest {
     @Test
-    fun flagOffWritesNothingAndNeverTouchesTheNetwork() = runBlocking {
-        val off = harness(flagOn = false)
-        off.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(emptyList(), off.network.paths)
-        assertEquals(0, off.store.snapshots.size)
-
-        // Positive control: same inputs with the flag on write exactly one page. Phase 2b: the page is the thread store's
-        // own request; the writer asks `channels/{id}` only because no row names the kind.
-        val on = harness(flagOn = true)
+    fun anEnteredChannelWritesExactlyOnePage() = runBlocking {
+        // Phase 2b: the page is the thread store's own request; the writer asks `channels/{id}` only because no row
+        // names the kind.
+        val on = harness()
         on.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(listOf("messages/channel/channel-1", "channels/channel-1"), on.network.paths)
         val frame = on.store.snapshots.single()
@@ -54,7 +49,6 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     @Test
     fun threadParentReplyCountComesFromTheSummariesEndpoint() = runBlocking {
         val h = harness(
-            flagOn = true,
             pageBody = canonicalV2TestThreadParentPage(),
             threadSummariesBody = canonicalV2TestThreadSummaries(replyCount = 4),
         )
@@ -70,7 +64,6 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     @Test
     fun summariesOutageWithThreadParentRejectsThePage() = runBlocking {
         val h = harness(
-            flagOn = true,
             pageBody = canonicalV2TestThreadParentPage(),
             threadSummariesBody = null,
         )
@@ -81,7 +74,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
     @Test
     fun summariesOutageWithoutThreadParentsStillLoads() = runBlocking {
-        val h = harness(flagOn = true, threadSummariesBody = null)
+        val h = harness(threadSummariesBody = null)
         h.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(1, h.store.snapshots.size)
         assertTrue(
@@ -93,7 +86,6 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     @Test
     fun threadParentWithoutSummaryDropsTheNodeAndRefusesThePage() = runBlocking {
         val h = harness(
-            flagOn = true,
             pageBody = canonicalV2TestThreadParentPage(),
             threadSummariesBody = "{}",
         )
@@ -106,7 +98,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     @Test
     fun emptyPageIsCommittedAsAnEmptyBaseline() = runBlocking {
         // Task #1137: an empty channel is an answer, persisted as a baseline with no facts and no seqs.
-        val h = harness(flagOn = true, pageBody = """{"messages":[],"historyLimited":false}""")
+        val h = harness(pageBody = """{"messages":[],"historyLimited":false}""")
         h.loader.loadOnEnter(partition, "channel-1") { true }
         val frame = h.store.snapshots.single()
         assertEquals(SyncScopeKey(partition, "channel-1", "channel"), frame.scope)
@@ -122,7 +114,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
     @Test
     fun everyEnteredChannelBecomesAContinuousRealtimeWindow() = runBlocking {
-        val h = harness(flagOn = true, channelIds = setOf("channel-1", "channel-2"))
+        val h = harness(channelIds = setOf("channel-1", "channel-2"))
         val first = SyncScopeKey(partition, "channel-1", "channel")
         val second = SyncScopeKey(partition, "channel-2", "channel")
         assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, h.canary.continuityOf(first))
@@ -148,7 +140,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
     @Test
     fun aFailedEnterLeavesNoWindowBehind() = runBlocking {
-        val h = harness(flagOn = true, pageBody = canonicalV2TestThinPage())
+        val h = harness(pageBody = canonicalV2TestThinPage())
         h.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(0, h.store.snapshots.size)
         assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, h.canary.continuityOf(SyncScopeKey(partition, "channel-1", "channel")))
@@ -157,7 +149,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
     @Test
     fun identityChangeDuringTheFetchWritesNothing() = runBlocking {
-        val h = harness(flagOn = true)
+        val h = harness()
         var current = true
         // The identity flips while the page request is in flight: a pre-fetch check alone would pass.
         h.network.onPageRequested = { current = false }
@@ -169,7 +161,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
     @Test
     fun partitionClearedDuringTheFetchIsRefusedByTheEngine() = runBlocking {
-        val h = harness(flagOn = true)
+        val h = harness()
         // Sign-out while the page request is in flight bumps the partition generation.
         h.network.onPageRequested = { h.engine.clearPartition(partition) }
         h.loader.loadOnEnter(partition, "channel-1") { true }
@@ -179,7 +171,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
     @Test
     fun poisonedSnapshotIsContainedAndDoesNotEscapeTheEnterJob() = runBlocking {
-        val h = harness(flagOn = true)
+        val h = harness()
         h.store.snapshotFailure = CanonicalMessageV2ScopePoisoned(
             scope = SyncScopeKey(partition, "channel-1", "channel"),
             factId = "poisoned-fact",
@@ -196,13 +188,13 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
     @Test
     fun nonTopLevelChannelOrThinPageWritesNothing() = runBlocking {
-        val thread = harness(flagOn = true, channelType = "thread")
+        val thread = harness(channelType = "thread")
         thread.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(listOf("messages/channel/channel-1", "channels/channel-1"), thread.network.paths)
         assertEquals(0, thread.store.snapshots.size)
         assertTrue(thread.logs.any { "outcome=canonical_v2_scope_not_top_level" in it }, thread.logs.toString())
 
-        val thin = harness(flagOn = true, pageBody = canonicalV2TestThinPage())
+        val thin = harness(pageBody = canonicalV2TestThinPage())
         thin.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(0, thin.store.snapshots.size)
         assertTrue(thin.logs.any { "outcome=canonical_v2_snapshot_not_full_v6" in it }, thin.logs.toString())
@@ -212,7 +204,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     fun concurrentEntriesOfTheSameChannelEachWriteTheirOwnPage() = runBlocking {
         // Phase 2b: the in-flight set is gone — each request of the thread store writes the page it fetched (the scope
         // writer serializes them; the second only adds what the first did not).
-        val h = harness(flagOn = true)
+        val h = harness()
         val gate = CompletableDeferred<Unit>()
         h.network.pageGate = gate
         val first = launch { h.loader.loadOnEnter(partition, "channel-1") { true } }
@@ -234,7 +226,6 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     )
 
     private fun harness(
-        flagOn: Boolean,
         channelIds: Set<String> = setOf("channel-1"),
         channelType: String = "channel",
         pageBody: String = canonicalV2TestPage(),
@@ -252,7 +243,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { flagOn }, generationEngine = engine)
+        val canary = CanonicalMessageV2ProductionCanary(generationEngine = engine)
         // The connection's rooms:joined arrived: an entered member channel becomes continuous (task #168 step 3).
         runBlocking {
             canary.noteTransportEpoch(partition, 1L)
@@ -263,7 +254,6 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
             canary = canary,
             generationEngine = engine,
             fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-            isEnabledForServer = { flagOn },
             logger = logs::add,
         )
         return Harness(network, store, engine, canary, loader, logs)

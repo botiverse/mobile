@@ -21,7 +21,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
         val scope = SyncScopeKey(partitionA, "channel-a", "channel")
         val cursor = PersistedCursor(3, 1, 3, hasLoadedOldest = true, epoch = "epoch-v2")
         val logs = mutableListOf<String>()
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { it == "server-a" }, logger = logs::add)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store, logger = logs::add)
 
         runBlocking {
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(envelope(1), envelope(3)), cursor))
@@ -36,7 +36,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
     @Test
     fun anotherPrincipalOnTheSameServerReadsNothing() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         runBlocking {
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(SyncScopeKey(partitionA, "channel-a", "channel"), listOf(envelope(1)), cursor()))
             // Positive control: the writer's own partition sees the frame.
@@ -48,19 +48,9 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
     }
 
     @Test
-    fun serverFlagOffReadsNothingEvenWithACommittedBaseline() = withFreshDatabase { database ->
-        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        runBlocking {
-            store.applySnapshot(CanonicalMessageV2SnapshotFrame(SyncScopeKey(partitionA, "channel-a", "channel"), listOf(envelope(1)), cursor()))
-            assertNotNull(CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true }).read(partitionA, "channel-a"))
-            assertNull(CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { false }).read(partitionA, "channel-a"))
-        }
-    }
-
-    @Test
     fun emptyBaselineReadsAnEmptyFrameAndReplyThreadBaselineReadsNothing() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         runBlocking {
             // Negative control: no baseline at all is still no frame.
             assertNull(reader.read(partitionA, "channel-a"))
@@ -101,7 +91,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
     fun twoTopLevelKindsUnderOneIdAreAmbiguousAndReadNothing() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
         val logs = mutableListOf<String>()
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true }, logger = logs::add)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store, logger = logs::add)
         runBlocking {
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(SyncScopeKey(partitionA, "channel-a", "channel"), listOf(envelope(1)), cursor()))
             // Positive control: one committed kind reads back.
@@ -128,7 +118,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
         val scope = SyncScopeKey(partitionA, "channel-a", "channel")
         val logs = mutableListOf<String>()
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true }, logger = logs::add)
+        val reader = CanonicalMessageV2DurableLastKnownReader(store, logger = logs::add)
         runBlocking {
             store.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(envelope(1)), cursor()))
             database.queries.updateCanonicalFact(
@@ -153,7 +143,7 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
     @Test
     fun readerRejectsV1PartitionAndUntrimmedChannelId() = withFreshDatabase { database ->
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val reader = CanonicalMessageV2DurableLastKnownReader(store, isEnabledForServer = { true })
+        val reader = CanonicalMessageV2DurableLastKnownReader(store)
         runBlocking {
             assertFailsWith<IllegalArgumentException> {
                 reader.read(partitionA.copy(consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID), "channel-a")
