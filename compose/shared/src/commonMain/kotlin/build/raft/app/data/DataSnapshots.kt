@@ -1005,7 +1005,14 @@ data class AgentDetailSummary(
      */
     val modelLimitsDefaultsReported: Boolean = false,
     /** A cloud agent's provisioning record (web `agent.hostedRuntime`); null for any other agent. */
-    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
+    /**
+     * What the running process reports it runs (`runtimeProfile.current.runtime` / `.model`); null
+     * when unknown. A saved change waiting for the agent's next idle point differs from the saved
+     * [runtime] / [model] (web AgentProfileInfo `runningConfigHint`, botiverse/slock #13372).
+     */
+    val runningRuntime: String? = null,
+    val runningModel: String? = null
 )
 
 data class AgentCreatorSummary(

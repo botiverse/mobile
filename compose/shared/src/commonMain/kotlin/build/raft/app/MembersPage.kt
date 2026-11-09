@@ -329,6 +329,11 @@ import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import org.jetbrains.compose.resources.StringResource
+import build.raft.app.data.AgentConfigApply
+import build.raft.app.data.runtimeCatalogDisplayName
+import build.raft.designsystem.components.LocalRaftToastHostState
+import build.raft.designsystem.components.RaftToastHostState
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -847,6 +852,7 @@ private fun String?.normalizedMembersServerRole(): String =
 // a sentinel, then restore the placeholder for callbacks that supply the
 // eventual value outside composition.
 private const val MembersFormatSentinel = "__RAFT_MEMBER_FORMAT_VALUE__"
+private const val MembersFormatSentinel2 = "__RAFT_MEMBER_FORMAT_VALUE_2__"
 
 @Composable
 private fun membersStringTemplate(resource: StringResource): String =
@@ -4901,6 +4907,7 @@ internal fun MemberDetailPageContent(
                             onUpdateAgentProfile = { request ->
                                 agentDetailActions.updateAgentProfile(request)
                             },
+                            onErrorToast = { message, error -> bridge.errorToast(message, error) },
                             onApplyAgentProfileResult = { updatedMember ->
                                 provider.updateCachedMemberProfile(updatedMember, current.server.id)
                             },
@@ -6328,6 +6335,8 @@ private class MembersHumanRoleInputs(
 
 private class MembersAgentDetailCallbacks(
     val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    /** `bridge.errorToast`: an error toast with the failed request's trace ID; null: a plain toast. */
+    val onErrorToast: ((String, ScreenError) -> Unit)? = null,
     val onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     val onApplyAgentRuntimeConfigProjection:
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean = { _, _, _ -> false },
@@ -6459,6 +6468,7 @@ private fun MembersDetailContent(
     val onUpdateAgentProfile = agentCallbacks.onUpdateAgentProfile
     val onApplyAgentProfileResult = agentCallbacks.onApplyAgentProfileResult
     val onApplyAgentRuntimeConfigProjection = agentCallbacks.onApplyAgentRuntimeConfigProjection
+    val onAgentErrorToast = agentCallbacks.onErrorToast
     val onUploadAgentAvatar = agentCallbacks.onUploadAgentAvatar
     val onPickAgentAvatarFile = agentCallbacks.onPickAgentAvatarFile
     val onAgentLifecycleAction = agentCallbacks.onAgentLifecycleAction
@@ -7226,6 +7236,7 @@ private fun MembersDetailContent(
                                             onUpdateAgentProfile = onUpdateAgentProfile,
                                             onApplyAgentProfileResult = onApplyAgentProfileResult,
                                             onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
+                                            onErrorToast = onAgentErrorToast,
                                             agentsApiClient = agentsApiClient,
                                             archiveInputs = MembersAgentArchiveInputs(
                                                 loadArchive = { id ->
@@ -10082,7 +10093,9 @@ private class MembersAgentProfileEditInputs(
     val errorStrings: ErrorPresentationStrings,
     /** Web AgentProfileInfo `openRuntimeConfigRequested`: open the runtime editor once it can. */
     val runtimeEditorOpenRequested: Boolean = false,
-    val onRuntimeEditorOpenRequestHandled: () -> Unit = {}
+    val onRuntimeEditorOpenRequestHandled: () -> Unit = {},
+    /** An error toast with the failed request's trace ID (`bridge.errorToast`); null: a plain toast. */
+    val onErrorToast: ((String, ScreenError) -> Unit)? = null
 )
 
 /**
@@ -10996,7 +11009,43 @@ private fun MembersAgentRuntimeConfigSection(
         runtimeEditorSession = null
     }
 
-    fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean) {
+    // Web `canRestartAgent` (canControlAgentRuntime on a non-archived agent): who may Restart from
+    // the Actions section may Restart now from the saved notice.
+    val canRestartNow = edit.canManage && summary?.deletedAt.isNullOrBlank() && agentDetailActions != null
+    val toastHost = LocalRaftToastHostState.current
+    val applyCopy = membersRuntimeConfigApplyCopy()
+    val restartFailed = stringResource(Res.string.settings_computers_restart_failed)
+    val onErrorToast = edit.onErrorToast
+
+    // Web `restartNow`: the agent's ordinary restart (a session reset for a new-session change),
+    // with no confirmation; "Restart failed." when it does not go through.
+    fun restartNow(mode: AgentResetMode) {
+        val actions = agentDetailActions ?: return
+        val action = if (mode == AgentResetMode.Session) MembersAgentLifecycleAction.ResetSession else MembersAgentLifecycleAction.Restart
+        scope.launch {
+            val result =
+                try {
+                    actions.runLifecycleAction(member.id, action)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                }
+            result.membersLifecycleError(action)?.let { error ->
+                if (onErrorToast != null) onErrorToast(restartFailed, error) else onUnavailableAction(restartFailed)
+            }
+        }
+    }
+
+    fun showRuntimeConfigApplyNotice(notice: MembersRuntimeConfigApplyNotice) {
+        if (toastHost == null) {
+            onUnavailableAction(applyCopy.title(member.displayName))
+            return
+        }
+        showMembersRuntimeConfigApplyNotice(toastHost, notice, member.displayName, applyCopy, ::restartNow)
+    }
+
+    fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean, newSession: Boolean) {
         val callback = onUpdateAgentProfile
         // The access the form was loaded through; the authority check below still fences
         // account/server/profile changes.
@@ -11057,7 +11106,8 @@ private fun MembersAgentRuntimeConfigSection(
                 if (!authorityCurrent()) return@membersRuntimeEditorSaving
                 when (result) {
                     is DataResult.Content, is DataResult.Empty -> {
-                        (result as? DataResult.Content)?.let { onApplyAgentProfileResult(it.data) }
+                        val configApply = (result as? DataResult.Content)?.data?.configApply
+                        (result as? DataResult.Content)?.let { onApplyAgentProfileResult(it.data.withoutConfigApply()) }
                         // The server assembled the config; show what it stored rather than guessing locally.
                         val stored = (access.loader.agent(member.id) as? DataResult.Content)?.data
                         val config = (stored?.toAgentDetailSummary().toMembersRuntimeConfigResolution()
@@ -11069,6 +11119,12 @@ private fun MembersAgentRuntimeConfigSection(
                         closeRuntimeEditor()
                         // The save landed; only the read-back failed, so the rows may lag until a refresh.
                         if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
+                        membersRuntimeConfigApplyNotice(
+                            configApply = configApply,
+                            agentActive = activeAgent,
+                            newSession = newSession,
+                            canRestart = canRestartNow
+                        )?.let { notice -> showRuntimeConfigApplyNotice(notice) }
                     }
                     is DataResult.NoPermission ->
                         runtimeConfigError =
@@ -11145,11 +11201,25 @@ private fun MembersAgentRuntimeConfigSection(
                 null
             }
     ) {
+        val runtimeModelsCatalog = canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
         MembersAgentRuntimeConfigRows(
             resolution = runtimeConfigResolution,
-            runtimeModelsCatalog =
-                canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get),
-            machineId = summary?.machineId ?: member.membersComputerId
+            runtimeModelsCatalog = runtimeModelsCatalog,
+            machineId = summary?.machineId ?: member.membersComputerId,
+            runningHint =
+                canonicalRuntimeConfig?.let { config ->
+                    membersRuntimeRunningHint(
+                        agentActive = activeAgent,
+                        savedRuntime = config.runtime,
+                        savedModel = config.toMembersRuntimeModelValue(),
+                        runningRuntime = summary?.runningRuntime,
+                        runningModel = summary?.runningModel,
+                        runtimeName = { runtimeCatalogDisplayName(it) },
+                        modelLabel = { model ->
+                            membersAgentRuntimeModelDisplayLabel(config.runtime, model, runtimeModelsCatalog) ?: model
+                        }
+                    )
+                }
         )
         // Web AgentProfileInfo: under the runtime rows (`mt-3`), before Environment Variables, only
         // when the server says the session reported Raft default limits (botiverse/slock #13492).
@@ -11374,6 +11444,7 @@ private fun MembersAgentProfileTab(
     onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     onApplyAgentRuntimeConfigProjection:
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean = { _, _, _ -> false },
+    onErrorToast: ((String, ScreenError) -> Unit)? = null,
     agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     archiveInputs: MembersAgentArchiveInputs = MembersAgentArchiveInputs(),
     externalSetupServerUrl: String? = null,
@@ -11407,7 +11478,8 @@ private fun MembersAgentProfileTab(
             onUnavailableAction = onUnavailableAction,
             errorStrings = errorStrings,
             runtimeEditorOpenRequested = lifecycle.runtimeEditorOpenRequested,
-            onRuntimeEditorOpenRequestHandled = lifecycle.onRuntimeEditorOpenRequestHandled
+            onRuntimeEditorOpenRequestHandled = lifecycle.onRuntimeEditorOpenRequestHandled,
+            onErrorToast = onErrorToast
         )
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
@@ -11673,7 +11745,9 @@ private fun MembersAgentActionButton(
 internal fun MembersAgentRuntimeConfigRows(
     resolution: MembersAgentRuntimeConfigResolution,
     runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
-    machineId: String?
+    machineId: String?,
+    /** What a running agent still runs until a saved change applies; null hides the line. */
+    runningHint: MembersRuntimeRunningHint? = null
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
@@ -11715,6 +11789,7 @@ internal fun MembersAgentRuntimeConfigRows(
             MembersAgentInfoField(stringResource(Res.string.member_label_model), copyText = modelLabel) {
                 // Web `<span className="min-w-0 break-all font-mono">`: plain machine text, no chip.
                 RaftText(text = modelLabel, style = membersInfoValueStyle(mono = true), color = RaftTheme.colors.foreground)
+                if (runningHint != null) MembersRuntimeRunningHintLine(runningHint)
             }
         }
         // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
@@ -11978,9 +12053,11 @@ internal suspend fun membersRuntimeEditorSaving(setSaving: (Boolean) -> Unit, bl
 }
 
 /**
- * The PATCH for a v2 edit save: only the form ref and values travel. A runtime switch starts a
- * new session (`restartMode: "session"`, as web after task #8; the server forces it too);
- * otherwise an active agent restarts to pick the change up.
+ * The PATCH for a v2 edit save: only the form ref and values travel. Web AgentProfileInfo
+ * (botiverse/slock #13372, reconciler step 11c): a running agent is not interrupted, so its save
+ * carries no `restartMode` (the server applies it at the agent's next idle point and says so in
+ * `configApply`); only a stopped agent's runtime switch asks for a new session
+ * (`restartMode: "session"`).
  */
 internal fun membersRuntimeFormV2UpdateRequest(
     agentId: MemberId,
@@ -11994,14 +12071,160 @@ internal fun membersRuntimeFormV2UpdateRequest(
         agentId = agentId,
         displayName = displayName,
         description = description?.takeIf { it.isNotBlank() },
-        runtimeResetMode =
-            when {
-                runtimeSwitched -> AgentResetMode.Session
-                activeAgent -> AgentResetMode.Restart
-                else -> null
-            },
+        runtimeResetMode = if (runtimeSwitched && !activeAgent) AgentResetMode.Session else null,
         runtimeFormV2 = submit
     )
+
+/**
+ * Web `agent-runtime-config-running`: `mt-1 block text-caption text-foreground-muted`, a model name
+ * in Space Mono (#13373), a runtime name in the body font.
+ */
+@Composable
+private fun MembersRuntimeRunningHintLine(hint: MembersRuntimeRunningHint) {
+    val template = stringResource(Res.string.member_runtime_config_running_switches_when_idle, MembersFormatSentinel, MembersFormatSentinel2)
+    val caption = RaftTheme.typography.caption
+    val nameStyle =
+        if (hint is MembersRuntimeRunningHint.Model) SpanStyle(fontFamily = RaftTheme.typography.monoCode.fontFamily) else SpanStyle()
+    val text =
+        buildAnnotatedString {
+            var rest = template
+            for ((sentinel, value) in listOf(MembersFormatSentinel to hint.running, MembersFormatSentinel2 to hint.saved)) {
+                val at = rest.indexOf(sentinel)
+                if (at < 0) continue
+                append(rest.substring(0, at))
+                withStyle(nameStyle) { append(value) }
+                rest = rest.substring(at + sentinel.length)
+            }
+            append(rest)
+        }
+    RaftText(
+        text = text,
+        style = caption,
+        color = RaftTheme.colors.foregroundMuted,
+        modifier = Modifier.padding(top = 4.dp).testTag(MEMBERS_RUNTIME_RUNNING_HINT_TAG)
+    )
+}
+
+internal const val MEMBERS_RUNTIME_RUNNING_HINT_TAG = "agent-runtime-config-running"
+
+/** The saved notice's words, resolved in composition. */
+internal class MembersRuntimeConfigApplyCopy(
+    /** "%1$s's settings saved". */
+    private val savedTitleTemplate: String,
+    val appliesWhenIdle: String,
+    val newSessionWhenIdle: String,
+    val appliesNextStart: String,
+    val restartNow: String
+) {
+    fun title(agentName: String): String = savedTitleTemplate.membersFormat(agentName)
+}
+
+@Composable
+internal fun membersRuntimeConfigApplyCopy(): MembersRuntimeConfigApplyCopy =
+    MembersRuntimeConfigApplyCopy(
+        savedTitleTemplate = membersStringTemplate(Res.string.member_runtime_config_saved_title),
+        appliesWhenIdle = stringResource(Res.string.member_runtime_config_applies_when_idle),
+        newSessionWhenIdle = stringResource(Res.string.member_runtime_config_new_session_when_idle),
+        appliesNextStart = stringResource(Res.string.member_runtime_config_applies_next_start),
+        restartNow = stringResource(Res.string.member_action_restart_now)
+    )
+
+/**
+ * Web `announceRuntimeConfigApply` (botiverse/slock #13373, Raft DS › Toast): a success toast whose
+ * title names the agent and whose description says when the change applies; Restart now, when
+ * offered, is its one action (tapping it closes the toast and runs [onRestartNow]).
+ */
+internal fun showMembersRuntimeConfigApplyNotice(
+    host: RaftToastHostState,
+    notice: MembersRuntimeConfigApplyNotice,
+    agentName: String,
+    copy: MembersRuntimeConfigApplyCopy,
+    onRestartNow: (AgentResetMode) -> Unit
+): Long {
+    val description =
+        when (notice.kind) {
+            MembersRuntimeConfigApplyKind.WhenIdle -> copy.appliesWhenIdle
+            MembersRuntimeConfigApplyKind.NewSessionWhenIdle -> copy.newSessionWhenIdle
+            MembersRuntimeConfigApplyKind.NextStart -> copy.appliesNextStart
+        }
+    val restartMode = notice.restartNow
+    return host.show(
+        title = copy.title(agentName),
+        description = description,
+        intent = RaftToastIntent.Success,
+        actionLabel = restartMode?.let { copy.restartNow },
+        onAction = restartMode?.let { mode -> { onRestartNow(mode) } }
+    )
+}
+
+/** When a saved runtime config change applies, as the saved notice says it. */
+internal enum class MembersRuntimeConfigApplyKind { WhenIdle, NewSessionWhenIdle, NextStart }
+
+/** The saved notice: when it applies, and Restart now's mode (null when not offered). */
+internal data class MembersRuntimeConfigApplyNotice(
+    val kind: MembersRuntimeConfigApplyKind,
+    val restartNow: AgentResetMode?
+)
+
+/**
+ * Web `announceRuntimeConfigApply` (botiverse/slock #13372, #13373): a running agent's saved change
+ * says when it applies: at its next idle point (`when_idle`), or, from a daemon too old for that,
+ * at its next start (`saved` on a running agent). `restarted` already happened and a stopped
+ * agent's change applies when it starts, as before: no notice. Restart now restarts the agent,
+ * resetting the session for a [newSession] change, for whoever [canRestart].
+ */
+internal fun membersRuntimeConfigApplyNotice(
+    configApply: AgentConfigApply?,
+    agentActive: Boolean,
+    newSession: Boolean,
+    canRestart: Boolean
+): MembersRuntimeConfigApplyNotice? {
+    val whenIdle = configApply == AgentConfigApply.WhenIdle
+    if (!whenIdle && !(configApply == AgentConfigApply.Saved && agentActive)) return null
+    val kind =
+        when {
+            !whenIdle -> MembersRuntimeConfigApplyKind.NextStart
+            newSession -> MembersRuntimeConfigApplyKind.NewSessionWhenIdle
+            else -> MembersRuntimeConfigApplyKind.WhenIdle
+        }
+    val restartMode = if (newSession) AgentResetMode.Session else AgentResetMode.Restart
+    return MembersRuntimeConfigApplyNotice(kind, restartMode.takeIf { canRestart })
+}
+
+/**
+ * Web AgentProfileInfo `runningConfigHint` (botiverse/slock #13372, #13373): while a running agent
+ * still runs another runtime or model than the saved one (a change waiting for its idle point),
+ * what it runs and what it switches to. Unknown, equal, or a stopped agent says nothing.
+ */
+internal sealed interface MembersRuntimeRunningHint {
+    val running: String
+    val saved: String
+
+    /** Runtime display names: set in the body font. */
+    data class Runtime(override val running: String, override val saved: String) : MembersRuntimeRunningHint
+
+    /** Model labels: set in mono, as the Model row. */
+    data class Model(override val running: String, override val saved: String) : MembersRuntimeRunningHint
+}
+
+internal fun membersRuntimeRunningHint(
+    agentActive: Boolean,
+    savedRuntime: String,
+    savedModel: String?,
+    runningRuntime: String?,
+    runningModel: String?,
+    runtimeName: (String) -> String,
+    modelLabel: (String) -> String
+): MembersRuntimeRunningHint? {
+    if (!agentActive) return null
+    val runtime = runningRuntime?.trim()?.takeIf { it.isNotEmpty() }
+    if (runtime != null && runtime != savedRuntime.trim()) {
+        return MembersRuntimeRunningHint.Runtime(runtimeName(runtime), runtimeName(savedRuntime))
+    }
+    val running = runningModel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val saved = savedModel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return if (running != saved) MembersRuntimeRunningHint.Model(modelLabel(running), modelLabel(saved)) else null
+}
 
 /** The runtime-switch confirmation used by the runtime editor. */
 @Composable

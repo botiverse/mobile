@@ -79,7 +79,7 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
                         onDismiss = {},
                         onRuntimeSelected = {},
                         runtimeCatalog = { null },
-                        onSave = { _, _ -> },
+                        onSave = { _, _, _ -> },
                     )
                 }
             }

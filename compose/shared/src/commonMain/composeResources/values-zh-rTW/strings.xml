@@ -1328,8 +1328,13 @@
     <string name="member_action_stop_confirm">停止</string>
     <string name="member_action_reset_runtime_session">重設執行環境工作階段</string>
     <string name="member_action_save_runtime_change">儲存執行環境變更</string>
-    <string name="member_runtime_switch_active_message">這會將執行環境從 %1$s 切換為 %2$s，並重設目前的執行環境工作階段。</string>
     <string name="member_runtime_switch_inactive_message">這會將執行環境從 %1$s 切換為 %2$s。</string>
+    <string name="member_runtime_config_saved_title">%1$s 的設定已儲存</string>
+    <string name="member_runtime_config_applies_when_idle">下次閒置時套用。</string>
+    <string name="member_runtime_config_new_session_when_idle">下次閒置時開始新的工作階段。</string>
+    <string name="member_runtime_config_applies_next_start">下次啟動時套用。</string>
+    <string name="member_action_restart_now">立即重新啟動</string>
+    <string name="member_runtime_config_running_switches_when_idle">正在執行 %1$s · 閒置時切換為 %2$s</string>
     <string name="member_action_view_service">檢視服務</string>
     <string name="member_action_view_logs">檢視記錄</string>
     <string name="member_action_refresh">重新整理</string>
@@ -1632,7 +1637,6 @@
     <string name="member_action_issue_reported">已回報問題</string>
     <string name="member_dialog_edit_runtime_config">編輯執行環境設定</string>
     <string name="member_placeholder_description">描述這個 Agent</string>
-    <string name="member_hint_runtime_restart">變更執行環境設定可能會重新啟動 Agent，讓下次啟動時套用新設定。</string>
     <string name="member_hint_chat_audit_only">此處僅作為動態／稽核紀錄顯示，這些項目刻意不提供對話的直接連結。</string>
     <string name="member_hint_no_scheduled_reminders">此 Agent 尚未排定任何提醒。Agent 一排定提醒，就會即時顯示在這裡。</string>
     <string name="member_hint_connected_apps">這個 Agent 可以使用的已連結應用程式。</string>
