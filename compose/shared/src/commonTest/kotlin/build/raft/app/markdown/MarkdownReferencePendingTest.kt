@@ -124,6 +124,21 @@ class MarkdownReferencePendingTest {
     }
 
     @Test
+    fun pendingMessageReferenceKeepsItsCyanChipNotTheYellowSticker() {
+        val plan = plan("Open #general msg=2cebeb18", scope = "message")
+        val tag = plan.tagTokens().mapNotNull { it.tag }.single { it.kind == ThreadMarkdownTagKind.Message }
+        val active =
+            buildRaftRichTextDocumentFromMarkdownPlan(
+                source = plan.content,
+                content = plan.content,
+                tokenPlan = plan,
+                activeTagKey = threadMarkdownTagActivationKey(tag)
+            )
+
+        assertEquals(RaftRichTextChromeKind.Message, active.inlineTokens.single { it.actionId != null }.chrome)
+    }
+
+    @Test
     fun pendingThreadReferenceRetainsThreadChromeKindAndSetsActiveFlag() {
         val plan = plan("Open #general:1c50c30a", scope = "message")
         val base = document(plan)

@@ -7,6 +7,7 @@ import com.tencent.kuiklybase.markdown.model.parseMarkdownInlineSyntax
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -151,10 +152,14 @@ class RaftMarkdownMessageRefTest {
     }
 
     @Test
-    fun theChipIsTheWebsPrimarySticker() {
+    fun theChipIsCyanLikeAThreadRefNotTheSelfMentionSticker() {
         val token = RaftRichTextChromeKind.Message.styleToken
-        assertEquals(RaftRichTextChromeKind.SelfMention.styleToken.chipFill, token.chipFill)
-        assertTrue(token.inkEdge)
+        val thread = RaftRichTextChromeKind.Thread.styleToken
+        assertEquals(RaftRichTextColorToken.InfoSoft, token.chipFill)
+        assertEquals(thread.chipFill, token.chipFill)
+        assertEquals(thread.inkEdge, token.inkEdge)
+        assertFalse(token.inkEdge)
+        assertNotEquals(RaftRichTextChromeKind.SelfMention.styleToken.chipFill, token.chipFill)
     }
 
     @Test
