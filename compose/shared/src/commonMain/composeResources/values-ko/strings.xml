@@ -2424,8 +2424,8 @@
     <string name="settings_mobile_new_message_menu">새 메시지 메뉴</string>
     <string name="settings_mobile_new_message_menu_detail">메시지를 길게 누르면 빠른 반응과 자주 쓰는 작업을 두 줄짜리 간단한 메뉴로 보여줘요. 끄면 기존 메시지 메뉴를 사용해요.</string>
     <string name="settings_mobile_conversation_forward_gesture">대화 앞으로 가기 제스처</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">뒤로 간 뒤 홈의 오른쪽 가장자리에서 왼쪽으로 스와이프하면 가장 최근의 채널이나 다이렉트 메시지를 다시 열 수 있어요.</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">베타. 대화 앞으로 가기 제스처를 설정해요. 홈으로 돌아온 뒤 오른쪽 가장자리에서 왼쪽으로 스와이프하면 가장 최근의 채널이나 다이렉트 메시지를 다시 열 수 있어요.</string>
+    <string name="settings_mobile_conversation_forward_gesture_detail">채팅에서 홈으로 돌아온 뒤 화면 오른쪽 가장자리에서 왼쪽으로 스와이프하면 그 채팅을 다시 열 수 있어요.</string>
+    <string name="settings_mobile_conversation_forward_gesture_accessibility">베타. 대화 앞으로 가기 제스처를 설정해요. 채팅에서 홈으로 돌아온 뒤 화면 오른쪽 가장자리에서 왼쪽으로 스와이프하면 그 채팅을 다시 열 수 있어요.</string>
     <string name="settings_mobile_home_server_avatar">홈 헤더의 워크스페이스 아바타</string>
     <string name="settings_mobile_home_server_avatar_detail">홈 헤더에서 현재 워크스페이스 이름 옆에 아바타를 보여줘요. 끄면 기존의 간단한 제목 배지를 계속 사용해요.</string>
     <string name="settings_mobile_thread_reverse_layout">최신 메시지부터 채팅 열기</string>

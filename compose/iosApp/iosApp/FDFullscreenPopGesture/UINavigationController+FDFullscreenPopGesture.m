@@ -22,6 +22,7 @@
 
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "RaftPageViewController.h"
+#import "HRBridgeModule.h"
 #import "RaftConversationForwardGestureAdmission.h"
 #import "RaftInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
@@ -50,19 +51,43 @@
 
 @end
 
+/// Forward comes from the trailing edge: the right in LTR, the left in RTL (the pop gesture's
+/// mirror, RaftInteractivePopGestureAdmission).
+static BOOL RaftConversationForwardIsLeftToRight(void)
+{
+    return [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight;
+}
+
+/// Compose Multiplatform's own views (runtime class `androidx.compose.…`): its full-screen
+/// `OverlayInputView` is a `UIScrollView` subclass that every Compose touch lands on, so it is not
+/// a native child scroller (RaftIosComposeScrollEdgeEffects reads the same class names).
+static BOOL RaftConversationForwardIsComposeView(UIView *view)
+{
+    return [NSStringFromClass(view.class) containsString:@"androidx.compose."];
+}
+
+/// A touch that native content under it keeps: a focused text input (selection handles), or a
+/// native horizontal scroller that can still move towards the leading edge (content forward).
+/// Compose's own views never count: their scrolling is Compose's, and Compose's touch
+/// recognizer cannot prevent this edge pan (CMP `TouchesGestureRecognizer`).
 static BOOL RaftConversationForwardChildGestureConflict(UIView *view, UIView *rootView)
 {
     UIView *candidate = view;
     while (candidate && candidate != rootView) {
-        if ([candidate conformsToProtocol:@protocol(UITextInput)]) {
+        if (candidate.isFirstResponder && [candidate conformsToProtocol:@protocol(UITextInput)]) {
             return YES;
         }
-        if ([candidate isKindOfClass:UIScrollView.class]) {
+        if ([candidate isKindOfClass:UIScrollView.class] && !RaftConversationForwardIsComposeView(candidate)) {
             UIScrollView *scrollView = (UIScrollView *)candidate;
-            BOOL horizontal =
-                scrollView.alwaysBounceHorizontal ||
-                scrollView.contentSize.width > CGRectGetWidth(scrollView.bounds) + 1.0;
-            if (horizontal || scrollView.dragging || scrollView.decelerating || scrollView.tracking) {
+            if (scrollView.dragging || scrollView.decelerating) {
+                return YES;
+            }
+            CGFloat minimumOffset = -scrollView.adjustedContentInset.left;
+            CGFloat maximumOffset = MAX(
+                minimumOffset,
+                scrollView.contentSize.width - CGRectGetWidth(scrollView.bounds) + scrollView.adjustedContentInset.right
+            );
+            if (scrollView.scrollEnabled && maximumOffset > minimumOffset + 1.0) {
                 return YES;
             }
         }
@@ -125,7 +150,11 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
-    return !RaftConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view);
+    if (RaftConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view)) {
+        RaftIosDiagnosticsRecord(@"info", @"SlockConversationForward", @"gesture_touch_rejected reason=child_conflict");
+        return NO;
+    }
+    return YES;
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
@@ -154,8 +183,19 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
         .translationY = translation.y,
         .velocityX = velocity.x,
         .velocityY = velocity.y,
+        .isLeftToRight = RaftConversationForwardIsLeftToRight(),
     };
-    return RaftConversationForwardGestureShouldBegin(admission);
+    BOOL begins = RaftConversationForwardGestureShouldBegin(admission);
+    // One line per edge swipe: which admission input refused it (artin #111: the swipe did nothing).
+    RaftIosDiagnosticsRecord(
+        @"info",
+        @"SlockConversationForward",
+        [NSString stringWithFormat:
+            @"gesture_should_begin result=%d reason=%s",
+            begins,
+            RaftConversationForwardGestureRejectReason(admission)]
+    );
+    return begins;
 }
 
 @end
@@ -380,10 +420,14 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     CGFloat width = MAX(1.0, CGRectGetWidth(gestureRecognizer.view.bounds));
     CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
     CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
-    CGFloat progress = MAX(0.0, -translation.x / width);
-    if (progress < 0.12 && velocity.x > -300.0) {
+    // Distance and speed towards the leading edge (left in LTR, right in RTL).
+    CGFloat direction = RaftConversationForwardIsLeftToRight() ? -1.0 : 1.0;
+    CGFloat progress = MAX(0.0, direction * translation.x / width);
+    if (progress < 0.12 && direction * velocity.x < 300.0) {
+        RaftIosDiagnosticsRecord(@"info", @"SlockConversationForward", @"gesture_ended result=too_short");
         return;
     }
+    RaftIosDiagnosticsRecord(@"info", @"SlockConversationForward", @"gesture_ended result=request");
     RaftPageViewController *topViewController =
         [self.topViewController isKindOfClass:RaftPageViewController.class]
             ? (RaftPageViewController *)self.topViewController
@@ -404,6 +448,7 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     }
 
     gestureRecognizer = self.fd_conversationForwardGestureRecognizer;
+    gestureRecognizer.edges = RaftConversationForwardIsLeftToRight() ? UIRectEdgeRight : UIRectEdgeLeft;
     if (gestureRecognizer.view != self.view) {
         if (gestureRecognizer.view != nil) {
             [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
@@ -479,7 +524,7 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     UIScreenEdgePanGestureRecognizer *gestureRecognizer = objc_getAssociatedObject(self, _cmd);
     if (!gestureRecognizer) {
         gestureRecognizer = [[UIScreenEdgePanGestureRecognizer alloc] init];
-        gestureRecognizer.edges = UIRectEdgeRight;
+        gestureRecognizer.edges = RaftConversationForwardIsLeftToRight() ? UIRectEdgeRight : UIRectEdgeLeft;
         gestureRecognizer.maximumNumberOfTouches = 1;
         gestureRecognizer.cancelsTouchesInView = NO;
         gestureRecognizer.delegate = self.fd_conversationForwardGestureRecognizerDelegate;

@@ -2429,8 +2429,8 @@
     <string name="settings_mobile_new_message_menu">新しいメッセージメニュー</string>
     <string name="settings_mobile_new_message_menu_detail">メッセージを押したままにすると、クイックリアクションとよく使う操作を2段のコンパクトメニューで表示します。オフにすると従来のメッセージメニューを使用します。</string>
     <string name="settings_mobile_conversation_forward_gesture">会話の「進む」ジェスチャー</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">会話からホームに戻った後、画面右端から左へスワイプすると、直前のチャンネルまたはDMを再度開けます。</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">ベータ。会話の「進む」ジェスチャーを設定します。会話からホームに戻った後、画面右端から左へスワイプすると、直前のチャンネルまたはDMを再度開けます。</string>
+    <string name="settings_mobile_conversation_forward_gesture_detail">チャットからホームに戻った後、画面の右端から左へスワイプすると、そのチャットをもう一度開けます。</string>
+    <string name="settings_mobile_conversation_forward_gesture_accessibility">ベータ。会話の「進む」ジェスチャーを設定します。チャットからホームに戻った後、画面の右端から左へスワイプすると、そのチャットをもう一度開けます。</string>
     <string name="settings_mobile_home_server_avatar">ホームヘッダーのワークスペースアバター</string>
     <string name="settings_mobile_home_server_avatar_detail">ホームヘッダーで、名前の横に現在のワークスペースのアバターを表示します。オフにすると、既存のコンパクトなタイトルバッジを維持します。</string>
     <string name="settings_badge_beta">ベータ</string>
