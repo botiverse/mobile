@@ -14,11 +14,40 @@ import kotlin.time.TimeSource
 internal const val SYNC_CHANGES_MAX_PAGES_PER_PULL: Int = 40
 
 /**
- * The longest one `sync/changes` request may take. Past it the pull fails (`timeout`, the cursor is
- * dropped like on any failure) and a reconnect / foreground caller falls back to its full-list
- * refetch (web client, Scout 10-27).
+ * The longest one `sync/changes` request may take. Past it the pull fails (`timeout`), a transient
+ * failure ([isTransientSyncChangesFailure]): the first on a cursor keeps it and asks for no full
+ * refetch, the second in a row drops it and a reconnect / foreground caller falls back to its
+ * full-list refetch. Until #proj-mobile:#112 every failure dropped the cursor and fell back at
+ * once (web client, Scout 10-27).
  */
 internal const val SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS: Long = 5_000L
+
+/**
+ * Transient failures ([isTransientSyncChangesFailure]) in a row on the same cursor before it is
+ * forgotten (CTO, #proj-mobile:#112; "Pull failures" in slock packages/shared/src/syncChanges.ts). During a server deploy every app pulling in those minutes
+ * fails at once: dropping the cursor (or falling back to the full-list refetch) on the first
+ * failure turned each of them into a full reload and made the load spike worse. A first failure
+ * keeps the cursor; one retry 30–60 s later ([RaftSyncTransientRetry]) or the next normal trigger
+ * (reconnect, foreground, server select, with its usual jitter) pulls again, whichever comes
+ * first. A cursor that fails twice in a row is still not retried forever. The count is stored with
+ * the cursor ([RaftSyncCursorStore.recordFailure]), so an app restart does not reset it.
+ */
+internal const val SYNC_CHANGES_CURSOR_FAILURES_BEFORE_FORGET: Int = 2
+
+/**
+ * A failure the server gets over by itself (a deploy, a brief outage), as the "Pull failures"
+ * section of slock packages/shared/src/syncChanges.ts defines it for web and the app alike
+ * (slock #13765, #proj-mobile:#112): no answer (`http_0`, the network client's transport error,
+ * or [SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS]), a 5xx (any status from 500 up, as web), 408 or 429.
+ * These count against the cursor ([SYNC_CHANGES_CURSOR_FAILURES_BEFORE_FORGET]). Anything else
+ * drops it at once: `invalid_cursor`, 401, 403 (of `sync/changes` itself; a snapshot list's 403 is
+ * "not readable, skip", [RaftSyncSnapshotRead.NotReadable]), any other 4xx, a malformed body.
+ */
+internal fun isTransientSyncChangesFailure(code: String): Boolean {
+    if (code == "timeout") return true
+    val status = code.removePrefix("http_").takeIf { it != code }?.toIntOrNull() ?: return false
+    return status == 0 || status == 408 || status == 429 || status >= 500
+}
 
 /** The most a pull triggered by a socket RE-connect waits before its first request (Ray 10-27). */
 internal const val SYNC_CHANGES_RECONNECT_PULL_JITTER_MAX_MILLIS: Long = 2_000L
@@ -185,13 +214,25 @@ internal sealed interface RaftSyncPullResult {
             get() = truncated && cursorAdvanced
     }
 
-    data class Failed(val code: String) : RaftSyncPullResult {
+    data class Failed(
+        val code: String,
         /**
-         * The caller's full-list refetch must stand in for this pull (network, 5xx, timeout, a
-         * snapshot that failed). Not when the scope itself is gone (signed out, server switched).
+         * A first transient failure on the stored cursor: the cursor stays, and one retry 30–60 s
+         * later or the next normal trigger pulls again (#proj-mobile:#112,
+         * [SYNC_CHANGES_CURSOR_FAILURES_BEFORE_FORGET], [RaftSyncTransientRetry]).
+         */
+        val cursorKept: Boolean = false,
+    ) : RaftSyncPullResult {
+        /**
+         * The caller's full-list refetch must stand in for this pull: the cursor was dropped (the
+         * second transient failure in a row on it, `invalid_cursor`, a snapshot that failed, any
+         * other failure) or there was none. Not on a first failure that kept the cursor
+         * ([cursorKept]): a full reload then would put the same load on a server that is
+         * deploying as dropping the cursor did (#proj-mobile:#112). Not when the scope itself is
+         * gone (signed out, server switched).
          */
         val needsFullRefetchFallback: Boolean
-            get() = code != SCOPE_RETIRED
+            get() = code != SCOPE_RETIRED && !cursorKept
 
         companion object {
             const val SCOPE_RETIRED: String = "scope_retired"
@@ -200,23 +241,34 @@ internal sealed interface RaftSyncPullResult {
 }
 
 /**
- * The incremental sync loop of one server (contract: [parseSyncChangesPage]).
+ * The incremental sync loop of one server (contract: [parseSyncChangesPage]; failures: the "Pull
+ * failures" section of slock packages/shared/src/syncChanges.ts, slock #13765, shared with web).
  *
  * - No cursor: read the current cursor (no `since`), take every snapshot, store the cursor, then
  *   pull from it. A change the snapshots already hold may come again; applying by (entity, id) is
  *   idempotent.
  * - Cursor: first read again what an earlier pull's reloads failed to read
- *   ([RaftSyncChangesSink.retakeFailedReloads]); then pull pages and apply each one; store the
- *   page's cursor after it is applied; while `hasMore`, pull again at once (at most
- *   [maxPagesPerPull] pages per pull).
+ *   ([RaftSyncChangesSink.retakeFailedReloads]); then pull pages and apply each one; while
+ *   `hasMore`, pull again at once (at most [maxPagesPerPull] pages per pull). The last page's
+ *   cursor is stored only once the whole pull is done (#proj-mobile:#112): a pull that fails part
+ *   way keeps the cursor it started from, so the next one asks for the applied pages again
+ *   instead of skipping them. A first sync's cursor is stored right after its snapshots (they hold
+ *   everything up to it).
  * - `reset`: retake `reset.snapshots` (always after [snapshotJitterDelay], whatever the trigger: a
- *   reset reaches every client at once), then store the returned cursor.
+ *   reset reaches every client at once), then go on from the returned cursor.
  * - A snapshot this viewer may not read (403: a guest's `servers/:id/members`) is not a failure:
  *   the sink counts it as taken (Tenny, #proj-mobile:#112).
- * - A failed pull (network, 5xx, a request past [requestTimeoutMillis], a snapshot that failed)
- *   forgets the cursor (contract, Tenny 10-27): a cursor that keeps failing must not fail forever,
- *   the next pull re-bootstraps as a first sync, after [snapshotJitterDelay] (every client fails
- *   together during a server incident). A pull whose scope was retired keeps it.
+ * - A page request that fails transiently (no answer, past [requestTimeoutMillis], 5xx, 408, 429:
+ *   [isTransientSyncChangesFailure]) counts against the stored cursor: the first failure keeps it
+ *   and asks for no fallback ([RaftSyncPullResult.Failed.cursorKept]); one retry 30–60 s later
+ *   ([RaftSyncTransientRetry]) or the next normal trigger pulls again. Only the
+ *   [SYNC_CHANGES_CURSOR_FAILURES_BEFORE_FORGET]th in a row on the same cursor forgets it
+ *   (#proj-mobile:#112: every client fails together during a deploy, and a full reload for each
+ *   made the spike worse). Any other failure (`invalid_cursor`, 401, 403 and other 4xx of
+ *   `sync/changes` itself, a malformed body, a snapshot that failed) forgets the cursor at once, as
+ *   the 10-27 contract had it for every failure (Tenny):
+ *   a cursor that keeps failing must not fail forever. Once forgotten, the next pull re-bootstraps
+ *   as a first sync, after [snapshotJitterDelay]. A pull whose scope was retired keeps it.
  * - 400 `invalid_cursor`: forget the cursor and start over as a first sync (once per pull); its
  *   snapshots take [snapshotJitterDelay] (the server may have invalidated every cursor at once).
  *
@@ -268,6 +320,8 @@ internal class RaftSyncChangesEngine(
                 } catch (error: Throwable) {
                     RaftSyncPullResult.Failed("exception_${error::class.simpleName ?: "unknown"}")
                 }
+            // A first transient failure keeps the cursor (cursorKept: no fallback either); the
+            // caller schedules one retry ([RaftSyncTransientRetry], #proj-mobile:#112).
             when {
                 result is RaftSyncPullResult.Failed && result.needsFullRefetchFallback -> {
                     cursors.clear(scope)
@@ -281,7 +335,7 @@ internal class RaftSyncChangesEngine(
                         "result=synced pages=${result.pages} changes=${result.changes} firstSync=${result.firstSync} " +
                             "reset=${result.resetReason ?: "none"} truncated=${result.truncated} " +
                             "cursorAdvanced=${result.cursorAdvanced}"
-                    is RaftSyncPullResult.Failed -> "result=failed code=${result.code}"
+                    is RaftSyncPullResult.Failed -> "result=failed code=${result.code} cursorKept=${result.cursorKept}"
                 } + " durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
             result
@@ -292,6 +346,21 @@ internal class RaftSyncChangesEngine(
         withTimeoutOrNull(requestTimeoutMillis) { api.changes(serverId, since = since, limit = pageLimit) }
             ?: RaftSyncChangesFetch.Failed("timeout")
 
+    /**
+     * A page request failed with [code] while [stored] is the cursor on disk (the one the pull
+     * started from, or a first sync's: pages are only stored once the whole pull is done). A
+     * transient failure ([isTransientSyncChangesFailure]) counts against [stored] and keeps it below
+     * [SYNC_CHANGES_CURSOR_FAILURES_BEFORE_FORGET] in a row (#proj-mobile:#112); [pull] drops it
+     * otherwise. A pull that succeeds rewrites the cursor, which sets the count back to 0.
+     */
+    private fun failedOnCursor(scope: RaftSyncScope, stored: String, code: String): RaftSyncPullResult.Failed {
+        if (!isTransientSyncChangesFailure(code)) return RaftSyncPullResult.Failed(code)
+        val failures = cursors.recordFailure(scope, stored)
+        val kept = failures < SYNC_CHANGES_CURSOR_FAILURES_BEFORE_FORGET
+        logger("sync_changes_cursor_failure serverId=${scope.serverId} code=$code failures=$failures kept=$kept")
+        return RaftSyncPullResult.Failed(code, cursorKept = kept)
+    }
+
     private suspend fun pullLocked(scope: RaftSyncScope, jitterSnapshots: Boolean): RaftSyncPullResult {
         val serverId = ServerId(scope.serverId)
         var firstSync = false
@@ -299,9 +368,25 @@ internal class RaftSyncChangesEngine(
         var resetReason: String? = null
         var pages = 0
         var changes = 0
-        var cursor = cursors.read(scope)
-        val startCursor = cursor
+        // The cursor on disk. Pages advance only [cursor] (in memory) and it is stored once the whole
+        // pull is done: a pull failing at page 3 of 5 keeps the cursor from before page 1, so the
+        // kept cursor (#proj-mobile:#112) asks for pages 1-2 again rather than skipping them. They
+        // were applied already; applying by (entity, id) again is harmless.
+        var stored = cursors.read(scope)
+        var cursor = stored
+        val startCursor = stored
         val rebootstrap = synchronized(lock) { scope in droppedAfterFailure }
+
+        fun synced(truncated: Boolean): RaftSyncPullResult {
+            if (!isCurrent(scope)) return RaftSyncPullResult.Failed(RaftSyncPullResult.Failed.SCOPE_RETIRED)
+            val end = cursor ?: return RaftSyncPullResult.Failed("no_cursor")
+            // Also when [end] is the stored cursor: a pull that succeeded sets the failure count back to 0.
+            cursors.write(scope, end)
+            return RaftSyncPullResult.Synced(
+                pages, changes, firstSync, resetReason, truncated = truncated, cursorAdvanced = end != startCursor,
+            )
+        }
+
         // A first sync takes every snapshot: nothing to retake on top of it.
         if (cursor != null) {
             if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
@@ -322,6 +407,7 @@ internal class RaftSyncChangesEngine(
                     when (val fetch = fetch(serverId, since = null)) {
                         is RaftSyncChangesFetch.Page -> fetch.page
                         RaftSyncChangesFetch.InvalidCursor -> return RaftSyncPullResult.Failed("invalid_cursor")
+                        // No cursor to keep: the caller's full refetch stands in.
                         is RaftSyncChangesFetch.Failed -> return RaftSyncPullResult.Failed(fetch.code)
                     }
                 // Snapshots after the cursor was read: whatever changes during them comes again.
@@ -333,14 +419,13 @@ internal class RaftSyncChangesEngine(
                     return RaftSyncPullResult.Failed("snapshot_failed")
                 }
                 if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
+                // Stored at once, unlike a page's: the snapshots hold everything up to it, so a
+                // page failing next keeps it (and the snapshots just taken) instead of a full reload.
                 cursors.write(scope, start.cursor)
+                stored = start.cursor
                 cursor = start.cursor
             }
-            if (pages >= maxPagesPerPull) {
-                return RaftSyncPullResult.Synced(
-                    pages, changes, firstSync, resetReason, truncated = true, cursorAdvanced = cursor != startCursor,
-                )
-            }
+            if (pages >= maxPagesPerPull) return synced(truncated = true)
             val page =
                 when (val fetch = fetch(serverId, since = cursor)) {
                     is RaftSyncChangesFetch.Page -> fetch.page
@@ -348,10 +433,12 @@ internal class RaftSyncChangesEngine(
                         cursors.clear(scope)
                         if (restarted) return RaftSyncPullResult.Failed("invalid_cursor")
                         restarted = true
+                        stored = null
                         cursor = null
                         continue
                     }
-                    is RaftSyncChangesFetch.Failed -> return RaftSyncPullResult.Failed(fetch.code)
+                    is RaftSyncChangesFetch.Failed ->
+                        return stored?.let { failedOnCursor(scope, it, fetch.code) } ?: RaftSyncPullResult.Failed(fetch.code)
                 }
             pages += 1
             if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
@@ -369,13 +456,8 @@ internal class RaftSyncChangesEngine(
                 if (!plan.isEmpty) sink.apply(scope, plan)
             }
             if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
-            cursors.write(scope, page.cursor)
             cursor = page.cursor
-            if (!page.hasMore) {
-                return RaftSyncPullResult.Synced(
-                    pages, changes, firstSync, resetReason, truncated = false, cursorAdvanced = cursor != startCursor,
-                )
-            }
+            if (!page.hasMore) return synced(truncated = false)
         }
     }
 }

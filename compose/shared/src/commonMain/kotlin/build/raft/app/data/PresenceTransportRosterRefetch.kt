@@ -33,8 +33,9 @@ import kotlinx.coroutines.launch
  * A sync-on RE-connect also leaves the roster valid: no [invalidate]. The held roster stays the
  * process core's cached answer, so a Home reload right after the reconnect (catch-up, sync
  * `home=true`) reuses it instead of reading `/members` + `/agents` + `/machines` at once, outside
- * the jitter (staging run 10-27, Tenny). A failed pull still gets the full refetch
- * ([onSyncPullFailed]).
+ * the jitter (staging run 10-27, Tenny). A pull that failed and dropped the cursor still gets
+ * the full refetch ([onSyncPullFailed]); a first transient failure keeps the cursor and gets
+ * none, only one retry pull 30–60 s later (#proj-mobile:#112).
  *
  * A failed refetch (not Content) is logged and retried once per store on [retryScope], after a
  * short wait and only while the connect's transport is still current
@@ -87,9 +88,11 @@ internal class PresenceTransportRosterRefetch(
     }
 
     /**
-     * The incremental pull that stood in for the roster refetch of this (re)connect failed or timed
-     * out: the full roster refetch runs instead, always after the reconnect jitter (Tenny 10-27). It
-     * replaces an agents-only refetch still waiting for this server (one entry per source and server).
+     * The incremental pull that stood in for the roster refetch of this (re)connect failed and
+     * dropped the cursor (not a first transient failure, which keeps it, #proj-mobile:#112): the
+     * full roster refetch runs instead, always after the reconnect jitter (Tenny 10-27). It
+     * replaces an agents-only refetch still waiting for this server (one entry per source and
+     * server).
      */
     fun onSyncPullFailed(owner: ProcessServerMembersOwner, transport: ProcessPresenceTransportEpoch) {
         jitter.scheduleDelayed(serverId = owner.serverId, source = SOURCE) {

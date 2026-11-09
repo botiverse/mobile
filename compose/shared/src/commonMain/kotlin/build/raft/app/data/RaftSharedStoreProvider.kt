@@ -856,7 +856,8 @@ internal class RaftSharedStoreProvider private constructor(
                 trigger = "reconnect",
                 jitterSnapshots = jittered,
                 jitterPull = jittered,
-                // A RE-connect refetched only agents: a failed pull gets the full roster refetch back.
+                // A RE-connect refetched only agents: a pull that dropped the cursor gets the full
+                // roster refetch back (a first failure keeps it and refetches nothing, #proj-mobile:#112).
                 onFailed = fallback,
             )
         if (!requested) fallback?.invoke()
@@ -939,13 +940,19 @@ internal class RaftSharedStoreProvider private constructor(
         return scopesForServer(scope.serverId).isNotEmpty() && syncChangesEnabled(scope)
     }
 
+    /** The one retry after a first transient pull failure, per scope (#proj-mobile:#112). */
+    private val syncTransientRetry: RaftSyncTransientRetry by lazy {
+        RaftSyncTransientRetry(scope = threadSendScope, logger = sharedInfoLogger("SlockSync", "sync_changes"))
+    }
+
     private val syncPullJobsLock = SynchronizedObject()
     private val syncPullJobs = mutableMapOf<String, MutableSet<Job>>()
 
     /**
      * Server switch (Tenny 10-27): only the selected server pulls. A pull of a server no shell
-     * selects any more is cancelled (its cursor is only written after a page is applied, so the
-     * next pull of that server repeats at most one page).
+     * selects any more is cancelled, and so is its waiting transient retry (its cursor is only
+     * written once a whole pull is done, so the next pull of that server asks for that pull's pages
+     * again; applying them twice is harmless).
      */
     private fun cancelUnselectedSyncPulls() {
         val cancelled =
@@ -953,6 +960,7 @@ internal class RaftSharedStoreProvider private constructor(
                 syncPullJobs.filterKeys { scopesForServer(it).isEmpty() }.values.flatMap { it.toList() }
             }
         cancelled.forEach { it.cancel() }
+        syncTransientRetry.cancelWhere(reason = "server_unselected") { scopesForServer(it.serverId).isEmpty() }
     }
 
     private fun currentSyncScope(serverId: String): RaftSyncScope? {
@@ -976,8 +984,13 @@ internal class RaftSharedStoreProvider private constructor(
      * has selected (other servers keep their summary fetch) and `mobile_sync_changes_v0` is on.
      * Triggers: socket (re)connect, foreground return, server select. False when skipped.
      *
-     * [onFailed] runs when the pull failed or timed out ([RaftSyncPullResult.Failed.needsFullRefetchFallback]):
-     * the caller's full-list refetch it stood in for (web client, Scout 10-27).
+     * [onFailed] runs when the pull failed and dropped the cursor
+     * ([RaftSyncPullResult.Failed.needsFullRefetchFallback]): the caller's full-list refetch it stood
+     * in for (web client, Scout 10-27). A first transient failure on a cursor keeps it and does not
+     * run [onFailed]: one retry pull 30–60 s later ([RaftSyncTransientRetry]) carries [onFailed] on,
+     * unless a normal trigger pulls first (#proj-mobile:#112). Callers must not refetch on their own
+     * around this; a false return (no pull) is theirs to handle. [transientRetry]: this is that one
+     * retry (it schedules none of its own).
      */
     internal fun requestSyncChangesPull(
         serverId: String,
@@ -985,18 +998,29 @@ internal class RaftSharedStoreProvider private constructor(
         jitterSnapshots: Boolean = false,
         jitterPull: Boolean = false,
         onFailed: (() -> Unit)? = null,
+        transientRetry: Boolean = false,
     ): Boolean {
         val scope = currentSyncScope(serverId) ?: return false
         if (scopesForServer(scope.serverId).isEmpty()) return false
         if (!syncChangesEnabled(scope)) return false
+        // A normal trigger pulling first makes a waiting retry moot (#proj-mobile:#112).
+        if (!transientRetry) syncTransientRetry.onTriggerPull(scope)
         val job =
             threadSendScope.launch(start = CoroutineStart.LAZY) {
-                when (val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)) {
+                val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
+                when (result) {
                     is RaftSyncPullResult.Failed -> if (result.needsFullRefetchFallback) onFailed?.invoke()
                     // Stopped at the page cap with more waiting: go on in a follow-up pull, unless
                     // this pull left the cursor where it was (it would only ask the same again).
                     is RaftSyncPullResult.Synced ->
                         if (result.needsFollowUp) requestSyncChangesPull(scope.serverId, trigger = "truncated_follow_up")
+                }
+                // A first transient failure kept the cursor and refetched nothing: one retry 30–60 s
+                // later, with this caller's fallback for when it fails again (#proj-mobile:#112).
+                syncTransientRetry.onPullFinished(scope, result, wasRetry = transientRetry) {
+                    if (currentSyncScope(scope.serverId) == scope) {
+                        requestSyncChangesPull(scope.serverId, trigger = "transient_retry", onFailed = onFailed, transientRetry = true)
+                    }
                 }
             }
         synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
@@ -1216,6 +1240,7 @@ internal class RaftSharedStoreProvider private constructor(
                     // Sign-out, account or environment switch: nothing waiting may run for the old
                     // binding, and the successor's first connects fetch at once.
                     reconnectRefetchJitter.reset(reason = if (context == null) "signed_out" else "binding_changed")
+                    syncTransientRetry.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     allServerMembersStores().forEach { store ->
                         store.retireAccountData(
                             successorEnvironmentId = context?.environmentId,
@@ -1473,6 +1498,7 @@ internal class RaftSharedStoreProvider private constructor(
                 // Tasks lists leave memory before the offline wipe below, so the offline mirror cannot store them again.
                 tasksDataStore.dropServer(grant.serverId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
+                syncTransientRetry.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
                 // #45: that server's recent searches and frequent people / channels.
                 searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
                 // Offline resources, Home hints, Activity pages, notification preferences, reply windows
@@ -3458,7 +3484,8 @@ internal class RaftSharedStoreProvider private constructor(
                             provider.requestSyncChangesPull(
                                 serverId.value,
                                 trigger = "foreground",
-                                // Pull failed / timed out: the full refresh after all, through the jitter.
+                                // Pull failed and dropped the cursor: the full refresh after all, through
+                                // the jitter (a first transient failure does not, #proj-mobile:#112).
                                 onFailed = {
                                     provider.scheduleSyncFallbackRefetch(serverId.value, "foreground_fallback", fullRefresh)
                                 },
