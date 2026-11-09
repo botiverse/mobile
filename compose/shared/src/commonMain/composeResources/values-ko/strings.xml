@@ -1025,6 +1025,11 @@
     <string name="thread_agent_typing_three">{first}, {second}, {third} 님이 입력 중…</string>
     <string name="thread_agent_typing_many">{first}, {second} 님 외 에이전트 {others}개가 입력 중…</string>
     <string name="thread_agent_typing_agent_fallback">에이전트</string>
+    <string name="thread_agent_working_here_one">여기서 에이전트 %1$d개 작업 중</string>
+    <string name="thread_agent_working_here_other">여기서 에이전트 %1$d개 작업 중</string>
+    <string name="thread_agent_typing_and_others_one">%1$s · 그 외 %2$d개 작업 중</string>
+    <string name="thread_agent_typing_and_others_other">%1$s · 그 외 %2$d개 작업 중</string>
+    <string name="thread_agent_typing_row">입력 중…</string>
     <string name="thread_jump_new_messages_one">새 메시지 1개</string>
     <string name="thread_jump_new_messages_many">새 메시지 %1$d개</string>
     <string name="thread_outline_label">스레드 타임라인</string>

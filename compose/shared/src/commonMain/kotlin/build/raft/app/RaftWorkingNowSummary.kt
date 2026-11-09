@@ -170,16 +170,18 @@ internal fun RaftWorkingNowSummaryContent(
  * The stack of agents at work (DS AgentActivity `rf-stack`): up to three 19dp (`xs`) faces, each
  * laid 5dp over the one before, no ring. Decorative: the count or sentence beside it says who.
  * Explicit offsets: negative Row spacing does not overlap native Kuikly children.
+ *
+ * [still] (Web `WorkingFaces still`, the line above a channel's composer): no entrance.
  */
 @Composable
-internal fun RaftWorkingFaces(items: List<RaftLiveAgentActivityItem>, modifier: Modifier = Modifier) {
+internal fun RaftWorkingFaces(items: List<RaftLiveAgentActivityItem>, modifier: Modifier = Modifier, still: Boolean = false) {
     val face = RaftAvatarSize.Xs.edge
     val step = face - RaftWorkingFacesOverlap
     Box(modifier.width(face + step * (items.size - 1).coerceAtLeast(0)).height(face)) {
         items.forEachIndexed { index, item ->
             // Keyed by agent: a face already shown keeps its place (and does not come in again).
             key(item.agentId) {
-                Box(Modifier.offset(x = step * index).zIndex(index.toFloat()).raftWorkingFaceEntrance()) {
+                Box(Modifier.offset(x = step * index).zIndex(index.toFloat()).then(if (still) Modifier else Modifier.raftWorkingFaceEntrance())) {
                     RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(kind = MemberKind.Agent, memberId = item.agentId, serverId = null),
                     label = item.name,
@@ -232,12 +234,20 @@ internal fun raftWorkingNowSummaryText(count: Int): String =
         stringResource(Res.string.layout_working_now_summary_other, count)
     }
 
+/**
+ * Working now opened from a trigger (Web `WorkingNowPopover`): the workspace summary opens it
+ * below, aligned to its end; the line above a channel's composer opens it [upward] from the line,
+ * aligned to its start, for the agents working there, where an agent in [typingAgentIds] (about to
+ * post) reads "Typing…".
+ */
 @Composable
-private fun RaftWorkingNowPopover(
+internal fun RaftWorkingNowPopover(
     anchor: RaftPopoverAnchor,
     items: List<RaftLiveAgentActivityItem>,
     source: RaftWorkingNowSource?,
     onDismiss: () -> Unit,
+    typingAgentIds: Set<String> = emptySet(),
+    upward: Boolean = false,
 ) {
     val density = LocalDensity.current
     var measured by remember { mutableStateOf(Size.Zero) }
@@ -252,20 +262,21 @@ private fun RaftWorkingNowPopover(
             agentIds = remember(items) { items.map { it.agentId } },
         )
     }
-    // DS: a Popover 300 wide, aligned to the end of the summary, on a phone too.
+    // DS: a Popover 300 wide, aligned to the end of the summary (to the start of the line), on a phone too.
     RaftModalAnchoredPopover(
         anchor = anchor,
         contentSize = size,
         onDismiss = onDismiss,
-        horizontalOffset = -size.width,
+        horizontalOffset = if (upward) 0f else -size.width,
         verticalOffset = with(density) { 4.dp.toPx() },
         viewportGap = with(density) { 8.dp.toPx() },
-        verticalPlacement = RaftFloatingVerticalPlacement.Below,
+        verticalPlacement = if (upward) RaftFloatingVerticalPlacement.Above else RaftFloatingVerticalPlacement.Below,
         dismissActivationDelayMillis = 0L,
     ) {
         Box(Modifier.onSizeChanged { measured = Size(it.width.toFloat(), it.height.toFloat()) }) {
             RaftWorkingNowPanel(
                 items = items,
+                typingAgentIds = typingAgentIds,
                 agentStatusResolver = source?.agentStatusResolver ?: EmptyRaftAgentStatusResolver,
                 onOpenAgent = { agentId ->
                     onDismiss()
@@ -279,13 +290,15 @@ private fun RaftWorkingNowPopover(
 /**
  * Working now (Web `WorkingNowList`): the title, then one row per working agent in the order they
  * started: its 27dp (`sm`) avatar with its light, its name in bold and what it is doing on up to
- * 2 lines. A row opens the agent's page.
+ * 2 lines. A row opens the agent's page. An agent in [typingAgentIds] reads "Typing…" (Web
+ * `message.agentTyping.typingRow`, opened from the line above a channel's composer).
  */
 @Composable
 internal fun RaftWorkingNowPanel(
     items: List<RaftLiveAgentActivityItem>,
     agentStatusResolver: RaftAgentStatusResolver,
     onOpenAgent: (String) -> Unit,
+    typingAgentIds: Set<String> = emptySet(),
 ) {
     RaftDesignSystemTheme {
         val colors = RaftTheme.colors
@@ -310,7 +323,7 @@ internal fun RaftWorkingNowPanel(
                 Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)
             ) {
                 items.forEach { item ->
-                    RaftWorkingNowRow(item, agentStatusResolver, onOpenAgent)
+                    RaftWorkingNowRow(item, item.agentId in typingAgentIds, agentStatusResolver, onOpenAgent)
                 }
             }
         }
@@ -320,6 +333,7 @@ internal fun RaftWorkingNowPanel(
 @Composable
 private fun RaftWorkingNowRow(
     item: RaftLiveAgentActivityItem,
+    typing: Boolean,
     agentStatusResolver: RaftAgentStatusResolver,
     onOpenAgent: (String) -> Unit,
 ) {
@@ -329,7 +343,7 @@ private fun RaftWorkingNowRow(
     // What it is doing, as the Home DM row says it (Web `formatActivityText`): the detail when the
     // runtime gave one, else Thinking… / Working….
     val text =
-        raftHomeDmAgentLiveActivity(indicator)?.localizedText()
+        if (typing) stringResource(Res.string.thread_agent_typing_row) else raftHomeDmAgentLiveActivity(indicator)?.localizedText()
             ?: stringResource(
                 if (item.status == AgentStatus.Thinking) Res.string.home_dm_agent_activity_thinking
                 else Res.string.home_dm_agent_activity_working
