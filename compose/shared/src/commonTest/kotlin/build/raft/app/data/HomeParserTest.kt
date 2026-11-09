@@ -492,7 +492,7 @@ class HomeParserTest {
     }
 
     @Test
-    fun logsDirectMessageAvatarMissingWhenBothUrlAndGravatarAreMissing() {
+    fun logsDirectMessageAvatarMissingWhenTheUrlIsMissing() {
         val warnings = mutableListOf<String>()
         val payload =
             homePayload(

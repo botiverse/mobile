@@ -71,7 +71,6 @@ internal fun String?.raftAvatarDiagnosticsUrlShape(apiBaseUrl: String?): String 
         }
     val pathKind =
         when {
-            value.contains("gravatar.com/avatar", ignoreCase = true) -> "path=gravatar"
             path.startsWith("/api/avatars/") || path.startsWith("/avatars/") -> "path=avatars"
             else -> "path=other"
         }

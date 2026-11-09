@@ -24,7 +24,7 @@ internal fun RaftThreadMessageItem.toThreadAuthorProfileCandidate(
         ?: return null
     val displayName = authorName.trim().takeIf { it.isNotBlank() } ?: memberId
     // Only concrete identity facts belong in the member SSOT: the resolved
-    // display value (explicit avatar, or a real gravatar hash projection). The
+    // display value (the explicit avatar). The
     // pixel fallback is a render-time default, not member data — seeding it
     // would let `avatar ?: seed.avatar` fill a cached profile's empty avatar
     // slot with `pixel:robot` and then outrank a real avatar learned later.

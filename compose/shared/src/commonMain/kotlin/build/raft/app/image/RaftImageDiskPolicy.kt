@@ -8,7 +8,7 @@ import build.raft.app.data.raftAvatarContentIdentity
  *
  *  - Only bytes that sniff as an image are committed: a 2xx body that is not an image (captive
  *    portal / proxy HTML, an error JSON) must not be pinned on disk under the image's key.
- *  - Entries of URLs whose content is not immutable (Gravatar, any other external / non-raft-avatar
+ *  - Entries of URLs whose content is not immutable (any external / non-raft-avatar
  *    URL) expire after [RAFT_IMAGE_EXTERNAL_DISK_TTL_MILLIS] and are fetched again; raft immutable
  *    avatar paths (content-addressed) never expire.
  *  - The metadata file stores the MIME type and the store time ([RaftImageDiskMetadata]).

@@ -5,10 +5,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 
 class RaftAvatarCacheContractTest {
     @Test
-    fun immutableRaftPathIgnoresTransportQueryWhileGravatarKeepsResponseQuery() {
+    fun immutableRaftPathIgnoresTransportQuery() {
         val cdn =
             raftAvatarContentIdentity(
                 "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp?token=one"
@@ -19,17 +20,17 @@ class RaftAvatarCacheContractTest {
             )
         assertEquals(RaftAvatarContentKind.RaftImmutable, cdn.kind)
         assertEquals(cdn, api)
+    }
 
-        val hash = "a".repeat(64)
-        val missing = raftAvatarContentIdentity("https://www.gravatar.com/avatar/$hash?s=160&d=404")
-        val fallback = raftAvatarContentIdentity("https://secure.gravatar.com/avatar/$hash?s=320&d=retro")
-        assertEquals(RaftAvatarContentKind.Gravatar, missing.kind)
-        assertNotEquals(missing, fallback)
+    /** slock #13674: no Gravatar kind; a stored `gravatar` kind reads as none (no cached avatar), never an error. */
+    @Test
+    fun gravatarIsRetiredAsAContentKind() {
+        assertNull(RaftAvatarContentKind.fromStorage("gravatar"))
+        assertEquals(RaftAvatarContentKind.RaftImmutable, RaftAvatarContentKind.fromStorage("raft_immutable"))
+        assertEquals(RaftAvatarContentKind.ExternalUrl, RaftAvatarContentKind.fromStorage("external_url"))
         assertEquals(
-            missing,
-            raftAvatarContentIdentity(
-                "https://secure.gravatar.com/avatar/$hash?s=160&d=404#client-fragment"
-            )
+            RaftAvatarContentKind.ExternalUrl,
+            raftAvatarContentIdentity("https://www.gravatar.com/avatar/${"a".repeat(64)}?s=160&d=404").kind
         )
     }
 
@@ -42,37 +43,6 @@ class RaftAvatarCacheContractTest {
         assertEquals(
             first,
             raftAvatarContentIdentity("https://images.example/avatar.png?version=1#client-fragment")
-        )
-    }
-
-    @Test
-    fun gravatarHashHostAndSchemeAreTransportButEveryResponseQueryParameterIsIdentity() {
-        val md5 = "a".repeat(32)
-        val sha256 = "b".repeat(64)
-        assertEquals(
-            raftAvatarContentIdentity("https://www.gravatar.com/avatar/$md5?s=80"),
-            raftAvatarContentIdentity("http://secure.gravatar.com/avatar/$md5?s=80")
-        )
-        val baseline = raftAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=g&f=y")
-        assertNotEquals(
-            baseline,
-            raftAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=160&d=404&r=g&f=y")
-        )
-        assertNotEquals(
-            baseline,
-            raftAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=retro&r=g&f=y")
-        )
-        assertNotEquals(
-            baseline,
-            raftAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=x&f=y")
-        )
-        assertNotEquals(
-            baseline,
-            raftAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=g")
-        )
-        assertNotEquals(
-            baseline,
-            raftAvatarContentIdentity("https://www.gravatar.com/avatar/$sha256?s=80&d=404&r=g&f=y&v=2")
         )
     }
 

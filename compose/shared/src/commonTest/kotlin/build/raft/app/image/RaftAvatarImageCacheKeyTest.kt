@@ -78,19 +78,6 @@ class RaftAvatarImageCacheKeyTest {
     }
 
     @Test
-    fun gravatarKeyIsTheHashPlusItsQuery() {
-        val hash = "0123456789abcdef0123456789abcdef"
-        assertEquals(
-            raftNetworkImageCacheKey("https://www.gravatar.com/avatar/$hash?d=identicon"),
-            raftNetworkImageCacheKey("https://secure.gravatar.com/avatar/$hash?d=identicon"),
-        )
-        assertNotEquals(
-            raftNetworkImageCacheKey("https://www.gravatar.com/avatar/$hash?d=identicon"),
-            raftNetworkImageCacheKey("https://www.gravatar.com/avatar/$hash?d=identicon&s=256"),
-        )
-    }
-
-    @Test
     fun cdnAvatarFallsBackToTheApiHostWithTheSameCacheKey() {
         val cdn = "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
         val candidates = raftAvatarImageCandidates(cdn, "https://api.raft.build/api")

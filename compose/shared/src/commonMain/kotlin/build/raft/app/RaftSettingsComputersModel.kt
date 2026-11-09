@@ -616,7 +616,7 @@ internal data class RaftComputerCreatorModel(
     val id: String,
     val name: String,
     val displayName: String,
-    /** The uploaded avatar, else the Gravatar; null draws the person placeholder. */
+    /** The uploaded avatar; null draws the person placeholder. */
     val avatarWireValue: String?,
 )
 
@@ -633,7 +633,6 @@ internal fun SettingsComputerCreatorSnapshot.toRaftComputerCreator(): RaftComput
                 id = cleanId,
                 avatarWireValue = null,
                 avatarUrl = avatarUrl,
-                gravatarHash = gravatarHash,
             ),
     )
 }

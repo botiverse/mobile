@@ -28,7 +28,7 @@ import kotlin.time.TimeSource
  * Coil owns the whole pipeline: the memory cache, the disk cache (which survives a cold start) and
  * single-flight downloads. Both caches are keyed by the avatar's CONTENT
  * ([build.raft.app.image.raftNetworkImageCacheKey]: the content-addressed `/avatars/<ns>/<hash>.webp`
- * path, the Gravatar hash, or the fragment-less URL), never by server, account, host or endpoint.
+ * path, or the fragment-less URL), never by server, account, host or endpoint.
  * The same person's avatar is therefore one cache entry across every server, and the CDN URL and
  * its API fallback hit the same disk entry.
  *

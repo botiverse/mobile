@@ -1982,7 +1982,7 @@ internal fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick:
     }
 }
 
-/** A person's avatar: their photo or Gravatar, else the placeholder person (web GravatarAvatar). */
+/** A person's avatar: their uploaded photo, else the placeholder person. */
 @Composable
 private fun RaftComputerCreatorAvatar(creator: RaftComputerCreatorModel) {
     val size = RaftAvatarSize.Xs

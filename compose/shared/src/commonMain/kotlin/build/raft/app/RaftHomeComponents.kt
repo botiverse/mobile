@@ -113,7 +113,6 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.appAvatarWireValueOrNull
-import build.raft.app.model.gravatarAvatarHttpUrlOrNull
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.compat.pager.BridgeManager
 import build.raft.app.compat.module.RouterModule
@@ -8079,15 +8078,12 @@ internal fun RaftAppAvatar(
     // avatar is rendered for every channel row in Home + every participant in
     // Thread — that's a lot of recompositions on scroll, so we want to know whether
     // it's the identify / http-fetch / render / fallback-default that's hot.
+    // A retired Gravatar value (`gravatar:<hash>`, a gravatar.com URL) is no avatar: the placeholder.
     val displayAvatarWireValue = avatarWireValue?.appAvatarWireValueOrNull()
-    val gravatarHttpSource = remember(displayAvatarWireValue) {
-        displayAvatarWireValue?.gravatarAvatarHttpUrlOrNull()
-    }
-    val httpAvatarSource = remember(displayAvatarWireValue, gravatarHttpSource) {
-        gravatarHttpSource
-            ?: displayAvatarWireValue?.takeIf {
-                it.startsWith("http://") || it.startsWith("https://")
-            }
+    val httpAvatarSource = remember(displayAvatarWireValue) {
+        displayAvatarWireValue?.takeIf {
+            it.startsWith("http://") || it.startsWith("https://")
+        }
     }
     val pixelSpec = remember(displayAvatarWireValue) {
         traceMarkdownSectionNonComposable(RaftAvatarTraceNames.IDENTIFY) {
@@ -8106,16 +8102,14 @@ internal fun RaftAppAvatar(
             // task #343: an uploaded avatar must not flash the fallback while its cached
             // bytes are still being resolved (cold start reads them from SQLite + native). Keep
             // the neutral background until the load settles; draw the fallback only on a
-            // definitive failure. Gravatar keeps the immediate fallback: it is often unreachable
-            // (CN) and the fallback is its expected face.
-            if (gravatarHttpSource != null) RaftAppAvatarFallback(label, step)
+            // definitive failure.
             RaftAvatarHttpImage(
                 source = httpAvatarSource,
                 modifier = Modifier.fillMaxSize(),
                 diagnostics = diagnostics,
                 cacheSubject = cacheSubject,
                 cacheServerId = cacheServerId,
-                fallback = { if (gravatarHttpSource == null) RaftAppAvatarFallback(label, step) }
+                fallback = { RaftAppAvatarFallback(label, step) }
             )
         }
         else -> traceMarkdownSection(RaftAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {

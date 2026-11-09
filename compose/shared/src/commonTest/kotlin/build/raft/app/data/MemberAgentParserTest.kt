@@ -15,7 +15,7 @@ import build.raft.app.model.toMemberProfile
 
 class MemberAgentParserTest {
     @Test
-    fun humanProfilePreservesServerGravatarHash() {
+    fun humanProfileParsesTheGravatarHashButShowsThePlaceholder() {
         val hash = "a".repeat(64)
         val profile = assertNotNull(
             parseSharedMemberProfile(
@@ -34,11 +34,9 @@ class MemberAgentParserTest {
             )
         )
 
+        // The optional wire field still parses; Gravatar is retired (slock #13674), so no face from it.
         assertEquals(hash, profile.gravatarHash)
-        assertEquals(
-            "gravatar:$hash",
-            profile.avatarWireValueForAvatarSlot()
-        )
+        assertNull(profile.avatarWireValueForAvatarSlot())
     }
 
     @Test

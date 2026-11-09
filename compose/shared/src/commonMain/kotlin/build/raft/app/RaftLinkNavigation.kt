@@ -12,7 +12,9 @@ import build.raft.app.base.Utils
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
+import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.parseArtifactOpenAddress
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
@@ -36,6 +38,9 @@ internal enum class RaftLinkOpenTarget {
     InAppBrowser,
     ExternalBrowser,
     Rejected,
+
+    /** Raft's own Artifact viewer ([RaftLinkNavigator]'s Artifact address); never a decision of [resolveRaftLinkOpenDecision]. */
+    ArtifactViewer,
 }
 
 internal enum class RaftLinkRejectReason {
@@ -181,12 +186,21 @@ internal class RaftLinkNavigator(
     private val onRejected: (RaftLinkRejectReason) -> Unit,
     /** [RaftLinkOpenIntent.RaftWebPage] in the default browser: a browser even for a Raft link. */
     private val openRaftWebPageInBrowser: (String) -> Unit = openExternalBrowser,
+    /**
+     * An ordinary link to an Artifact open over the Artifacts home ([parseArtifactOpenAddress]):
+     * true when the in-app viewer opened it; false leaves it to the link setting as any link.
+     */
+    private val openArtifactAddress: (String) -> Boolean = { false },
 ) {
     fun open(
         rawUrl: String,
         intent: RaftLinkOpenIntent = RaftLinkOpenIntent.Ordinary,
     ): RaftLinkOpenDecision {
         val decision = resolveRaftLinkOpenDecision(rawUrl, modeProvider(), intent)
+        // An Artifact's address opens Raft's own viewer, as an Artifact card does, whatever the setting.
+        if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openArtifactAddress(decision.url)) {
+            return RaftLinkOpenDecision(RaftLinkOpenTarget.ArtifactViewer, decision.url)
+        }
         return when (decision.target) {
             RaftLinkOpenTarget.InAppBrowser -> {
                 if (openInAppBrowser(decision.url)) {
@@ -208,6 +222,7 @@ internal class RaftLinkNavigator(
                 onRejected(requireNotNull(decision.rejectReason))
                 decision
             }
+            RaftLinkOpenTarget.ArtifactViewer -> decision
         }
     }
 }
@@ -228,7 +243,9 @@ internal fun rememberRaftLinkNavigator(
             }
         }
     val rejectedMessage = stringResource(Res.string.in_app_browser_unable_to_open_link)
-    return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage) {
+    // An app-shell tab's page has no scope of its own: the viewer opens with the tab's ([LocalRaftArtifactOpenStoreScope]).
+    val artifactStoreScope = LocalRaftArtifactOpenStoreScope.current
+    return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage, artifactStoreScope) {
         RaftLinkNavigator(
             modeProvider = { effectiveLinkOpenMode(preferenceRepository.value.getLinkOpenModeSync()) },
             openInAppBrowser = { url ->
@@ -243,6 +260,17 @@ internal fun rememberRaftLinkNavigator(
                 bridge.toast(rejectedMessage)
             },
             openRaftWebPageInBrowser = { url -> bridge.openUrl(url, inBrowser = true) },
+            openArtifactAddress = { url ->
+                val target = parseArtifactOpenAddress(url, RaftClientConfigAppHosts.current)
+                if (target == null) {
+                    false
+                } else {
+                    RaftArtifactOpenTrace.tap("link", target.id)
+                    pager.openRaftArtifactViewerPage(target, artifactStoreScope).also { opened ->
+                        if (!opened) RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
+                    }
+                }
+            },
         )
     }
 }

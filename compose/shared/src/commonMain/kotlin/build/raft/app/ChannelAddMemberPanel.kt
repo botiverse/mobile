@@ -257,7 +257,7 @@ private fun ThreadAddMemberAvatar(
     ) {
         RaftAppAvatar(
             avatarWireValue = avatarWireValue,
-            // web AvatarSlot: a person is a Gravatar or, without one, the placeholder person icon,
+            // web AvatarSlot: a person is their uploaded avatar or, without one, the placeholder person icon,
             // never initials (an empty label falls back to the icon).
             label = if (member.kind.parsedMemberKindOrNull() == MemberKind.Human) "" else member.modalAvatarLabel(),
             avatarSize = ThreadAddMemberAvatarSize,

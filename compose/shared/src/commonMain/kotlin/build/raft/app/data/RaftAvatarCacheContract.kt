@@ -62,13 +62,15 @@ internal sealed interface RaftAvatarCacheSubject {
 
 internal enum class RaftAvatarContentKind(val storageValue: String) {
     RaftImmutable("raft_immutable"),
-    Gravatar("gravatar"),
     ExternalUrl("external_url");
 
     companion object {
-        fun fromStorage(value: String): RaftAvatarContentKind =
+        /**
+         * The kind stored as [value], or null for one this build no longer has: the retired
+         * `gravatar` (slock #13674), whose rows read as no cached avatar instead of failing.
+         */
+        fun fromStorage(value: String): RaftAvatarContentKind? =
             entries.firstOrNull { it.storageValue == value }
-                ?: error("unknown avatar content kind")
     }
 }
 
@@ -139,23 +141,7 @@ internal fun raftAvatarContentIdentity(source: String): RaftAvatarContentIdentit
     val normalized = source.trim()
     require(normalized.startsWith("http://") || normalized.startsWith("https://"))
     val canonical =
-        GravatarHttpSource.matchEntire(normalized)?.let { match ->
-            val hash = match.groupValues[1].lowercase()
-            val responseQuery = match.groupValues[2].takeIf { it.isNotBlank() }
-            // Unlike host/scheme changes, every Gravatar query parameter is resource identity:
-            // d/r/f and unknown parameters can change availability or representation, while
-            // s/size/sz change the returned bytes. Native adapters do not have a separate
-            // canonical fetch-size axis in this shared key, so size must remain here as well.
-            RaftAvatarContentKind.Gravatar to
-                buildString {
-                    append("gravatar:")
-                    append(hash)
-                    responseQuery?.let {
-                        append('?')
-                        append(it)
-                    }
-                }
-        } ?: run {
+        run {
             // The host-free immutable key is only granted to Raft's own avatar hosts: any other
             // host serving a look-alike `/avatars/<ns>/<hash>.webp` path would otherwise poison the
             // shared, never-expiring entry of the real avatar. Such URLs keep the URL identity.
@@ -177,12 +163,6 @@ internal fun raftAvatarContentIdentity(source: String): RaftAvatarContentIdentit
             )
     )
 }
-
-private val GravatarHttpSource =
-    Regex(
-        "^https?://(?:[^/]+\\.)?gravatar\\.com/avatar/([0-9A-Fa-f]{32}|[0-9A-Fa-f]{64})(?:\\?([^#]*))?(?:#.*)?$",
-        RegexOption.IGNORE_CASE
-    )
 
 private val RaftAvatarPath =
     Regex(

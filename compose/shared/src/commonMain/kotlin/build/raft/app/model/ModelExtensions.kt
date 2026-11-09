@@ -216,12 +216,16 @@ data class AvatarSlotResolution(
                 ?: fallbackAvatarWireValue
 }
 
+/**
+ * A profile's avatar slot. Gravatar is retired (slock #13674: the server sends its hash fields
+ * as `""` and the web builds no gravatar.com URL), so a person shows an uploaded avatar or the
+ * placeholder; a `gravatarHash` still parsed from the wire is never read here.
+ */
 fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
     resolveAvatarSlot(
         kind = kind,
         id = id.value,
-        avatarWireValue = avatar?.wireValue,
-        gravatarHash = gravatarHash
+        avatarWireValue = avatar?.wireValue
     )
 
 fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
@@ -231,54 +235,47 @@ fun MemberProfile.avatarWireValueForRenderedAvatar(): String? =
     avatarWireValueForRenderedAvatar(
         kind = kind,
         id = id.value,
-        avatarWireValue = avatar?.wireValue,
-        gravatarHash = gravatarHash
+        avatarWireValue = avatar?.wireValue
     )
 
 fun avatarWireValueForAvatarSlot(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null,
-    gravatarHash: String? = null
+    avatarUrl: String? = null
 ): String? =
     resolveAvatarSlot(
         kind = kind,
         id = id,
         avatarWireValue = avatarWireValue,
-        avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash
+        avatarUrl = avatarUrl
     ).effectiveAvatarWireValue
 
 fun avatarWireValueForRenderedAvatar(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null,
-    gravatarHash: String? = null
-): String? {
-    val explicitAvatarWireValue = explicitAvatarWireValue(kind, avatarWireValue, avatarUrl)
-    return explicitAvatarWireValue
+    avatarUrl: String? = null
+): String? =
+    explicitAvatarWireValue(kind, avatarWireValue, avatarUrl)
         ?: avatarWireValueForAvatarSlot(
             kind = kind,
             id = id,
             avatarWireValue = null,
-            avatarUrl = null,
-            gravatarHash = gravatarHash
+            avatarUrl = null
         )
-}
 
+/**
+ * The avatar slot (web `AvatarSlot`): the uploaded avatar (a person's own upload; an agent's any
+ * app avatar), else nothing for a person (the placeholder) and the default face for an agent.
+ */
 fun resolveAvatarSlot(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null,
-    gravatarHash: String? = null
+    avatarUrl: String? = null
 ): AvatarSlotResolution {
-    val explicitWireValue = explicitAvatarWireValue(kind, avatarWireValue, avatarUrl)
-    val wireValue =
-        explicitWireValue
-            ?: gravatarHash?.humanGravatarAvatarWireValueOrNull(kind)
+    val wireValue = explicitAvatarWireValue(kind, avatarWireValue, avatarUrl)
     if (kind != MemberKind.Agent) {
         return AvatarSlotResolution(
             displayAvatarWireValue = wireValue,
@@ -294,30 +291,16 @@ fun resolveAvatarSlot(
 fun agentAvatarFallbackWireValue(id: String): String =
     "pixel:robot"
 
-private val Sha256HexRegex = Regex("^[0-9a-fA-F]{64}$")
-private const val GravatarAvatarWirePrefix = "gravatar:"
+/** The retired Gravatar wire value (`gravatar:<hash>`), still found in caches and snapshots. */
+private const val RetiredGravatarAvatarWirePrefix = "gravatar:"
 
-internal fun String.normalizedGravatarHashOrNull(): String? =
-    trim()
-        .takeIf(Sha256HexRegex::matches)
-        ?.lowercase()
-
-fun String.humanGravatarAvatarWireValueOrNull(kind: MemberKind): String? =
-    takeIf { kind == MemberKind.Human }
-        ?.normalizedGravatarHashOrNull()
-        ?.let { "$GravatarAvatarWirePrefix$it" }
-
-internal fun String.gravatarHashOrNull(): String? =
-    takeIf { startsWith(GravatarAvatarWirePrefix) }
-        ?.removePrefix(GravatarAvatarWirePrefix)
-        ?.normalizedGravatarHashOrNull()
-
-fun String.gravatarAvatarHttpUrlOrNull(): String? =
-    gravatarHashOrNull()
-        ?.let { "https://www.gravatar.com/avatar/$it?s=160&d=404" }
-
+/**
+ * A Gravatar avatar the app no longer shows (slock #13674): a gravatar.com URL, or a cached /
+ * snapshot `gravatar:<hash>` wire value. Either draws the placeholder, as no avatar does.
+ */
 fun String.isLegacyGravatarAvatarUrl(): Boolean =
-    contains("gravatar.com/avatar", ignoreCase = true)
+    contains("gravatar.com/avatar", ignoreCase = true) ||
+        trim().startsWith(RetiredGravatarAvatarWirePrefix, ignoreCase = true)
 
 fun String.appAvatarWireValueOrNull(): String? =
     trim()

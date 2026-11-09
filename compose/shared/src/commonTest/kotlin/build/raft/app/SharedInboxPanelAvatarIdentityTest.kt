@@ -21,7 +21,7 @@ class SharedInboxPanelAvatarIdentityTest {
                 latestActivitySenderAvatarWireValue = "pixel:agent-1",
                 lastMessageSenderKind = MemberKind.Human,
                 lastMessageSenderId = "human-9",
-                lastMessageSenderAvatarWireValue = "gravatar:human-9"
+                lastMessageSenderAvatarWireValue = "https://cdn.example/avatars/users/human-9.webp"
             )
 
         val identity = thread.activitySenderAvatarIdentity()
@@ -38,7 +38,7 @@ class SharedInboxPanelAvatarIdentityTest {
                 kind = InboxItemKind.Channel,
                 lastMessageSenderKind = MemberKind.Human,
                 lastMessageSenderId = "human-2",
-                lastMessageSenderAvatarWireValue = "gravatar:human-2",
+                lastMessageSenderAvatarWireValue = "https://cdn.example/avatars/users/human-2.webp",
                 latestActivitySenderKind = MemberKind.Agent,
                 latestActivitySenderId = "agent-9",
                 latestActivitySenderAvatarWireValue = "pixel:agent-9"
@@ -48,7 +48,7 @@ class SharedInboxPanelAvatarIdentityTest {
         listOf(channel.activitySenderAvatarIdentity(), dm.activitySenderAvatarIdentity()).forEach { identity ->
             assertEquals(MemberKind.Human, identity.senderKind)
             assertEquals("human-2", identity.senderId)
-            assertEquals("gravatar:human-2", identity.avatarWireValue)
+            assertEquals("https://cdn.example/avatars/users/human-2.webp", identity.avatarWireValue)
         }
     }
 
@@ -59,7 +59,7 @@ class SharedInboxPanelAvatarIdentityTest {
                 kind = InboxItemKind.MentionAction,
                 lastMessageSenderKind = MemberKind.Human,
                 lastMessageSenderId = "human-3",
-                lastMessageSenderAvatarWireValue = "gravatar:human-3"
+                lastMessageSenderAvatarWireValue = "https://cdn.example/avatars/users/human-3.webp"
             )
 
         val identity = mention.activitySenderAvatarIdentity()
@@ -78,11 +78,11 @@ class SharedInboxPanelAvatarIdentityTest {
                 latestActivitySenderAvatarWireValue = null,
                 lastMessageSenderKind = MemberKind.Human,
                 lastMessageSenderId = "human-4",
-                lastMessageSenderAvatarWireValue = "gravatar:human-4"
+                lastMessageSenderAvatarWireValue = "https://cdn.example/avatars/users/human-4.webp"
             ).activitySenderAvatarIdentity()
         assertEquals(MemberKind.Human, threadFallback.senderKind)
         assertEquals("human-4", threadFallback.senderId)
-        assertEquals("gravatar:human-4", threadFallback.avatarWireValue)
+        assertEquals("https://cdn.example/avatars/users/human-4.webp", threadFallback.avatarWireValue)
 
         val channelFallback =
             fixtures.activityItem(key = "channel:fallback").copy(
@@ -188,7 +188,7 @@ class SharedInboxPanelAvatarIdentityTest {
         assertEquals(agentAvatarFallbackWireValue(""), activityFaceAvatarWireValue("  ", agent.copy(senderId = null)))
         // A person with nothing to show stays null: the placeholder person.
         assertEquals(null, activityFaceAvatarWireValue(null, human))
-        assertEquals("gravatar:abc", activityFaceAvatarWireValue("gravatar:abc", human))
+        assertEquals("https://cdn.example/avatars/users/abc.webp", activityFaceAvatarWireValue("https://cdn.example/avatars/users/abc.webp", human))
     }
 
     @Test
@@ -198,7 +198,7 @@ class SharedInboxPanelAvatarIdentityTest {
         val agent = ActivitySenderAvatarIdentity(MemberKind.Agent, avatarWireValue = null, label = "Peer bot", senderId = "agent-1", jointSurface = true)
 
         // This server's directory first, then the row's own avatar, then the resolved actor.
-        assertEquals("gravatar:abc", activityFaceAvatarWireValue("gravatar:abc", human, peerAvatar))
+        assertEquals("https://cdn.example/avatars/users/abc.webp", activityFaceAvatarWireValue("https://cdn.example/avatars/users/abc.webp", human, peerAvatar))
         assertEquals(
             "https://cdn.example/avatars/users/ffff.webp",
             activityFaceAvatarWireValue(null, human.copy(avatarWireValue = "https://cdn.example/avatars/users/ffff.webp"), peerAvatar)

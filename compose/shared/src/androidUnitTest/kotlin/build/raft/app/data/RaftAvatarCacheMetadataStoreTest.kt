@@ -71,74 +71,28 @@ class RaftAvatarCacheMetadataStoreTest {
         assertNull(store.read(otherResource).failure)
     }
 
+    /** slock #13674: a row cached under the retired `gravatar` content kind is no cached avatar, never a crash. */
     @Test
-    fun gravatar404CannotSuppressOrShareBytesWithAnotherResponseQuery() = withStore { store ->
-        val hash = "a".repeat(64)
-        val missingKey =
-            key(
-                content =
-                    raftAvatarContentIdentity(
-                        "https://www.gravatar.com/avatar/$hash?s=160&d=404"
-                    )
-            )
-        val fallbackKey =
-            key(
-                content =
-                    raftAvatarContentIdentity(
-                        "https://secure.gravatar.com/avatar/$hash?s=160&d=retro"
-                    )
-            )
-        assertTrue(missingKey.nativeBytesKey != fallbackKey.nativeBytesKey)
+    fun aRetiredGravatarRowReadsAsNoCachedAvatar() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        try {
+            RaftDatabase.Schema.create(driver).value
+            val store = SqlDelightRaftAvatarCacheMetadataStore(RaftSqlDatabase(driver))
+            val key = key(subject = RaftAvatarCacheSubject.Member(MemberKind.Human, "member-g"))
+            store.commitSuccess(metadata(key), currentGuard(key))
+            driver.execute(null, "UPDATE avatarCacheMetadataEntity SET contentKind = 'gravatar'", 0)
 
-        val missingFailure =
-            RaftAvatarCachePolicy.failure(
-                missingKey,
-                RaftAvatarCacheFailureKind.ResourceAbsent,
-                previous = null,
-                nowMs = 100L
+            assertNull(store.read(key).metadata)
+            assertTrue(store.readCommittedForOwner(owner(), nowMs = 1_000L, limit = 10L).isEmpty())
+            assertIs<RaftAvatarCacheReadDecision.Fetch>(
+                RaftAvatarCachePolicy.decideRead(key, store.read(key), bytesAvailable = false, bytesDecodable = false, nowMs = 150L)
             )
-        store.commitFailure(
-            missingFailure,
-            retireMatchingMetadata = true,
-            currentGuard(missingKey)
-        )
-
-        assertEquals(missingFailure, store.read(missingKey).failure)
-        assertNull(store.read(fallbackKey).failure)
-        assertIs<RaftAvatarCacheReadDecision.Fetch>(
-            RaftAvatarCachePolicy.decideRead(
-                fallbackKey,
-                store.read(fallbackKey),
-                bytesAvailable = false,
-                bytesDecodable = false,
-                nowMs = 200L
-            )
-        )
-
-        val fallbackMetadata = metadata(fallbackKey)
-        store.commitSuccess(fallbackMetadata, currentGuard(fallbackKey))
-        assertEquals(fallbackMetadata, store.read(fallbackKey).metadata)
-        val stateObservedFromMissingKey = store.read(missingKey)
-        assertEquals(fallbackMetadata, stateObservedFromMissingKey.metadata)
-        assertNull(stateObservedFromMissingKey.failure)
-        assertIs<RaftAvatarCacheReadDecision.Fetch>(
-            RaftAvatarCachePolicy.decideRead(
-                missingKey,
-                stateObservedFromMissingKey,
-                bytesAvailable = true,
-                bytesDecodable = true,
-                nowMs = 150L
-            )
-        )
-        assertIs<RaftAvatarCacheReadDecision.RenderFresh>(
-            RaftAvatarCachePolicy.decideRead(
-                fallbackKey,
-                store.read(fallbackKey),
-                bytesAvailable = true,
-                bytesDecodable = true,
-                nowMs = 150L
-            )
-        )
+            // The next fetch's commit replaces the row.
+            store.commitSuccess(metadata(key), currentGuard(key))
+            assertEquals(metadata(key), store.read(key).metadata)
+        } finally {
+            driver.close()
+        }
     }
 
     @Test

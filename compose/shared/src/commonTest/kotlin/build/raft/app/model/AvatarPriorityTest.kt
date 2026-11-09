@@ -47,60 +47,42 @@ class AvatarPriorityTest {
         )
     }
 
+    /** slock #13674: Gravatar is retired; a person is their uploaded avatar, else the placeholder (null). */
     @Test
-    fun humanAvatarUsesValidatedServerGravatarHashAfterUploadedAvatar() {
-        val hash = "A".repeat(64)
-        assertEquals(
-            "gravatar:${hash.lowercase()}",
-            avatarWireValueForAvatarSlot(
-                kind = MemberKind.Human,
-                id = "user-1",
-                avatarWireValue = null,
-                gravatarHash = hash
-            )
-        )
+    fun aPersonIsTheirUploadedAvatarElseThePlaceholder() {
+        val hash = "a".repeat(64)
         assertEquals(
             "https://cdn.raft.build/avatars/users/0123456789abcdef.webp",
             avatarWireValueForAvatarSlot(
                 kind = MemberKind.Human,
                 id = "user-1",
-                avatarWireValue = "https://cdn.raft.build/avatars/users/0123456789abcdef.webp",
-                gravatarHash = hash
+                avatarWireValue = "https://cdn.raft.build/avatars/users/0123456789abcdef.webp"
             )
         )
-        assertEquals(
-            "gravatar:${hash.lowercase()}",
-            avatarWireValueForAvatarSlot(
-                kind = MemberKind.Human,
-                id = "user-1",
-                avatarWireValue = "https://lh3.googleusercontent.com/a/provider-default",
-                gravatarHash = hash
-            )
-        )
-        assertEquals(
-            "gravatar:${hash.lowercase()}",
+        assertNull(avatarWireValueForAvatarSlot(kind = MemberKind.Human, id = "user-1", avatarWireValue = null))
+        assertNull(
             avatarWireValueForRenderedAvatar(
                 kind = MemberKind.Human,
                 id = "user-1",
-                avatarWireValue = "https://avatars.githubusercontent.com/u/123456",
-                gravatarHash = hash
+                avatarWireValue = "https://avatars.githubusercontent.com/u/123456"
             )
         )
-        assertEquals(
-            "pixel:robot",
-            avatarWireValueForAvatarSlot(
-                kind = MemberKind.Agent,
-                id = "agent-1",
-                avatarWireValue = null,
-                gravatarHash = hash
-            )
-        )
-        assertNull("not-a-hash".humanGravatarAvatarWireValueOrNull(MemberKind.Human))
-        assertEquals(
-            "https://www.gravatar.com/avatar/${hash.lowercase()}?s=160&d=404",
-            "gravatar:${hash.lowercase()}".gravatarAvatarHttpUrlOrNull()
-        )
-        assertNull("https://www.gravatar.com/avatar/${hash.lowercase()}".gravatarAvatarHttpUrlOrNull())
+        // A hash the wire still carries is never a face.
+        val person = MemberProfile(id = MemberId("user-1"), displayName = "Ada", handle = "ada", kind = MemberKind.Human, gravatarHash = hash)
+        assertNull(person.avatarWireValueForAvatarSlot())
+        assertNull(person.avatarWireValueForRenderedAvatar())
+    }
+
+    /** A `gravatar:<hash>` value cached or in a snapshot from before #13674 resolves to the placeholder. */
+    @Test
+    fun aCachedGravatarValueIsThePlaceholder() {
+        val cached = "gravatar:" + "a".repeat(64)
+        assertNull(cached.appAvatarWireValueOrNull())
+        assertNull(avatarWireValueForAvatarSlot(kind = MemberKind.Human, id = "user-1", avatarWireValue = cached))
+        assertNull(avatarWireValueForRenderedAvatar(kind = MemberKind.Human, id = "user-1", avatarWireValue = cached))
+        // An agent with one wears its default face.
+        assertEquals("pixel:robot", avatarWireValueForAvatarSlot(kind = MemberKind.Agent, id = "agent-1", avatarWireValue = cached))
+        assertNull(AvatarReference.fromWireValue(cached))
     }
 
     @Test

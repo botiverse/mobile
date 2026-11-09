@@ -43,11 +43,6 @@ class RaftAvatarDiagnosticsTest {
                 .raftAvatarDiagnosticsUrlShape(api)
         )
         assertEquals(
-            "shape=host=other,path=gravatar",
-            "https://www.gravatar.com/avatar/0123456789abcdef0123456789abcdef?s=160&d=404"
-                .raftAvatarDiagnosticsUrlShape(api)
-        )
-        assertEquals(
             "shape=host=other,path=other",
             "https://files.example.com/some/deep/path.png"
                 .raftAvatarDiagnosticsUrlShape(api)
