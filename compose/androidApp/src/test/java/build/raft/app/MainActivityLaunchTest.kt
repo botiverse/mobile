@@ -274,6 +274,60 @@ class MainActivityLaunchTest {
     }
 
     @Test
+    fun externalBrowserSelectionLooksPastAVerifiedAppLink() {
+        // dm:@artin #97: for a verified App Link path (`/s/hq/settings/account#two-step`) Android 12+
+        // reports only Raft under MATCH_DEFAULT_ONLY; MATCH_ALL still lists the browsers.
+        var allQueried = false
+        assertEquals(
+            "org.mozilla.firefox",
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "build.raft.app",
+                defaultBrowserPackage = { "org.mozilla.firefox" },
+                defaultOnlyCandidates = listOf("build.raft.app"),
+                allCandidates = {
+                    allQueried = true
+                    listOf("build.raft.app", "com.android.chrome", "org.mozilla.firefox")
+                },
+            )
+        )
+        assertTrue(allQueried)
+        // No default browser named: the first browser listed.
+        assertEquals(
+            "com.android.chrome",
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "build.raft.app",
+                defaultBrowserPackage = { null },
+                defaultOnlyCandidates = listOf("build.raft.app"),
+                allCandidates = { listOf("build.raft.app", "com.android.chrome") },
+            )
+        )
+        // A browser already among the defaults: MATCH_ALL is never read.
+        assertEquals(
+            "com.android.chrome",
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "com.android.chrome",
+                defaultBrowserPackage = { error("not needed") },
+                defaultOnlyCandidates = listOf("com.android.chrome"),
+                allCandidates = { error("not needed") },
+            )
+        )
+        // No browser installed at all.
+        assertEquals(
+            null,
+            selectExternalBrowserPackage(
+                ownPackage = "build.raft.app",
+                defaultPackage = "build.raft.app",
+                defaultBrowserPackage = { null },
+                defaultOnlyCandidates = listOf("build.raft.app"),
+                allCandidates = { listOf("build.raft.app", "build.raft.app.alpha") },
+            )
+        )
+    }
+
+    @Test
     fun externalBrowserSelectionSkipsOtherInstalledRaftBuilds() {
         // An alpha build next to the release build: the release app is the App Link default, not a browser.
         assertEquals(
