@@ -76,7 +76,7 @@ firebaseBom = "35.1.0"
 googleServices = "4.5.0"
 benchmarkMacro = "1.5.0"
 profileinstaller = "1.4.1"
-uiautomator = "2.4.0"
+uiautomator = "2.4.1"
 # Roborazzi: record / verify / compare tasks and diff reports for the design system's desktop
 # screenshot tests (compose/designsystem) and :shared's Robolectric ones (roborazzi-android).
 # 1.77.0 is the latest release; its Compose Desktop module is built against CMP 1.10.3, aligned
