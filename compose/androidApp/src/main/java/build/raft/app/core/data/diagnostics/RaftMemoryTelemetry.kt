@@ -295,9 +295,9 @@ internal object RaftMemoryTelemetry {
             override fun run() {
                 sample(trim = false)
                 persist(MemoryTelemetryWriteGate.Cause.Periodic)
-                // Coalesced-log counts reach the ring on the same cadence, so a kill loses at most
-                // one interval of them.
-                RaftAndroidLocalDiagnostics.checkpointCoalescedCounts()
+                // Per-minute diagnostics summaries whose window has closed reach the ring on the
+                // same cadence, even while the log is quiet.
+                RaftAndroidLocalDiagnostics.sweepDiagnosticsSummaries()
                 handler.postDelayed(this, SampleIntervalMillis)
             }
         }

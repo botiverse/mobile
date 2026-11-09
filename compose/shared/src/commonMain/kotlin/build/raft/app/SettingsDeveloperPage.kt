@@ -61,6 +61,7 @@ internal fun SharedSettingsDeveloperContent(
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val preferences = remember { build.raft.app.data.raftSharedPreferenceStore() }
     var nav3StackLocalEnabled by remember { mutableStateOf(RaftNav3StackFlag.localOverride(preferences)) }
+    var verboseDiagnosticsEnabled by remember { mutableStateOf(RaftVerboseDiagnostics.enabled) }
     // iPhone only (the iOS host sets hostSupported); null hides the row.
     var iosNativeNavEnabled by remember {
         mutableStateOf(if (RaftIosNativeNavFlag.hostSupported) RaftIosNativeNavFlag.stored(preferences) else null)
@@ -72,6 +73,7 @@ internal fun SharedSettingsDeveloperContent(
             errorStrings = localizedErrorPresentationStrings(),
             copy = settingsDeveloperPayloadCopy(),
             textInputTraceEnabled = RaftTextInputDiagnostics.enabled,
+            verboseDiagnosticsEnabled = verboseDiagnosticsEnabled,
             nav3StackLocalEnabled = nav3StackLocalEnabled,
             iosNativeNavEnabled = iosNativeNavEnabled
         )
@@ -81,6 +83,10 @@ internal fun SharedSettingsDeveloperContent(
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
             DEVELOPER_ACTION_TEXT_INPUT_TRACE -> RaftTextInputDiagnostics.setEnabled(value == "true")
+            DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS -> {
+                RaftVerboseDiagnostics.setEnabled(value == "true")
+                verboseDiagnosticsEnabled = RaftVerboseDiagnostics.enabled
+            }
             DEVELOPER_ACTION_NAV3_STACK -> {
                 // Read once at app launch: the switch takes effect on the next start.
                 RaftNav3StackFlag.setLocalOverride(preferences, value == "true")
@@ -346,6 +352,7 @@ internal fun SharedSettingsLocalFeatureOverrideDetailContent(
 }
 
 internal const val DEVELOPER_ACTION_TEXT_INPUT_TRACE = "textInputTrace"
+internal const val DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS = "verboseDiagnostics"
 internal const val DEVELOPER_ACTION_NAV3_STACK = "nav3Stack"
 internal const val DEVELOPER_ACTION_IOS_NATIVE_NAV = "iosNativeNav"
 private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
@@ -414,6 +421,8 @@ internal data class SettingsDeveloperPayloadCopy(
     val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare.",
     val textInputTrace: String = "Text input trace",
     val textInputTraceDetail: String = "Log every keyboard edit and text sync in text fields to the app logs.",
+    val verboseDiagnostics: String = "Verbose diagnostics",
+    val verboseDiagnosticsDetail: String = "Also write duplicate realtime events, avatar, markdown and scroll details, and every successful request to the app logs. Feedback reports get larger. Turns off when the app restarts.",
     val nav3Stack: String = "Navigation 3 page stack",
     val nav3StackDetail: String = "Open the pages moved so far inside the app window (Android). Takes effect on the next app start.",
     val iosNativeNav: String = "iOS native navigation",
@@ -445,6 +454,8 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
         routeLauncherDetail = stringResource(Res.string.settings_developer_route_launcher_detail),
         textInputTrace = stringResource(Res.string.settings_developer_text_input_trace),
         textInputTraceDetail = stringResource(Res.string.settings_developer_text_input_trace_detail),
+        verboseDiagnostics = stringResource(Res.string.settings_developer_verbose_diagnostics),
+        verboseDiagnosticsDetail = stringResource(Res.string.settings_developer_verbose_diagnostics_detail),
         nav3Stack = stringResource(Res.string.settings_developer_nav3_stack),
         nav3StackDetail = stringResource(Res.string.settings_developer_nav3_stack_detail),
         iosNativeNav = stringResource(Res.string.settings_developer_ios_native_nav),
@@ -547,6 +558,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     errorStrings: ErrorPresentationStrings,
     copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy(),
     textInputTraceEnabled: Boolean = false,
+    verboseDiagnosticsEnabled: Boolean = false,
     nav3StackLocalEnabled: Boolean = false,
     // null: the host offers no iOS native navigation (not an iPhone): no row.
     iosNativeNavEnabled: Boolean? = null
@@ -619,6 +631,16 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 status = if (textInputTraceEnabled) copy.on else copy.off,
                                 enabled = true,
                                 toggleValue = textInputTraceEnabled
+                            ),
+                            RaftSharedSettingsRow(
+                                key = DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS,
+                                iconName = RaftLucideIconName.ClipboardList,
+                                title = copy.verboseDiagnostics,
+                                detail = copy.verboseDiagnosticsDetail,
+                                value = (!verboseDiagnosticsEnabled).toString(),
+                                status = if (verboseDiagnosticsEnabled) copy.on else copy.off,
+                                enabled = true,
+                                toggleValue = verboseDiagnosticsEnabled
                             ),
                             RaftSharedSettingsRow(
                                 key = DEVELOPER_ACTION_NAV3_STACK,

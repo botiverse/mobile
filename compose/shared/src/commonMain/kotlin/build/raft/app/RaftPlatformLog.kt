@@ -29,7 +29,12 @@ data class RaftPlatformLogRecord(
     val tag: String,
     val message: String,
     val timestampMillis: Long,
-    val hint: RaftPlatformLogHint
+    val hint: RaftPlatformLogHint,
+    /**
+     * False: [RaftDiagnosticsVolumePolicy] keeps this line out of the persistent diagnostics log
+     * (a gated verbose category, or counted into a per-minute summary). Console/logcat only.
+     */
+    val persist: Boolean = true
 )
 
 /**
@@ -78,7 +83,10 @@ internal class RaftPlatformLogQueue(
     scope: CoroutineScope,
     private val recordSink: ((RaftPlatformLogRecord) -> Unit)? = null,
     // Lets tests admit records between individual channel reads without timing or threads.
-    private val afterLanePoll: ((RaftPlatformLogHint) -> Unit)? = null
+    private val afterLanePoll: ((RaftPlatformLogHint) -> Unit)? = null,
+    // null: every line persists (no summaries, no verbose gating).
+    private val volumePolicy: RaftDiagnosticsVolumePolicy? = RaftDiagnosticsVolumePolicy(),
+    private val verboseDiagnostics: () -> Boolean = { RaftVerboseDiagnostics.enabled }
 ) {
     private companion object {
         const val NormalCapacity = 496
@@ -128,7 +136,7 @@ internal class RaftPlatformLogQueue(
                 when (item) {
                     is RaftPlatformLogQueueItem.Entry -> {
                         dispatchPendingDropMarkers(item.timestampMillis)
-                        dispatch(item.level, item.tag, item.message, item.timestampMillis, item.hint)
+                        dispatchAdmitted(item)
                         if (item === normalHead) {
                             normalHead = null
                         } else {
@@ -137,6 +145,10 @@ internal class RaftPlatformLogQueue(
                     }
                     is RaftPlatformLogQueueItem.Flush -> {
                         dispatchPendingDropMarkers(item.timestampMillis)
+                        // A flush precedes every diagnostics export: write the counts held so far.
+                        volumePolicy?.drain(item.timestampMillis)?.forEach { summary ->
+                            dispatchSummary(summary, item.timestampMillis)
+                        }
                         controlHead = null
                         item.completion.complete(Unit)
                     }
@@ -291,6 +303,30 @@ internal class RaftPlatformLogQueue(
         )
     }
 
+    private fun dispatchAdmitted(item: RaftPlatformLogQueueItem.Entry) {
+        val safeTag = item.tag.safeRaftLogTag()
+        val safeMessage = item.message.safeRaftLogMessage()
+        val admission =
+            volumePolicy?.let { policy ->
+                runCatching {
+                    policy.admit(item.level.wireValue, safeTag, safeMessage, item.timestampMillis, verboseDiagnostics())
+                }.getOrNull()
+            }
+        admission?.summaries?.forEach { summary -> dispatchSummary(summary, item.timestampMillis) }
+        deliver(item.level, safeTag, safeMessage, item.timestampMillis, item.hint, persist = admission?.persist ?: true)
+    }
+
+    private fun dispatchSummary(summary: String, timestampMillis: Long) {
+        deliver(
+            level = RaftLogLevel.Info,
+            safeTag = RaftDiagnosticsVolumePolicy.SummaryTag,
+            safeMessage = summary.safeRaftLogMessage(),
+            timestampMillis = timestampMillis,
+            hint = RaftPlatformLogHint.None,
+            persist = true
+        )
+    }
+
     private fun dispatch(
         level: RaftLogLevel,
         tag: String,
@@ -298,8 +334,17 @@ internal class RaftPlatformLogQueue(
         timestampMillis: Long,
         hint: RaftPlatformLogHint
     ) {
-        val safeTag = tag.trim().ifBlank { "SlockShared" }.take(RaftLogTagMaxChars)
-        val safeMessage = message.sanitizeRaftLogMessage().take(RaftLogMessageMaxChars)
+        deliver(level, tag.safeRaftLogTag(), message.safeRaftLogMessage(), timestampMillis, hint, persist = true)
+    }
+
+    private fun deliver(
+        level: RaftLogLevel,
+        safeTag: String,
+        safeMessage: String,
+        timestampMillis: Long,
+        hint: RaftPlatformLogHint,
+        persist: Boolean
+    ) {
         val sink = recordSink ?: RaftPlatformLogSinkRegistry.sink
         if (sink != null) {
             val record =
@@ -308,12 +353,19 @@ internal class RaftPlatformLogQueue(
                     tag = safeTag,
                     message = safeMessage,
                     timestampMillis = timestampMillis,
-                    hint = hint
+                    hint = hint,
+                    persist = persist
                 )
             if (runCatching { sink(record) }.isSuccess) return
         }
+        // Without a sink the platform actual is the persistent writer (iOS host log, desktop file).
+        if (!persist) return
         runCatching { raftPlatformLog(level, safeTag, safeMessage, timestampMillis, hint) }
     }
+
+    private fun String.safeRaftLogTag(): String = trim().ifBlank { "SlockShared" }.take(RaftLogTagMaxChars)
+
+    private fun String.safeRaftLogMessage(): String = sanitizeRaftLogMessage().take(RaftLogMessageMaxChars)
 }
 
 private val raftPlatformLogQueue by lazy {
