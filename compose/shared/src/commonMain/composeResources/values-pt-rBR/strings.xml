@@ -673,6 +673,8 @@
     <string name="thread_composer_mention_batch_error_surface">Não é possível adicionar essa pessoa por esta ação de menção.</string>
     <string name="thread_composer_mention_batch_error_human_authority">Peça a um membro humano para adicionar essa pessoa.</string>
     <string name="thread_composer_mention_batch_error_member_authority">Somente administradores do canal podem adicionar essa pessoa.</string>
+    <string name="thread_composer_unresolved_mentions">Sem notificação: %1$s. Se necessário, selecione uma pessoa ou um agente no seletor de menções e tente novamente.</string>
+    <string name="thread_composer_dismiss_unresolved_mentions">Dispensar aviso de menções sem notificação</string>
     <string name="thread_composer_mention_batch_error_permission">Esta ação não está disponível no estado atual do canal.</string>
     <string name="thread_composer_mention_batch_error_already_member">Essa pessoa já está no canal.</string>
     <string name="thread_composer_mention_batch_error_target_unavailable">Essa pessoa não está mais disponível.</string>

@@ -63,11 +63,17 @@ internal data class SharedThreadComposerDraftState(
     val attachmentAdmissionsByLocalId: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
     val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
     /**
-     * Structured `mentions` picked from the @ suggestions (Slack participants, `type: external`),
-     * kept only while their `@handle` is still in [seedText]; sent and journaled as recorded.
+     * Structured `mentions` picked from the @ suggestions or added by "Mention" on a message
+     * (`type: user | agent | external`, with the actor's id), kept only while their `@handle` is
+     * still in [seedText]; sent and journaled as recorded.
      */
     val structuredMentions: List<ThreadSendMessageMention> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+    /**
+     * The last send's `unresolvedMentionHandles` (`@handle` tokens that notified nobody), shown as
+     * web MessageInput's "Not notified" banner until dismissed, the next send or a composer switch.
+     */
+    val unresolvedMentionHandles: List<String> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -1444,7 +1450,7 @@ internal class SharedThreadComposerDraftPersistence(
         const val AsTaskSuffix = ":asTask"
         const val AttachmentsSuffix = ":attachments"
         const val SourcesSuffix = ":externalShareSources"
-        /** Structured @ mentions picked in this draft (Slack participants), as sent on `POST /messages`. */
+        /** Structured @ mentions picked in this draft (people, agents, Slack participants), as sent on `POST /v2/messages`. */
         const val MentionsSuffix = ":mentions"
         /** Epoch millis of the text's last edit (Drafts); absent on drafts saved before it existed. */
         const val EditedAtSuffix = ":editedAt"
@@ -2417,6 +2423,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.FinishMentionAction -> "FinishMentionAction"
         is SharedThreadComposerDraftIntent.FinishMentionActionBatch -> "FinishMentionActionBatch"
         SharedThreadComposerDraftIntent.ClearMentionActionNotice -> "ClearMentionActionNotice"
+        SharedThreadComposerDraftIntent.DismissUnresolvedMentions -> "DismissUnresolvedMentions"
         is SharedThreadComposerDraftIntent.MarkMentionActionRemoving -> "MarkMentionActionRemoving"
         is SharedThreadComposerDraftIntent.RemoveMentionAction -> "RemoveMentionAction"
         is SharedThreadComposerDraftIntent.AddUploadedAttachments -> "AddUploadedAttachments"
@@ -2445,7 +2452,7 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
     data class SetOriginalImage(val enabled: Boolean) : SharedThreadComposerDraftIntent
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
-    /** A Slack participant picked from the @ suggestions; its `@handle` is already in the text. */
+    /** A person, agent or Slack participant picked for an `@handle` that is already in the text. */
     data class SelectMention(val mention: ThreadSendMessageMention) : SharedThreadComposerDraftIntent
     /** Appends a Markdown quote after the current draft (Reply on a partial text selection). */
     data class AppendQuote(val quote: String) : SharedThreadComposerDraftIntent
@@ -2462,11 +2469,15 @@ internal sealed interface SharedThreadComposerDraftIntent {
     ) : SharedThreadComposerDraftIntent
     data object CompleteInlineSendFailure : SharedThreadComposerDraftIntent
     data class CompleteSend(
-        val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList()
+        val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+        val unresolvedMentionHandles: List<String> = emptyList()
     ) : SharedThreadComposerDraftIntent
     data class ApplyPendingMentionActions(
-        val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList()
+        val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+        val unresolvedMentionHandles: List<String> = emptyList()
     ) : SharedThreadComposerDraftIntent
+    /** The × of the "Not notified" banner (web `dismissUnresolvedMentionWarning`). */
+    data object DismissUnresolvedMentions : SharedThreadComposerDraftIntent
     data class DismissMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
     data class BeginMentionAction(
         val resolutionId: String,
@@ -2663,7 +2674,12 @@ internal class SharedThreadComposerDraftStore(
                 ) {
                     current
                 } else {
-                    current.copy(structuredMentions = current.structuredMentions + intent.mention)
+                    // web `setSelectedMentions(prev => [...prev.filter(m => m.name !== picked.name), picked])`:
+                    // the latest pick for a handle wins (a person, then the same-named agent).
+                    current.copy(
+                        structuredMentions =
+                            current.structuredMentions.filterNot { it.name == intent.mention.name } + intent.mention
+                    )
                 }
             is SharedThreadComposerDraftIntent.InsertMention ->
                 current.copy(
@@ -2745,6 +2761,8 @@ internal class SharedThreadComposerDraftStore(
                     uploadedAttachments = emptyList(),
                     attachmentAdmissionsByLocalId = emptyMap(),
                     externalShareSources = emptyList(),
+                    // web MessageInput: `setUnresolvedMentionHandles([])` as a send starts.
+                    unresolvedMentionHandles = emptyList(),
                     mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
@@ -2808,6 +2826,7 @@ internal class SharedThreadComposerDraftStore(
                         if (shouldClearComposer) emptyMap() else current.attachmentAdmissionsByLocalId,
                     externalShareSources = if (shouldClearComposer) emptyList() else current.externalShareSources,
                     pendingMentionActions = intent.pendingMentionActions,
+                    unresolvedMentionHandles = intent.unresolvedMentionHandles,
                     originalImage = if (shouldClearComposer) false else current.originalImage,
                     mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
@@ -2821,6 +2840,7 @@ internal class SharedThreadComposerDraftStore(
                 current.copy(
                     syncNonce = current.syncNonce + 1,
                     pendingMentionActions = intent.pendingMentionActions,
+                    unresolvedMentionHandles = intent.unresolvedMentionHandles,
                     mentionActionNoticeTitle = null,
                     mentionActionNotice = null,
                     mentionActionStates = emptyMap(),
@@ -2891,6 +2911,8 @@ internal class SharedThreadComposerDraftStore(
             }
             SharedThreadComposerDraftIntent.ClearMentionActionNotice ->
                 current.copy(mentionActionNoticeTitle = null, mentionActionNotice = null)
+            SharedThreadComposerDraftIntent.DismissUnresolvedMentions ->
+                current.copy(syncNonce = current.syncNonce + 1, unresolvedMentionHandles = emptyList())
             is SharedThreadComposerDraftIntent.MarkMentionActionRemoving ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,

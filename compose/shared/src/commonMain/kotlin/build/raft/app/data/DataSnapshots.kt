@@ -2410,7 +2410,9 @@ data class PendingMentionActionExecuteResult(
 
 data class SendMessageResult(
     val message: Message,
-    val pendingMentionActions: List<PendingMentionAction> = emptyList()
+    val pendingMentionActions: List<PendingMentionAction> = emptyList(),
+    /** `POST v2/messages` `unresolvedMentionHandles`: `@handle` tokens that notified nobody. */
+    val unresolvedMentionHandles: List<String> = emptyList()
 )
 
 data class ThreadActionResult(

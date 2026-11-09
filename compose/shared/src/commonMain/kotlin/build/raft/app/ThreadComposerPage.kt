@@ -9,6 +9,9 @@ import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftComposerUploadDisplay
 import build.raft.app.transfer.RaftComposerUploadPhase
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftSeparator
@@ -455,6 +458,7 @@ private val threadComposerContentPayloadKeys =
         "statusLabel",
         "pendingAttachments",
         "pendingMentionActions",
+        "unresolvedMentionHandles",
         "mentionActionNoticeTitle",
         "mentionActionNotice",
         "mentionActionStates",
@@ -489,6 +493,8 @@ internal data class RaftThreadComposerPayload(
     val statusLabel: String? = null,
     val pendingAttachments: List<RaftPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+    /** The last send's `unresolvedMentionHandles` (the "Not notified" banner); empty: none. */
+    val unresolvedMentionHandles: List<String> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -587,6 +593,8 @@ internal data class ThreadComposerUiState(
     val statusLabel: String? = null,
     val pendingAttachments: List<RaftPendingAttachmentItem> = emptyList(),
     val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
+    /** The last send's `unresolvedMentionHandles` (the "Not notified" banner); empty: none. */
+    val unresolvedMentionHandles: List<String> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -982,7 +990,12 @@ internal class ThreadComposerSubmittedEchoFence {
 
 internal data class ThreadComposerInsertMentionRequest(
     val nonce: Int,
-    val handle: String
+    val handle: String,
+    /**
+     * The author's structured mention (web `senderMentionInsert` carries `{ type, id, name }`), picked
+     * like a suggestion once the `@handle` is in the text. Null: the token stays name-resolved.
+     */
+    val mention: build.raft.app.data.ThreadSendMessageMention? = null
 )
 
 internal enum class ThreadComposerSuggestionPanelState {
@@ -2069,6 +2082,7 @@ internal fun RaftThreadComposerPayload.toThreadComposerUiState(): ThreadComposer
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
         pendingMentionActions = pendingMentionActions,
+        unresolvedMentionHandles = unresolvedMentionHandles,
         mentionActionNoticeTitle = mentionActionNoticeTitle,
         mentionActionNotice = mentionActionNotice,
         mentionActionStates = mentionActionStates,
@@ -2716,6 +2730,10 @@ internal fun ThreadComposerContentLeaf(
         )
         if (composing) snapshotFlow { latestFieldValue.composition }.first { it == null }
         if (latestInsertMentionAtCursor(request.handle)) {
+            // After the text, as a picked suggestion: the draft keeps it while `@handle` is there.
+            request.mention?.let { mention ->
+                onEvent(ThreadComposerSelectMentionEvent, encodeThreadComposerMentionEvent(mention), null, null)
+            }
             // The avatar long-press starts outside the composer, so the shared root may already
             // have armed an outside-focus dismissal for this pointer sequence. Mention insertion
             // is a newer explicit editing intent; invalidate that old token before refocusing so
@@ -3052,6 +3070,14 @@ internal fun ThreadComposerContentLeaf(
                     }
                 localizedMentionActionNotice?.let { notice ->
                     MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
+                }
+                // web MessageInput: `{!isDmComposer && unresolvedMentionHandles.length > 0 && <Banner …>}`,
+                // between the mention notice and the pending mention actions.
+                if (surface.showsUnresolvedMentionNotice() && state.unresolvedMentionHandles.isNotEmpty()) {
+                    UnresolvedMentionsNotice(
+                        handles = state.unresolvedMentionHandles,
+                        onDismiss = { onEvent(ThreadComposerDismissUnresolvedMentionsEvent, null, null, null) }
+                    )
                 }
                 if (state.pendingMentionActions.isNotEmpty()) {
                     PendingMentionActionBanner(
@@ -4253,6 +4279,38 @@ private fun ComposerSuggestionSoftBadge(label: String) {
     }
 }
 
+/** Web hides the "Not notified" banner in a DM composer (`isDmComposer`: the composer's own channel is a DM). */
+internal fun ThreadComposerSurface.showsUnresolvedMentionNotice(): Boolean =
+    kind != RaftThreadSurfaceKind.DirectMessage
+
+/** Composer event of the "Not notified" banner's × ([SharedThreadComposerDraftIntent.DismissUnresolvedMentions]). */
+internal const val ThreadComposerDismissUnresolvedMentionsEvent = "dismissUnresolvedMentions"
+
+/** Web `message.composer.unresolvedMentions`: the handles as the server sent them, joined by ", ". */
+internal fun threadComposerUnresolvedMentionHandlesLabel(handles: List<String>): String = handles.joinToString(", ")
+
+/**
+ * Web MessageInput's unresolved-mention notice: `<Banner intent="warning" density="sm" onClose
+ * closeLabel="Dismiss unnotified mention warning">Not notified: {handles}. …</Banner>`. It stays
+ * until its ×, the next send or a composer switch (no timeout, as on web).
+ */
+@Composable
+private fun UnresolvedMentionsNotice(
+    handles: List<String>,
+    onDismiss: () -> Unit,
+) {
+    RaftBanner(
+        description = stringResource(
+            Res.string.thread_composer_unresolved_mentions,
+            threadComposerUnresolvedMentionHandlesLabel(handles)
+        ),
+        status = RaftBannerStatus.Warning,
+        size = RaftBannerSize.Sm,
+        onDismiss = onDismiss,
+        dismissLabel = stringResource(Res.string.thread_composer_dismiss_unresolved_mentions),
+    )
+}
+
 @Composable
 private fun MentionActionNotice(
     title: String?,
@@ -5273,7 +5331,7 @@ private fun ComposerTextChip(
 internal data class RaftComposerSuggestionEdit(
     val text: String,
     val cursor: Int,
-    /** The structured mention a picked Slack participant adds (`POST /messages` `mentions[]`). */
+    /** The structured mention a picked suggestion adds (`POST /v2/messages` `mentions[]`). */
     val mention: build.raft.app.data.ThreadSendMessageMention? = null,
 )
 
@@ -5293,12 +5351,14 @@ internal fun decodeThreadComposerMentionEvent(value: String?): build.raft.app.da
     }
 
 /**
- * Only a Slack participant (`MemberKind.External`) becomes a structured mention, as web sends it
- * (`{ type: "external", id: <projection id>, name: <handle> }`). People and agents keep the
- * server's name resolution (this PR does not change how their mentions are sent).
+ * The structured mention a picked suggestion adds, as web `MessageInput.tsx` `doInsertMention` sends
+ * it: a Slack participant `{ type: "external", id: <projection id>, name: <handle> }`, a person
+ * `{ type: "user", id: <user id>, name }`, an agent `{ type: "agent", id: <agent id>, name }`. With the
+ * id, `POST /v2/messages` notifies exactly the picked actor even when a person and an agent share
+ * the name (slock `messageService.resolveMentionTargets`: an ambiguous raw `@name` reaches nobody).
  */
 internal fun RaftComposerMemberItem.composerStructuredMentionOrNull(): build.raft.app.data.ThreadSendMessageMention? {
-    if (kind != MemberKind.External) return null
+    if (kind != MemberKind.External) return composerPersonOrAgentStructuredMention(kind, memberId, handle)
     val id = memberId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return build.raft.app.data.ThreadSendMessageMention(type = ComposerStructuredMentionExternalType, id = id, name = handle)
 }

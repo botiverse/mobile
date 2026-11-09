@@ -589,7 +589,7 @@ class ThreadApiTest {
                 "GET messages/channel/thread-1 priority=Visible query=limit=25&before=99 server= body=",
                 "GET messages/channel/thread-1 priority=Visible query=limit=25&after=100 server= body=",
                 "GET messages/sync priority=Visible query=since_seq=10&limit=30&channel_id=channel-1 server= body=",
-                """POST messages priority=Foreground query= server= body={"channelId":"channel-1","content":"hello","attachmentIds":["att-1"],"asTask":true,"randomId":"rid-1"}""",
+                """POST v2/messages priority=Foreground query= server= body={"channelId":"channel-1","content":"hello","attachmentIds":["att-1"],"asTask":true,"randomId":"rid-1"}""",
                 "GET attachments/att-1/url priority=Visible query=disposition=inline server= body=",
                 "GET attachments/att-2/url priority=Background query=disposition=inline server= body=",
                 "GET attachments/att-1/comments priority=Visible query= server= body=",
@@ -773,7 +773,7 @@ class ThreadApiTest {
             return when {
                 normalizedPath.startsWith("messages/channel/") -> ok(channelMessagesBody)
                 normalizedPath == "messages/sync" -> ok(syncBody)
-                normalizedPath == "messages" && method == "POST" -> ok(sendBody)
+                normalizedPath == "v2/messages" && method == "POST" -> ok(sendBody)
                 normalizedPath.startsWith("attachments/") && normalizedPath.endsWith("/comments") -> ok("""{"comments":[],"threadChannelId":"thread-comments"}""")
                 normalizedPath == "messages/mention-actions/execute" && method == "POST" -> ok(mentionActionBody)
                 normalizedPath.startsWith("attachments/") -> ok(attachmentUrlBody)

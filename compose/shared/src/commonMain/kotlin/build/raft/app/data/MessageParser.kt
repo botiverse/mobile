@@ -52,7 +52,8 @@ import kotlinx.serialization.json.decodeFromJsonElement
  *
  * - `GET /api/messages/sync` → `WireMessage[]` (bare array)
  *
- * - `POST /api/messages` → `WireMessage` (the enriched outgoing message)
+ * - `POST /api/v2/messages` → `{ message: WireMessage, pendingMentionActions?, unresolvedMentionHandles? }`
+ *   (a bare `WireMessage`, the v1 `POST /api/messages` answer, is still read)
  *
  * Every field name matches the upstream TypeScript source verbatim — no
  * snake_case, no nested envelopes, no field aliases. Drift fails fast at
@@ -216,7 +217,8 @@ private data class MessagesWireCanonicalTarget(
 @Serializable
 private data class MessagesWireSendResponse(
     val message: MessagesWireMessage? = null,
-    val pendingMentionActions: List<MessagesWirePendingMentionAction> = emptyList()
+    val pendingMentionActions: List<MessagesWirePendingMentionAction> = emptyList(),
+    val unresolvedMentionHandles: kotlinx.serialization.json.JsonElement? = null
 )
 
 @Serializable
@@ -279,6 +281,7 @@ data class SharedMessagesCanonicalTarget(
 data class SharedSentMessagePayload(
     val message: Message?,
     val pendingMentionActions: List<PendingMentionAction> = emptyList(),
+    val unresolvedMentionHandles: List<String> = emptyList(),
     val projectionRejected: Boolean = false,
 )
 
@@ -442,6 +445,7 @@ fun parseSharedSentMessagePayload(
     return SharedSentMessagePayload(
         message = message,
         pendingMentionActions = wrapped?.pendingMentionActions.orEmpty().mapNotNull { it.toDomain() },
+        unresolvedMentionHandles = wrapped?.unresolvedMentionHandles.sendUnresolvedMentionHandles(),
         projectionRejected = wrappedMessage != null && message == null,
     )
 }

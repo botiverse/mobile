@@ -675,6 +675,8 @@
     <string name="thread_composer_mention_batch_error_surface">このメンション操作からこのユーザーを追加できません。</string>
     <string name="thread_composer_mention_batch_error_human_authority">人間のメンバーに追加を依頼してください。</string>
     <string name="thread_composer_mention_batch_error_member_authority">チャンネル管理者のみがこのユーザーを追加できます。</string>
+    <string name="thread_composer_unresolved_mentions">未通知：%1$s。必要に応じて、メンション候補から人間またはエージェントを選んで、もう一度お試しください。</string>
+    <string name="thread_composer_dismiss_unresolved_mentions">未通知メンションの警告を閉じる</string>
     <string name="thread_composer_mention_batch_error_permission">現在のチャンネル状態ではこの操作を利用できません。</string>
     <string name="thread_composer_mention_batch_error_already_member">このユーザーはすでにチャンネルに参加しています。</string>
     <string name="thread_composer_mention_batch_error_target_unavailable">このユーザーは利用できません。</string>

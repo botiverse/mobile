@@ -98,7 +98,7 @@ class ThreadPendingSendStoreIntegrationTest {
             )
             val randomId = restored.pendingSendContext?.randomId
             assertNotNull(randomId)
-            api.sendResponseBody = sentMessageResponse(randomId)
+            api.sendResponseBody = sentMessageV2Response(randomId)
             val retryResult =
                 second.dataSource.sendMessage(
                     channelId = restored.pendingSendContext!!.channelId,
@@ -394,7 +394,7 @@ class ThreadPendingSendStoreIntegrationTest {
             // The resend commits server-side, so the page-entry refresh's latest page carries it.
             val api =
                 FakeThreadApi(bodyText = latestPageWithDelivered("random-orphan")).apply {
-                    sendResponseBody = sentMessageResponse("random-orphan")
+                    sendResponseBody = sentMessageV2Response("random-orphan")
                 }
             val second = open(path, api, identity, threadParseDispatcher = Dispatchers.Unconfined)
             second.store.accept(SharedThreadIntent.Start(routePayload))
@@ -417,7 +417,8 @@ class ThreadPendingSendStoreIntegrationTest {
 
     /**
      * Task #73 (Tenny's rule 3): a journaled send keeps its structured `mentions` and every resend
-     * carries that exact list — the Slack participant picked in the composer, never re-resolved by name.
+     * carries that exact list — the person, agent and Slack participant picked in the composer (#77:
+     * ids included), never re-resolved by name.
      */
     @Test
     fun aResentJournaledSendCarriesItsOwnMentionList() = runTest {
@@ -430,7 +431,17 @@ class ThreadPendingSendStoreIntegrationTest {
                         type = "external",
                         id = "7f8e2a3b-0c1d-4e5f-8a9b-0c1d2e3f4a5b",
                         name = "yezi",
-                    )
+                    ),
+                    build.raft.app.data.ThreadSendMessageMention(
+                        type = "user",
+                        id = "1b2c3d4e-5f60-4718-8293-a4b5c6d7e8f9",
+                        name = "ada",
+                    ),
+                    build.raft.app.data.ThreadSendMessageMention(
+                        type = "agent",
+                        id = "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d",
+                        name = "skyzh",
+                    ),
                 )
             val orphan = pendingMessage("local-send-mention", "random-mention", createdAt = 10L, mentions = mentions)
 
@@ -454,7 +465,7 @@ class ThreadPendingSendStoreIntegrationTest {
 
             val api =
                 FakeThreadApi(bodyText = latestPageWithDelivered("random-mention")).apply {
-                    sendResponseBody = sentMessageResponse("random-mention")
+                    sendResponseBody = sentMessageV2Response("random-mention")
                 }
             val second = open(path, api, identity, threadParseDispatcher = Dispatchers.Unconfined)
             second.store.accept(SharedThreadIntent.Start(routePayload))
@@ -757,7 +768,14 @@ class ThreadPendingSendStoreIntegrationTest {
             canLoadMoreAfter = null,
         )
 
-    /** Canonical POST /messages response shape from packages/server/src/routes/messages.ts. */
+    /**
+     * Canonical `POST /api/v2/messages` answer (routes/messages.ts `createHumanMessage(…, "v2")`):
+     * the message always wrapped; a replayed randomId carries no sender-only extras.
+     */
+    private fun sentMessageV2Response(randomId: String): String =
+        """{"message": ${sentMessageResponse(randomId)}}"""
+
+    /** The created message row (a list row, and the `message` of a send answer). */
     private fun sentMessageResponse(randomId: String): String =
         """
         {

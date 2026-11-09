@@ -673,6 +673,8 @@
     <string name="thread_composer_mention_batch_error_surface">Этого человека нельзя добавить через это действие с упоминанием.</string>
     <string name="thread_composer_mention_batch_error_human_authority">Попросите участника-человека добавить этого адресата.</string>
     <string name="thread_composer_mention_batch_error_member_authority">Добавить этого человека могут только администраторы канала.</string>
+    <string name="thread_composer_unresolved_mentions">Уведомление не отправлено: %1$s. Если нужно, выберите человека или агента в списке упоминаний и попробуйте ещё раз.</string>
+    <string name="thread_composer_dismiss_unresolved_mentions">Закрыть предупреждение об упоминаниях без уведомления</string>
     <string name="thread_composer_mention_batch_error_permission">Это действие недоступно при текущем состоянии канала.</string>
     <string name="thread_composer_mention_batch_error_already_member">Этот человек уже в канале.</string>
     <string name="thread_composer_mention_batch_error_target_unavailable">Этот человек больше недоступен.</string>

@@ -10725,11 +10725,17 @@ private fun SharedThreadRouteContentContent(
                 if (sendAuthorityStillCurrent()) {
                     if (startedFromComposer) {
                         composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
+                            SharedThreadComposerDraftIntent.CompleteSend(
+                                pendingMentionActions = pendingMentionActions,
+                                unresolvedMentionHandles = sentPage.unresolvedMentionHandles
+                            )
                         )
                     } else {
                         composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                            SharedThreadComposerDraftIntent.ApplyPendingMentionActions(
+                                pendingMentionActions = pendingMentionActions,
+                                unresolvedMentionHandles = sentPage.unresolvedMentionHandles
+                            )
                         )
                     }
                 } else {
@@ -15139,6 +15145,9 @@ private fun SharedThreadRouteContentContent(
                 "dismissMentionNotice" -> {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
                 }
+                ThreadComposerDismissUnresolvedMentionsEvent -> {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissUnresolvedMentions)
+                }
                 "addAllMentions" -> {
                     if (!pendingMentionActionBatchRequestGate.tryBegin()) return@ThreadPageContent
                     val eligibleActions =
@@ -16628,6 +16637,7 @@ private fun RaftThreadComposerPayload.withThreadComposerDraftState(
             },
         statusLabel = statusLabel,
         pendingMentionActions = draftState.pendingMentionActions,
+        unresolvedMentionHandles = draftState.unresolvedMentionHandles,
         mentionActionNoticeTitle = draftState.mentionActionNoticeTitle,
         mentionActionNotice = draftState.mentionActionNotice,
         mentionActionStates = draftState.mentionActionStates,
@@ -18107,7 +18117,8 @@ private fun ThreadPageContentContent(
                                 insertMentionRequest =
                                     ThreadComposerInsertMentionRequest(
                                         nonce = insertMentionRequestNonce,
-                                        handle = handle
+                                        handle = handle,
+                                        mention = message.threadAuthorStructuredMention(handle)
                                     )
                             } else if (handle == null) {
                                 diagnosticsLogger(
@@ -20302,6 +20313,7 @@ internal fun ThreadComposerUiState.isThreadComposerAtRest(): Boolean =
     seedText.isBlank() &&
         pendingAttachments.isEmpty() &&
         pendingMentionActions.isEmpty() &&
+        unresolvedMentionHandles.isEmpty() &&
         statusLabel == null &&
         memberSuggestions.isEmpty() &&
         channelSuggestions.isEmpty()
@@ -33389,6 +33401,22 @@ internal fun RaftThreadMessageItem.threadMentionHandle(
             ?.let { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
     return threadMentionHandleFromCanonicalStore(rosterHandle)
 }
+
+/**
+ * "Mention" on a message by a person or agent: the author's `{ type: user | agent, id, name }`, as web
+ * `senderMentionInsert` hands the composer. Null for any other author (system, Slack, unknown kind).
+ */
+internal fun RaftThreadMessageItem.threadAuthorStructuredMention(handle: String): build.raft.app.data.ThreadSendMessageMention? =
+    composerPersonOrAgentStructuredMention(
+        kind =
+            when (authorKind.trim().lowercase()) {
+                "human", "user" -> MemberKind.Human
+                "agent" -> MemberKind.Agent
+                else -> return null
+            },
+        id = authorId,
+        handle = handle,
+    )
 
 internal fun RaftThreadMessageItem.threadMentionHandle(canonicalMemberHandle: String?): String? =
     if (threadAuthorBadgeLabel() != null) {

@@ -673,6 +673,8 @@
     <string name="thread_composer_mention_batch_error_surface">无法从该提及操作添加此人。</string>
     <string name="thread_composer_mention_batch_error_human_authority">请由人类成员添加此人。</string>
     <string name="thread_composer_mention_batch_error_member_authority">只有频道管理员可以添加此人。</string>
+    <string name="thread_composer_unresolved_mentions">未通知：%1$s。如需通知，请从提及选择器中选择具体的人类成员或 Agent 后重试。</string>
+    <string name="thread_composer_dismiss_unresolved_mentions">关闭未通知提及提醒</string>
     <string name="thread_composer_mention_batch_error_permission">当前频道状态不支持该操作。</string>
     <string name="thread_composer_mention_batch_error_already_member">该对象已在频道中。</string>
     <string name="thread_composer_mention_batch_error_target_unavailable">该对象已不可用。</string>
