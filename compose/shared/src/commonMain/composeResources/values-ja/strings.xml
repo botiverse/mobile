@@ -1027,6 +1027,11 @@
     <string name="thread_agent_typing_three">{first}、{second}、{third} が入力中…</string>
     <string name="thread_agent_typing_many">{first}、{second} ほか {others} 個のエージェントが入力中…</string>
     <string name="thread_agent_typing_agent_fallback">エージェント</string>
+    <string name="thread_agent_working_here_one">エージェント %1$d 個がここで作業中</string>
+    <string name="thread_agent_working_here_other">エージェント %1$d 個がここで作業中</string>
+    <string name="thread_agent_typing_and_others_one">%1$s · ほか %2$d 個が作業中</string>
+    <string name="thread_agent_typing_and_others_other">%1$s · ほか %2$d 個が作業中</string>
+    <string name="thread_agent_typing_row">入力中…</string>
     <string name="thread_jump_new_messages_one">新着メッセージ 1 件</string>
     <string name="thread_jump_new_messages_many">新着メッセージ %1$d 件</string>
     <string name="thread_outline_label">スレッドのタイムライン</string>

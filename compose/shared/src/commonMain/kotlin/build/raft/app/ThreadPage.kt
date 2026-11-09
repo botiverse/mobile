@@ -12714,7 +12714,8 @@ private fun SharedThreadRouteContentContent(
                 active = active,
                 serverMembersStore = serverMembersStore,
             )
-        // Agent typing line: who is about to post into this conversation (null = nobody).
+        // The line above the composer: who is about to post into this conversation and, in a
+        // channel, who of its agents is working (null = nobody). A Working now row opens the agent.
         val agentTyping =
             rememberThreadAgentTyping(
                 payload = renderedThread,
@@ -12722,6 +12723,12 @@ private fun SharedThreadRouteContentContent(
                 storeScope = storeScope,
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
+                agentStatusResolver = agentStatusResolver,
+                openAgent = { agentId ->
+                    memberDetailIdentity(agentId, MemberKind.Agent, currentServerId)?.let { identity ->
+                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
+                    }
+                },
             )
         val agentTypingInThread =
             rememberThreadAgentTypingInThread(

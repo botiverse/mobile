@@ -1025,6 +1025,11 @@
     <string name="thread_agent_typing_three">{first}、{second} 和 {third} 正在输入…</string>
     <string name="thread_agent_typing_many">{first}、{second} 等 {count} 个 agent 正在输入…</string>
     <string name="thread_agent_typing_agent_fallback">Agent</string>
+    <string name="thread_agent_working_here_one">%1$d 个 Agent 正在这里工作</string>
+    <string name="thread_agent_working_here_other">%1$d 个 Agent 正在这里工作</string>
+    <string name="thread_agent_typing_and_others_one">%1$s · 另外 %2$d 个在工作</string>
+    <string name="thread_agent_typing_and_others_other">%1$s · 另外 %2$d 个在工作</string>
+    <string name="thread_agent_typing_row">正在输入…</string>
     <string name="thread_jump_new_messages_one">1 条新消息</string>
     <string name="thread_jump_new_messages_many">%1$d 条新消息</string>
     <string name="thread_outline_label">Thread 时间线</string>

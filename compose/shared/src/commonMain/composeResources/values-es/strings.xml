@@ -1025,6 +1025,11 @@
     <string name="thread_agent_typing_three">{first}, {second} y {third} están escribiendo…</string>
     <string name="thread_agent_typing_many">{first}, {second} y {others} agentes más están escribiendo…</string>
     <string name="thread_agent_typing_agent_fallback">Agente</string>
+    <string name="thread_agent_working_here_one">%1$d agente trabajando aquí</string>
+    <string name="thread_agent_working_here_other">%1$d agentes trabajando aquí</string>
+    <string name="thread_agent_typing_and_others_one">%1$s · %2$d más trabajando</string>
+    <string name="thread_agent_typing_and_others_other">%1$s · %2$d más trabajando</string>
+    <string name="thread_agent_typing_row">Escribiendo…</string>
     <string name="thread_jump_new_messages_one">1 mensaje nuevo</string>
     <string name="thread_jump_new_messages_many">%1$d mensajes nuevos</string>
     <string name="thread_outline_label">Cronología del hilo</string>

@@ -1025,6 +1025,11 @@
     <string name="thread_agent_typing_three">{first}, {second} и {third} печатают…</string>
     <string name="thread_agent_typing_many">{first}, {second} и ещё {others} печатают…</string>
     <string name="thread_agent_typing_agent_fallback">Агент</string>
+    <string name="thread_agent_working_here_one">%1$d агент работает здесь</string>
+    <string name="thread_agent_working_here_other">Работающих здесь агентов: %1$d</string>
+    <string name="thread_agent_typing_and_others_one">%1$s · ещё %2$d работает</string>
+    <string name="thread_agent_typing_and_others_other">%1$s · ещё %2$d работают</string>
+    <string name="thread_agent_typing_row">Печатает…</string>
     <string name="thread_jump_new_messages_one">1 новое сообщение</string>
     <string name="thread_jump_new_messages_many">Новых сообщений: %1$d</string>
     <string name="thread_outline_label">Хронология ветки</string>
