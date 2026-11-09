@@ -2421,8 +2421,8 @@
     <string name="settings_mobile_new_message_menu">Новое меню сообщения</string>
     <string name="settings_mobile_new_message_menu_detail">При долгом нажатии на сообщение показывать быстрые реакции и частые действия в компактном меню из двух рядов. Если выключить, будет классическое меню сообщения.</string>
     <string name="settings_mobile_conversation_forward_gesture">Жест возврата в чат</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">Вернувшись на «Главную», проведите влево от правого края экрана, чтобы снова открыть последний канал или личный чат.</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">Бета. Управляет жестом возврата в чат. Вернувшись на «Главную», проведите влево от правого края экрана, чтобы снова открыть последний канал или личный чат</string>
+    <string name="settings_mobile_conversation_forward_gesture_detail">Вернувшись из чата на «Главную», проведите влево от правого края экрана, чтобы снова открыть его.</string>
+    <string name="settings_mobile_conversation_forward_gesture_accessibility">Бета. Управляет жестом возврата в чат. Вернувшись из чата на «Главную», проведите влево от правого края экрана, чтобы снова открыть его.</string>
     <string name="settings_mobile_home_server_avatar">Аватар рабочего пространства на «Главной»</string>
     <string name="settings_mobile_home_server_avatar_detail">Показывать аватар текущего рабочего пространства рядом с его названием вверху «Главной». Если выключить, останется прежний компактный значок в заголовке.</string>
     <string name="settings_mobile_thread_reverse_layout">Открывать чаты на последнем сообщении</string>
