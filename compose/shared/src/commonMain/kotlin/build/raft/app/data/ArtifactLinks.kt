@@ -72,9 +72,78 @@ internal fun isArtifactContentHost(host: String): Boolean =
 
 /**
  * The Artifact [link] names, or null. [appHosts] are hostnames (no port, lowercase); empty means
- * no link is an Artifact's.
+ * no link is an Artifact's. The Artifacts home address ([parseArtifactOpenAddress]) is not one:
+ * like the web's card parser, this reads paths only, so that address gets no card.
  */
 fun parseArtifactLinkTarget(link: String, appHosts: Collection<String>): ArtifactLinkTarget? {
+    val parts = artifactLinkParts(link) ?: return null
+    val host = parts.host
+    // The content origin names its Artifact by host alone (shared parser order: first).
+    ARTIFACT_CONTENT_ORIGIN.matchEntire(host)?.let { return ArtifactLinkTarget("pt_${it.groupValues[1]}") }
+    if (isArtifactContentHost(host)) return null
+    val segments = parts.segments() ?: return null
+    if (host == ARTIFACT_REDIRECT_HOST) return artifactIdWithVersion(segments)
+    if (!appHosts.hasArtifactAppHost(host)) return null
+    return when {
+        segments.firstOrNull() == "artifacts" -> artifactIdWithVersion(segments.drop(1))
+        segments.size > 2 && segments[0] == "s" && segments[2] == "artifacts" -> artifactIdWithVersion(segments.drop(3))
+        else -> null
+    }
+}
+
+/**
+ * The Artifact an Artifacts home address opens over its list, or null (slock v1.21.61 #13670: the
+ * open Artifact is in the URL; web `artifactLinks.ts` `artifactOpenTarget`):
+ * `https://<app host>/s/<server>/artifacts?artifact=<id>[&version=<n>]`, on the same [appHosts] as
+ * [parseArtifactLinkTarget] (compared whole; never the content domain or the redirect host).
+ *
+ * - `artifact`: its first value, a bare `pt_…` or short id ([artifactIdOrNull]); anything else
+ *   (absent, empty, not an id) is no Artifact, and the link stays a plain one.
+ * - `version`: its first value when it is a positive decimal integer (`^[1-9][0-9]*$`, the web's
+ *   `versionOf`); a malformed one (`0`, `x`, `-1`, too large) is the latest, as the web opens it.
+ * - Other params (`from`, the list's filters) and the fragment are ignored.
+ */
+fun parseArtifactOpenAddress(link: String, appHosts: Collection<String>): ArtifactLinkTarget? {
+    val parts = artifactLinkParts(link) ?: return null
+    if (isArtifactContentHost(parts.host) || parts.host == ARTIFACT_REDIRECT_HOST) return null
+    if (!appHosts.hasArtifactAppHost(parts.host)) return null
+    val segments = parts.segments() ?: return null
+    if (segments.size != 3 || segments[0] != "s" || segments[2] != ARTIFACT_OPEN_PATH) return null
+    val params = parts.queryParams()
+    val id = params[ARTIFACT_OPEN_PARAM]?.let(::artifactIdOrNull) ?: return null
+    val version = params[ARTIFACT_OPEN_VERSION_PARAM]?.takeIf { ARTIFACT_OPEN_VERSION.matches(it) }?.toIntOrNull()
+    return ArtifactLinkTarget(id, version)
+}
+
+private const val ARTIFACT_OPEN_PATH = "artifacts"
+
+/** slock `ARTIFACT_OPEN_PARAM` / `ARTIFACT_OPEN_VERSION_PARAM`. */
+private const val ARTIFACT_OPEN_PARAM = "artifact"
+private const val ARTIFACT_OPEN_VERSION_PARAM = "version"
+
+/** The web's `versionOf`; one past [Int.MAX_VALUE] is not a version here either (the latest). */
+private val ARTIFACT_OPEN_VERSION = Regex("^[1-9][0-9]*$")
+
+/** A link's lowercase host (no port, no trailing dot), raw path and raw query (no fragment). */
+private class ArtifactLinkParts(val host: String, val path: String, val query: String) {
+    /** The path's non-empty segments, each `decodeURIComponent`-ed; null on a malformed escape. */
+    fun segments(): List<String>? =
+        path.split('/').filter { it.isNotEmpty() }.map { it.artifactPercentDecoded() ?: return null }
+
+    /** `URLSearchParams.get`: each key's first value, `+` a space, `%XX` decoded (malformed: as written). */
+    fun queryParams(): Map<String, String> {
+        val result = LinkedHashMap<String, String>()
+        for (part in query.split('&')) {
+            if (part.isEmpty()) continue
+            val key = part.substringBefore('=').replace('+', ' ').let { it.artifactPercentDecoded() ?: it }
+            val value = part.substringAfter('=', "").replace('+', ' ').let { it.artifactPercentDecoded() ?: it }
+            if (key !in result) result[key] = value
+        }
+        return result
+    }
+}
+
+private fun artifactLinkParts(link: String): ArtifactLinkParts? {
     val value = link.trim()
     val rest =
         when {
@@ -90,19 +159,13 @@ fun parseArtifactLinkTarget(link: String, appHosts: Collection<String>): Artifac
     if (hostAndPort.startsWith("[")) return null
     val host = hostAndPort.substringBefore(':').lowercase().removeSuffix(".")
     if (host.isEmpty()) return null
-    // The content origin names its Artifact by host alone (shared parser order: first).
-    ARTIFACT_CONTENT_ORIGIN.matchEntire(host)?.let { return ArtifactLinkTarget("pt_${it.groupValues[1]}") }
-    if (isArtifactContentHost(host)) return null
-    val path = rest.substring(authorityEnd).substringBefore('#').substringBefore('?')
-    val segments = path.split('/').filter { it.isNotEmpty() }.map { it.artifactPercentDecoded() ?: return null }
-    if (host == ARTIFACT_REDIRECT_HOST) return artifactIdWithVersion(segments)
-    if (appHosts.none { it.trim().lowercase().removeSuffix(".") == host }) return null
-    return when {
-        segments.firstOrNull() == "artifacts" -> artifactIdWithVersion(segments.drop(1))
-        segments.size > 2 && segments[0] == "s" && segments[2] == "artifacts" -> artifactIdWithVersion(segments.drop(3))
-        else -> null
-    }
+    val afterAuthority = rest.substring(authorityEnd).substringBefore('#')
+    return ArtifactLinkParts(host, afterAuthority.substringBefore('?'), afterAuthority.substringAfter('?', ""))
 }
+
+/** Whether [host] is one of [this] app hosts, compared whole. */
+private fun Collection<String>.hasArtifactAppHost(host: String): Boolean =
+    any { it.trim().lowercase().removeSuffix(".") == host }
 
 /** An id, then an optional `v/<n>`; anything after that (a file path, `raw`) is ignored. */
 private fun artifactIdWithVersion(segments: List<String>): ArtifactLinkTarget? {

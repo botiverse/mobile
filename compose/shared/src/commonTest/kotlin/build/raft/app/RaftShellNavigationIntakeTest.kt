@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedWindowNavigationCoordinator
@@ -30,7 +31,8 @@ import kotlinx.coroutines.test.runTest
 class RaftShellNavigationIntakeTest {
     private val inbox = RaftMessageLinkInbox(nowEpochMillis = { 1_000L })
     private val coordinator = SharedWindowNavigationCoordinator()
-    private val intake = RaftShellNavigationIntake(coordinator, inbox)
+    private val artifactInbox = RaftArtifactLinkInbox(nowEpochMillis = { 1_000L })
+    private val intake = RaftShellNavigationIntake(coordinator, inbox, artifactInbox)
     private val host = FakeHost()
 
     @Test
@@ -103,6 +105,26 @@ class RaftShellNavigationIntakeTest {
         assertIs<WindowNavigationAction.OpenConversation>(host.performed.single())
     }
 
+    @Test
+    fun anArtifactLinkWaitsForAReadySessionThenOpensInTheViewerOnce() = intakeTest {
+        host.sessionReady = false
+        val target = ArtifactLinkTarget("pt_0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11", 3)
+        artifactInbox.submit(target, "android_view")
+        advanceUntilIdle()
+        assertTrue(host.openedArtifacts.isEmpty(), "no viewer before the session is ready")
+
+        host.sessionReady = true
+        intake.wake()
+        advanceUntilIdle()
+        assertEquals(listOf(target), host.openedArtifacts.map { it.target })
+        assertNull(artifactInbox.pending.value)
+        assertTrue(host.performed.isEmpty(), "an Artifact link opens no conversation")
+
+        intake.wake()
+        advanceUntilIdle()
+        assertEquals(1, host.openedArtifacts.size, "taken once")
+    }
+
     /** [body] with the intake running (a foreground child, so advanceUntilIdle runs it), stopped after. */
     private fun intakeTest(body: suspend TestScope.() -> Unit) = runTest {
         val running = launch { intake.run(host) }
@@ -122,6 +144,7 @@ class RaftShellNavigationIntakeTest {
         var sessionReady = true
         var topPage: ThreadRouteIdentity? = null
         val performed = mutableListOf<WindowNavigationAction>()
+        val openedArtifacts = mutableListOf<RaftPendingArtifactLink>()
         val logs = mutableListOf<String>()
 
         override fun messageLinkSessionReady(): Boolean = sessionReady
@@ -140,6 +163,10 @@ class RaftShellNavigationIntakeTest {
                 source = MessageLinkNavigationSource,
                 launchId = "message-link-${taken.id}",
             )
+
+        override fun openArtifactLink(taken: RaftPendingArtifactLink) {
+            openedArtifacts += taken
+        }
 
         override fun readiness(): WindowNavigationReadiness =
             WindowNavigationReadiness(

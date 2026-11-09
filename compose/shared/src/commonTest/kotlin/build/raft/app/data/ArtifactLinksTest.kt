@@ -171,6 +171,89 @@ class ArtifactLinksTest {
         assertEquals("https://app.raft.build/artifacts/$short/v/2", artifactWebUrl("https://app.raft.build", ArtifactLinkTarget(short, 2)))
     }
 
+    /**
+     * slock v1.21.61 #13670: an Artifact open over the Artifacts home is its address,
+     * `/s/<slug>/artifacts?artifact=<short id>[&version=<n>]` (web `artifactOpenTarget`).
+     */
+    @Test
+    fun theArtifactsHomeAddressWithAVersionOpensThatVersion() {
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        val cases =
+            listOf(
+                "https://app.raft.build/s/botiverse/artifacts?artifact=$short&version=3" to ArtifactLinkTarget(short, 3),
+                "https://staging.raft.build/s/botiverse/artifacts?version=12&artifact=$id" to ArtifactLinkTarget(id, 12),
+                // Other params (the canonical link's `from`, the list's filters) and the fragment are ignored.
+                "https://APP.raft.build:443/s/raft/artifacts/?q=x&artifact=$short&version=2&from=link#top" to ArtifactLinkTarget(short, 2),
+                // `URLSearchParams.get`: the first value wins, escapes decoded.
+                "https://app.raft.build/s/raft/artifacts?artifact=$short&version=5&version=6" to ArtifactLinkTarget(short, 5),
+                "https://app.raft.build/s/raft/artifacts?%61rtifact=$short&version=%37" to ArtifactLinkTarget(short, 7),
+            )
+        for ((link, expected) in cases) assertEquals(expected, parseArtifactOpenAddress(link, hosts), link)
+    }
+
+    @Test
+    fun theArtifactsHomeAddressWithoutAVersionOpensTheLatest() {
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        assertEquals(ArtifactLinkTarget(short), parseArtifactOpenAddress("https://app.raft.build/s/botiverse/artifacts?artifact=$short", hosts))
+        assertEquals(ArtifactLinkTarget(id), parseArtifactOpenAddress("http://app.raft.build./s/x/artifacts?artifact=$id&from=other", hosts))
+    }
+
+    /** The web's `versionOf`: only `^[1-9][0-9]*$` pins a version; anything else opens the latest, never a plain link. */
+    @Test
+    fun aMalformedVersionOpensTheLatestAsTheWebDoes() {
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        for (bad in listOf("", "0", "03", "-1", "x", "1.5", "3x", "+3", "99999999999")) {
+            assertEquals(
+                ArtifactLinkTarget(short),
+                parseArtifactOpenAddress("https://app.raft.build/s/raft/artifacts?artifact=$short&version=$bad", hosts),
+                bad,
+            )
+        }
+    }
+
+    @Test
+    fun theArtifactsHomeAddressNeedsAnIdOnAnAppHost() {
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        val plain =
+            listOf(
+                // Other hosts, as the path forms.
+                "https://evil.example/s/raft/artifacts?artifact=$short",
+                "https://app.raft.build.evil.example/s/raft/artifacts?artifact=$short",
+                "https://evil.app.raft.build/s/raft/artifacts?artifact=$short",
+                "https://app.raft.build@evil.example/s/raft/artifacts?artifact=$short",
+                "https://artifacts.raft.build/s/raft/artifacts?artifact=$short",
+                "https://a-pt-0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11.raftusercontent.com/s/raft/artifacts?artifact=$short",
+                // No Artifact, or not a bare id.
+                "https://app.raft.build/s/raft/artifacts",
+                "https://app.raft.build/s/raft/artifacts?artifact=",
+                "https://app.raft.build/s/raft/artifacts?version=2",
+                "https://app.raft.build/s/raft/artifacts?artifact=not-an-id",
+                "https://app.raft.build/s/raft/artifacts?artifact=+$short",
+                // Only the Artifacts home (the web reads `?artifact=` on that route alone).
+                "https://app.raft.build/artifacts?artifact=$short",
+                "https://app.raft.build/s/raft/tasks?artifact=$short",
+                "https://app.raft.build/s/raft/artifacts/x?artifact=$short",
+                "https://app.raft.build/s/raft/channel/c1?artifact=$short",
+                "ftp://app.raft.build/s/raft/artifacts?artifact=$short",
+            )
+        for (link in plain) assertNull(parseArtifactOpenAddress(link, hosts), link)
+        assertNull(parseArtifactOpenAddress("https://app.raft.build/s/raft/artifacts?artifact=$short", emptyList()))
+    }
+
+    /** The path forms still read as before, and the Artifacts home address is not one: no card for it. */
+    @Test
+    fun thePathFormsStillWorkAndTheHomeAddressGetsNoCard() {
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        assertEquals(ArtifactLinkTarget(short, 2), parseArtifactLinkTarget("https://app.raft.build/artifacts/$short/v/2", hosts))
+        assertEquals(ArtifactLinkTarget(id), parseArtifactLinkTarget("https://app.raft.build/s/raft/artifacts/$id?artifact=$short", hosts))
+        // The path forms are not the home address.
+        assertNull(parseArtifactOpenAddress("https://app.raft.build/artifacts/$short", hosts))
+        assertNull(parseArtifactOpenAddress("https://app.raft.build/s/raft/artifacts/$short/v/2", hosts))
+        val address = "https://app.raft.build/s/raft/artifacts?artifact=$short&version=2"
+        assertNull(parseArtifactLinkTarget(address, hosts))
+        assertEquals(emptyList(), planRaftMessageLinks("See $address", hosts).objectTargets)
+    }
+
     @Test
     fun theWebUrlIsOnTheEnvironmentsWebOrigin() {
         assertEquals("https://staging.raft.build/artifacts/$id", artifactWebUrl("https://staging.raft.build/", ArtifactLinkTarget(id)))

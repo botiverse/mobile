@@ -5,6 +5,7 @@ import build.raft.app.isConversationAccessLost
 import build.raft.app.base.putIfAbsent
 import build.raft.app.parseExternalAgentTimestampOrNull
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.composerMentionHandle
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
@@ -846,7 +847,8 @@ class SharedServerMembersStore internal constructor(
     fun durableMemberAvatarWireValue(serverId: ServerId?, memberId: String?): String? {
         val refStore = avatarRefStore ?: return null
         val serverKey = serverId?.value?.normalizedServerMembersId() ?: return null
-        return refStore.avatarWireValue(serverKey, memberId, avatarRefOwnerKey(serverKey))
+        // A retired Gravatar value saved before slock #13674 (`gravatar:<hash>`) is no avatar: the placeholder.
+        return refStore.avatarWireValue(serverKey, memberId, avatarRefOwnerKey(serverKey))?.appAvatarWireValueOrNull()
     }
 
     /** `environment|account` of the current auth binding for [serverKey], or null when not bound. */
@@ -4676,7 +4678,7 @@ private fun ChannelExternalMemberProfile.providerLabel(): String =
 /**
  * This person's row with the public profile of a `user:profile-updated`, mapped as a member-list row
  * maps it (`WireServerMember.toMemberProfile`): the label is the display name, else the name; the
- * handle is the name; the avatar is the uploaded one, else none (the Gravatar then shows).
+ * handle is the name; the avatar is the uploaded one, else none (the placeholder then shows).
  */
 internal fun MemberProfile.withUserProfileUpdate(event: UserProfileUpdated): MemberProfile {
     val label = event.displayName?.takeIf { it.isNotBlank() } ?: event.name

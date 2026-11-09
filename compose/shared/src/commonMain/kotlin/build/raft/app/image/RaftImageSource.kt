@@ -106,7 +106,7 @@ private const val SVG_DATA_URI_MIME = "image/svg+xml"
 
 /**
  * task #403 unified key, URL half: the same content identity the managed path derives its
- * `nativeBytesKey` from (`raftAvatarContentIdentity`: gravatar hash + query, raft immutable
+ * `nativeBytesKey` from (`raftAvatarContentIdentity`: the raft immutable
  * avatar path, otherwise the fragment-less URL), without the owner domain — the adapter has no
  * owner context for a bare URL (accepted trade-off in the design, §5).
  */

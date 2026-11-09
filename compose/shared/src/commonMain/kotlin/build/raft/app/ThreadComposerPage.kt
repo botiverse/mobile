@@ -4086,7 +4086,7 @@ internal fun ComposerMemberSuggestionRow(
             ) {
                 RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),
-                    // web `MentionCandidateAvatar`: a person is a Gravatar or, without one, the
+                    // web `MentionCandidateAvatar`: a person is their uploaded avatar or, without one, the
                     // placeholder person icon, never initials (an empty label falls back to the icon).
                     label = if (member.kind == MemberKind.Human) "" else member.displayName.ifBlank { member.avatarLabel },
                     avatarSize = ComposerMemberSuggestionAvatarSize,

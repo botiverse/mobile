@@ -132,7 +132,7 @@ sealed interface RaftNativeNavBarTitleLeading {
     data class Channel(val channelKind: String?, val onPublicPage: Boolean) : RaftNativeNavBarTitleLeading
 
     /**
-     * A DM peer's avatar, any wire value [RaftAppAvatar] draws (an uploaded or Gravatar photo, a
+     * A DM peer's avatar, any wire value [RaftAppAvatar] draws (an uploaded photo, a
      * pixel avatar, [label]'s initials on [fill]). The app draws it and hands the host the pixels
      * ([RaftNativeNavBarTitleImageCapture]); the host only draws [label]'s initials on [fill] until
      * they arrive.

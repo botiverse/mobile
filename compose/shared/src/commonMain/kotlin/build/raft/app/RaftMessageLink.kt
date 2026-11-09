@@ -1,9 +1,11 @@
 package build.raft.app
 
+import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.RaftAppLogin
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.SharedApiEnvironmentStore
+import build.raft.app.data.parseArtifactOpenAddress
 import build.raft.app.links.isRaftPermalinkChannelId
 import build.raft.app.links.isRaftPermalinkMessageId
 import build.raft.app.links.parseRaftConversationLink
@@ -82,6 +84,22 @@ internal fun parseRaftMessageLink(
         messageId = link.messageId?.value,
         threadParentMessageId = link.threadParentMessageId?.value,
     )
+}
+
+/**
+ * An Artifacts home address opened from outside the app (Android App Link, iOS Universal Link):
+ * `/s/{slug}/artifacts?artifact={id}[&version={n}]`, the address the web keeps an open Artifact in
+ * (slock v1.21.61 #13670). The origin is a message link's (the hosts [parseRaftMessageLink] takes);
+ * the path and query are [parseArtifactOpenAddress]'s. Null when the app must not claim it.
+ */
+internal fun parseRaftArtifactDeepLink(
+    url: String,
+    configuredWebUrl: String? = null,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): ArtifactLinkTarget? {
+    val origin = url.toRaftLinkUrl() ?: return null
+    if (!origin.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
+    return parseArtifactOpenAddress(url, setOf(origin.host))
 }
 
 /**
@@ -336,6 +354,47 @@ internal class RaftMessageLinkInbox(
     }
 }
 
+/** An Artifact link waiting for a ready app shell, as [RaftPendingMessageLink] waits. */
+internal data class RaftPendingArtifactLink(
+    val id: Long,
+    val target: ArtifactLinkTarget,
+    val receivedAtEpochMillis: Long,
+    val source: String,
+)
+
+/**
+ * The process-wide single slot for an external Artifact link ([parseRaftArtifactDeepLink]): the
+ * same rules as [RaftMessageLinkInbox] (newest wins, taken once by a shell with a ready session,
+ * dropped after [ttlMillis]).
+ */
+internal class RaftArtifactLinkInbox(
+    private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val ttlMillis: Long = RaftMessageLinkInbox.DefaultTtlMillis,
+) {
+    private val lock = SynchronizedObject()
+    private var nextId = 1L
+    private val mutablePending = MutableStateFlow<RaftPendingArtifactLink?>(null)
+    val pending: StateFlow<RaftPendingArtifactLink?> = mutablePending.asStateFlow()
+
+    fun submit(target: ArtifactLinkTarget, source: String): RaftPendingArtifactLink = synchronized(lock) {
+        RaftPendingArtifactLink(nextId++, target, nowEpochMillis(), source).also { mutablePending.value = it }
+    }
+
+    /** Takes the pending link [id]; null when it was already taken, replaced, or expired (then cleared). */
+    fun take(id: Long): RaftPendingArtifactLink? = synchronized(lock) {
+        val current = mutablePending.value?.takeIf { it.id == id } ?: return null
+        mutablePending.value = null
+        current.takeIf { nowEpochMillis() - it.receivedAtEpochMillis <= ttlMillis }
+    }
+
+    fun clear() = synchronized(lock) { mutablePending.value = null }
+
+    companion object {
+        /** The slot the platform ingresses and every app shell of this process share. */
+        val Process: RaftArtifactLinkInbox = RaftArtifactLinkInbox()
+    }
+}
+
 /**
  * Whether a shell takes the pending link now: only with a signed-in, server-ready session
  * ([sessionReady]); before that (signed out, restoring, choosing a server) it keeps waiting.
@@ -347,7 +406,8 @@ internal fun raftMessageLinkShouldTake(pending: RaftPendingMessageLink?, session
  * Platform entry for an external message link (Android MainActivity, iOS scene delegate): a web
  * link, or a Raft Desktop `raft://` link ([raftSchemeLinkToWebLink]). Returns
  * false when the URL is not a Raft message link this app takes; the caller then leaves it to the
- * browser. On true the link waits in [RaftMessageLinkInbox.Process] for the app shell.
+ * browser. On true the link waits in [RaftMessageLinkInbox.Process] for the app shell, or, for an
+ * Artifacts home address ([parseRaftArtifactDeepLink]), in [RaftArtifactLinkInbox.Process].
  */
 object RaftMessageLinkIngress {
     /** [configuredWebUrl] is the Developer environment's web URL; null reads the app-scope one. */
@@ -357,6 +417,17 @@ object RaftMessageLinkIngress {
             parseRaftMessageLink(url, webUrl)
                 ?: raftSchemeLinkToWebLink(url, webUrl)?.let { parseRaftMessageLink(it, webUrl) }
         if (link == null) {
+            val artifact =
+                parseRaftArtifactDeepLink(url, webUrl)
+                    ?: raftSchemeLinkToWebLink(url, webUrl)?.let { parseRaftArtifactDeepLink(it, webUrl) }
+            if (artifact != null) {
+                val pending = RaftArtifactLinkInbox.Process.submit(artifact, source.raftLinkLogToken())
+                raftLogInfo(
+                    RaftMessageLinkLogTag,
+                    "artifact_link_ingress result=pending id=${pending.id} source=${pending.source} version=${artifact.version != null}"
+                )
+                return true
+            }
             raftLogInfo(RaftMessageLinkLogTag, "message_link_ingress result=not_claimed source=${source.raftLinkLogToken()}")
             return false
         }

@@ -168,21 +168,22 @@ internal class SqlDelightRaftAvatarCacheMetadataStore(
             // optimization and the exact mount path remains the authority.
             val subject = raftAvatarCacheSubjectFromStorage(row.subjectKind, row.subjectId, row.memberKind)
                 ?: return@mapNotNull null
-            runCatching { row.toCacheMetadata(owner, subject) }.getOrNull()
+            runCatching { row.toCacheMetadataOrNull(owner, subject) }.getOrNull()
                 ?.takeIf { it.hasExactCommitIdentity }
         }
 
-    private fun AvatarCacheMetadataEntity.toCacheMetadata(
+    /** Null for a row of a content kind this build no longer has (a retired Gravatar's): no cached avatar. */
+    private fun AvatarCacheMetadataEntity.toCacheMetadataOrNull(
         owner: RaftAvatarCacheOwner,
         subject: RaftAvatarCacheSubject
-    ): RaftAvatarCacheMetadata {
+    ): RaftAvatarCacheMetadata? {
         val storedKey =
             RaftAvatarCacheKey(
                 owner = owner,
                 subject = subject,
                 content =
                     RaftAvatarContentIdentity(
-                        kind = RaftAvatarContentKind.fromStorage(contentKind),
+                        kind = RaftAvatarContentKind.fromStorage(contentKind) ?: return null,
                         fingerprint = contentFingerprint
                     )
             )
@@ -218,7 +219,7 @@ internal class SqlDelightRaftAvatarCacheMetadataStore(
                 subjectKind = subject.subjectKind,
                 subjectId = subject.subjectId,
                 memberKind = subject.memberKind
-            ).executeAsOneOrNull()?.toCacheMetadata(owner, subject)
+            ).executeAsOneOrNull()?.toCacheMetadataOrNull(owner, subject)
         val failure =
             database.queries.selectAvatarCacheFailure(
                 environmentId = owner.environmentId,

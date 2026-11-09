@@ -261,9 +261,10 @@ class RaftSettingsComputersModelTest {
         assertEquals("user-1", creator.id)
         assertEquals("artin", creator.name)
         assertEquals("Artin", creator.displayName)
-        assertTrue(creator.avatarWireValue.orEmpty().contains(hash), "a person without a photo falls back to their Gravatar")
+        // Gravatar is retired (slock #13674): a hash on the wire draws the placeholder person.
+        assertNull(creator.avatarWireValue, "a person without a photo is the placeholder")
 
-        // No display name: the handle stands in; no photo and no Gravatar: the placeholder person.
+        // No display name: the handle stands in; no photo: the placeholder person.
         val bare =
             model(
                 computer("c-2", isComputer = true).copy(

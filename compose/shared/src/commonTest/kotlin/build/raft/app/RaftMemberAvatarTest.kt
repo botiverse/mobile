@@ -68,10 +68,12 @@ class RaftMemberAvatarTest {
     @Test
     fun carriedValuesAreFilteredLikeAProfilesOwnAvatar() {
         val identity = RaftMemberAvatarIdentity(MemberKind.Human, "artin", ServerKey)
-        // A person shows only an uploaded avatar or a Gravatar, as MemberProfile's helpers do.
+        // A person shows only an uploaded avatar, as MemberProfile's helpers do.
         assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = null, carriedAvatarWireValue = "https://example.com/photo.png"))
+        // A retired Gravatar value (slock #13674), carried or saved, is the placeholder.
         val gravatar = "gravatar:" + "a".repeat(64)
-        assertEquals(gravatar, raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = null, carriedAvatarWireValue = gravatar))
+        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = null, carriedAvatarWireValue = gravatar))
+        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = gravatar, carriedAvatarWireValue = null))
         // No person kind (an external author): the carried value as it is.
         assertEquals(
             "https://example.com/ext.png",

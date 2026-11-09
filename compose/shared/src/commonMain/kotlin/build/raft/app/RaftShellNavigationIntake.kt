@@ -22,6 +22,9 @@ internal interface RaftShellNavigationIntakeHost {
      */
     suspend fun resolveMessageLink(taken: RaftPendingMessageLink): WindowNavigationIntent?
 
+    /** Opens a taken Artifact link ([RaftArtifactLinkInbox]) in the in-app viewer, over whatever is shown. */
+    fun openArtifactLink(taken: RaftPendingArtifactLink)
+
     /** The coordinator's readiness, or null while Home may not start (nothing advances). */
     fun readiness(): WindowNavigationReadiness?
 
@@ -34,7 +37,8 @@ internal interface RaftShellNavigationIntakeHost {
 }
 
 /**
- * #4260: external message links ([RaftMessageLinkInbox]) and notification opens are taken and
+ * #4260: external message links ([RaftMessageLinkInbox]), external Artifact links
+ * ([RaftArtifactLinkInbox], opened straight in the viewer) and notification opens are taken and
  * opened here, outside the app shell's composition. On a phone a conversation is its own page over
  * the shell, and a covered shell does not recompose, so an effect keyed on the pending link or a
  * notification tick waited until Back. This intake wakes on [enqueue] / [wake] and on every new
@@ -45,6 +49,7 @@ internal interface RaftShellNavigationIntakeHost {
 internal class RaftShellNavigationIntake(
     private val coordinator: SharedWindowNavigationCoordinator,
     private val inbox: RaftMessageLinkInbox = RaftMessageLinkInbox.Process,
+    private val artifactInbox: RaftArtifactLinkInbox = RaftArtifactLinkInbox.Process,
 ) {
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
 
@@ -60,7 +65,9 @@ internal class RaftShellNavigationIntake(
     suspend fun run(host: RaftShellNavigationIntakeHost) {
         coroutineScope {
             launch { inbox.pending.collect { pending -> if (pending != null) wake() } }
+            launch { artifactInbox.pending.collect { pending -> if (pending != null) wake() } }
             for (ignored in wakeups) {
+                takeArtifactLink(host)?.let(host::openArtifactLink)
                 takeMessageLink(host)?.let { taken ->
                     launch {
                         val intent = host.resolveMessageLink(taken) ?: return@launch
@@ -85,6 +92,18 @@ internal class RaftShellNavigationIntake(
             return null
         }
         host.log("message_link_take id=${taken.id} source=${taken.source}")
+        return taken
+    }
+
+    private fun takeArtifactLink(host: RaftShellNavigationIntakeHost): RaftPendingArtifactLink? {
+        val pending = artifactInbox.pending.value ?: return null
+        if (!host.messageLinkSessionReady()) return null
+        val taken = artifactInbox.take(pending.id)
+        if (taken == null) {
+            host.log("artifact_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
+            return null
+        }
+        host.log("artifact_link_take id=${taken.id} source=${taken.source}")
         return taken
     }
 

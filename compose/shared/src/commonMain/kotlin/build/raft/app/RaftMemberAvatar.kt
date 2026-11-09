@@ -8,8 +8,8 @@ import androidx.compose.ui.unit.Dp
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.MemberKind
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.model.gravatarHashOrNull
 
 /**
  * Who a face belongs to: enough to look the person up in their server's member directory.
@@ -28,7 +28,7 @@ internal data class RaftMemberAvatarIdentity(
  *    directory's avatar (a known agent with none already wears its default), else the avatar last
  *    saved for the id while the directory has none;
  * 2. [carriedAvatarWireValue], the avatar the row itself carries (a wire payload's), filtered as a
- *    profile's own avatar is (a person shows only an uploaded image or a Gravatar);
+ *    profile's own avatar is (a person shows only an uploaded image; a retired `gravatar:` value is none);
  * 3. the kind's own default: an agent's pixel robot. A person with none stays null (the caller's
  *    label / placeholder).
  */
@@ -37,15 +37,15 @@ internal fun raftMemberAvatarWireValue(
     resolvedAvatarWireValue: String?,
     carriedAvatarWireValue: String? = null,
 ): String? {
-    resolvedAvatarWireValue?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-    val carried = carriedAvatarWireValue?.trim()?.takeIf { it.isNotEmpty() }
+    // A retired Gravatar value (`gravatar:<hash>`, from a cache or snapshot) is no avatar.
+    resolvedAvatarWireValue?.appAvatarWireValueOrNull()?.let { return it }
+    val carried = carriedAvatarWireValue?.appAvatarWireValueOrNull()
     val kind = identity.kind
     if (kind != MemberKind.Human && kind != MemberKind.Agent) return carried
     return avatarWireValueForAvatarSlot(
         kind = kind,
         id = identity.memberId?.trim().orEmpty(),
         avatarWireValue = carried,
-        gravatarHash = carried?.gravatarHashOrNull(),
     )
 }
 

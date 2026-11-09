@@ -342,7 +342,6 @@ private fun ThreadHiddenHistoryRow(message: HiddenHistoryMessage, timeContext: R
                 kind = it,
                 id = message.senderId,
                 avatarWireValue = message.senderAvatarUrl,
-                gravatarHash = message.senderGravatarHash,
             )
         }
     // The message row's rhythm: a turn's 8 on top, 4 inside, the 35dp gutter and its 12 gap.

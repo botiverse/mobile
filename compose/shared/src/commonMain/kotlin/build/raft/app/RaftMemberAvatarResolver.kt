@@ -64,14 +64,13 @@ private fun jointActorRefOrNull(kind: MemberKind?, memberId: String?): ActorReso
     return ActorResolveRef(kind = kind, id = id)
 }
 
-/** The resolved actor's own avatar (uploaded image, or a same-server person's Gravatar), else null. */
+/** The resolved actor's own avatar (its uploaded image), else null. */
 internal fun ResolvedActor.explicitAvatarWireValue(): String? =
     resolveAvatarSlot(
         kind = kind,
         id = id,
         avatarWireValue = null,
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
     ).displayAvatarWireValue
 
 /** What a message row paints for the resolved actor: its own avatar, or an agent's default face. */
@@ -81,7 +80,6 @@ internal fun ResolvedActor.renderedAvatarWireValue(): String? =
         id = id,
         avatarWireValue = null,
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
     )
 
 internal val EmptyRaftMemberAvatarResolver =

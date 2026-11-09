@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.updatedAgentIdOrNull
 import build.raft.app.data.raftDedupeKey
 import build.raft.app.data.ArchivedNameCollision
@@ -5280,6 +5281,15 @@ private fun RaftAppShellReadyContent(
             }
         }
     }
+    // An external Artifact link (`/s/{slug}/artifacts?artifact=…`, slock #13670): the in-app
+    // viewer, over whatever is shown; its web page in the browser only when no page can open here.
+    val latestOpenArtifactLink by rememberUpdatedState<(RaftPendingArtifactLink) -> Unit> { taken ->
+        RaftArtifactOpenTrace.tap("deep_link", taken.target.id)
+        if (!pager.openRaftArtifactViewerPage(taken.target, navigationStoreScope)) {
+            RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
+            linkNavigator.open(artifactWebUrl(sharedStores.apiEnvironmentStore.current().webUrl, taken.target))
+        }
+    }
     // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
     val latestNavigationTopPageRoute by rememberUpdatedState {
         if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
@@ -5291,6 +5301,8 @@ private fun RaftAppShellReadyContent(
 
                 override suspend fun resolveMessageLink(taken: RaftPendingMessageLink): WindowNavigationIntent? =
                     latestResolveMessageLink(taken)
+
+                override fun openArtifactLink(taken: RaftPendingArtifactLink) = latestOpenArtifactLink(taken)
 
                 override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
 

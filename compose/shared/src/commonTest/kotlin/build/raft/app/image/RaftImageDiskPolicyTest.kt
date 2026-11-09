@@ -55,7 +55,6 @@ class RaftImageDiskPolicyTest {
 
     @Test
     fun onlyRaftImmutableAvatarUrlsNeverExpire() {
-        assertTrue(raftNetworkImageExpires("https://www.gravatar.com/avatar/0123456789abcdef0123456789abcdef?s=96"))
         assertTrue(raftNetworkImageExpires("https://example.com/logo.png"))
         assertFalse(raftNetworkImageExpires("https://app.raft.build/api/avatars/users/0123456789abcdef0123456789abcdef.webp"))
     }
