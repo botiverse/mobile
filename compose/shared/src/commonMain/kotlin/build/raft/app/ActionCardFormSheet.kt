@@ -154,7 +154,6 @@ internal fun RaftActionCardFormSheet(
             title = form.title.render(locale),
             commitLabel = state.commitLabel(values, locale, nextLabel),
             onCommit = { state.commit(values, submitting, onSubmit) },
-            commitEnabled = !state.pending(values),
             commitLoading = submitting,
             closeLabel = stringResource(Res.string.common_close),
             cancelLabel = stringResource(Res.string.common_cancel),
@@ -182,8 +181,10 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
     displayLocale: String = ActionCardFormDefaultLocale,
     /** The page of a form with steps the fixture shows (0-based). */
     page: Int = 0,
+    /** Next or the submit already tried on that page: a required Choice unanswered says what it lacks. */
+    tried: Boolean = false,
 ) {
-    val state = rememberActionCardFormSheetState(form, fieldErrors, initialPage = page)
+    val state = rememberActionCardFormSheetState(form, fieldErrors, initialPage = page, initialTried = tried)
     val nextLabel = stringResource(Res.string.action_card_question_next)
     RaftDialogSheetSurface(
         title = form.title.render(displayLocale),
@@ -191,7 +192,6 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
         onCommit = {},
         onClose = {},
         modifier = modifier,
-        commitEnabled = !state.pending(values),
         commitLoading = submitting,
         closeLabel = stringResource(Res.string.common_close),
         closeEnabled = !submitting,
@@ -208,6 +208,7 @@ private class ActionCardFormSheetState(
     private val serverIssues: List<ActionCardFormIssue>,
     clientIssuesState: MutableState<List<ActionCardFormIssue>>,
     private val pageState: MutableState<Int>,
+    triedPagesState: MutableState<Set<Int>>,
 ) {
     private var clientIssues by clientIssuesState
     private var editedSinceServer by mutableStateOf(emptySet<String>())
@@ -229,6 +230,10 @@ private class ActionCardFormSheetState(
 
     /** A required Choice of this page still unanswered holds Next or the submit back (A′). */
     fun pending(values: Map<String, ActionCardFormValue>): Boolean = actionCardFormHasPendingChoice(pageFields, values)
+
+    /** The pages whose Next or submit was tried with a required Choice unanswered: only they say what it lacks. */
+    private var triedPages by triedPagesState
+    val pendingShown: Boolean get() = page in triedPages
 
     /** The commit's label: Next before the last page, else the form's (with `submitLabels`, the chosen one's). */
     fun commitLabel(values: Map<String, ActionCardFormValue>, locale: String, nextLabel: String): String =
@@ -254,11 +259,15 @@ private class ActionCardFormSheetState(
     /**
      * The commit, and Enter in a text field: Next checks only this page's fields (the problems of the
      * other pages stay as they were) and turns the page; on the last page everything is checked and
-     * submitted, a problem on another page turning to it. Nothing while submitting or while a required
-     * Choice of this page is unanswered.
+     * submitted, a problem on another page turning to it. Nothing while submitting; while a required
+     * Choice of this page is unanswered, only what it lacks shows under it.
      */
     fun commit(values: Map<String, ActionCardFormValue>, submitting: Boolean, onSubmit: (Map<String, ActionCardFormValue>) -> Unit) {
-        if (submitting || pending(values)) return
+        if (submitting) return
+        if (pending(values)) {
+            triedPages = triedPages + page
+            return
+        }
         if (!lastPage) {
             val names = pageFields.mapTo(HashSet()) { it.name }
             val pageIssues = checkActionCardFormValues(form.copy(fields = pageFields), values)
@@ -289,10 +298,12 @@ private fun rememberActionCardFormSheetState(
     form: ActionCardSpecForm,
     fieldErrors: List<ActionCardFormIssue>,
     initialPage: Int = 0,
+    initialTried: Boolean = false,
 ): ActionCardFormSheetState {
     val clientIssues = remember(form) { mutableStateOf(emptyList<ActionCardFormIssue>()) }
     val page = remember(form) { mutableStateOf(initialPage) }
-    return remember(form, fieldErrors, clientIssues, page) { ActionCardFormSheetState(form, fieldErrors, clientIssues, page) }
+    val triedPages = remember(form) { mutableStateOf(if (initialTried) setOf(initialPage) else emptySet()) }
+    return remember(form, fieldErrors, clientIssues, page, triedPages) { ActionCardFormSheetState(form, fieldErrors, clientIssues, page, triedPages) }
 }
 
 @Composable
@@ -343,7 +354,7 @@ private fun ColumnScope.ActionCardFormBody(
         // A form with an unsupported field never opens (its button reads "Open in web").
         state.pageFields.forEach { field ->
             val error = state.issueFor(field.name)?.message?.render(locale)
-            ActionCardFormField(field, values[field.name], { update(field.name, it) }, error, enabled, candidates, locale, agentStatusResolver, onEnter)
+            ActionCardFormField(field, values[field.name], { update(field.name, it) }, error, enabled, candidates, locale, agentStatusResolver, onEnter, state.pendingShown)
         }
     }
 }
@@ -359,6 +370,7 @@ private fun ActionCardFormField(
     locale: String,
     agentStatusResolver: RaftAgentStatusResolver,
     onEnter: () -> Unit,
+    showPending: Boolean,
 ) {
     val label = field.label.render(locale)
     val description = field.description?.render(locale)
@@ -425,6 +437,7 @@ private fun ActionCardFormField(
                 enabled = enabled,
                 locale = locale,
                 onEnter = onEnter,
+                showPending = showPending,
             )
         is ActionCardSpecPickerField ->
             RaftField(label = label, description = description, error = error, enabled = enabled, required = field.required == true) {
@@ -482,6 +495,7 @@ internal fun ActionCardChoiceField(
     onEnter: () -> Unit,
     number: Int? = null,
     onPicked: (() -> Unit)? = null,
+    showPending: Boolean = false,
 ) {
     val other = field.other
     val otherChosen = other != null && value.other != null
@@ -489,8 +503,8 @@ internal fun ActionCardChoiceField(
     var otherDraft by remember { mutableStateOf(value.other.orEmpty()) }
     // Other was just chosen by a tap: its input takes focus once drawn.
     var focusOther by remember { mutableStateOf(false) }
-    // A required Choice speaks only to someone who can answer it, and not over an issue.
-    val pending = if (field.required == true && enabled && error == null) actionCardChoicePending(value) else null
+    // A required Choice speaks only to someone who can answer it, once they tried to go on, and not over an issue.
+    val pending = if (field.required == true && enabled && showPending && error == null) actionCardChoicePending(value) else null
     val label = field.label.render(locale)
     RaftField(
         label = if (number != null) "$number. $label" else label,
