@@ -501,6 +501,126 @@ class ThreadPendingSendStoreIntegrationTest {
         }
     }
 
+    /**
+     * proj-mobile#66 (follow-up of #3848): a send in flight on server A fails after the user
+     * switched to server B. The switch is an auth revision advance for the same account, so
+     * `rehomeAuthRevision` has already moved A's journal row to the successor generation. The
+     * failure must still land on that row (A's own channel), show as failed with Retry when the
+     * user returns to A, and survive a restart.
+     *
+     * Variant: A's page store has not re-read the identity since the switch (its provenance is
+     * still A's), which is the path that logged `pending_journal_write_failed`.
+     */
+    @Test
+    fun sendFailingAfterServerSwitchIsJournaledAsFailedForItsOwnServer() = runTest {
+        sendFailingAfterServerSwitchScenario(pageSawServerB = false)
+    }
+
+    /** Same, when A's page store already observed server B before the failure arrived. */
+    @Test
+    fun sendFailingAfterServerSwitchIsJournaledEvenWhenThePageAlreadySeesServerB() = runTest {
+        sendFailingAfterServerSwitchScenario(pageSawServerB = true)
+    }
+
+    private suspend fun sendFailingAfterServerSwitchScenario(pageSawServerB: Boolean) {
+        withDatabase { path ->
+            val serverA = identity().copy(bindingGeneration = 3L)
+            var current = serverA
+            val api = FakeThreadApi()
+            val diagnostics = mutableListOf<String>()
+            val first =
+                openWithIdentityProvider(
+                    path = path,
+                    api = api,
+                    identityProvider = { current },
+                    diagnostics = diagnostics,
+                )
+            first.store.accept(SharedThreadIntent.Start(basePayload()))
+            val provenanceA = requireNotNull(first.dataSource.currentReplyCacheProvenance())
+            val routeA = first.store.state.value.payload.resolveThreadRouteIdentity()
+            val pending = pendingMessage("local-send-switch", "random-switch", createdAt = 10L)
+            assertTrue(first.store.admitLocalSend(pending, provenanceA, routeA))
+
+            // Switch to server B: the account's auth revision advances (journal rows rehomed, as
+            // RaftSharedStoreProvider's onBindingAuthRevisionRotated does) and the selection moves.
+            assertEquals(
+                1,
+                first.journal.rehomeAuthRevision(
+                    environmentId = serverA.environmentId,
+                    principalId = serverA.principalId,
+                    fromAuthGeneration = serverA.authGeneration,
+                    toAuthGeneration = serverA.authGeneration + 1L,
+                ),
+            )
+            current =
+                serverA.copy(
+                    session = serverA.session.copy(selectedServerId = "server-2"),
+                    serverId = "server-2",
+                    authGeneration = serverA.authGeneration + 1L,
+                    selectionGeneration = serverA.selectionGeneration + 1L,
+                )
+            if (pageSawServerB) {
+                assertEquals("server-2", first.dataSource.captureReplyCacheProducerContext()?.provenance?.serverId)
+            }
+
+            // A's request now fails.
+            first.store.accept(
+                SharedThreadIntent.ApplyLocalSendFailure(
+                    messageId = pending.id,
+                    errorCode = "http_400",
+                    errorMessage = "bad request",
+                    expectedProvenance = provenanceA,
+                    expectedRoute = routeA,
+                    randomId = "random-switch",
+                )
+            )
+            assertTrue(
+                diagnostics.none { it.contains("pending_journal_write_failed") },
+                "the failure write must not be blocked: $diagnostics",
+            )
+            val journaled = first.journal.restore(provenanceA, routeA).single { it.id == pending.id }
+            assertEquals(ThreadMessageDeliveryFailed, journaled.deliveryState, "A's row must record the failure")
+            assertEquals("http_400", journaled.pendingSendErrorCode)
+
+            // Back on server A (another switch, another revision): the page shows it failed, with Retry.
+            assertEquals(
+                1,
+                first.journal.rehomeAuthRevision(
+                    environmentId = serverA.environmentId,
+                    principalId = serverA.principalId,
+                    fromAuthGeneration = serverA.authGeneration + 1L,
+                    toAuthGeneration = serverA.authGeneration + 2L,
+                ),
+            )
+            val backOnA =
+                serverA.copy(
+                    authGeneration = serverA.authGeneration + 2L,
+                    selectionGeneration = serverA.selectionGeneration + 2L,
+                )
+            current = backOnA
+            first.scope.cancel()
+            first.driver.close()
+
+            val returned = open(path, api, backOnA)
+            returned.store.accept(SharedThreadIntent.Start(basePayload()))
+            val shown = returned.store.state.value.payload.messages.single { it.id == pending.id }
+            assertEquals(ThreadMessageDeliveryFailed, shown.deliveryState)
+            assertEquals("http_400", shown.pendingSendErrorCode)
+            returned.scope.cancel()
+            returned.driver.close()
+
+            // And after an app restart.
+            val restarted = open(path, api, backOnA)
+            restarted.store.accept(SharedThreadIntent.Start(basePayload()))
+            val afterRestart = restarted.store.state.value.payload.messages.single { it.id == pending.id }
+            assertEquals(ThreadMessageDeliveryFailed, afterRestart.deliveryState)
+            assertEquals("http_400", afterRestart.pendingSendErrorCode)
+            assertEquals(0, api.sendMessageCalls, "a failed send waits for the user's Retry")
+            restarted.scope.cancel()
+            restarted.driver.close()
+        }
+    }
+
     private data class Opened(
         val driver: JdbcSqliteDriver,
         val journal: ThreadPendingSendJournal,
@@ -534,6 +654,7 @@ class ThreadPendingSendStoreIntegrationTest {
         identityProvider: () -> ThreadReplyCacheIdentitySnapshot,
         failureInjector: ThreadPendingSendJournalFailureInjector? = null,
         threadParseDispatcher: CoroutineDispatcher? = null,
+        diagnostics: MutableList<String>? = null,
     ): Opened {
         val driver = JdbcSqliteDriver(url(path))
         val journal =
@@ -557,7 +678,12 @@ class ThreadPendingSendStoreIntegrationTest {
             driver = driver,
             journal = journal,
             dataSource = dataSource,
-            store = SharedThreadStore(dataSource = dataSource, scope = scope),
+            store =
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = scope,
+                    diagnosticsLogger = diagnostics?.let { lines -> { line: String -> lines += line } },
+                ),
             scope = scope,
         )
     }

@@ -184,6 +184,51 @@ internal class ThreadPendingSendJournal(
         }.getOrDefault(false)
     }
 
+    /**
+     * Live-send failure marking, bound to the send that owns the row (proj-mobile#66).
+     *
+     * [provenance] is the identity the send was admitted under, not the currently selected
+     * server. The row is found by its stable identity (environment, account, server), route,
+     * local id and randomId, at whatever generation it now has: a server switch while the
+     * request was in flight advances the account's auth revision and rehomes the row
+     * ([rehomeAuthRevision]), which the generation-fenced [markFailed] cannot see. The randomId
+     * keeps the update to this one send even when an older launch left a row with the same
+     * local id. Only an existing row is updated; a row already consumed or retired with its
+     * account stays gone.
+     */
+    fun markFailedForSendOwner(
+        provenance: ReplyCacheProvenance,
+        route: ThreadRouteIdentity,
+        localId: String,
+        randomId: String,
+        errorCode: String?,
+        errorMessage: String?,
+    ): Boolean = synchronized(lock) {
+        val cleanLocalId = localId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
+        val cleanRandomId = randomId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
+        runCatching {
+            val row =
+                stableIdentityRows(provenance)
+                    .filter { candidate ->
+                        candidate.localId == cleanLocalId &&
+                            candidate.randomId == cleanRandomId &&
+                            candidate.matchesRoute(route)
+                    }
+                    .singleOrNull()
+                    ?: return@runCatching false
+            database.queries.updateThreadPendingSendFailureForSendOwner(
+                lastErrorCode = errorCode,
+                lastErrorMessage = errorMessage,
+                environmentId = provenance.environmentId,
+                principalId = provenance.principalId,
+                serverId = provenance.serverId,
+                routeInstanceKey = row.routeInstanceKey,
+                localId = cleanLocalId,
+                randomId = cleanRandomId,
+            ).value == 1L
+        }.getOrDefault(false)
+    }
+
     fun markFailed(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
