@@ -65,6 +65,9 @@ object RaftTextFieldDefaults {
      */
     val Height: Dp = 44.dp
 
+    /** [RaftTextFieldSize.Md]: `h-8`, a [RaftPickerTriggerButton]'s height. */
+    val HeightMd: Dp = 32.dp
+
     /** `min-h-24`: a textarea is never shorter than 96dp. */
     val TextareaMinHeight: Dp = 96.dp
 
@@ -110,6 +113,18 @@ enum class RaftTextFieldAddonVariant {
      * For a field with no icon addon on that side.
      */
     Container,
+}
+
+/**
+ * raft-ui 0.78 InputGroup `size`: [Lg] (the default) is `h-control`, 44dp for a finger and the
+ * pointer's control height under a mouse; [Md] is `h-8`, 32dp, the height of a
+ * [RaftPickerTriggerButton] and a `md` Button, for a field that sits in a toolbar row beside
+ * them (web Artifacts home's phone search beside its sort). A minimum either way, so a large
+ * font scale still grows the box.
+ */
+enum class RaftTextFieldSize {
+    Lg,
+    Md,
 }
 
 /** Resolved colours of a field box (input, input group, textarea) in one state. */
@@ -216,6 +231,7 @@ fun RaftTextField(
     trailingAction: (@Composable () -> Unit)? = null,
     leadingAction: (@Composable () -> Unit)? = null,
     addonVariant: RaftTextFieldAddonVariant = RaftTextFieldAddonVariant.Default,
+    size: RaftTextFieldSize = RaftTextFieldSize.Lg,
 ) {
     RaftTextField(
         state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
@@ -235,6 +251,7 @@ fun RaftTextField(
         trailingAction = trailingAction,
         leadingAction = leadingAction,
         addonVariant = addonVariant,
+        size = size,
     )
 }
 
@@ -259,6 +276,7 @@ fun RaftTextField(
     trailingAction: (@Composable () -> Unit)? = null,
     leadingAction: (@Composable () -> Unit)? = null,
     addonVariant: RaftTextFieldAddonVariant = RaftTextFieldAddonVariant.Default,
+    size: RaftTextFieldSize = RaftTextFieldSize.Lg,
 ) {
     RaftTextField(
         state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
@@ -278,6 +296,7 @@ fun RaftTextField(
         trailingAction = trailingAction,
         leadingAction = leadingAction,
         addonVariant = addonVariant,
+        size = size,
     )
 }
 
@@ -305,6 +324,7 @@ fun RaftTextField(
     trailingAction: (@Composable () -> Unit)? = null,
     leadingAction: (@Composable () -> Unit)? = null,
     addonVariant: RaftTextFieldAddonVariant = RaftTextFieldAddonVariant.Default,
+    size: RaftTextFieldSize = RaftTextFieldSize.Lg,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
@@ -326,7 +346,7 @@ fun RaftTextField(
         cursorBrush = SolidColor(RaftTheme.colors.foreground),
         outputTransformation = outputTransformation,
         decorator = { inner ->
-            RaftInputBox(look, focused, state.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, leadingAction, addonVariant, inner)
+            RaftInputBox(look, focused, state.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, leadingAction, addonVariant, inner, size)
         },
     )
 }
@@ -562,6 +582,7 @@ private fun RaftInputBox(
     leadingAction: (@Composable () -> Unit)?,
     addonVariant: RaftTextFieldAddonVariant,
     inner: @Composable () -> Unit,
+    size: RaftTextFieldSize = RaftTextFieldSize.Lg,
 ) {
     // input-group.tsx: an addon is `px-3`, trimmed to 8dp (icon) / 2dp (text) on the
     // control's side, and the control drops its own padding on that side. All of it sits
@@ -583,7 +604,7 @@ private fun RaftInputBox(
         Modifier
             .fillMaxWidth()
             // A minimum, so text at a large font scale grows the box instead of clipping.
-            .heightIn(min = RaftTheme.controls.height)
+            .heightIn(min = if (size == RaftTextFieldSize.Md) RaftTextFieldDefaults.HeightMd else RaftTheme.controls.height)
             // A container cell runs the box's full height (`self-stretch`).
             .then(if (container) Modifier.height(IntrinsicSize.Min) else Modifier)
             .raftFieldChrome(look, focused)

@@ -1,11 +1,16 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -17,6 +22,10 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -44,6 +53,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -235,6 +245,79 @@ class ArtifactsHomeUiTest {
         onAllNodesWithTag(ArtifactsHomeTags.Row).assertCountEquals(2)
         onAllNodes(hasContentDescription("Launch plan, ", substring = true)).assertCountEquals(1)
     }
+
+    /**
+     * Masonry: a tall tile doesn't push the tile beside it down. Each column packs its own, so
+     * the third tile sits right under the short first one (one gap), not under the tall second
+     * one, and Load more spans the full width.
+     */
+    @Test
+    fun theGridIsMasonryAndLoadMoreSpansTheLine() = runRobolectricComposeUiTest {
+        setContent {
+            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                ArtifactsHomeScreen(
+                    state = loaded(rows = listOf(row("pt_a", "Short"), row("pt_b", "Tall"), row("pt_c", "Next")), nextCursor = "c1"),
+                    view = ArtifactsHomeView.Grid,
+                    readerId = "me",
+                    serverName = null,
+                    wide = false,
+                    onIntent = { intents += it },
+                    onView = {},
+                    onOpen = {},
+                    onBack = {},
+                    cover = { row -> Box(Modifier.fillMaxWidth().height(if (row.summary.id == "pt_b") 240.dp else 40.dp)) },
+                )
+            }
+        }
+        val tiles = onAllNodesWithTag(ArtifactsHomeTags.Tile)
+        tiles.assertCountEquals(3)
+        val first = tiles[0].getUnclippedBoundsInRoot()
+        val second = tiles[1].getUnclippedBoundsInRoot()
+        val third = tiles[2].getUnclippedBoundsInRoot()
+        assertNear(first.left, third.left)
+        assertTrue(second.left > first.left)
+        // Under the short first tile, 8dp down: not below the tall second one's bottom.
+        assertNear(first.bottom + 8.dp, third.top)
+        assertTrue(third.top < second.bottom)
+        val more = onNodeWithTag(ArtifactsHomeTags.More).getUnclippedBoundsInRoot()
+        assertTrue(more.top >= maxOf(second.bottom, third.bottom))
+    }
+
+    /**
+     * artin's review of the head, against the web's phone toolbar (ArtifactDashboardToolbar.tsx):
+     * the view toggle at the head's trailing end, icons only; the search (InputGroup `md`) and the
+     * sort (its icon and chevron) one 32dp height, on the 16dp margins the tiles keep.
+     */
+    @Test
+    fun theHeadAndToolbarSitOnOneGrid() = runRobolectricComposeUiTest {
+        show(loaded(rows = listOf(row("pt_a", "Launch plan"), row("pt_b", "Metrics"))), view = ArtifactsHomeView.Grid)
+        val page = onNodeWithTag(ArtifactsHomeTags.Page).getUnclippedBoundsInRoot()
+        val toggle = onNodeWithTag(ArtifactsHomeTags.ViewList).getUnclippedBoundsInRoot()
+        val search = onNodeWithTag(ArtifactsHomeTags.Search, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val sort = onNodeWithTag(ArtifactsHomeTags.Sort).getUnclippedBoundsInRoot()
+        val tiles = onAllNodesWithTag(ArtifactsHomeTags.Tile)
+        val firstTile = tiles[0].getUnclippedBoundsInRoot()
+        val secondTile = tiles[1].getUnclippedBoundsInRoot()
+        // At the head's end: the last segment ends within the track's 3dp inset of the 16dp margin.
+        assertTrue(toggle.right <= page.right - 16.dp + 0.5.dp && toggle.right >= page.right - 16.dp - 3.5.dp, "toggle ends at ${toggle.right}, page ${page.right}")
+        assertTrue(toggle.left > search.left + search.width / 2)
+        // Icons only on a phone: the labels are names and tooltips, not text on the head.
+        onAllNodesWithText("Grid").assertCountEquals(0)
+        onAllNodesWithText("Recently opened").assertCountEquals(0)
+        onNodeWithText("Search", useUnmergedTree = true).assertExists()
+        // The search and the sort: one height (a picker trigger's 32dp), one top, the 16dp margins.
+        assertNear(32.dp, search.height)
+        assertNear(search.height, sort.height)
+        assertNear(search.top, sort.top)
+        assertNear(page.left + 16.dp, search.left)
+        assertNear(page.right - 16.dp, sort.right)
+        // The tiles below keep the same edges.
+        assertNear(search.left, firstTile.left)
+        assertNear(sort.right, secondTile.right)
+    }
+
+    private fun assertNear(expected: Dp, actual: Dp) = assertTrue(kotlin.math.abs(expected.value - actual.value) < 0.5f, "expected $expected, was $actual")
 
     /** Review M1: Russian counts take their few / many forms (files/plurals/ru.json). */
     @Test

@@ -398,7 +398,10 @@ private fun RaftPickerTriggerContent(
         val labelMax =
             if (constraints.hasBoundedWidth) (constraints.maxWidth - fixed).coerceAtLeast(0) else Constraints.Infinity
         val labelPlaceable = measurables.first { it.layoutId == PickerTriggerLabelId }.measure(loose.copy(maxWidth = labelMax))
-        val width = (fixed + labelPlaceable.width).coerceIn(constraints.minWidth, constraints.maxWidth)
+        // No label (an icon-and-chevron trigger, web `max-md:hidden` on the label): one gap
+        // between the marks, as a flex row skips a hidden child.
+        val labelGap = if (labelPlaceable.width == 0 && leadingPlaceable != null && trailingPlaceable != null) gap else 0
+        val width = (fixed - labelGap + labelPlaceable.width).coerceIn(constraints.minWidth, constraints.maxWidth)
         val height =
             maxOf(labelPlaceable.height, leadingPlaceable?.height ?: 0, trailingPlaceable?.height ?: 0)
                 .coerceIn(constraints.minHeight, constraints.maxHeight)
@@ -409,7 +412,7 @@ private fun RaftPickerTriggerContent(
                 x += it.width + gap
             }
             labelPlaceable.placeRelative(x, (height - labelPlaceable.height) / 2)
-            x += labelPlaceable.width
+            x += labelPlaceable.width - labelGap
             trailingPlaceable?.placeRelative(x + gap, (height - trailingPlaceable.height) / 2)
         }
     }

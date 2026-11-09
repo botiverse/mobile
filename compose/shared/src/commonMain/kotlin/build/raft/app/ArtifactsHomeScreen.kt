@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,11 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed as staggeredItemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -86,6 +87,8 @@ import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldSize
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -108,7 +111,7 @@ internal fun ArtifactsHomeScreen(
     view: ArtifactsHomeView,
     readerId: String?,
     serverName: String?,
-    /** The shell's wide layout: tiles in auto-fill columns of at least 248dp. */
+    /** The shell's wide layout: masonry tiles in auto-fill columns of at least 248dp (web `minmax(248px,1fr)`). */
     wide: Boolean,
     onIntent: (ArtifactsHomeIntent) -> Unit,
     onView: (ArtifactsHomeView) -> Unit,
@@ -122,10 +125,14 @@ internal fun ArtifactsHomeScreen(
             title = stringResource(Res.string.artifacts_dashboard_title),
             subtitle = "",
             onBack = onBack,
+            // The title takes the room the view toggle leaves, so the toggle sits at the head's
+            // trailing end (artin), on the same 16dp line as the toolbar and the tiles below. The
+            // web puts it at the end of the toolbar's first row (ArtifactDashboardToolbar.tsx:58);
+            // here it has the head's end to itself and the search keeps that row.
             titleContent = { ArtifactsHomeTitle(state) },
             trailingContent =
                 if (state.status != ArtifactsHomeStatus.Off) {
-                    { ArtifactsHomeViewToggle(view, onView) }
+                    { ArtifactsHomeViewToggle(view, wide, onView) }
                 } else {
                     null
                 },
@@ -135,7 +142,7 @@ internal fun ArtifactsHomeScreen(
                     ArtifactsHomeEmpty(stringResource(Res.string.artifacts_dashboard_off_title), testTag = ArtifactsHomeTags.Off)
                     return@Column
                 }
-                ArtifactsHomeToolbar(state, serverName, readerId, onIntent)
+                ArtifactsHomeToolbar(state, serverName, readerId, wide, onIntent)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     ArtifactsHomeList(state, view, readerId, serverName, wide, onIntent, onOpen, cover)
                 }
@@ -167,8 +174,8 @@ internal object ArtifactsHomeTags {
 }
 
 @Composable
-private fun ArtifactsHomeTitle(state: ArtifactsHomeState) {
-    Column(Modifier.padding(vertical = 2.dp)) {
+private fun RowScope.ArtifactsHomeTitle(state: ArtifactsHomeState) {
+    Column(Modifier.weight(1f).padding(vertical = 2.dp)) {
         RaftText(
             stringResource(Res.string.artifacts_dashboard_title),
             style = RaftTheme.typography.headline,
@@ -198,11 +205,11 @@ internal fun artifactsHomeCountLine(total: Int, filtered: Int, narrowed: Boolean
         stringResource(if (total == 1) Res.string.artifacts_dashboard_count_one else Res.string.artifacts_dashboard_count_many, total)
     }
 
-/** web `ViewToggle`: grid first, icons only. */
+/** web `ViewToggle` (ArtifactDashboardToolbar.tsx:85): grid first; icons only on a phone (`iconsOnlyBelow="md"`). */
 @Composable
-private fun ArtifactsHomeViewToggle(view: ArtifactsHomeView, onView: (ArtifactsHomeView) -> Unit) {
+private fun ArtifactsHomeViewToggle(view: ArtifactsHomeView, wide: Boolean, onView: (ArtifactsHomeView) -> Unit) {
     val viewLabel = stringResource(Res.string.artifacts_dashboard_view_label)
-    RaftSegmentedControl(modifier = Modifier.semantics { contentDescription = viewLabel }, iconsOnlyWhenLabelsDontFit = true) {
+    RaftSegmentedControl(modifier = Modifier.semantics { contentDescription = viewLabel }, iconsOnlyWhenLabelsDontFit = true, iconsOnly = !wide) {
         RaftSegment(
             text = stringResource(Res.string.artifacts_dashboard_view_grid),
             selected = view == ArtifactsHomeView.Grid,
@@ -221,11 +228,18 @@ private fun ArtifactsHomeViewToggle(view: ArtifactsHomeView, onView: (ArtifactsH
 }
 
 /**
- * web `DashboardToolbar` (phone): the search, the sort; then the filters in a row that scrolls
- * sideways. Clear all only with both filters set (each has its own Clear in its list).
+ * web `DashboardToolbar`, its phone form (ArtifactDashboardToolbar.tsx:56-67, slock staging
+ * 99ba05aef): the search and the sort on the first row, then the filters (对话, 作者, 和我有关) in
+ * a row that scrolls sideways (ArtifactFilterStrip), Clear its ✕ there. Clear only with both
+ * filters set (each has its own Clear in its list).
+ *
+ * One grid: both rows run between the page's 16dp margins (the tiles' edges), 8dp apart (`gap-2`).
+ * The search is InputGroup `size="md"` (ArtifactDashboardList.tsx:129), so it is a picker
+ * trigger's 32dp, the sort's height; the sort is its icon and chevron on a phone
+ * (ArtifactDashboardToolbar.tsx:120) and the search takes the rest of the row.
  */
 @Composable
-private fun ArtifactsHomeToolbar(state: ArtifactsHomeState, serverName: String?, readerId: String?, onIntent: (ArtifactsHomeIntent) -> Unit) {
+private fun ArtifactsHomeToolbar(state: ArtifactsHomeState, serverName: String?, readerId: String?, wide: Boolean, onIntent: (ArtifactsHomeIntent) -> Unit) {
     val colors = RaftTheme.colors
     var sortOpen by remember { mutableStateOf(false) }
     Column(
@@ -233,22 +247,25 @@ private fun ArtifactsHomeToolbar(state: ArtifactsHomeState, serverName: String?,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         val searchLabel = stringResource(Res.string.artifacts_dashboard_search_label)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RaftTextField(
                 value = state.search,
                 onValueChange = { onIntent(ArtifactsHomeIntent.Search(it.take(ARTIFACTS_HOME_SEARCH_MAX_CHARS))) },
                 modifier = Modifier.weight(1f).testTag(ArtifactsHomeTags.Search).semantics { contentDescription = searchLabel },
-                placeholder = stringResource(Res.string.artifacts_dashboard_search_placeholder),
-                leading = { RaftSlotIcon(RaftLucideIconName.Search) },
+                // web: a phone's first row has room for the one word (`layout.mobileTabBar.search`).
+                placeholder = stringResource(if (wide) Res.string.artifacts_dashboard_search_placeholder else Res.string.home_nav_search),
+                leading = { RaftSlotIcon(RaftLucideIconName.Search, size = 14.dp) },
+                size = RaftTextFieldSize.Md,
             )
             // 和我有关 fixes the order: no sort then (its value is kept for when it goes off).
             if (!state.query.relevant) {
                 Box {
                     val sortLabel = artifactsHomeSortLabel(state.query.sort)
-                    // web: the trigger is named "Sort: Recently opened" (on a phone it is the icon alone there).
+                    // web `SortPicker`: named "Sort: Recently opened"; on a phone the icon and the
+                    // chevron alone, filled once it isn't the default.
                     val sortName = stringResource(Res.string.artifacts_dashboard_sort_label, sortLabel)
                     RaftPickerTriggerButton(
-                        text = sortLabel,
+                        text = if (wide) sortLabel else "",
                         onClick = { sortOpen = true },
                         modifier = Modifier.testTag(ArtifactsHomeTags.Sort).semantics { contentDescription = sortName },
                         hasValue = state.query.sort != ArtifactsHomeSort.Default,
@@ -270,7 +287,7 @@ private fun ArtifactsHomeToolbar(state: ArtifactsHomeState, serverName: String?,
                 }
             }
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             item(key = "conversation") { ArtifactsHomeConversationFilter(state, serverName, onIntent) }
             item(key = "author") { ArtifactsHomeAuthorFilter(state, readerId, onIntent) }
             item(key = "relevant") {
@@ -292,13 +309,23 @@ private fun ArtifactsHomeToolbar(state: ArtifactsHomeState, serverName: String?,
             }
             if (state.query.place != null && state.query.author != null) {
                 item(key = "clear") {
-                    RaftPickerTriggerButton(
-                        text = stringResource(Res.string.artifacts_dashboard_clear_filters),
-                        onClick = { onIntent(ArtifactsHomeIntent.ClearFilters) },
-                        modifier = Modifier.testTag(ArtifactsHomeTags.Clear),
-                        showIndicator = false,
-                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
-                    )
+                    val clearLabel = stringResource(Res.string.artifacts_dashboard_clear_filters)
+                    if (wide) {
+                        RaftButton(
+                            text = clearLabel,
+                            onClick = { onIntent(ArtifactsHomeIntent.ClearFilters) },
+                            modifier = Modifier.testTag(ArtifactsHomeTags.Clear),
+                            variant = RaftButtonVariant.Ghost,
+                        )
+                    } else {
+                        // web: on a phone Clear is its ✕ (a ghost `icon-md`), its words having no room.
+                        RaftIconButton(
+                            onClick = { onIntent(ArtifactsHomeIntent.ClearFilters) },
+                            tooltip = clearLabel,
+                            modifier = Modifier.testTag(ArtifactsHomeTags.Clear),
+                            variant = RaftButtonVariant.Ghost,
+                        ) { RaftSlotIcon(RaftLucideIconName.X) }
+                    }
                 }
             }
         }
@@ -520,20 +547,24 @@ private fun ArtifactsHomeList(
                 failed()
                 ArtifactsHomeEmptyByCause(state, onIntent)
             }
-        view == ArtifactsHomeView.Grid ->
-            LazyVerticalGrid(
-                columns = if (wide) GridCells.Adaptive(248.dp) else GridCells.Fixed(2),
+        // Masonry: tiles differ in height (a one- or two-line title, the sticker, comments), so
+        // each column packs its own; the warning and Load more span the full line.
+        view == ArtifactsHomeView.Grid -> {
+            val gap = if (wide) 12.dp else 8.dp
+            LazyVerticalStaggeredGrid(
+                columns = artifactsHomeGridColumns(wide),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = ArtifactsHomeMargin, end = ArtifactsHomeMargin, top = 8.dp, bottom = 24.dp + raftBottomSafeAreaPadding()),
-                horizontalArrangement = Arrangement.spacedBy(if (wide) 12.dp else 8.dp),
-                verticalArrangement = Arrangement.spacedBy(if (wide) 12.dp else 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+                verticalItemSpacing = gap,
             ) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "failed") { failed() }
-                itemsIndexed(rows, key = { _, row -> row.summary.id }) { _, row ->
+                item(key = "failed", span = StaggeredGridItemSpan.FullLine) { failed() }
+                staggeredItemsIndexed(rows, key = { _, row -> row.summary.id }) { _, row ->
                     ArtifactsHomeTile(row, readerId, serverName, state.rowsByOpened, wide, onOpen = { onOpen(row) }, cover = cover)
                 }
-                item(span = { GridItemSpan(maxLineSpan) }, key = "more") { ArtifactsHomeMore(state, onIntent) }
+                item(key = "more", span = StaggeredGridItemSpan.FullLine) { ArtifactsHomeMore(state, onIntent) }
             }
+        }
         else ->
             LazyColumn(
                 Modifier.fillMaxSize(),
@@ -547,6 +578,12 @@ private fun ArtifactsHomeList(
             }
     }
 }
+
+/** The grid's columns: two on a phone; on a wide layout as many of at least 248dp as fit (web `minmax(248px,1fr)`). */
+internal fun artifactsHomeGridColumns(wide: Boolean): StaggeredGridCells =
+    if (wide) StaggeredGridCells.Adaptive(ArtifactsHomeTileMinWidth) else StaggeredGridCells.Fixed(2)
+
+internal val ArtifactsHomeTileMinWidth: Dp = 248.dp
 
 /** web `InboxItemSkeletonList` count 3, compact, leading. */
 @Composable
@@ -884,8 +921,9 @@ internal fun ArtifactsHomeTilePlaceholder(kind: ArtifactKind) {
 }
 
 /**
- * web `TileCover`'s box: every cover is the tile's width at 16:10 (`aspect-[16/10]`, review L3), so
- * every tile in a row is as tall; what doesn't fit is cut, on `fill-muted`, with a hairline under it.
+ * web `TileCover`'s box: every cover is the tile's width at 16:10 (`aspect-[16/10]`, review L3);
+ * what doesn't fit is cut, on `fill-muted`, with a hairline under it. The text under it still
+ * varies, so the grid is masonry.
  */
 @Composable
 internal fun ArtifactsHomeTileCoverFrame(alignment: Alignment = Alignment.Center, content: @Composable () -> Unit) {

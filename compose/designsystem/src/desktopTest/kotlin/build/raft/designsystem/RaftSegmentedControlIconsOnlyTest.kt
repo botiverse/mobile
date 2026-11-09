@@ -91,6 +91,26 @@ class RaftSegmentedControlIconsOnlyTest {
         assertFalse(raftSegmentIconsOnly(labelledWidth = 301, availableWidth = Int.MAX_VALUE, bounded = false))
     }
 
+    /** raft-ui `iconsOnlyBelow="md"` on a phone: icons only however much room there is. */
+    @Test
+    fun iconsOnlyShowsTheIconsEvenWithRoomForTheLabels() =
+        runComposeUiTest {
+            setContent {
+                RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+                    Box(Modifier.width(600.dp)) {
+                        RaftSegmentedControl(iconsOnly = true) {
+                            labels.forEach { RaftSegment(it, selected = false, onClick = {}, iconsOnlyIcon = { Box(Modifier.size(16.dp)) }) }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            labels.forEach {
+                assertEquals(0, onAllNodesWithText(it).fetchSemanticsNodes().size, "$it text")
+                assertEquals(1, onAllNodesWithContentDescription(it).fetchSemanticsNodes().size, "$it name")
+            }
+        }
+
     @Test
     fun withoutTheOptionTheSegmentsKeepTheirLabels() =
         runComposeUiTest {
