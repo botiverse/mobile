@@ -18,6 +18,9 @@
              RaftTheme.isDark (light icons in the dark theme, values-night). -->
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
+        <!-- The mode's canvas (#FFFAEF / #1B1B19), not the platform's near-white or grey: the
+             task description takes it as the recents card's colour when there is no snapshot. -->
+        <item name="android:colorBackground">@color/raft_window_background</item>
     </style>
 
     <style name="Theme.Raft" parent="Base.Theme.Raft">
