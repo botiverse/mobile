@@ -429,15 +429,39 @@ fun parseSharedAgentActivity(
     AgentActivitySnapshot(
         agentId = agentId,
         activity = memberAgentJson.decodeFromString(ListSerializer(WireActivityLogEntry.serializer()), bodyText)
-            .mapIndexedNotNull { index, row -> row.toDomain(index) },
+            .withActivityRowKeys()
+            .mapNotNull { (row, rowKey) -> row.toDomain(rowKey) },
     )
 }.getOrNull()
 
-private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
+/**
+ * Each log row's key, from the row itself: its content's hash and which repeat of identical content at
+ * that time it is. Never its position in the response: `activity-log` returns the latest window, so a
+ * position shifts every time the window slides, and an id built from it renamed every row on each
+ * reload (the Activity list then rebuilt all rows and lost its place, and merges kept both copies).
+ */
+private fun List<WireActivityLogEntry>.withActivityRowKeys(): List<Pair<WireActivityLogEntry, String>> {
+    val seen = HashMap<String, Int>()
+    return map { row ->
+        val content = "${row.entry.kind}:${row.entry.toString().activityContentHash()}"
+        val atTime = "${row.timestamp}:$content"
+        val repeat = seen[atTime] ?: 0
+        seen[atTime] = repeat + 1
+        row to "$content:$repeat"
+    }
+}
+
+private fun String.activityContentHash(): String {
+    var hash = 0
+    for (char in this) hash = hash * 31 + char.code
+    return hash.toUInt().toString(16)
+}
+
+private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
     when (entry.kind) {
         "thinking" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "thinking",
                 title = "Thinking",
                 body = entry.text,
@@ -452,7 +476,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             } else {
                 val input = entry.toolInput.toToolInputPreview()
                 trajectoryEntry(
-                    index = index,
+                    rowKey = rowKey,
                     type = "tool_start",
                     title = toolName.toToolLogLabel(),
                     body = input,
@@ -469,7 +493,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
         }
         "text" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "text",
                 title = "Output",
                 body = entry.text,
@@ -479,7 +503,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             )
         "slock_action" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "slock_action",
                 title = entry.title?.takeIf { it.isNotBlank() } ?: "Raft action",
                 body = entry.text ?: entry.message,
@@ -488,7 +512,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             )
         "system" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "system",
                 title = entry.title?.takeIf { it.isNotBlank() } ?: "System",
                 body = entry.text ?: entry.message,
@@ -497,13 +521,13 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             )
         "compaction_started" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "compaction_started",
                 title = "Context Compaction Started"
             )
         "compaction_finished" ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "compaction_finished",
                 title = "Context Compaction Finished"
             )
@@ -514,7 +538,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
                 detailKind = entry.detailKind,
             )
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = "status",
                 title = display.first,
                 body = display.second.takeIf { it.isNotBlank() },
@@ -528,7 +552,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
         }
         else ->
             trajectoryEntry(
-                index = index,
+                rowKey = rowKey,
                 type = entry.kind,
                 title = entry.summary ?: entry.activity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
                 body = entry.detail ?: entry.message ?: entry.text ?: entry.toolName ?: entry.name,
@@ -540,7 +564,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
     }
 
 private fun WireActivityLogEntry.trajectoryEntry(
-    index: Int,
+    rowKey: String,
     type: String,
     title: String,
     body: String? = null,
@@ -556,7 +580,7 @@ private fun WireActivityLogEntry.trajectoryEntry(
     refTextEnabled: Boolean = false
 ): AgentActivityEntry =
     AgentActivityEntry(
-        id = "$timestamp:$index",
+        id = "$timestamp:$rowKey",
         type = type,
         title = title,
         body = body?.sanitizeActivityText(),

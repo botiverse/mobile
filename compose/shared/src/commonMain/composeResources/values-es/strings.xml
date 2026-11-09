@@ -3340,6 +3340,8 @@
     <string name="member_activity_overview_app_events_more">Mostrar %1$d más</string>
     <string name="member_activity_overview_app_events_unlisted">%1$d más sin mostrar</string>
     <string name="member_activity_overview_new_turn">Nuevo turno ↓</string>
+    <string name="member_activity_log_new_steps_one">1 paso nuevo</string>
+    <string name="member_activity_log_new_steps_many">%1$d pasos nuevos</string>
     <string name="agent_activity_memory_limit_stopped">Detenido: superó el límite de memoria por agente de esta computadora</string>
     <string name="agent_activity_memory_limit_stopped_with_limit">Detenido: superó el límite de memoria por agente de esta computadora (%1$s)</string>
     <string name="agent_activity_background_oom">Se detuvo un proceso en segundo plano por alcanzar el límite de memoria</string>
