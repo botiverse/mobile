@@ -2322,6 +2322,108 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun aThreadRowPatchedToTheTopStaysThereThroughALaggingServedOrder() = runBlocking {
+        // Hands 62498f69 (artin, 1.22.0): the reader replied in a thread; `message:new` moved its
+        // row to the top, the re-read (warehouse view, one reply behind) put the old head back on
+        // top, and the next read put the thread row back: the first row flipped back and forth.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val head =
+            threadItem("thread-head").copy(
+                parentMessageId = MessageId("parent-head"),
+                replyCount = 5,
+                latestActivityMessageId = MessageId("head-5"),
+                latestActivitySeq = "21060639"
+            )
+        val mine =
+            threadItem("thread-mine").copy(
+                parentMessageId = MessageId("parent-mine"),
+                replyCount = 22,
+                latestActivityMessageId = MessageId("mine-22"),
+                latestActivityPreview = "reply 22",
+                latestActivitySeq = "21060637"
+            )
+        val caughtUp =
+            mine.copy(
+                replyCount = 23,
+                latestActivityMessageId = MessageId("mine-23"),
+                latestActivityPreview = "reply 23",
+                latestActivitySeq = "21060660"
+            )
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(head, mine)),
+                        // The lagging re-read: the served order still has the old head first.
+                        snapshot(listOf(head, mine)),
+                        snapshot(listOf(caughtUp, head))
+                    )
+            )
+        val store = activityStore(scope = scope, inboxRepository = inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val heads = mutableListOf(store.state.value.items.first().key)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("mine-23", channelId = "thread-mine", body = "reply 23", seq = 21060660L))
+            )
+        )
+        heads += store.state.value.items.first().key
+        store.dispatch(SharedActivityIntent.Refresh)
+        heads += store.state.value.items.first().key
+        assertEquals(listOf(mine.key, head.key), store.state.value.items.map(InboxItem::key), "the lagging order does not move the patched row down")
+        assertEquals("reply 23", store.state.value.items.first().latestActivityPreview)
+        store.dispatch(SharedActivityIntent.Refresh)
+        heads += store.state.value.items.first().key
+
+        assertEquals(listOf(head.key, mine.key, mine.key, mine.key), heads, "the first row changes once")
+        assertEquals(listOf(mine.key, head.key), store.state.value.items.map(InboxItem::key))
+        assertEquals("21060660", store.state.value.items.first().latestActivitySeq)
+        scope.cancel()
+    }
+
+    @Test
+    fun aThreadUpdatedOnlyPatchStaysOnTopThroughALaggingServedOrder() = runBlocking {
+        // The joint-channel shape of Hands 62498f69: only `thread:updated` reaches the row.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val head =
+            threadItem("thread-head").copy(
+                parentMessageId = MessageId("parent-head"),
+                replyCount = 5,
+                latestActivityMessageId = MessageId("head-5"),
+                latestActivitySeq = "21060639"
+            )
+        val mine =
+            threadItem("thread-mine").copy(
+                parentMessageId = MessageId("parent-mine"),
+                replyCount = 22,
+                latestActivityMessageId = MessageId("mine-22"),
+                latestActivitySeq = "21060637"
+            )
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(head, mine))))
+        val store = activityStore(scope = scope, inboxRepository = inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-mine"),
+                    threadChannelId = ChannelId("thread-mine"),
+                    replyCount = 23,
+                    lastReplyAt = "2026-11-09T05:41:41Z",
+                    participantIds = emptyList()
+                )
+            )
+        )
+        assertEquals(listOf(mine.key, head.key), store.state.value.items.map(InboxItem::key))
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(listOf(mine.key, head.key), store.state.value.items.map(InboxItem::key))
+        assertEquals(23, store.state.value.items.first().replyCount)
+        scope.cancel()
+    }
+
+    @Test
     fun threadUpdatedAdvancesFreshnessOnlyForAcceptedHighWaterChange() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val ledger = SharedThreadFreshnessLedger()

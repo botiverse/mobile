@@ -2952,6 +2952,8 @@ class SharedActivityStore internal constructor(
                 .filter { item -> item.isChannelOrDmRow() }
                 .associateBy { item -> item.key }
         val keptChannelKeys = mutableSetOf<String>()
+        // Thread rows whose served copy lags the realtime patch (they keep the patched reply).
+        val keptThreadKeys = mutableSetOf<String>()
         val canonicalKeys = canonicalItems.mapTo(mutableSetOf()) { item -> item.key }
         var preserveTotalUnreadFloor = false
         val reconciled =
@@ -2990,6 +2992,7 @@ class SharedActivityStore internal constructor(
                     return@map canonical
                 }
                 preserveTotalUnreadFloor = true
+                keptThreadKeys += canonical.key
                 canonical.withRealtimeActivityProjection(current)
             }
         val missingCurrent =
@@ -3017,16 +3020,19 @@ class SharedActivityStore internal constructor(
             // exposes an appear→disappear flash between the two stages.
             items =
                 (missingCurrent + reconciled).dedupeActivityItems().let { items ->
-                    // A kept channel row holds the newest message, which the served order (the
-                    // view's, without it) does not know: it stays on top instead of dropping back
-                    // (web preserveNewerChannelActivity). Rows held from realtime (kept channel
-                    // rows and missing thread rows) keep the order they are shown in now, so a
-                    // stale answer never flips them.
-                    if (keptChannelKeys.isEmpty()) {
+                    // A kept row holds the newest message, which the served order (the view's,
+                    // without it) does not know: it stays on top instead of dropping back (web
+                    // preserveNewerChannelActivity / preserveNewerThreadActivity). Rows held from
+                    // realtime (kept channel rows, kept thread rows and missing thread rows) keep
+                    // the order they are shown in now, so a stale answer never flips them.
+                    // Hands 62498f69: a thread row patched to the top dropped back under the old
+                    // head on the lagging re-read and returned when the server caught up, so the
+                    // first row alternated between the two.
+                    if (keptChannelKeys.isEmpty() && keptThreadKeys.isEmpty()) {
                         items
                     } else {
                         val shownOrder = _state.value.items.withIndex().associate { (index, item) -> item.key to index }
-                        val heldKeys = keptChannelKeys + missingCurrent.map(InboxItem::key)
+                        val heldKeys = keptChannelKeys + keptThreadKeys + missingCurrent.map(InboxItem::key)
                         val held = items.filter { it.key in heldKeys }.sortedBy { shownOrder[it.key] ?: Int.MAX_VALUE }
                         held + items.filterNot { it.key in heldKeys }
                     }
