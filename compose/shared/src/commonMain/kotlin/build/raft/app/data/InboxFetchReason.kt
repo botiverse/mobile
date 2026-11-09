@@ -1,5 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.model.ActivityChanged
+import build.raft.app.model.DirectMessageCreated
+import build.raft.app.model.MessageNew
+import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.ThreadUpdated
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
@@ -7,6 +12,15 @@ import kotlinx.coroutines.withContext
 
 /** `X-Raft-Fetch-Reason`, the header web sends on whole-list Activity reads (packages/web listFetchReason.ts). */
 internal const val RaftFetchReasonHeader = "X-Raft-Fetch-Reason"
+
+/** `X-Raft-Fetch-Trigger` (shared `INBOX_REFRESH_TRIGGER_HEADER`, botiverse/slock #13126). */
+internal const val RaftFetchTriggerHeader = "X-Raft-Fetch-Trigger"
+
+/** `X-Raft-Fetch-Coalesced` (shared `INBOX_REFRESH_COALESCED_HEADER`): the requests one read stands for. */
+internal const val RaftFetchCoalescedHeader = "X-Raft-Fetch-Coalesced"
+
+/** The server records any larger count as this (server `INBOX_FETCH_COALESCED_CAP`); the app sends no more. */
+internal const val RaftFetchCoalescedCap = 1000
 
 /**
  * Why the app read the Activity list (`GET /api/channels/inbox`, first page). The wire values are
@@ -34,19 +48,109 @@ enum class InboxFetchReason(val wireValue: String) {
 }
 
 /**
+ * Which realtime event made the app re-read the Activity list with reason
+ * [InboxFetchReason.RealtimeFallback], sent as `X-Raft-Fetch-Trigger`. The first eight wire values
+ * are exactly shared `INBOX_REFRESH_TRIGGERS` (botiverse/slock packages/shared/src/
+ * inboxRefreshTrigger.ts, #13126), in its order. [Other] names an app re-read no shared value
+ * describes (an edit, a task change, a reconnect catch-up, another device's read or Done, a local
+ * fact landing mid-read, a stale-answer recovery); the server files it, like any unlisted value,
+ * under `other`, apart from `unknown` (no header). Observability only: which reads happen, and
+ * when, is unchanged.
+ */
+enum class InboxRefreshTrigger(val wireValue: String) {
+    /** A new live message (`message:new`) moved a channel, DM or thread row. */
+    MessageNew("message_new"),
+    /** `message:new` for a message the Activity list already shows (a repeat delivery, my own send). */
+    MessageEcho("message_echo"),
+    /** A thread reply (`thread:updated`) moved a followed-thread row. */
+    ThreadReply("thread_reply"),
+    /** `thread:updated` applied after a thread-replies rebaseline snapshot (web only today). */
+    ThreadReplyRebaseline("thread_reply_rebaseline"),
+    /** `activity:changed`: first-party objects changed for this person. */
+    ActivityChanged("activity_changed"),
+    /** `dm:new`: a new DM was opened with this person. */
+    DmNew("dm_new"),
+    /** This device's thread read-all was persisted while Activity is loaded (web only today). */
+    ReadPersisted("read_persisted"),
+    /** The list answered still behind the newest live message; re-read. */
+    CatchUpRetry("catch_up_retry"),
+    /** An app re-read none of the shared values describes. */
+    Other("other"),
+}
+
+/** The trigger a realtime event gives the Activity re-read it asks for. */
+internal fun RealtimeEvent.inboxRefreshTrigger(): InboxRefreshTrigger =
+    when (this) {
+        is MessageNew -> InboxRefreshTrigger.MessageNew
+        is ThreadUpdated -> InboxRefreshTrigger.ThreadReply
+        // The sync stream hands its Activity refetch over as an `ActivityChanged` with source
+        // `sync_<why>` (RaftSharedStoreProvider.refreshActivity): not the `activity:changed` socket event.
+        is ActivityChanged ->
+            if (source.startsWith("sync_")) InboxRefreshTrigger.Other else InboxRefreshTrigger.ActivityChanged
+        is DirectMessageCreated -> InboxRefreshTrigger.DmNew
+        else -> InboxRefreshTrigger.Other
+    }
+
+/**
+ * The trigger of a throttled re-read: the FIRST one folded into it and how many requests it stands
+ * for (>= 1, itself included), web `InboxRefreshTriggerCount`.
+ */
+internal data class InboxRefreshTriggerCount(val trigger: InboxRefreshTrigger, val coalesced: Int = 1)
+
+/** Folds [next] into this: the first trigger stays, the counts add up (web `foldInboxRefreshTrigger`). */
+internal fun InboxRefreshTriggerCount?.foldWith(next: InboxRefreshTriggerCount?): InboxRefreshTriggerCount? =
+    when {
+        this == null -> next
+        next == null -> this
+        else -> copy(coalesced = (coalesced + next.coalesced).coerceAtMost(RaftFetchCoalescedCap))
+    }
+
+/** Folds one more request asked for by [trigger]. */
+internal fun InboxRefreshTriggerCount?.foldWith(trigger: InboxRefreshTrigger): InboxRefreshTriggerCount =
+    foldWith(InboxRefreshTriggerCount(trigger))!!
+
+/**
  * Carries the reason of the read being made down to the repository, which turns it into the header.
  * A context element, so the repository interfaces and their fakes keep their signatures.
  */
-internal class InboxFetchReasonContext(val reason: InboxFetchReason) : AbstractCoroutineContextElement(Key) {
+internal class InboxFetchReasonContext(
+    val reason: InboxFetchReason,
+    val trigger: InboxRefreshTriggerCount? = null
+) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<InboxFetchReasonContext>
 }
 
-/** Runs [block] so the inbox reads it makes are labelled [reason]; a null [reason] leaves them unlabelled. */
-internal suspend fun <T> withInboxFetchReason(reason: InboxFetchReason?, block: suspend () -> T): T =
-    if (reason == null) block() else withContext(InboxFetchReasonContext(reason)) { block() }
+/**
+ * Runs [block] so the inbox reads it makes are labelled [reason]; a null [reason] leaves them
+ * unlabelled. [trigger] is sent only when [reason] is [InboxFetchReason.RealtimeFallback] (web
+ * `listFetchReasonHeaders`: a read whose final reason is another carries none).
+ */
+internal suspend fun <T> withInboxFetchReason(
+    reason: InboxFetchReason?,
+    trigger: InboxRefreshTriggerCount? = null,
+    block: suspend () -> T
+): T =
+    if (reason == null) block() else withContext(InboxFetchReasonContext(reason, trigger)) { block() }
 
 internal suspend fun currentInboxFetchReasonHeaders(): Map<String, String> =
-    coroutineContext[InboxFetchReasonContext]?.let { mapOf(RaftFetchReasonHeader to it.reason.wireValue) }.orEmpty()
+    coroutineContext[InboxFetchReasonContext]?.let(::inboxFetchReasonHeaders).orEmpty()
+
+internal fun inboxFetchReasonHeaders(context: InboxFetchReasonContext): Map<String, String> {
+    val trigger = context.trigger?.takeIf { context.reason == InboxFetchReason.RealtimeFallback }
+        ?: return mapOf(RaftFetchReasonHeader to context.reason.wireValue)
+    return mapOf(
+        RaftFetchReasonHeader to context.reason.wireValue,
+        RaftFetchTriggerHeader to trigger.trigger.wireValue,
+        RaftFetchCoalescedHeader to trigger.coalesced.coerceIn(1, RaftFetchCoalescedCap).toString(),
+    )
+}
+
+/**
+ * The headers that only describe a read (the trigger and its count) and so do not make it a different
+ * request: the in-flight GET single flight ([RaftInFlightGetDedupe]) leaves them out of its key, so
+ * labelling a read never changes which reads are shared.
+ */
+internal val RaftFetchObservabilityHeaders: Set<String> = setOf(RaftFetchTriggerHeader, RaftFetchCoalescedHeader)
 
 /**
  * The reason for a read the process unread summary store ([ProcessActivityUnreadStore]) makes, from

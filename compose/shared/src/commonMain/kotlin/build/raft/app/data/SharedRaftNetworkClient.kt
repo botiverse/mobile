@@ -180,7 +180,12 @@ internal class SharedRaftNetworkClient(
                 path = path,
                 query = query,
                 serverIdOverride = serverIdOverride?.value,
-                headers = extraHeaders.entries.map { it.key to it.value }.sortedBy { it.first },
+                // A read's trigger label never splits a shared request (observability only).
+                headers =
+                    extraHeaders.entries
+                        .filter { it.key !in RaftFetchObservabilityHeaders }
+                        .map { it.key to it.value }
+                        .sortedBy { it.first },
                 authority = expectedAuthority,
                 sessionUserId = session?.user?.id,
                 sessionServerId = session?.currentServerId,
