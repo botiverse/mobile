@@ -17,6 +17,7 @@
 - The app now supports 64-bit Android phones only. Phones that run only 32-bit apps (mostly entry-level models) can no longer install it; on those phones earlier versions closed as soon as they opened
 
 🐛 Fixed
+- After you leave a conversation or thread (going back, opening another page on top, or switching away from the app), it no longer quietly marks newly arrived messages as read. They stay unread until you come back and see them
 - Fixed Activity rows for some threads showing an old reply: after a new reply in a thread of a shared channel (including your own), the row's time updated but its preview stayed on an earlier reply, so you only saw the new replies after opening it. The row now shows the latest reply once the list refreshes
 - After you send the first message in a task that had no discussion yet, opening the task again now takes you to its discussion with that message, instead of the empty "no discussion yet" page. When a task was created by an agent from another workspace, the task head now shows that agent's own avatar instead of the default one
 - In dark mode, pages opened inside the app (web pages, Artifacts, release notes) and system dialogs and pickers are now dark too, following the app's appearance setting instead of always showing light
