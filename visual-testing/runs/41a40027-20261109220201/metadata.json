@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T22:04:36.129Z",
+  "generatedAt": "2026-11-09T22:51:50.582Z",
   "runId": "41a40027-20261109220201",
   "commit": "41a40027-20261109220201",
   "commitSubject": "fix(webview): stalled or crashed in-app web pages show an error with Retry (dm #102)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 122,
-        "ready": 34,
-        "pending": 88
+        "ready": 39,
+        "pending": 83
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 122,
-        "ready": 17,
-        "pending": 105
+        "ready": 18,
+        "pending": 104
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 122,
-        "ready": 12,
-        "pending": 110
+        "ready": 14,
+        "pending": 108
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 122,
-    "ready": 34,
-    "pending": 88
+    "ready": 39,
+    "pending": 83
   },
   "componentMatrixSummary": {
     "total": 151,

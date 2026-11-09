@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-09 22:04:36 UTC
+Generated: 2026-11-09 22:51:50 UTC
 Latest run: 41a40027-20261109220201
 Latest commit: 41a40027-20261109220201
 Commit subject: fix(webview): stalled or crashed in-app web pages show an error with Retry (dm #102)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 122, same 0, pass 1, basic-pass 8, different 76, missing 37
-AI analysis: ready 34 / total 122, pending 88
+AI analysis: ready 39 / total 122, pending 83
 Visual coverage matrix: active 131 / total 151, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

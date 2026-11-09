@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-09T22:04:36.129Z",
+  "generatedAt": "2026-11-09T22:51:50.582Z",
   "latestRunId": "41a40027-20261109220201",
   "latest": {
     "runId": "41a40027-20261109220201",
     "commit": "41a40027-20261109220201",
     "commitSubject": "fix(webview): stalled or crashed in-app web pages show an error with Retry (dm #102)",
-    "generatedAt": "2026-11-09T22:04:36.129Z",
+    "generatedAt": "2026-11-09T22:51:50.582Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 122,
-      "ready": 34,
-      "pending": 88
+      "ready": 39,
+      "pending": 83
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "41a40027-20261109220201",
       "commit": "41a40027-20261109220201",
       "commitSubject": "fix(webview): stalled or crashed in-app web pages show an error with Retry (dm #102)",
-      "generatedAt": "2026-11-09T22:04:36.129Z",
+      "generatedAt": "2026-11-09T22:51:50.582Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 122,
-        "ready": 34,
-        "pending": 88
+        "ready": 39,
+        "pending": 83
       },
       "comparisons": [
         "react__android",
