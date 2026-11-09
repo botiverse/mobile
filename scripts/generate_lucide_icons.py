@@ -278,6 +278,7 @@ LUCIDE_ICONS = [
     "store",
     "terminal",
     "text-quote",
+    "timer-reset",
     "thread",
     "message",
     "direct-message",

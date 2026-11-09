@@ -87,6 +87,87 @@ internal class SharedRuntimeAccountUsageStore(
     private val inFlight = mutableMapOf<RuntimeAccountUsageKey, CompletableDeferred<RuntimeAccountUsageLoad>>()
     private val refreshStartedAt = mutableMapOf<RuntimeAccountUsageKey, Long>()
     private val refreshesInFlight = mutableMapOf<RuntimeAccountUsageKey, CompletableDeferred<RuntimeAccountUsageRefreshLoad>>()
+    private class CachedAuthView(val value: RuntimeAuthView?, val expiresAt: Long)
+    private val authViews = mutableMapOf<RuntimeAuthViewKey, CachedAuthView>()
+    private val limitResetAttempts = mutableMapOf<RuntimeAccountUsageKey, RuntimeLimitResetIdempotencyKey>()
+
+    /** One Computer's runtime-auth view per signed-in identity (web `RuntimeAuthClient` keys it by server and Computer). */
+    private data class RuntimeAuthViewKey(val owner: SharedComputersOwner, val serverId: String, val machineId: String)
+
+    /**
+     * Who may act on [key]'s Computer runtimes (web `RuntimeAuthClient.read`, cached 30 s). Null
+     * when the read failed or was refused (403: the viewer may not see them), so nobody is offered
+     * an action the server would refuse; a failure is not cached.
+     */
+    suspend fun runtimeAuthView(key: RuntimeAccountUsageKey, force: Boolean = false): RuntimeAuthView? {
+        if (!key.owner.sameIdentityAs(currentIdentity())) return null
+        val viewKey = RuntimeAuthViewKey(key.owner, key.serverId, key.machineId)
+        if (!force) {
+            mutex.withLock { authViews[viewKey]?.takeIf { it.expiresAt > clock.nowEpochMillis() } }?.let { return it.value }
+        }
+        // Only the limit-reset action hangs on this read: a transport that fails it offers no action
+        // and leaves the usage card as it is.
+        val result =
+            try {
+                client.runtimeAuthView(ServerId(key.serverId), key.machineId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                return null
+            }
+        if (!key.owner.sameIdentityAs(currentIdentity())) return null
+        val view =
+            when (result) {
+                is DataResult.Content -> result.data
+                // 403: this viewer may not act; remembered like a view, as it will not change soon.
+                is DataResult.NoPermission -> if (result.blocker.code == "server_forbidden") null else return null
+                else -> return null
+            }
+        mutex.withLock { authViews[viewKey] = CachedAuthView(view, clock.nowEpochMillis() + RUNTIME_AUTH_VIEW_CACHE_MILLIS) }
+        return view
+    }
+
+    /**
+     * The idempotency key of [key]'s current limit-reset attempt (web `limitResetAttemptKey`): the
+     * one kept from an attempt whose outcome was never learned, else a new one, kept until
+     * [forgetLimitResetAttempt].
+     */
+    suspend fun limitResetAttemptKey(key: RuntimeAccountUsageKey): RuntimeLimitResetIdempotencyKey =
+        mutex.withLock { limitResetAttempts.getOrPut(key) { RuntimeLimitResetIdempotencyKey.mint() } }
+
+    /** The attempt settled (web `forgetLimitResetAttemptKey`): the next click is a new attempt. */
+    suspend fun forgetLimitResetAttempt(key: RuntimeAccountUsageKey) {
+        mutex.withLock { limitResetAttempts.remove(key) }
+    }
+
+    /**
+     * Spends one of [key]'s account limit resets with [idempotencyKey]. The usage the Computer read
+     * right after it is written to the read cache, as a fresh manual refresh is, so the next [read]
+     * shows it; without one the cached read is dropped, since it may no longer be true.
+     */
+    suspend fun redeemLimitReset(
+        key: RuntimeAccountUsageKey,
+        idempotencyKey: RuntimeLimitResetIdempotencyKey
+    ): RuntimeLimitResetLoad {
+        if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetLoad.Superseded
+        val result = client.redeemRuntimeLimitReset(ServerId(key.serverId), key.machineId, key.provider, idempotencyKey)
+        if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetLoad.Superseded
+        withContext(NonCancellable) {
+            mutex.withLock {
+                val snapshot = (result as? RuntimeLimitResetLoad.Done)?.reply?.snapshot
+                if (snapshot != null) {
+                    cache[key] =
+                        Cached(
+                            RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot)),
+                            clock.nowEpochMillis() + cacheMillis
+                        )
+                } else {
+                    cache.remove(key)
+                }
+            }
+        }
+        return result
+    }
 
     /** Milliseconds left before [refresh] asks the server again for [key]; 0 when it may. */
     suspend fun refreshCooldownRemainingMillis(key: RuntimeAccountUsageKey): Long =
@@ -229,6 +310,8 @@ internal class SharedRuntimeAccountUsageStore(
         mutex.withLock {
             cache.clear()
             refreshStartedAt.clear()
+            authViews.clear()
+            limitResetAttempts.clear()
         }
     }
 
@@ -254,6 +337,9 @@ internal class SharedRuntimeAccountUsageStore(
 }
 
 internal const val RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS: Long = 60_000L
+
+/** Web `RUNTIME_AUTH_CLIENT_CACHE_MS`. */
+internal const val RUNTIME_AUTH_VIEW_CACHE_MILLIS: Long = 30_000L
 
 /** Usage GETs in flight at once ([SharedRuntimeAccountUsageStore]); Tenny's rack request rules. */
 internal const val RUNTIME_ACCOUNT_USAGE_MAX_CONCURRENT_READS: Int = 4
