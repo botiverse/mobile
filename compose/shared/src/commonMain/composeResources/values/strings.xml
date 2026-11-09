@@ -4084,6 +4084,11 @@
     <string name="thread_archived_unarchive">Unarchive</string>
     <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
     <string name="agent_status_change_model">Change model</string>
+    <string name="agent_status_retry">Retry</string>
+    <string name="agent_status_retrying">Restarting…</string>
+    <string name="agent_status_retry_failed">Failed to reset agent</string>
+    <string name="agent_status_computer_access_revoked">Computer access revoked: move the agent to another computer (re-attaching adds a new one)</string>
+    <string name="agent_migration_place_from_revoked_computer_note">This agent's Computer lost its access to the server, so its files can't be brought over. It moves to the computer you choose and starts a fresh session there the next time it gets a message.</string>
     <string name="agent_status_model_unsupported">This runtime's account or plan doesn't include "%1$s". Change the model, or sign in with an account that includes it</string>
     <string name="agent_status_model_unsupported_default">This runtime's account or plan doesn't include this agent's model. Change the model, or sign in with an account that includes it</string>
     <string name="agent_status_repeated_failure_paused">Kept failing the same way after starting — automatic wakes are paused; Raft tries again by itself later. Restart the agent to try now</string>

@@ -249,6 +249,8 @@ data class SharedServerMembersState(
         // Narrower authority though: the flow also trusts channel slices, which need
         // the store's owner binding and are unreachable from state. A slice-only
         // member is therefore suppressed here and published there.
+        // Web resolveAgentDisplayState: a held agent reads why, whatever its last activity.
+        member.blockedMemberStatusOrNull()?.let { return it }
         return applySeedOnlyOfflinePolicy(
             resolved = member.toSharedServerMemberStatus(null),
             seedOnly = rosterMember == null
@@ -370,7 +372,13 @@ data class SharedServerMemberStatus(
      * (artin, #triage:#97; web botiverse/slock #11642 `AgentDisplayState.likelyOnline`).
      * Produced only by [likelyOnlineMemberStatusOrNull]; never written into the registry.
      */
-    val likelyOnline: Boolean = false
+    val likelyOnline: Boolean = false,
+    /**
+     * The server runs this agent nowhere (the agent list's `blockedReason`, web
+     * `AgentDisplayState.blocked`): its status says why instead of its last activity. Produced
+     * only by [blockedMemberStatusOrNull], from the authoritative profile; never a presence fact.
+     */
+    val blocked: AgentBlockedState? = null
 )
 
 /**
@@ -1298,6 +1306,10 @@ class SharedServerMembersStore internal constructor(
     ): SharedServerMemberStatus? {
         val member = resolution.profile
         val presenceFact = presenceOwnerSnapshot.facts[memberId]
+        // Web resolveAgentDisplayState (botiverse/slock #13575): an agent its server runs nowhere
+        // (its Computer's access was revoked) reads why, before any guess or activity: its last
+        // activity no longer says anything about it. Only an authoritative record carries it.
+        if (resolution.authoritative) member.blockedMemberStatusOrNull()?.let { return it }
         if (presenceFact == null && resolution.authoritative) {
             // No fact at all (a carried-over fact is still a fact): an `active` managed agent
             // reads "Likely online" rather than neutral or Offline (artin, #triage:#97).

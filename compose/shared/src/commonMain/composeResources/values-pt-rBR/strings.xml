@@ -3988,6 +3988,11 @@
     <string name="thread_archived_unarchive">Desarquivar</string>
     <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
     <string name="agent_status_change_model">Alterar modelo</string>
+    <string name="agent_status_retry">Tentar de novo</string>
+    <string name="agent_status_retrying">Reiniciando…</string>
+    <string name="agent_status_retry_failed">Não foi possível redefinir o agente</string>
+    <string name="agent_status_computer_access_revoked">Acesso do computador revogado: mova o agente para outro computador (conectar de novo adiciona um novo)</string>
+    <string name="agent_migration_place_from_revoked_computer_note">O computador deste agente perdeu o acesso ao servidor, então os arquivos dele não podem ser trazidos. Ele vai para o computador que você escolher e começa uma sessão nova lá na próxima vez que receber uma mensagem.</string>
     <string name="agent_status_model_unsupported">A conta ou o plano deste runtime não inclui “%1$s”. Troque o modelo ou entre com uma conta que o inclua</string>
     <string name="agent_status_model_unsupported_default">A conta ou o plano deste runtime não inclui o modelo deste agente. Troque o modelo ou entre com uma conta que o inclua</string>
     <string name="agent_status_repeated_failure_paused">Depois de iniciar, falhou várias vezes do mesmo jeito — as ativações automáticas estão pausadas; o Raft tenta de novo sozinho mais tarde. Reinicie o agente para tentar agora</string>

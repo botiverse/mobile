@@ -4084,6 +4084,11 @@
     <string name="thread_archived_unarchive">アーカイブを解除</string>
     <!-- botiverse/slock #13460 / #13462 (agent status copy) and #13435 (billing banner) -->
     <string name="agent_status_change_model">モデルを変更</string>
+    <string name="agent_status_retry">再試行</string>
+    <string name="agent_status_retrying">再起動中…</string>
+    <string name="agent_status_retry_failed">エージェントをリセットできませんでした</string>
+    <string name="agent_status_computer_access_revoked">コンピューターのアクセスが取り消されました。エージェントを別のコンピューターに移動してください（再接続すると新しいコンピューターとして追加されます）</string>
+    <string name="agent_migration_place_from_revoked_computer_note">このエージェントのコンピューターはサーバーへのアクセスを失ったため、ファイルを移せません。選んだコンピューターに移動し、次にメッセージを受け取ったときにそこで新しいセッションを始めます。</string>
     <string name="agent_status_model_unsupported">このランタイムのアカウントまたはプランには「%1$s」が含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>
     <string name="agent_status_model_unsupported_default">このランタイムのアカウントまたはプランには、このエージェントのモデルが含まれていません。モデルを変更するか、このモデルを含むアカウントでログインしてください</string>
     <string name="agent_status_repeated_failure_paused">起動後、同じ失敗を繰り返しました — 自動起動は一時停止中です。Raft が後で自動的に再試行します。今すぐ試すには、エージェントを再起動してください</string>

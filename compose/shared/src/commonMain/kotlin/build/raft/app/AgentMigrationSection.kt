@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -129,8 +130,23 @@ internal class AgentMigrationSectionInputs(
     /** A watched move ended with the agent elsewhere: reload the agent (web re-reads agents). */
     val onAgentPlacementChanged: () -> Unit,
     /** The agent's runtime: each target's quota line reads that runtime's account there. */
-    val agentRuntime: String? = null
-)
+    val agentRuntime: String? = null,
+    /**
+     * Web AgentMigrationSection `placesWithoutSource` (botiverse/slock #13575): the agent's Computer
+     * lost its access (`blockedReason` `computer_access_revoked`), so nothing can be brought over.
+     * The same Move places it on the target: no Pro gate, no cloud, a fresh session there.
+     */
+    val placesWithoutSource: Boolean = false
+) {
+    /** Web `hostedAvailable && !placesWithoutSource`: a move to the cloud uploads from a source. */
+    val offersHosted: Boolean
+        get() = hostedAvailable && !placesWithoutSource
+}
+
+internal object AgentMigrationSectionTestTags {
+    /** Web `agent-migration-place-note`. */
+    const val PlaceNote = "agent-migration-place-note"
+}
 
 /** The target option for the cloud; never a machine id (web `HOSTED_TARGET_CHOICE`). */
 internal const val HOSTED_TARGET_CHOICE = "__cloud__"
@@ -176,7 +192,8 @@ internal fun AgentMigrationSection(
     }
 
     fun openStart(target: String?) {
-        if (inputs.proGate == RaftProGateDecision.UpgradeRequired) {
+        // Web `requiresUpgrade = !placesWithoutSource && ...`: placing is not a Pro migration.
+        if (!inputs.placesWithoutSource && inputs.proGate == RaftProGateDecision.UpgradeRequired) {
             askToUpgrade()
             return
         }
@@ -200,7 +217,7 @@ internal fun AgentMigrationSection(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RaftSectionEyebrow(text = stringResource(Res.string.agent_migration_section_title))
-                RaftProBadge()
+                if (!inputs.placesWithoutSource) RaftProBadge()
             }
             val showCancelDialog = {
                 inputs.onIntent(AgentMigrationIntent.ClearCancelError)
@@ -270,13 +287,13 @@ internal fun AgentMigrationSection(
                                     // that failed after the switch starts over from where the agent now is.
                                     notice?.isFailed == true && ended != AgentMigrationEnding.Failed ->
                                         Res.string.agent_migration_detail_try_migration_again
-                                    inputs.hostedAvailable -> Res.string.agent_migration_hosted_start_entry
+                                    inputs.offersHosted -> Res.string.agent_migration_hosted_start_entry
                                     else -> Res.string.agent_migration_detail_start_migration
                                 }
                             ),
                         onClick = { openStart(null) },
                         size = RaftButtonSize.Md,
-                        enabled = !inputs.proGateChecking
+                        enabled = inputs.placesWithoutSource || !inputs.proGateChecking
                     )
                 }
             }
@@ -290,7 +307,11 @@ internal fun AgentMigrationSection(
                 showStartDialog = false
                 askToUpgrade()
             }
-            AgentMigrationEffect.AgentPlacementChanged -> inputs.onAgentPlacementChanged()
+            AgentMigrationEffect.AgentPlacementChanged -> {
+                // An agent placed without its source (web `placed_without_source`) ends the dialog too.
+                showStartDialog = false
+                inputs.onAgentPlacementChanged()
+            }
             null -> return@LaunchedEffect
         }
         inputs.onIntent(AgentMigrationIntent.ConsumeEffect)
@@ -995,7 +1016,7 @@ private fun AgentMigrationStartDialog(
     var choice by remember(targets, initialTarget) {
         mutableStateOf(targets.firstOrNull { it.online && it.id == initialTarget }?.id ?: targets.firstOrNull { it.online }?.id)
     }
-    val selected = agentMigrationResolvedTarget(choice, targets, inputs.hostedAvailable)
+    val selected = agentMigrationResolvedTarget(choice, targets, inputs.offersHosted)
     // Read here: the sheet's content is hosted outside the page, where the local does not reach.
     val usage = LocalMembersRuntimeAccountUsageAccess.current
     RaftDialogSheet(
@@ -1020,7 +1041,7 @@ private fun AgentMigrationStartDialog(
 @Composable
 internal fun agentMigrationStartDialogTitle(inputs: AgentMigrationSectionInputs): String =
     stringResource(
-        if (inputs.hostedAvailable) Res.string.agent_migration_hosted_dialog_title
+        if (inputs.offersHosted) Res.string.agent_migration_hosted_dialog_title
         else Res.string.agent_migration_detail_move_to_another_computer
     )
 
@@ -1031,7 +1052,7 @@ internal fun agentMigrationStartCommitLabel(state: AgentMigrationState, inputs: 
             state.starting -> Res.string.agent_migration_detail_starting
             selected == HOSTED_TARGET_CHOICE -> Res.string.agent_migration_hosted_start
             // Title "Move Agent" offers both destinations, so the button keeps one.
-            inputs.hostedAvailable -> Res.string.agent_migration_detail_start_migration
+            inputs.offersHosted -> Res.string.agent_migration_detail_start_migration
             else -> Res.string.agent_migration_move_confirm
         }
     )
@@ -1066,7 +1087,7 @@ internal fun ColumnScope.AgentMigrationStartForm(
         RaftText(
             text =
                 stringResource(
-                    if (inputs.hostedAvailable) Res.string.agent_migration_hosted_target_label
+                    if (inputs.offersHosted) Res.string.agent_migration_hosted_target_label
                     else Res.string.agent_migration_detail_target_computer
                 ),
             style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
@@ -1075,7 +1096,7 @@ internal fun ColumnScope.AgentMigrationStartForm(
         // Choosing is the dialog's job: an always-open list at any count (raft-design #767).
         AgentMigrationTargetList(
             targets = targets,
-            hostedOption = if (inputs.hostedAvailable) stringResource(Res.string.agent_migration_hosted_option) else null,
+            hostedOption = if (inputs.offersHosted) stringResource(Res.string.agent_migration_hosted_option) else null,
             selected = selected,
             enabled = !state.starting,
             agentRuntime = inputs.agentRuntime,
@@ -1100,6 +1121,14 @@ internal fun ColumnScope.AgentMigrationStartForm(
                     }
                 }
             }
+        } else if (inputs.placesWithoutSource) {
+            // Web `agent-migration-place-note` for a source whose access was revoked.
+            RaftText(
+                text = stringResource(Res.string.agent_migration_place_from_revoked_computer_note),
+                modifier = Modifier.testTag(AgentMigrationSectionTestTags.PlaceNote),
+                style = typography.subhead,
+                color = colors.foregroundMuted
+            )
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 RaftText(

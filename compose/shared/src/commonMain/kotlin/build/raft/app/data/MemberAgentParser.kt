@@ -159,6 +159,12 @@ private data class WireAgent(
      * `projectAssistantPause`); who paused it (`assistantPausedBy`) is not read here.
      */
     val assistantPausedAt: String? = null,
+    /**
+     * `GET /agents` only (botiverse/slock #13575 `agentBlockedReason`): why the server runs the agent
+     * nowhere: `computer_access_revoked` (its Computer's key was revoked) or
+     * `computer_version_unsupported`; null otherwise. Additive: an unknown value is kept raw.
+     */
+    val blockedReason: String? = null,
 )
 
 /** slock `routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`. */
@@ -909,6 +915,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
             },
         agentStatus = agentStatus,
         agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
+        agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },

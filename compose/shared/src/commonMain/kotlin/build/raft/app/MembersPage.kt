@@ -4,6 +4,9 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.LocalRaftBarButtons
 import build.raft.app.data.agentOffersLounge
 import build.raft.app.data.isFor
+import build.raft.app.data.AgentBlockedState
+import build.raft.app.data.agentBlockedState
+import build.raft.app.data.ComputerAccessRevokedErrorCode
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
@@ -60,6 +63,7 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentMigrationDataSource
 import build.raft.app.data.AgentMigrationStatusSnapshot
+import build.raft.app.data.AgentMigrationStartResult
 import build.raft.app.data.AgentMigrationTarget
 import build.raft.app.data.RaftBillingPlanSnapshot
 import build.raft.app.data.AgentMigrationIntent
@@ -5162,7 +5166,7 @@ private object MembersVisualFixtureMigrationDataSource : AgentMigrationDataSourc
         priority: DataRequestPriority
     ): DataResult<AgentMigrationStatusSnapshot> = DataResult.Content(AgentMigrationStatusSnapshot(migration = null))
 
-    override suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<String> =
+    override suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<AgentMigrationStartResult> =
         DataResult.Error(refused)
 
     override suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit> =
@@ -6912,6 +6916,40 @@ private fun MembersDetailContent(
                 )
         }
     }
+    // Web AgentStatusBadge Retry: the menu's Restart (`POST /agents/:id/reset {mode:"restart"}`),
+    // offered where Restart is (Actions: runtime control, not archived, the Computer online), with
+    // no confirmation; "Failed to reset agent" when it does not go through.
+    val retryRestartComputerOffline =
+        (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)?.online == false
+    val canRetryRestart =
+        canManage && agentDetailActions != null && !membersAgentProfileIsRemote(accessMode) && !retryRestartComputerOffline
+    var retryRestartInFlight by remember(member.id.value) { mutableStateOf(false) }
+    val retryRestartFailed = stringResource(Res.string.agent_status_retry_failed)
+    fun retryRestart() {
+        val actions = agentDetailActions ?: return
+        if (retryRestartInFlight || lifecycleInFlight != null) return
+        retryRestartInFlight = true
+        scope.launch {
+            val action = MembersAgentLifecycleAction.Restart
+            val result =
+                try {
+                    if (sharedAgentDetailStore != null) {
+                        sharedAgentDetailStore.runLifecycleAction(member.id, action, actions)
+                    } else {
+                        actions.runLifecycleAction(member.id, action)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                } finally {
+                    retryRestartInFlight = false
+                }
+            result.membersLifecycleError(action)?.let { error ->
+                if (onAgentErrorToast != null) onAgentErrorToast(retryRestartFailed, error) else onUnavailableAction(retryRestartFailed)
+            }
+        }
+    }
     fun copyDiagnostics() {
         val diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState)
         if (sharedAgentDetailStore != null && agentDetailActions != null) {
@@ -7284,7 +7322,11 @@ private fun MembersDetailContent(
                                                 onOpenModelSettings = openModelSettings,
                                                 runtimeEditorOpenRequested = runtimeEditorOpenRequested,
                                                 onRuntimeEditorOpenRequestHandled = { runtimeEditorOpenRequested = false },
-                                                timeContext = timeContext
+                                                timeContext = timeContext,
+                                                onRetryRestart = if (canRetryRestart) ({ retryRestart() }) else null,
+                                                retryRestartInProgress =
+                                                    retryRestartInFlight ||
+                                                        lifecycleInFlight == MembersAgentLifecycleAction.Restart.actionKey
                                             ),
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,
@@ -7360,7 +7402,13 @@ private fun MembersDetailContent(
                                                     build.raft.app.model.formatRaftTimestampLabel(value, timeContext).takeIf { it.isNotBlank() }
                                                 },
                                                 onAgentPlacementChanged = migrationBinding.onAgentPlacementChanged,
-                                                agentRuntime = detail?.summary?.runtime
+                                                agentRuntime = detail?.summary?.runtime,
+                                                placesWithoutSource =
+                                                    membersMigrationPlacesWithoutSource(
+                                                        executionMode = detail?.summary?.executionMode,
+                                                        blocked = agentStatusIndicatorState?.blocked
+                                                            ?: agentBlockedState(member.agentBlockedReason)
+                                                    )
                                             ),
                                         // The list's own item spacing is the web section's `py-4` bottom.
                                         bottomPadding = 0.dp
@@ -9843,17 +9891,46 @@ internal fun MembersAgentProfileHeader(
     spawnFailure: AgentStatusSpawnFailure? = null,
     /** Change model beside a start failure another model gets out of; null when the viewer may not. */
     onChangeModel: (() -> Unit)? = null,
-    timeContext: RaftTimeContext? = null
+    timeContext: RaftTimeContext? = null,
+    /**
+     * Web AgentStatusBadge Retry (botiverse/slock #13345): the Actions section's Restart, for
+     * whoever may restart the agent now (its Computer online); null otherwise. Shown only while
+     * the agent cannot run until someone restarts it ([agentNeedsManualRestart]).
+     */
+    onRetry: (() -> Unit)? = null,
+    retryInProgress: Boolean = false
 ) {
+    val appBot = !member.managedByAppInstallId.isNullOrBlank()
+    // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
+    val blocked = (agentStatusIndicatorState ?: agentStatusObservedState)?.blocked?.takeIf { !appBot }
     // Web AgentStatusBadge: a failed start's typed copy stands in for the daemon's detail
     // (botiverse/slock #13460). It gets its own lines under the chip (as the stuck-tool notice
     // does), so the chip keeps the status words and never cuts the copy.
     val spawnFailureStatus =
         spawnFailure?.takeIf {
             showActivityDetail &&
-                member.managedByAppInstallId.isNullOrBlank() &&
+                !appBot &&
+                blocked == null &&
                 agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
         }
+    val showRetry =
+        onRetry != null &&
+            !appBot &&
+            agentNeedsManualRestart(
+                status = agentStatusIndicatorState?.status,
+                detailKind =
+                    membersAgentStatusDetailKind(
+                        indicator = agentStatusIndicatorState,
+                        summaryStatus = summary?.status,
+                        summaryActivity = summary?.activity,
+                        summaryDetailKind = summary?.activityDetailKind,
+                    ),
+                spawnFailure = spawnFailure?.spawnFailure,
+                runtimeErrorClass = summary?.lastRuntimeErrorClass,
+                external = member.isExternal || summary?.isExternal == true || agentStatusIndicatorState?.external == true,
+                blocked = blocked,
+                likelyOnline = agentStatusIndicatorState?.likelyOnline == true,
+            )
     val rawStatusLabel = membersHeroAgentStatusLabel(
         indicatorState = agentStatusIndicatorState,
         summaryStatus = summary?.status,
@@ -9861,9 +9938,15 @@ internal fun MembersAgentProfileHeader(
         summaryActivityDetail = summary?.activityDetail,
         showActivityDetail = showActivityDetail && spawnFailureStatus == null
     )
-    // SSOT audit: the badge words localize like every other live-status caption.
+    // SSOT audit: the badge words localize like every other live-status caption. A held agent's
+    // sentence does not fit the one-line chip: the chip reads Error (its light) and the sentence
+    // follows under it ([AgentBlockedStatusNotice]).
     val statusLabel =
-        agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
+        if (blocked != null) {
+            stringResource(Res.string.member_row_status_error)
+        } else {
+            agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
+        }
 
     Column(
         modifier = Modifier
@@ -9972,20 +10055,40 @@ internal fun MembersAgentProfileHeader(
                 // something authoritative arrives (task #253/#256).
                 // An App Bot renders no presence (web: always-offline on a signal that does
                 // not apply to it).
-                if (member.managedByAppInstallId.isNullOrBlank()) RaftBadge(
-                    text = statusLabel,
-                    appearance = RaftBadgeAppearance.Soft,
-                    variant = agentStatusObservedState?.status.membersStatusBadgeVariant(),
-                    modifier = Modifier.padding(top = 6.dp),
-                    icon = if (agentStatusObservedState != null) {
-                        {
-                            // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
-                            RaftStatusIndicator(color = agentStatusObservedState.color, pulsing = false)
+                val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
+                    RaftBadge(
+                        text = statusLabel,
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = agentStatusObservedState?.status.membersStatusBadgeVariant(),
+                        modifier = chipModifier,
+                        icon = if (agentStatusObservedState != null) {
+                            {
+                                // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
+                                RaftStatusIndicator(color = agentStatusObservedState.color, pulsing = false)
+                            }
+                        } else {
+                            null
+                        }
+                    )
+                }
+                if (!appBot) {
+                    if (showRetry && onRetry != null) {
+                        // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
+                        Row(
+                            modifier = Modifier.padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            statusChip(Modifier.weight(1f, fill = false))
+                            AgentStatusRetryLink(inProgress = retryInProgress, onRetry = onRetry)
                         }
                     } else {
-                        null
+                        statusChip(Modifier.padding(top = 6.dp))
                     }
-                )
+                }
+                if (blocked != null) {
+                    AgentBlockedStatusNotice(blocked = blocked, modifier = Modifier.padding(top = 6.dp))
+                }
                 // Web #10446: stuck on one tool call: its own lines under the status chip, so the
                 // chip never truncates it, with the way out for whoever can stop the turn.
                 if (spawnFailureStatus != null) {
@@ -10074,7 +10177,14 @@ private class MembersAgentLifecycleInputs(
     val runtimeEditorOpenRequested: Boolean = false,
     val onRuntimeEditorOpenRequestHandled: () -> Unit = {},
     /** The viewer's clock, for a paused start's next try. */
-    val timeContext: RaftTimeContext? = null
+    val timeContext: RaftTimeContext? = null,
+    /**
+     * Web AgentStatusBadge Retry (botiverse/slock #13345): restart now, for whoever may restart
+     * the agent from Actions while its Computer is online (web
+     * `restartResetOffered(canControlAgentRuntime, computerOffline)`); null otherwise.
+     */
+    val onRetryRestart: (() -> Unit)? = null,
+    val retryRestartInProgress: Boolean = false
 )
 
 /**
@@ -11622,7 +11732,9 @@ private fun MembersAgentProfileIdentity(
                         summarySpawnFailure = summary?.spawnFailure,
                     ),
                 onChangeModel = lifecycle.onOpenModelSettings,
-                timeContext = lifecycle.timeContext
+                timeContext = lifecycle.timeContext,
+                onRetry = lifecycle.onRetryRestart,
+                retryInProgress = lifecycle.retryRestartInProgress
             )
         }
     )
@@ -12966,14 +13078,23 @@ private fun MembersAgentWorkspaceTab(
                     MembersWorkspaceCenteredHint(stringResource(Res.string.member_state_workspace_loading))
                 MembersAgentWorkspaceTreeState.Empty ->
                     MembersWorkspaceEmptyState(stringResource(Res.string.member_state_no_files), onRefresh)
+                // Web AgentWorkspace (botiverse/slock #13604): a revoked Computer never comes back, so
+                // the panel says to move the agent, with no Retry.
                 is MembersAgentWorkspaceTreeState.Error ->
-                    MembersWorkspaceErrorState(
-                        stringResource(
-                            Res.string.member_error_workspace_load,
-                            treeState.error.userFacingMessage(errorStrings)
-                        ),
-                        onRefresh
-                    )
+                    if (treeState.error.code == ComputerAccessRevokedErrorCode) {
+                        MembersWorkspaceErrorState(
+                            AgentBlockedState.ComputerAccessRevoked.localizedStatusLabel(),
+                            onRefresh = null
+                        )
+                    } else {
+                        MembersWorkspaceErrorState(
+                            stringResource(
+                                Res.string.member_error_workspace_load,
+                                treeState.error.userFacingMessage(errorStrings)
+                            ),
+                            onRefresh
+                        )
+                    }
                 is MembersAgentWorkspaceTreeState.NoPermission ->
                     MembersWorkspaceErrorState(
                         stringResource(
@@ -13166,14 +13287,15 @@ private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
+private fun MembersWorkspaceErrorState(message: String, onRefresh: (() -> Unit)?) {
     // The tree is full width; its own messages keep the bars' 12dp sides.
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailField(stringResource(Res.string.member_label_state), message)
-        RaftButton(
+        // No Retry for an error a retry cannot fix (web `isFinalLoadError`).
+        if (onRefresh != null) RaftButton(
             text = stringResource(Res.string.common_retry),
             onClick = onRefresh,
             modifier = Modifier.fillMaxWidth(),
@@ -14754,6 +14876,15 @@ internal fun membersLiveAgentStatusLabel(
 }
 
 /**
+ * Web AgentMigrationSection `placesWithoutSource` for an agent on a Computer whose access was
+ * revoked (botiverse/slock #13575): a Computer agent (`executionMode` `byoc`, or not sent) is
+ * placed on the target, with nothing brought over. A cloud agent never is.
+ */
+internal fun membersMigrationPlacesWithoutSource(executionMode: String?, blocked: AgentBlockedState?): Boolean =
+    blocked == AgentBlockedState.ComputerAccessRevoked &&
+        (executionMode.isNullOrBlank() || executionMode.trim() == "byoc")
+
+/**
  * What the agent page's error notice says, or null for none (web AgentDetailPanel `hasRuntimeError`
  * / `activityErrorText`). As on the web, the error is the live one while the agent is in error, else
  * the one the server kept (`lastRuntimeError`; a failed start leaves the agent offline): not signed
@@ -14772,8 +14903,11 @@ internal fun MemberProfile.membersAgentRuntimeErrorDisplay(
     val keptBillingError =
         agentTypedRuntimeErrorKind(summary?.lastRuntimeErrorClass, summary?.lastRuntimeErrorReason) ==
             AgentRuntimeErrorKind.BillingExhausted
+    // A held agent's Error is its status words, not a runtime error (web reads the raw activity
+    // here, which a revoked Computer never sends): only the kept error, as for an offline agent.
+    val liveStatus = statusIndicatorState?.status.takeIf { statusIndicatorState?.blocked == null }
     val runtimeError =
-        when (statusIndicatorState?.status) {
+        when (liveStatus) {
             AgentStatus.Error -> summary?.activityDetail.orEmpty()
             // The kept error only while the agent is not running: the profile is not re-read when
             // it starts again, so a running agent must not keep showing an old failure.
