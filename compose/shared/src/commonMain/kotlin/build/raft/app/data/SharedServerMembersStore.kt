@@ -3571,32 +3571,36 @@ class SharedServerMembersStore internal constructor(
     /**
      * Incremental sync (`channel_member` rows / the `channel_members` snapshot): refetch the current
      * owner's LOADED channel rosters of [serverId], only [channelIds] when given. A channel nobody
-     * opened has no roster here and is not fetched.
+     * opened has no roster here and is not fetched. False when one of them failed (a roster the
+     * viewer can no longer read is not a failure): sync reads them again on its next pull
+     * (#proj-mobile:#112).
      */
     internal suspend fun refreshLoadedChannelMembers(
         serverId: ServerId,
         channelIds: Set<String>?,
         reason: String
-    ): Int {
-        val serverKey = serverId.value.normalizedServerMembersId() ?: return 0
+    ): Boolean {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return true
         val loaded =
             currentOwnerChannelMemberSlices(ServerId(serverKey))
                 .filter { it.status == SharedServerMembersLoadStatus.Loaded }
                 .map { it.channelId }
                 .filter { channelIds == null || it in channelIds }
                 .distinct()
-        loaded.forEach { channelId -> refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason) }
-        return loaded.size
+        return loaded
+            .map { channelId -> refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason) }
+            .all { it }
     }
 
+    /** False when the refetch failed ([RaftSyncSnapshotRead.Failed]). */
     private suspend fun refreshChannelMembersBestEffort(
         serverId: ServerId,
         channelId: ChannelId,
         reason: String
-    ) {
+    ): Boolean {
         val serverKey = serverId.value.trim()
         val channelKey = channelId.value.trim()
-        if (serverKey.isBlank() || channelKey.isBlank()) return
+        if (serverKey.isBlank() || channelKey.isBlank()) return true
         val result =
             runCatchingPreservingCancellation {
                 loadChannelMembers(serverId, channelId, DataRequestPriority.Background, force = true)
@@ -3605,7 +3609,7 @@ class SharedServerMembersStore internal constructor(
                     "shared_server_channel_members_refresh_after_mutation reason=$reason serverId=$serverKey " +
                         "channelId=$channelKey result=exception type=${throwable::class.simpleName}"
                 )
-                return
+                return false
             }
         when (result) {
             is DataResult.Content,
@@ -3621,6 +3625,7 @@ class SharedServerMembersStore internal constructor(
                         "channelId=$channelKey result=no_permission code=${result.blocker.code}"
                 )
         }
+        return result.syncSnapshotRead() != RaftSyncSnapshotRead.Failed
     }
 
     private fun loadedMemberSuggestionSlice(

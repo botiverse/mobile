@@ -900,6 +900,12 @@ internal class RaftSharedStoreProvider private constructor(
     /** `GET /api/sync/changes` cursors per environment, account and server (same lifetime as the account caches). */
     private val syncCursorStore: RaftSyncCursorStore by lazy { RaftSyncCursorStore(sharedPreferenceStore) }
 
+    /**
+     * The sync reloads that failed, for the next pull to read again. Shared with the Home and
+     * Activity stores, whose list reads settle the reloads sync dispatched to them.
+     */
+    private val syncReloadLedger: RaftSyncReloadLedger by lazy { RaftSyncReloadLedger() }
+
     private val syncChangesEngine: RaftSyncChangesEngine by lazy {
         RaftSyncChangesEngine(
             api = RaftSyncChangesNetworkApi(networkClient),
@@ -907,6 +913,7 @@ internal class RaftSharedStoreProvider private constructor(
             sink =
                 RaftSyncChangesStoreRouter(
                     targets = syncStoreTargets,
+                    ledger = syncReloadLedger,
                     logger = sharedInfoLogger("SlockSync", "sync_changes"),
                 ),
             // Same account and the server still selected by a shell: a server switch retires the pull.
@@ -986,9 +993,10 @@ internal class RaftSharedStoreProvider private constructor(
             threadSendScope.launch(start = CoroutineStart.LAZY) {
                 when (val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)) {
                     is RaftSyncPullResult.Failed -> if (result.needsFullRefetchFallback) onFailed?.invoke()
-                    // Stopped at the page cap with more waiting: go on in a follow-up pull.
+                    // Stopped at the page cap with more waiting: go on in a follow-up pull, unless
+                    // this pull left the cursor where it was (it would only ask the same again).
                     is RaftSyncPullResult.Synced ->
-                        if (result.truncated) requestSyncChangesPull(scope.serverId, trigger = "truncated_follow_up")
+                        if (result.needsFollowUp) requestSyncChangesPull(scope.serverId, trigger = "truncated_follow_up")
                 }
             }
         synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
@@ -1087,13 +1095,12 @@ internal class RaftSharedStoreProvider private constructor(
                 }
             }
 
-            override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) {
-                syncServerMembersStores(serverId).forEach { store ->
-                    store.refreshLoadedChannelMembers(ServerId(serverId), channelIds, reason)
-                }
-            }
+            override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String): Boolean =
+                syncServerMembersStores(serverId)
+                    .map { store -> store.refreshLoadedChannelMembers(ServerId(serverId), channelIds, reason) }
+                    .all { it }
 
-            override suspend fun reloadRoster(serverId: String, reason: String): Boolean {
+            override suspend fun reloadRoster(serverId: String, reason: String): RaftSyncSnapshotRead {
                 // A forced load joins a roster flight already running, read before this change: retire
                 // it first (generation bump, its late answer is dropped), then one fresh forced read
                 // through the process roster core that every shell store publishes (Tenny 10-27).
@@ -1111,7 +1118,8 @@ internal class RaftSharedStoreProvider private constructor(
                             )
                         }.getOrNull()
                     }
-                return results.any { it is DataResult.Content || it is DataResult.Empty }
+                // A guest's `servers/:id/members` is a 403: not readable, not a failure (#proj-mobile:#112).
+                return results.syncSnapshotRead()
             }
 
             override suspend fun applyMessageRows(serverId: String, messages: List<Message>) {
@@ -1125,13 +1133,16 @@ internal class RaftSharedStoreProvider private constructor(
                     }
             }
 
-            override suspend fun reloadMachines(serverId: String, reason: String): Boolean {
+            override suspend fun reloadMachines(serverId: String, reason: String): RaftSyncSnapshotRead {
                 val stores = syncComputersStores(serverId)
                 // No Computers store open for the server: nothing in memory to refresh, its first load reads the server.
-                if (stores.isEmpty()) return true
+                if (stores.isEmpty()) return RaftSyncSnapshotRead.Taken
+                // A viewer without `viewMachines` gets a 403: not readable, as for the roster (#proj-mobile:#112).
                 return stores
-                    .map { store -> store.reloadMachinesForSync(serverId) }
-                    .any { it is DataResult.Content || it is DataResult.Empty }
+                    .map { store ->
+                        runCatchingPreservingCancellation { store.reloadMachinesForSync(serverId) }.getOrNull()
+                    }
+                    .syncSnapshotRead()
             }
         }
 
@@ -2368,6 +2379,7 @@ internal class RaftSharedStoreProvider private constructor(
                         if (scope == RaftShellStoreScope.Legacy) homeStoreScope else RaftStoreThreading.newScope()
                     },
                 diagnosticsLogger = diagnosticsLogger,
+                syncReloads = syncReloadLedger,
                 loadSidebarOrder = loadSidebarOrder,
                 updateSidebarOrder = updateSidebarOrder,
                 loadServerOrder = loadServerOrder,
@@ -2500,6 +2512,7 @@ internal class RaftSharedStoreProvider private constructor(
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),
                 hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
+                syncReloads = syncReloadLedger,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()
