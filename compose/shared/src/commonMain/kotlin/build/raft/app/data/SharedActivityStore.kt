@@ -2925,12 +2925,20 @@ class SharedActivityStore internal constructor(
                 // outright, unread included: patches never invent unread, so
                 // there is no local unread to preserve (web takes the incoming
                 // row, preserveNewerThreadActivity, inboxStore.ts:813-870).
+                // A canonical row whose latest activity is strictly newer (by seq) than the shown
+                // row's also wins. A `thread:updated`-only patch (a joint channel's projected
+                // thread, whose `message:new` arrives under the origin thread id and is deduped)
+                // moves the count and time but keeps the old preview and marker, so the
+                // count/marker rule alone never let the served row back in (fb-c04c1199: the row
+                // kept a 03:44 reply with a fresh time while newer replies, the reader's own
+                // included, were served).
                 if (
                     canonical.replyCount > localVersion.replyCount ||
                     (
                         canonical.replyCount == localVersion.replyCount &&
                             canonical.latestActivityMessageId == localVersion.marker
-                        )
+                        ) ||
+                    canonical.servesNewerActivityThan(current)
                 ) {
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
@@ -3016,6 +3024,13 @@ class SharedActivityStore internal constructor(
             latestDelegatedBy = current.latestDelegatedBy,
             latestActivitySeq = current.latestActivitySeq
         )
+    }
+
+    /** Both rows carry a content frontier and this (served) one is strictly past the shown one. */
+    private fun InboxItem.servesNewerActivityThan(current: InboxItem): Boolean {
+        val served = latestActivitySeq ?: return false
+        val shown = current.latestActivitySeq ?: return false
+        return compareActivitySeq(served, shown) > 0
     }
 
     private fun InboxItem.withRealtimeActivityProjection(current: InboxItem): InboxItem =
