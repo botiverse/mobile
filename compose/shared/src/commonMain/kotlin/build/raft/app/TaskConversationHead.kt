@@ -260,7 +260,17 @@ internal fun TaskSummary.taskConversationHeadModel(
         creator =
             creator?.let { member ->
                 member.id.value.trim().takeIf { it.isNotEmpty() }?.let { id ->
-                    TaskHeadPerson(member.kind, id, member.avatarWireValueForRenderedAvatar())
+                    // The task DTO names the creator without a face, and the head reads faces from
+                    // the reader's current server directory: a joint channel's agent from another
+                    // workspace is not in it and fell back to the default robot. The channel's own
+                    // member row (joint members included) carries the avatar.
+                    val channelMember = members.firstOrNull { it.kind == member.kind && it.id.value == member.id.value }
+                    TaskHeadPerson(
+                        member.kind,
+                        id,
+                        channelMember?.avatar?.let { channelMember.avatarWireValueForRenderedAvatar() }
+                            ?: member.avatarWireValueForRenderedAvatar(),
+                    )
                 }
             },
         avatarServerId = serverId?.trim()?.takeIf { it.isNotEmpty() },

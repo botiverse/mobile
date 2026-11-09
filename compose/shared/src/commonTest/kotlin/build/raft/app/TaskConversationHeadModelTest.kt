@@ -12,6 +12,7 @@ import build.raft.app.data.TaskHistoryDetail
 import build.raft.app.data.TaskSourceMessagePreview
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.parseTaskHistory
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -260,6 +261,28 @@ class TaskConversationHeadModelTest {
 
     private fun event(id: String) =
         TaskHistoryEvent(id, "created", "user", "artin", "2026-10-27T09:00:00.000Z", kotlinx.serialization.json.JsonObject(emptyMap()))
+
+    @Test
+    fun creatorFromAnotherWorkspaceWearsTheChannelMembersAvatar() {
+        // artin 1.22.0 (#wg-deck:#158): a joint channel's task created by an agent of another
+        // workspace showed the default robot; the reader's server directory does not know it, but
+        // the channel's member row carries its avatar.
+        val avatar = "https://cdn.raft.build/avatars/other-server/imprint.webp"
+        val task = task().copy(creator = MemberProfile(id = MemberId("agent-9"), displayName = "Imprint", handle = "imprint", kind = MemberKind.Agent))
+        val members =
+            listOf(
+                MemberProfile(
+                    id = MemberId("agent-9"),
+                    displayName = "Imprint",
+                    handle = "imprint",
+                    kind = MemberKind.Agent,
+                    avatar = AvatarReference.Url(avatar),
+                ),
+            )
+        val model =
+            task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), TaskConversationDetailsState(), false, members, null, serverId = "server-1")
+        assertEquals(TaskHeadPerson(MemberKind.Agent, "agent-9", avatar), model.creator)
+    }
 
     private fun task(): TaskSummary =
         parseSharedServerTasksPayload(
