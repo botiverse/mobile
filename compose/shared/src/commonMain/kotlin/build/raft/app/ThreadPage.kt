@@ -19381,11 +19381,12 @@ internal fun ThreadPageHeader(
                             onShowMembers,
                             badge = payload.membersCount.takeIf { it > 0 },
                             priority = Int.MAX_VALUE,
+                            icon = RaftLucideIconName.Users,
                         )
                     )
                 }
                 if (dmLoungeToggle != null) {
-                    add(RaftNativeNavBarAction("lounge", loungeLabel, "person.2", dmLoungeToggle))
+                    add(RaftNativeNavBarAction("lounge", loungeLabel, "person.2", dmLoungeToggle, icon = RaftLucideIconName.Users))
                 }
                 addAll(nativeSideActions.toRaftNativeNavBarActions())
                 if (nativeLevelTarget != null) {
@@ -19396,6 +19397,7 @@ internal fun ThreadPageHeader(
                             "bell",
                             { nativeLevelDialogOpen = true },
                             placement = RaftNativeNavBarPlacement.Overflow,
+                            icon = RaftLucideIconName.BellRing,
                         )
                     )
                 }
@@ -19413,18 +19415,14 @@ internal fun ThreadPageHeader(
                         loungeHeader != null ->
                             RaftNativeNavBarTitleLeading.Avatar(
                                 label = loungeHeader.agentName,
-                                imageUrl =
-                                    loungeHeader.agentAvatarWireValue
-                                        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
-                                fillArgb = raftArgbHex(raftAvatarFallbackFill(MemberKind.Agent)),
+                                avatarWireValue = loungeHeader.agentAvatarWireValue,
+                                fill = raftAvatarFallbackFill(MemberKind.Agent),
                             )
                         headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
                             RaftNativeNavBarTitleLeading.Avatar(
                                 label = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
-                                imageUrl =
-                                    (resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue)
-                                        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
-                                fillArgb = raftArgbHex(raftAvatarFallbackFill(headerDisplay.dmPeerIdentity?.kind)),
+                                avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
+                                fill = raftAvatarFallbackFill(headerDisplay.dmPeerIdentity?.kind),
                             )
                         payload.showModeTabs ->
                             RaftNativeNavBarTitleLeading.Channel(headerDisplay.channelKind, headerDisplay.channelOnPublicPage)

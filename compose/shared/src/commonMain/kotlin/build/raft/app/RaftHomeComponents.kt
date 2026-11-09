@@ -5235,6 +5235,8 @@ private fun HomeNativeNavBarHead(
             systemSymbol = if (visible.isEmpty()) "bell" else "bell.badge",
             onClick = onNotificationToggle,
             badge = visible.size.takeIf { it > 0 },
+            // The Compose head's bell (its count is the bar button's badge).
+            icon = RaftLucideIconName.Bell,
         )
     val drawn =
         raftNativeNavBarPublish(

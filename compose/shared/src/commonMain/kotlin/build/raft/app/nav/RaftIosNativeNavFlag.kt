@@ -15,11 +15,11 @@ import kotlin.concurrent.Volatile
  * local change takes effect on the next app start.
  *
  * - Host: only an iPhone host offers it ([hostSupported], set by the iOS app before the first
- *   [launchDecision]); iPad, Android and desktop always read off and show no developer switch.
+ *   [launchDecision]); iPad, Android and desktop always read off and show no switch.
  * - Server: every evaluation of the key (any server, the last one wins) is written to
  *   [KEY_SERVER_LAST]; a kill switch is the next evaluation writing false.
- * - Local: the developer setting [KEY_LOCAL_OVERRIDE]. Unset follows the server; set on or off wins
- *   over the server.
+ * - Local: the Settings > Mobile switch (Beta; in Settings > Developer before 1.23, same key)
+ *   [KEY_LOCAL_OVERRIDE]. Unset follows the server; set on or off wins over the server.
  * - Launch override: a Debug build's launch environment (`RAFT_NATIVE_NAV=1|0`, CI captures) wins
  *   over both; release builds never pass one.
  * - [launchDecision] reads them once; every later call in the process returns that first answer.
@@ -39,7 +39,7 @@ object RaftIosNativeNavFlag {
         if (store.getString(KEY_SERVER_LAST) != enabled.toString()) store.putBoolean(KEY_SERVER_LAST, enabled)
     }
 
-    /** The developer switch as set: null when never touched (the server decides). */
+    /** The Settings > Mobile switch as set: null when never touched (the server decides). */
     fun localOverrideSetting(store: SharedPreferenceStore): Boolean? =
         when (store.getString(KEY_LOCAL_OVERRIDE)) {
             "true" -> true
