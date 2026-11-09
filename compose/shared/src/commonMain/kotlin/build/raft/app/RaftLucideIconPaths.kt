@@ -2126,6 +2126,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M3 12v7"),
                     ),
                 )
+            RaftLucideIconName.TimerReset ->
+                RaftLucideIconSpec(
+                    "timer-reset",
+                    listOf(
+                        RaftLucidePathSpec("M10 2h4"),
+                        RaftLucidePathSpec("M12 14v-4"),
+                        RaftLucidePathSpec("M4 13a8 8 0 0 1 8-7 8 8 0 1 1-5.3 14L4 17.6"),
+                        RaftLucidePathSpec("M9 17H4v5"),
+                    ),
+                )
             RaftLucideIconName.Thread ->
                 RaftLucideIconSpec(
                     "thread",

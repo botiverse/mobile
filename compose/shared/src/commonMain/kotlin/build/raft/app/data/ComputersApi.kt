@@ -108,6 +108,22 @@ interface RaftComputersApi {
         body: String,
         priority: DataRequestPriority
     ): HomeNetworkResponse = error("refreshRuntimeAccountUsage is not implemented")
+    /**
+     * `GET …/runtime-auth` (slock packages/server/src/routes/runtimeAuthRoutes.ts): the viewer's
+     * `canAct`, the Computer's `availability` and its runtimes' sign-in status.
+     */
+    suspend fun runtimeAuth(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        error("runtimeAuth is not implemented")
+    /**
+     * `POST …/runtime-account-usage/:provider/limit-reset` with body `{idempotencyKey}` (slock #13504,
+     * packages/server/src/routes/runtimeAuthRoutes.ts): spends one of the account's limit resets.
+     */
+    suspend fun redeemRuntimeLimitReset(
+        serverId: ServerId,
+        machineId: String,
+        provider: String,
+        body: String
+    ): HomeNetworkResponse = error("redeemRuntimeLimitReset is not implemented")
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
     /**
      * `POST servers/:id/machines/:machineId/computer/:action` with `action` `restart` (body `{}`) or
@@ -268,6 +284,28 @@ internal class RaftComputersNetworkApi(
         networkClient.request(
             priority = priority,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}/refresh",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun runtimeAuth(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-auth",
+            serverIdOverride = serverId
+        )
+
+    override suspend fun redeemRuntimeLimitReset(
+        serverId: ServerId,
+        machineId: String,
+        provider: String,
+        body: String
+    ): HomeNetworkResponse =
+        networkClient.request(
+            // The person confirmed it and waits for the outcome.
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}/limit-reset",
             method = "POST",
             serverIdOverride = serverId,
             bodyText = body
@@ -435,6 +473,44 @@ internal class RaftComputersApiClient(
             "computer_runtime_account_usage_refresh_contract_mismatch",
             JsonElement.serializer()
         ) { wire -> wire.toRuntimeAccountUsageRefresh() }
+
+    /** Who may act on the Computer's runtimes (web `RuntimeAuthClient.read`). */
+    suspend fun runtimeAuthView(serverId: ServerId, machineId: String): DataResult<RuntimeAuthView> =
+        transport.runtimeAuth(serverId, machineId).mapComputersBody(
+            "computer_runtime_auth_contract_mismatch",
+            JsonElement.serializer()
+        ) { wire -> wire.toRuntimeAuthView() }
+
+    /**
+     * Spends one of the account's limit resets (web `RuntimeAuthClient.redeemLimitReset`). Any
+     * answer without a readable outcome is [RuntimeLimitResetLoad.Failed] with the status and the
+     * route's `code`: the reset may or may not have been spent, so the caller keeps the key.
+     */
+    suspend fun redeemRuntimeLimitReset(
+        serverId: ServerId,
+        machineId: String,
+        provider: RuntimeAccountUsageProvider,
+        idempotencyKey: RuntimeLimitResetIdempotencyKey
+    ): RuntimeLimitResetLoad {
+        val response =
+            transport.redeemRuntimeLimitReset(
+                serverId = serverId,
+                machineId = machineId,
+                provider = provider.wire,
+                body = buildRuntimeLimitResetBody(idempotencyKey)
+            )
+        if (!response.isSuccessful) {
+            return RuntimeLimitResetLoad.Failed(
+                RuntimeLimitResetRefusal(status = response.code.takeIf { it > 0 }, code = response.computersRouteErrorCodeOrNull())
+            )
+        }
+        val reply =
+            response.bodyText?.takeIf { it.isNotBlank() }?.let { body ->
+                runCatching { computersApiJson.parseToJsonElement(body) }.getOrNull()?.toRuntimeLimitResetReply()
+            }
+        return reply?.let(RuntimeLimitResetLoad::Done)
+            ?: RuntimeLimitResetLoad.Failed(RuntimeLimitResetRefusal(status = response.code, code = "malformed_response"))
+    }
 
     suspend fun runtimeOptions(
         serverId: ServerId,
@@ -643,7 +719,17 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
 }
 
 @Serializable
-private data class ComputersRouteErrorDto(val error: String? = null)
+private data class ComputersRouteErrorDto(val error: String? = null, val code: String? = null)
+
+/** The route's machine-readable `code` (`computer_offline`, …), when its error body has one. */
+private fun HomeNetworkResponse.computersRouteErrorCodeOrNull(): String? {
+    val payload = bodyText?.takeIf { it.isNotBlank() }
+        ?: errorBodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        computersApiJson.decodeFromString(ComputersRouteErrorDto.serializer(), payload).code?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
 
 private fun HomeNetworkResponse.computersRouteErrorTextOrNull(): String? {
     val payload = bodyText?.takeIf { it.isNotBlank() }
@@ -1171,6 +1257,13 @@ private fun <T> HomeNetworkResponse.toComputerControlError(): DataResult<T> {
 
 @Serializable
 internal data class RegisterComputerBody(val name: String)
+
+@Serializable
+private data class RuntimeLimitResetBody(val idempotencyKey: String)
+
+/** `{idempotencyKey}`, the key passed through unchanged (slock runtimeAuthRoutes.ts). */
+internal fun buildRuntimeLimitResetBody(idempotencyKey: RuntimeLimitResetIdempotencyKey): String =
+    computersApiJson.encodeToString(RuntimeLimitResetBody(idempotencyKey = idempotencyKey.value))
 
 @Serializable
 private data class RuntimeAccountUsageRefreshBody(val reason: String)

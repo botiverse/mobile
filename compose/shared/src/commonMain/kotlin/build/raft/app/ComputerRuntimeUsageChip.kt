@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -21,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,7 +43,13 @@ import build.raft.app.data.RuntimeAccountUsageRefreshReason
 import build.raft.app.data.RuntimeAccountUsageRefreshState
 import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
+import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeLimitResetLoad
+import build.raft.app.data.RuntimeLimitResetResult
+import build.raft.app.data.RuntimeAccountUsageSnapshot
 import build.raft.app.data.SharedRuntimeAccountUsageStore
+import build.raft.app.data.authRuntime
+import build.raft.app.data.settlesAttempt
 import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -58,6 +66,7 @@ import build.raft.designsystem.components.RaftMeterSize
 import build.raft.designsystem.components.RaftPreviewCard
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftSeparatorOrientation
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.components.RaftStatusDot
@@ -188,6 +197,23 @@ internal class ComputerRuntimeUsageController(
         private set
     var cooldownLeftMillis by mutableStateOf(0L)
         private set
+
+    /** Who may act on this Computer's runtimes (web `RuntimeAuthView`); null until read, or when refused. */
+    var authView by mutableStateOf<RuntimeAuthView?>(null)
+        private set
+
+    /** What the last limit reset did, said once in the status line until the next Refresh (web `limitResetNote`). */
+    var limitResetNote by mutableStateOf<ComputerRuntimeLimitResetNote?>(null)
+        private set
+
+    /** The open "Use a limit reset?" confirm, or null. */
+    var limitResetDialog by mutableStateOf<ComputerRuntimeLimitResetDialogState?>(null)
+        private set
+
+    /** The card's "Use a reset" (web `surfaceLimitReset`); null when there is none to use or the viewer may not. */
+    val limitResetOffer: ComputerRuntimeLimitResetOffer?
+        get() = computerRuntimeLimitResetOffer(load, authView, key.provider)
+
     private var followUp: Job? = null
 
     /** The first read; a stale or missing snapshot asks the Computer for a new one in the background. */
@@ -198,17 +224,97 @@ internal class ComputerRuntimeUsageController(
         }
     }
 
-    /** Opening the sheet reads again (from the 60 s cache when it is fresh). */
+    /**
+     * Opening the sheet reads again (from the 60 s cache when it is fresh), and reads who may act
+     * on the Computer's runtimes (30 s cache) for the limit-reset action, as the web card does.
+     */
     fun onOpen() {
         scope.launch { read(force = false) }
+        if (key.provider.authRuntime != null) scope.launch { authView = store.runtimeAuthView(key) }
     }
 
     fun refreshNow() {
+        // Web `handleRefresh`: a refresh replaces what the last limit reset said.
+        limitResetNote = null
+        startManualRefresh()
+    }
+
+    private fun startManualRefresh() {
         if (refresh == ComputerRuntimeUsageRefreshStatus.Requesting) return
         refresh = ComputerRuntimeUsageRefreshStatus.Requesting
         scope.launch {
             handleRefresh(store.refresh(key, RuntimeAccountUsageRefreshReason.Manual), manual = true)
             updateCooldown()
+        }
+    }
+
+    /**
+     * "Use a reset": opens the confirm for the account holding the reset, with this attempt's
+     * idempotency key (the one kept from an attempt whose outcome was never learned, else new).
+     */
+    fun openLimitReset() {
+        if (limitResetOffer == null) return
+        val account = load.limitResetAccount() ?: return
+        scope.launch {
+            val idempotencyKey = store.limitResetAttemptKey(key)
+            limitResetDialog =
+                ComputerRuntimeLimitResetDialogState(
+                    account = account.identityLabel,
+                    resetsAvailable = account.limitResetsAvailable ?: 0,
+                    idempotencyKey = idempotencyKey,
+                )
+        }
+    }
+
+    fun dismissLimitReset() {
+        if (limitResetDialog?.submitting == true) return
+        limitResetDialog = null
+    }
+
+    /**
+     * The confirmed click (web `RuntimeLimitResetDialog.handleConfirm`): spends the reset with the
+     * dialog's key. An outcome the person has to act on (sign in again, unsupported, unknown) or
+     * a request with no outcome keeps the dialog open with what happened; any other closes it.
+     */
+    fun confirmLimitReset() {
+        val dialog = limitResetDialog ?: return
+        if (dialog.submitting) return
+        limitResetDialog = dialog.copy(submitting = true, error = null)
+        scope.launch {
+            val result = store.redeemLimitReset(key, dialog.idempotencyKey)
+            log("computer_runtime_usage_limit_reset provider=${key.provider.wire} result=${result.diagnosticsLabel()}")
+            when (result) {
+                RuntimeLimitResetLoad.Superseded -> {
+                    limitResetDialog = null
+                    load = null
+                    onIdentityChanged()
+                }
+                is RuntimeLimitResetLoad.Failed -> {
+                    handleLimitResetOutcome(result = null, snapshot = null)
+                    limitResetDialog = dialog.copy(submitting = false, error = result.refusal.limitResetError())
+                }
+                is RuntimeLimitResetLoad.Done -> {
+                    handleLimitResetOutcome(result.reply.result, result.reply.snapshot)
+                    val error = result.reply.result.limitResetError()
+                    limitResetDialog = if (error == null) null else dialog.copy(submitting = false, error = error)
+                }
+            }
+        }
+    }
+
+    /**
+     * Web `handleLimitResetOutcome`: a settled attempt drops its key; never assume the limits
+     * recovered — show the usage the Computer read right after the redeem, or refresh.
+     */
+    private suspend fun handleLimitResetOutcome(result: RuntimeLimitResetResult?, snapshot: RuntimeAccountUsageSnapshot?) {
+        if (result.settlesAttempt) store.forgetLimitResetAttempt(key)
+        limitResetNote = result?.limitResetNote()
+        if (snapshot != null) {
+            followUp?.cancel()
+            load = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot))
+            refresh = ComputerRuntimeUsageRefreshStatus.Idle
+        } else {
+            startManualRefresh()
         }
     }
 
@@ -293,6 +399,13 @@ internal class ComputerRuntimeUsageController(
 
 internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_DELAY_MILLIS: Long = 1_200L
 internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS: Int = 8
+
+private fun RuntimeLimitResetLoad.diagnosticsLabel(): String =
+    when (this) {
+        is RuntimeLimitResetLoad.Done -> reply.result.wire + if (reply.snapshot != null) ":snapshot" else ""
+        is RuntimeLimitResetLoad.Failed -> "failed:${refusal.status ?: "none"}:${refusal.code ?: "none"}"
+        RuntimeLimitResetLoad.Superseded -> "superseded"
+    }
 
 private fun RuntimeAccountUsageRefreshLoad.diagnosticsLabel(): String =
     when (this) {
@@ -424,18 +537,40 @@ internal fun ComputerRuntimeUsageSheetHost(
     val timeContext = currentRaftTimeContextProvider?.current
     ComputerRuntimeUsageSheet(
         runtimeLabel = runtimeLabel,
-        state =
-            ComputerRuntimeUsageSheetState(
-                controller.load,
-                controller.loading,
-                controller.refresh,
-                controller.cooldownLeftMillis,
-                runtimeVersion,
-            ),
+        state = controller.sheetState(runtimeVersion),
         timeContext = timeContext,
         onRefresh = controller::refreshNow,
+        onUseLimitReset = controller::openLimitReset,
         onDismiss = onDismiss,
     )
+    ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
+}
+
+/** What the controller shows, for the sheet or the card. */
+internal fun ComputerRuntimeUsageController.sheetState(runtimeVersion: String?): ComputerRuntimeUsageSheetState =
+    ComputerRuntimeUsageSheetState(
+        load = load,
+        loading = loading,
+        refresh = refresh,
+        cooldownLeftMillis = cooldownLeftMillis,
+        runtimeVersion = runtimeVersion,
+        limitReset = limitResetOffer,
+        limitResetNote = limitResetNote,
+    )
+
+/** The controller's open "Use a limit reset?" confirm, if any. */
+@Composable
+private fun ComputerRuntimeLimitResetDialogHost(runtimeLabel: String, controller: ComputerRuntimeUsageController) {
+    controller.limitResetDialog?.let { dialog ->
+        RaftComputersTheme {
+            ComputerRuntimeLimitResetDialog(
+                runtimeName = runtimeLabel,
+                state = dialog,
+                onConfirm = controller::confirmLimitReset,
+                onDismiss = controller::dismissLimitReset,
+            )
+        }
+    }
 }
 
 /** What the usage sheet shows (web `Surface` props). */
@@ -446,6 +581,10 @@ internal data class ComputerRuntimeUsageSheetState(
     val cooldownLeftMillis: Long,
     /** The runtime CLI version the Computer reported (web `runtimeVersion`); null = "Version unavailable". */
     val runtimeVersion: String? = null,
+    /** "Use a reset" (slock #13504); null when there is no reset to use or the viewer may not act. */
+    val limitReset: ComputerRuntimeLimitResetOffer? = null,
+    /** What the last limit reset did, in place of the refresh line. */
+    val limitResetNote: ComputerRuntimeLimitResetNote? = null,
 )
 
 /** Web phone layout: the usage surface in a bottom sheet (`BottomSheet`, below md). */
@@ -455,12 +594,13 @@ private fun ComputerRuntimeUsageSheet(
     state: ComputerRuntimeUsageSheetState,
     timeContext: RaftTimeContext?,
     onRefresh: () -> Unit,
+    onUseLimitReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     RaftSheet(
         onDismissRequest = onDismiss,
         title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
-        actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh, onDismiss) },
+        actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh, onUseLimitReset, onDismiss) },
         content = { ComputerRuntimeUsageContents(state, timeContext, showsVersion = true) },
     )
 }
@@ -476,7 +616,7 @@ internal fun ComputerRuntimeUsageSheetSurface(
     RaftSheetSurface(
         title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         modifier = modifier,
-        actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh = {}, onDismiss = {}) },
+        actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh = {}, onUseLimitReset = {}, onDismiss = {}) },
         content = { ComputerRuntimeUsageContents(state, timeContext, showsVersion = true) },
     )
 }
@@ -486,6 +626,7 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
     state: ComputerRuntimeUsageSheetState,
     timeContext: RaftTimeContext?,
     onRefresh: () -> Unit,
+    onUseLimitReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -514,6 +655,10 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
         loading = state.refresh == ComputerRuntimeUsageRefreshStatus.Requesting,
         leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
     )
+    // Web: Use a reset beside Refresh; primary only while the account is rate-limited.
+    state.limitReset?.let { offer ->
+        ComputerRuntimeLimitResetButton(offer, onUseLimitReset, Modifier.fillMaxWidth(), size = RaftButtonSize.Lg)
+    }
     RaftButton(
         text = stringResource(Res.string.common_close),
         onClick = onDismiss,
@@ -527,6 +672,8 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
 @Composable
 private fun computerRuntimeUsageRefreshStatusText(state: ComputerRuntimeUsageSheetState): String =
     when {
+        // Web `statusText`: what the last limit reset did comes first.
+        state.limitResetNote != null -> state.limitResetNote.text()
         state.refresh == ComputerRuntimeUsageRefreshStatus.Requested -> stringResource(Res.string.settings_computers_runtime_usage_refresh_requested)
         state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(Res.string.settings_computers_runtime_usage_refresh_unconfirmed)
         state.refresh == ComputerRuntimeUsageRefreshStatus.Timeout -> stringResource(Res.string.settings_computers_runtime_usage_refresh_timeout)
@@ -633,8 +780,36 @@ internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccoun
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                account.identityLabel?.let { identity ->
-                    RaftText(identity, style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val resets = account.limitResetsAvailable
+                if (resets == null) {
+                    account.identityLabel?.let { identity ->
+                        RaftText(identity, style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                } else {
+                    // Web: the account's limit resets (Codex) beside the account they belong to.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        account.identityLabel?.let { identity ->
+                            RaftText(
+                                identity,
+                                modifier = Modifier.weight(1f, fill = false),
+                                style = typography.monoMeta,
+                                color = colors.foregroundHint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            RaftSeparator(Modifier.height(12.dp), orientation = RaftSeparatorOrientation.Vertical)
+                        }
+                        RaftText(
+                            computerRuntimeLimitResetsLeftText(resets),
+                            modifier = Modifier.testTag(COMPUTER_RUNTIME_LIMIT_RESETS_LEFT_TAG),
+                            style = typography.caption,
+                            color = colors.foregroundMuted,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
             // Raft DS StatusChip: soft wash, a square pixel, one word.
@@ -770,17 +945,15 @@ internal fun ComputerRuntimeUsagePreviewCard(
         card = {
             ComputerRuntimeUsageCard(
                 runtimeLabel = runtimeLabel,
-                state =
-                    ComputerRuntimeUsageSheetState(
-                        controller.load,
-                        controller.loading,
-                        controller.refresh,
-                        controller.cooldownLeftMillis,
-                        runtimeVersion,
-                    ),
+                state = controller.sheetState(runtimeVersion),
                 timeContext = timeContext,
                 onRefresh = controller::refreshNow,
                 onClose = state::dismiss,
+                onUseLimitReset = {
+                    // Web: the dialog takes over from the card, so the card does not float above it.
+                    state.dismiss()
+                    controller.openLimitReset()
+                },
             )
         },
         modifier = modifier,
@@ -790,6 +963,7 @@ internal fun ComputerRuntimeUsagePreviewCard(
         width = RaftPreviewCardDefaults.WideWidth,
         trigger = trigger,
     )
+    ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
 }
 
 /** Web `HOVER_CLOSE_DELAY_MS`: the usage card waits a little longer than a profile card. */
@@ -807,6 +981,7 @@ internal fun ComputerRuntimeUsageCard(
     timeContext: RaftTimeContext?,
     onRefresh: () -> Unit,
     onClose: (() -> Unit)?,
+    onUseLimitReset: () -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -940,5 +1115,8 @@ internal fun ComputerRuntimeUsageCard(
             loading = state.refresh == ComputerRuntimeUsageRefreshStatus.Requesting,
             leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
         )
+        state.limitReset?.let { offer -> ComputerRuntimeLimitResetButton(offer, onUseLimitReset) }
     }
 }
+
+internal const val COMPUTER_RUNTIME_LIMIT_RESETS_LEFT_TAG = "runtime-account-limit-resets"

@@ -94,8 +94,17 @@ internal data class RuntimeAccountUsageAccount(
     /** Masked email, or the provider display name when there is no email. */
     val identityLabel: String?,
     val health: RuntimeAccountUsageHealth,
-    val windows: List<RuntimeAccountUsageWindow>
+    val windows: List<RuntimeAccountUsageWindow>,
+    /**
+     * How many limit resets the account holds (slock #13504, Codex: OAR `limitResets.available`);
+     * null when the runtime reports none, the Computer predates it, or the value is not a whole
+     * number in 0..[RUNTIME_LIMIT_RESETS_AVAILABLE_MAX] (the server's own bound).
+     */
+    val limitResetsAvailable: Int? = null
 )
+
+/** slock `RUNTIME_LIMIT_RESETS_AVAILABLE_MAX`: a larger count is not a reading Raft trusts. */
+internal const val RUNTIME_LIMIT_RESETS_AVAILABLE_MAX: Int = 999
 
 internal data class RuntimeAccountUsageSnapshot(
     val provider: String,
@@ -180,6 +189,9 @@ internal fun JsonElement.toRuntimeAccountUsageRefresh(): RuntimeAccountUsageRefr
     return RuntimeAccountUsageRefresh(accepted = accepted, state = state, snapshot = snapshot)
 }
 
+/** A snapshot carried by another answer (the limit-reset reply); null when it is not one this app can show. */
+internal fun JsonObject.toRuntimeAccountUsageSnapshotOrNull(): RuntimeAccountUsageSnapshot? = toRuntimeAccountUsageSnapshot()
+
 private fun JsonObject.toRuntimeAccountUsageSnapshot(): RuntimeAccountUsageSnapshot? {
     val provider = stringOrNull("provider") ?: return null
     val accounts = (this["accounts"] as? JsonArray)
@@ -209,8 +221,16 @@ private fun JsonObject.toRuntimeAccountUsageAccount(): RuntimeAccountUsageAccoun
         planLabel = stringOrNull("planLabel"),
         identityLabel = stringOrNull("maskedLabel") ?: stringOrNull("displayName"),
         health = health,
-        windows = windows
+        windows = windows,
+        limitResetsAvailable = limitResetsAvailableOrNull()
     )
+}
+
+private fun JsonObject.limitResetsAvailableOrNull(): Int? {
+    val primitive = (this["limitResetsAvailable"] as? JsonPrimitive)?.takeUnless { it.isString } ?: return null
+    val value = primitive.doubleOrNull ?: return null
+    if (!value.isFinite() || value != kotlin.math.floor(value)) return null
+    return value.toInt().takeIf { it in 0..RUNTIME_LIMIT_RESETS_AVAILABLE_MAX }
 }
 
 private fun JsonObject.toRuntimeAccountUsageWindow(): RuntimeAccountUsageWindow? {
