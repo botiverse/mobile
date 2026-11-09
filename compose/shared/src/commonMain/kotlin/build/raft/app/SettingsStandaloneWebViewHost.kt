@@ -498,10 +498,14 @@ private fun StandaloneSettingsWebViewBody(
         bridge = bridge,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
-            bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
+            // Never the query: a Settings URL can carry tokens.
+            bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=${raftWebViewUrlForLog(url)}")
         },
         onLoadCommit = {
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_commit")
+        },
+        onLoadSuccess = {
+            bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_success")
         },
         onLoadFailure = { reason ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_failure reason=$reason")
@@ -521,6 +525,7 @@ internal fun StandaloneSettingsWebViewContent(
     controller: RaftWebViewController = rememberRaftWebViewController(),
     bridge: BridgeModule? = null,
     onLoadCommit: () -> Unit = {},
+    onLoadSuccess: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
@@ -564,6 +569,7 @@ internal fun StandaloneSettingsWebViewContent(
     SettingsWebViewContent(
         url = webUrl,
         modifier = modifier,
+        diagnosticsName = "settings_${spec.surface.diagnosticsName}",
         allowedNavigationSchemes = spec.allowedNavigationSchemes,
         allowNavigation = spec.allowNavigation,
         hostEventsEnabled = spec.hostEventsEnabled,
@@ -572,6 +578,7 @@ internal fun StandaloneSettingsWebViewContent(
         controller = controller,
         generationKey = hostAuthBinding?.webViewGeneration,
         onLoadCommit = onLoadCommit,
+        onLoadSuccess = onLoadSuccess,
         onUrlChange = onUrlChange,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
@@ -601,11 +608,18 @@ internal fun StandaloneSettingsWebViewContent(
  * It owns the measured native-view attach gate, opaque cream cover, commit-ready transition,
  * failure/retry state, and navigation callbacks. Surface pages may provide identity/configuration,
  * but cannot change this first-frame sequence.
+ *
+ * Every attempt is guarded by a [RaftWebViewLoadWatchdog] (dm #102): a page that is not ready
+ * [stallTimeoutMs] after it started, or whose web content process died before it was, is replaced
+ * by the error state; its WebView is dropped, and Retry builds a new one (new timer).
  */
 @Composable
 internal fun SettingsWebViewContent(
     url: String,
     modifier: Modifier = Modifier,
+    /** Fixed page name for the load diagnostics (`settings_billing`, `release_notes`, ...). */
+    diagnosticsName: String = "settings_webview",
+    stallTimeoutMs: Long = RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS,
     hostEventsEnabled: Boolean = false,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
     allowNavigation: Boolean = true,
@@ -634,6 +648,10 @@ internal fun SettingsWebViewContent(
     var bodyFrameReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
     var webViewAttachReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
     val navigationAuthority = remember { SettingsWebViewNavigationAuthority() }
+    val loadWatchdog =
+        remember(url, generationKey, reloadKey) {
+            RaftWebViewLoadWatchdog(page = diagnosticsName, url = url, retry = reloadKey, stallTimeoutMs = stallTimeoutMs)
+        }
     val documentReady = contentVisible && !navigationState.isLoading && navigationState.progress >= 100
 
     LaunchedEffect(documentReady) { onDocumentReadyChange(documentReady) }
@@ -663,7 +681,8 @@ internal fun SettingsWebViewContent(
         // Native WebViews apply their own bottom safe-area inset. Extend the shared frame so that
         // inset falls outside the visible slot instead of exposing a second background strip.
         val webViewHeight = maxHeight + raftBottomSafeAreaPadding()
-        if (webViewAttachReady) {
+        // A stalled or crashed attempt's WebView goes (its timer and probe with it): Retry builds a new one.
+        if (webViewAttachReady && !loadWatchdog.showsError) {
             key(generationKey, reloadKey, url) {
                 val navigationOwner = remember { navigationAuthority.acquire() }
                 DisposableEffect(navigationOwner) {
@@ -689,6 +708,7 @@ internal fun SettingsWebViewContent(
                     injectedJavaScript = injectedJavaScript,
                     hostEventsEnabled = hostEventsEnabled,
                     controller = controller,
+                    loadWatchdog = loadWatchdog,
                     onLoadCommit = {
                         loadError = null
                         contentVisible = true
@@ -712,7 +732,11 @@ internal fun SettingsWebViewContent(
                     },
                     onNavigationBlocked = onNavigationBlocked,
                     onHostMessage = { kind, payload ->
-                        if (navigationAuthority.accepts(navigationOwner)) onHostMessage(kind, payload)
+                        if (navigationAuthority.accepts(navigationOwner)) {
+                            // The page's own bridge `ready` (Feedback posts it) is a ready signal too.
+                            if (kind == "ready") loadWatchdog.onPageReadyMessage()
+                            onHostMessage(kind, payload)
+                        }
                     },
                     onNavigationStateChange = { state ->
                         if (navigationAuthority.accepts(navigationOwner)) {
@@ -729,11 +753,12 @@ internal fun SettingsWebViewContent(
                 )
             }
         }
-        when (settingsWebViewPresentation(contentVisible, loadError != null)) {
+        when (settingsWebViewPresentation(contentVisible, loadError != null || loadWatchdog.showsError)) {
             SettingsWebViewPresentation.Error ->
                 SettingsWebViewErrorContent(
                     actionLabel = stringResource(Res.string.common_retry),
                     actionIcon = RaftLucideIconName.RefreshCw,
+                    body = settingsWebViewErrorBody(loadWatchdog.state.phase),
                     onAction = { reloadKey += 1 },
                 )
             SettingsWebViewPresentation.LoadingCover -> SettingsWebViewLoadingCover()
@@ -752,6 +777,7 @@ internal fun SettingsWebViewErrorContent(
     actionLabel: String,
     actionIcon: RaftLucideIconName,
     onAction: () -> Unit,
+    body: String = stringResource(Res.string.settings_webview_error_body),
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp),
@@ -766,7 +792,7 @@ internal fun SettingsWebViewErrorContent(
             color = RaftColor.TextBlack,
         )
         Text(
-            stringResource(Res.string.settings_webview_error_body),
+            body,
             style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
         )
@@ -778,6 +804,15 @@ internal fun SettingsWebViewErrorContent(
         )
     }
 }
+
+/** The error state's line: a crashed page says so; a stalled or failed load keeps the connection hint. */
+@Composable
+internal fun settingsWebViewErrorBody(phase: RaftWebViewLoadPhase): String =
+    if (phase == RaftWebViewLoadPhase.ProcessGone) {
+        stringResource(Res.string.settings_webview_crash_body)
+    } else {
+        stringResource(Res.string.settings_webview_error_body)
+    }
 
 internal fun settingsWebViewFrameIsReady(
     positionY: Float,

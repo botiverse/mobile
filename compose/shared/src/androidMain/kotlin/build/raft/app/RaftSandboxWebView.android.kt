@@ -375,6 +375,8 @@ internal class RaftAndroidSandboxWebView(
                         always = true,
                     )
                     val restoreDocument = loadedSrc.isNotBlank()
+                    // The host's load watchdog: an error state when the page was not up yet.
+                    events.onContentProcessGone(if (detail?.didCrash() == true) "render_process_crashed" else "render_process_killed")
                     removeHostMessageListener()
                     pendingRuntimeJavaScript = ""
                     runCatching {
@@ -654,6 +656,10 @@ internal class RaftAndroidSandboxWebView(
             evaluateRuntimeJavaScript(next.removePrefix(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX))
             return
         }
+        if (next.trim() == RaftWebViewController.COMMAND_PROBE_DOCUMENT_CONTENT) {
+            probeDocumentContent()
+            return
+        }
         when (next.trim()) {
             RaftWebViewController.COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
             RaftWebViewController.COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
@@ -703,6 +709,22 @@ internal class RaftAndroidSandboxWebView(
         }
         webView.evaluateJavascript(script, null)
         Log.i(LOG_TAG, "runtime_js result=applied")
+    }
+
+    /**
+     * The fixed, read-only [RaftWebViewContentProbeScript] (a '1'/'0' answer, nothing of the page's
+     * data), so it is not fenced like runtime scripts. No scripts: no answer (null, fail open).
+     */
+    private fun probeDocumentContent() {
+        if (destroyed) return
+        if (!allowScripts) {
+            events.onContentProbe(null)
+            return
+        }
+        val target = webView
+        target.evaluateJavascript(RaftWebViewContentProbeScript) { value ->
+            if (!destroyed && target === webView) events.onContentProbe(raftWebViewDecodeContentProbe(value))
+        }
     }
 
     private fun flushPendingRuntimeJavaScript() {

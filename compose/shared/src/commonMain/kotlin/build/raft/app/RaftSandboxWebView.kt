@@ -57,6 +57,13 @@ internal class RaftWebViewEvents {
     var onUrlChange: (String) -> Unit = {}
     var onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {}
     var onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
+    /** Answer to [RaftWebViewController.probeDocumentContent]: [raftWebViewDecodeContentProbe] of [RaftWebViewContentProbeScript]. */
+    var onContentProbe: (Boolean?) -> Unit = {}
+    /**
+     * The web content process (iOS `webViewWebContentProcessDidTerminate`) or renderer (Android
+     * `onRenderProcessGone`) died. The platform host still rebuilds and reloads its WebView.
+     */
+    var onContentProcessGone: (String) -> Unit = {}
 
     /** Raw `raftHostPort` message from the page: validated and mapped to an accepted kind. */
     fun dispatchHostMessage(raw: String) {

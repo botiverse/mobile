@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">No results matched your search.</string>
     <string name="settings_webview_error_title">Could not load this page</string>
     <string name="settings_webview_error_body">Check your connection and try again.</string>
+    <string name="settings_webview_crash_body">The page stopped unexpectedly. Try again.</string>
     <string name="tab_home">Home</string>
     <string name="tab_tasks">Tasks</string>
     <string name="tab_members">Members</string>

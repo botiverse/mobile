@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">Ничего не найдено.</string>
     <string name="settings_webview_error_title">Не удалось загрузить страницу</string>
     <string name="settings_webview_error_body">Проверьте подключение и попробуйте ещё раз.</string>
+    <string name="settings_webview_crash_body">Страница неожиданно перестала работать. Попробуйте ещё раз.</string>
     <string name="tab_home">Главная</string>
     <string name="tab_tasks">Задачи</string>
     <string name="tab_members">Участники</string>

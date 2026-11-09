@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">검색 결과가 없어요.</string>
     <string name="settings_webview_error_title">이 페이지를 불러오지 못했어요</string>
     <string name="settings_webview_error_body">연결 상태를 확인하고 다시 시도해 주세요.</string>
+    <string name="settings_webview_crash_body">페이지가 예기치 않게 중단되었어요. 다시 시도해 주세요.</string>
     <string name="tab_home">홈</string>
     <string name="tab_tasks">작업</string>
     <string name="tab_members">멤버</string>
