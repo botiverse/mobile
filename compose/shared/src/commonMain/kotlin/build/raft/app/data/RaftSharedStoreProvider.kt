@@ -4926,6 +4926,9 @@ internal object RaftSharedStoreRegistry {
     fun getOrCreateWithoutUpdate(host: HostCapabilities): RaftSharedStoreProvider =
         access.getOrCreateWithoutUpdate(processRequest(host))
 
+    // Also reached from the launch gate's off-main build (getOrCreateWithoutUpdate on
+    // Dispatchers.Default): RaftEventBuses.appScope() is a default (SYNCHRONIZED) `by lazy`, so a
+    // concurrent first call from the UI thread still yields one bus (#4485 review, #proj-mobile:#113).
     private fun processRequest(host: HostCapabilities): RaftSharedStoreProviderRequest =
         RaftSharedStoreProviderRequest(
             eventBus = RaftEventBuses.appScope(),

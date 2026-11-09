@@ -231,6 +231,8 @@ internal class RaftEventBusRelay(
 }
 
 internal object RaftEventBuses {
+    // Keep the default (SYNCHRONIZED) lazy mode: the shared store is built off the main thread on
+    // a cold start (RaftDatabaseLaunchGate) while the UI thread may call appScope() too; one bus only.
     private val appScopeEventBus: RaftEventBus by lazy {
         createRaftPlatformEventBus()
     }
