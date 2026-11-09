@@ -179,25 +179,34 @@ class RaftSettingsLinkTest {
 
     @Test
     fun announcementTwoStepLinkOpensTheWebPageOnTheCurrentServer() {
+        // dm:@artin #97: the passkey announcement's button. The app has no two-step page, so it is
+        // Raft's web page, opened in a browser even though Raft claims `/s/…` as its own App Link.
+        val twoStep = AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#two-step", raftWebPage = true)
+        assertEquals(twoStep, action("/settings/account#two-step"))
+        assertEquals(twoStep, action("$prod/s/hq/settings/account#two-step"))
+        assertEquals(RaftLinkOpenIntent.RaftWebPage, twoStep.openIntent)
         assertEquals(
-            AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#two-step"),
-            action("/settings/account#two-step"),
+            AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#unknown-block", raftWebPage = true),
+            action("/settings/account#unknown-block"),
         )
         assertEquals(
-            AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#unknown-block"),
-            action("/settings/account#unknown-block"),
+            AnnouncementLinkAction.OpenUrl("$staging/s/hq/settings/account#two-step", raftWebPage = true),
+            action("/settings/account#two-step", webBase = staging),
         )
     }
 
     @Test
     fun announcementLinksElsewhereStayWebLinks() {
-        assertEquals(AnnouncementLinkAction.OpenUrl("https://example.com/blog"), action("https://example.com/blog"))
+        val blog = AnnouncementLinkAction.OpenUrl("https://example.com/blog")
+        assertEquals(blog, action("https://example.com/blog"))
+        // Another site is an ordinary web link: the link setting alone decides where it opens.
+        assertEquals(RaftLinkOpenIntent.Ordinary, blog.openIntent)
         // An in-app path that is not Settings opens on the current server, as the web's.
-        assertEquals(AnnouncementLinkAction.OpenUrl("$prod/s/hq/apps"), action("/apps"))
-        assertEquals(AnnouncementLinkAction.OpenUrl("$prod/download"), action("/download"))
+        assertEquals(AnnouncementLinkAction.OpenUrl("$prod/s/hq/apps", raftWebPage = true), action("/apps"))
+        assertEquals(AnnouncementLinkAction.OpenUrl("$prod/download", raftWebPage = true), action("/download"))
         // Another account's server: the app cannot show it.
         assertEquals(
-            AnnouncementLinkAction.OpenUrl("$prod/s/elsewhere/settings/theme"),
+            AnnouncementLinkAction.OpenUrl("$prod/s/elsewhere/settings/theme", raftWebPage = true),
             action("/s/elsewhere/settings/theme"),
         )
         assertNull(action("//evil.example/settings/theme"))

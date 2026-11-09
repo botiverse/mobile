@@ -2084,7 +2084,7 @@ data class SettingsMobileSnapshot(
             enabled = false,
             available = true,
             statusLabel = "Off",
-            detail = "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
+            detail = "After going back from a chat to Home, swipe left from the right edge to reopen it."
         ),
     val foregroundMessageBanners: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

@@ -148,6 +148,7 @@ import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.data.ConversationForwardAction
+import build.raft.app.data.appShellConversationForwardGestureArmed
 import build.raft.app.data.toConversationForwardEntry
 import build.raft.app.data.RaftSystemNotificationContract
 import build.raft.app.data.hasCompletedTasksSnapshot
@@ -4239,6 +4240,26 @@ private fun RaftAppShellReadyContent(
         pageVisible &&
             selectedTab == "home" &&
             selectedHomeDestination == null
+    val homeContentReadyForConversationForward = homeState.content is SharedHomeContentState.Content
+
+    // The one arming rule for the iOS Forward recognizer ([appShellConversationForwardGestureArmed]).
+    fun armConversationForwardGesture() {
+        val armed =
+            appShellConversationForwardGestureArmed(
+                preferenceEnabled = conversationForwardGestureEnabled,
+                authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+                homeSurfaceVisible = homeSurfaceVisible,
+                homeContentReady = homeContentReadyForConversationForward,
+                canForward = conversationForwardHistory.canForward,
+            )
+        bridge.setConversationForwardGestureEnabled(armed)
+        if (conversationForwardGestureEnabled && homeSurfaceVisible) {
+            bridge.log(
+                "conversation_forward_arm armed=$armed authoritative=$authoritativeHomeStartAllowed " +
+                    "homeReady=$homeContentReadyForConversationForward available=${conversationForwardHistory.canForward}"
+            )
+        }
+    }
     val parentShouldStartHome =
         authoritativeHomeStartAllowed &&
         appShellParentShouldStartHome(
@@ -4660,13 +4681,7 @@ private fun RaftAppShellReadyContent(
     }
     LaunchedEffect(conversationForwardGestureEnabled, authoritativeHomeStartAllowed) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
-        bridge.setConversationForwardGestureEnabled(
-            conversationForwardGestureEnabled &&
-                authoritativeHomeStartAllowed &&
-                homeSurfaceVisible &&
-                homeState.content is SharedHomeContentState.Content &&
-                conversationForwardHistory.canForward
-        )
+        armConversationForwardGesture()
     }
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
     // The in-app banner obeys the device push preview choice (read per event from the single store).
@@ -5047,32 +5062,27 @@ private fun RaftAppShellReadyContent(
                     "available=${conversationForwardHistory.canForward}"
             )
         }
-        bridge.setConversationForwardGestureEnabled(
-            conversationForwardGestureEnabled &&
-                homeSurfaceVisible &&
-                homeState.content is SharedHomeContentState.Content &&
-                conversationForwardHistory.canForward
-        )
+        armConversationForwardGesture()
     }
 
+    // Also keyed on the inputs of the arming rule, so the gesture is armed as soon as they all
+    // hold: a Home whose list is still loading when the shell reappears, or a Beta preference
+    // switched on with Home showing, used to stay unarmed until the next page appearance.
     LaunchedEffect(
         homeSurfaceVisible,
         readyServerId,
         renderedHomeServerId,
         conversationForwardRequestTick,
         authoritativeHomeStartAllowed,
+        homeContentReadyForConversationForward,
+        conversationForwardGestureEnabled,
     ) {
         if (!authoritativeHomeStartAllowed) {
             bridge.setConversationForwardGestureEnabled(false)
             return@LaunchedEffect
         }
         if (conversationForwardRequestTick <= handledConversationForwardRequestTick) {
-            bridge.setConversationForwardGestureEnabled(
-                conversationForwardGestureEnabled &&
-                    homeSurfaceVisible &&
-                    homeState.content is SharedHomeContentState.Content &&
-                    conversationForwardHistory.canForward
-            )
+            armConversationForwardGesture()
             return@LaunchedEffect
         }
         handledConversationForwardRequestTick = conversationForwardRequestTick
@@ -5110,11 +5120,7 @@ private fun RaftAppShellReadyContent(
             }
             null -> {
                 bridge.log("conversation_forward_defer reason=home_or_directory_not_ready")
-                bridge.setConversationForwardGestureEnabled(
-                    conversationForwardGestureEnabled &&
-                        homeState.content is SharedHomeContentState.Content &&
-                        conversationForwardHistory.canForward
-                )
+                armConversationForwardGesture()
             }
         }
     }
@@ -9176,7 +9182,7 @@ private fun RaftAppShellReadyContent(
                                 ) {
                                     is AnnouncementLinkAction.OpenSettings ->
                                         openSettingsFromLink(action.link, action.target, source = "announcement")
-                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url)
+                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
                                     null -> Unit
                                 }
                             }
