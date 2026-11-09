@@ -120,6 +120,21 @@ sealed interface RaftNativeNavBarTitleLeading {
 
     /** A DM peer's avatar: [imageUrl] when it is a plain http(s) image, else [label]'s initials on [fillArgb]. */
     data class Avatar(val label: String, val imageUrl: String?, val fillArgb: String) : RaftNativeNavBarTitleLeading
+
+    /**
+     * A server's avatar (raft-ui `type="server"`, the web switcher trigger's): [imageUrl] when it
+     * is a plain http(s) image, else [label]'s initial in brand yellow on the sticker-ink tile.
+     */
+    data class Server(val label: String, val imageUrl: String?) : RaftNativeNavBarTitleLeading
+}
+
+/** The chevron after a title that opens a menu the page draws itself (Home's server switcher). */
+enum class RaftNativeNavBarTitleChevron(internal val wire: String) {
+    /** The menu is closed: a tap opens it. */
+    Down("down"),
+
+    /** The menu is open: a tap closes it. */
+    Up("up"),
 }
 
 /** What the old Compose head carried beside the title: drawn by the host's title view. */
@@ -129,6 +144,8 @@ data class RaftNativeNavBarTitleExtras(
     val badge: String? = null,
     /** The head's refresh spinner. */
     val refreshing: Boolean = false,
+    /** The chevron of a title whose tap ([RaftNativeNavBarHead.onTitleClick]) opens a page-drawn menu. */
+    val chevron: RaftNativeNavBarTitleChevron? = null,
 )
 
 /** Everything one head publishes to the host bar. */
@@ -357,10 +374,22 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                         put("fillArgb", lead.fillArgb)
                     }
                 )
+            is RaftNativeNavBarTitleLeading.Server ->
+                put(
+                    "leading",
+                    buildJsonObject {
+                        put("kind", "server")
+                        put("label", lead.label)
+                        lead.imageUrl?.let { put("imageUrl", it) }
+                        put("fillArgb", raftArgbHex(RaftColor.StickerInk))
+                        put("inkArgb", raftArgbHex(RaftColor.BrandYellow))
+                    }
+                )
             null -> Unit
         }
         badge?.let { put("badge", it) }
         if (refreshing) put("refreshing", true)
+        chevron?.let { put("chevron", it.wire) }
     }
 
 /** The handler id of a head's own Back ([RaftNativeNavBarHead.onBack]). */

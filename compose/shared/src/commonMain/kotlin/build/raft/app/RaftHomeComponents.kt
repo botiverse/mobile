@@ -28,11 +28,11 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
-import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftMutedCount
+import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftRowTone
@@ -287,6 +287,8 @@ private val HomeServerSwitcherMenuInset = 8.dp
 // The full-width phone menu stops growing on a large window.
 private val HomeServerSwitcherMenuMaxWidth = 480.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
+// web AvatarSlot `switcher-row`: raft-ui `md` (35) by touch.
+private val HomeServerSwitcherMenuAvatarSize = 35.dp
 internal val HomeServerSwitcherDragHandleIconName = RaftLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
 internal val HomeServerPublicPageGlobeGap = 4.dp
@@ -685,7 +687,9 @@ data class RaftHomeShellLabels(
     val joinChineseCommunityServer: String = "Join Chinese Community",
     val joinCommunityServer: String = "Join Community",
     val switchOrCreateServer: String = "Switch or Create Server",
-    val inviteHuman: String = "Invite Human"
+    val inviteHuman: String = "Invite Human",
+    /** web `ui.serverSwitcher.notificationsMuted`: what a muted server's gray count reads as. */
+    val serverNotificationsMuted: String = "Notifications muted"
 ) {
     companion object {
         @Composable
@@ -738,7 +742,8 @@ data class RaftHomeShellLabels(
             joinChineseCommunityServer = stringResource(Res.string.home_server_switcher_join_chinese_community),
             joinCommunityServer = stringResource(Res.string.home_server_switcher_join_community),
             switchOrCreateServer = stringResource(Res.string.home_server_switcher_switch_or_create),
-            inviteHuman = stringResource(Res.string.home_server_switcher_invite_human)
+            inviteHuman = stringResource(Res.string.home_server_switcher_invite_human),
+            serverNotificationsMuted = stringResource(Res.string.home_server_switcher_notifications_muted)
         )
     }
 }
@@ -2652,17 +2657,12 @@ private fun RaftStructuralHomeShellContent(
                     // the bell its button; only the bar's space is kept here.
                     HomeNativeNavBarHead(
                         serverName = currentServerName,
-                        servers = servers,
-                        currentServerId = currentServerId,
+                        serverIdentity = currentHomeHeaderServer,
+                        serverSwitcherOpen = serverSwitcherExpanded,
                         notifications = visibleNotifications,
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
-                        onServerSelected = { id ->
-                            dismissNotificationCenterForFocusLoss()
-                            onServerSelected(id)
-                        },
-                        onAllServers = onServerBadgeClickWithDismiss,
-                        onInviteHumanClick = onInviteHumanClick,
+                        onServerSwitcherToggle = onServerBadgeClickWithDismiss,
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded },
                     )
                 } else if (!serverSwitcherInTopBar) traceMarkdownSection(RaftHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
@@ -2671,17 +2671,12 @@ private fun RaftStructuralHomeShellContent(
                     if (LocalRaftNativeNavBarScript.current != null) {
                         HomeNativeNavBarHead(
                             serverName = currentServerName,
-                            servers = servers,
-                            currentServerId = currentServerId,
+                            serverIdentity = currentHomeHeaderServer,
+                            serverSwitcherOpen = serverSwitcherExpanded,
                             notifications = visibleNotifications,
                             refreshing = headerRefreshing,
                             topSafeArea = topSafeArea,
-                            onServerSelected = { id ->
-                                dismissNotificationCenterForFocusLoss()
-                                onServerSelected(id)
-                            },
-                            onAllServers = onServerBadgeClickWithDismiss,
-                            onInviteHumanClick = onInviteHumanClick,
+                            onServerSwitcherToggle = onServerBadgeClickWithDismiss,
                             onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded },
                         )
                     }
@@ -5212,49 +5207,27 @@ private fun List<RaftHomePinnedRow>.sortedPinnedRows(mode: RaftSidebarSortMode):
             sortedWith(compareBy<RaftHomePinnedRow> { it.sortLabel.trim().lowercase() }.thenBy { it.key })
     }
 /**
- * PROTOTYPE (native nav bar): Home's head on the host bar. The title is the server's name with a
- * title menu: every server (the current one checked, unread as the row's subtitle), Invite Human,
- * and "Switch or create server", which opens the full switcher (order, create, communities). The
- * bell is the trailing button with the notification count; it toggles the same popover.
+ * PROTOTYPE (native nav bar): Home's head on the host bar. The title is the server's name after
+ * its avatar, with a chevron; a tap opens (or closes) the same server switcher every other Home
+ * draws ([ServerSwitcherPanel], the web ServerSwitcherMenu): every server with its avatar,
+ * `/slug` and Activity unread, the current one bold with the check, reordering, and Join
+ * Community / Switch or Create Server / Invite Human. It used to be a system title menu, which
+ * could show only the names and each count as an unlabeled subtitle. The bell is the trailing
+ * button with the notification count; it toggles the same popover.
  */
 @Composable
 private fun HomeNativeNavBarHead(
     serverName: String,
-    servers: List<RaftServerSwitcherItem>,
-    currentServerId: String?,
+    serverIdentity: RaftServerSwitcherItem,
+    serverSwitcherOpen: Boolean,
     notifications: List<RaftHomeNotificationItem>,
     refreshing: Boolean,
     topSafeArea: Dp,
-    onServerSelected: (String) -> Unit,
-    onAllServers: () -> Unit,
-    onInviteHumanClick: (() -> Unit)?,
+    onServerSwitcherToggle: () -> Unit,
     onNotificationToggle: () -> Unit,
 ) {
     val visible = remember(notifications) { notifications.visibleHomeNotifications() }
     val bellLabel = stringResource(Res.string.home_notification_center_title)
-    val allServersLabel = stringResource(Res.string.home_server_switcher_switch_or_create)
-    val inviteLabel = stringResource(Res.string.home_server_switcher_invite_human)
-    val titleMenu =
-        buildList {
-            servers.forEach { server ->
-                val unread = server.activityUnreadCount ?: server.broaderUnreadCount.toLong()
-                add(
-                    RaftNativeNavBarAction(
-                        id = "server:${server.id}",
-                        label = server.name,
-                        systemSymbol = null,
-                        onClick = { if (server.id != currentServerId) onServerSelected(server.id) },
-                        checked = server.id == currentServerId,
-                        badge = unread.takeIf { it > 0 && server.id != currentServerId }?.toInt(),
-                        placement = RaftNativeNavBarPlacement.Overflow,
-                    )
-                )
-            }
-            if (onInviteHumanClick != null) {
-                add(RaftNativeNavBarAction("server-invite", inviteLabel, "person.badge.plus", onInviteHumanClick, placement = RaftNativeNavBarPlacement.Overflow))
-            }
-            add(RaftNativeNavBarAction("server-all", allServersLabel, "square.stack", onAllServers, placement = RaftNativeNavBarPlacement.Overflow))
-        }
     val bell =
         RaftNativeNavBarAction(
             id = "home-bell",
@@ -5268,13 +5241,27 @@ private fun HomeNativeNavBarHead(
             title = serverName,
             subtitle = null,
             actions = listOf(bell),
-            extras = RaftNativeNavBarTitleExtras(refreshing = refreshing),
-            titleMenu = titleMenu,
+            extras =
+                RaftNativeNavBarTitleExtras(
+                    leading = homeNativeNavBarServerLeading(serverIdentity),
+                    refreshing = refreshing,
+                    chevron = if (serverSwitcherOpen) RaftNativeNavBarTitleChevron.Up else RaftNativeNavBarTitleChevron.Down,
+                ),
+            onTitleClick = onServerSwitcherToggle,
         )
     val bridge = LocalRaftNativeNavBar.current
     if (drawn && bridge != null) {
         RaftNativeNavBarHeadSpacer(bridge = bridge, modifier = Modifier.fillMaxWidth(), liveTop = topSafeArea)
     }
+}
+
+/** The native Home title's server avatar: the switcher's tile (an http(s) image, else the initial). */
+internal fun homeNativeNavBarServerLeading(server: RaftServerSwitcherItem): RaftNativeNavBarTitleLeading.Server {
+    val presentation = server.toServerSwitcherAvatarPresentation()
+    return RaftNativeNavBarTitleLeading.Server(
+        label = presentation.fallbackLabel,
+        imageUrl = presentation.avatarWireValue?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+    )
 }
 
 @Composable
@@ -6368,7 +6355,14 @@ private fun HomeServerDrawerServerHeader(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (!unavailable) ServerSwitcherUnreadIndicator(section.server)
+            // The opt-in drawer lists every server's conversations: each header keeps its count.
+            if (!unavailable) {
+                ServerSwitcherUnreadIndicator(
+                    section.server,
+                    current = false,
+                    mutedLabel = stringResource(Res.string.home_server_switcher_notifications_muted)
+                )
+            }
             if (busy) {
                 RaftIconSpinner(size = 14.dp, color = RaftColor.TextMutedGray)
             } else if (failed) {
@@ -6634,6 +6628,7 @@ internal fun ServerSwitcherPanel(
                             ServerSwitcherRow(
                                 server,
                                 server.id == currentServerId,
+                                mutedLabel = labels.serverNotificationsMuted,
                                 dragHandleVisible = order.size > 1,
                                 onClick = if (draggedId == null && !switchPending) ({ onServerSelected(server.id) }) else null
                             )
@@ -6723,6 +6718,7 @@ internal fun ServerSwitcherPanel(
                         ServerSwitcherRow(
                             server,
                             server.id == currentServerId,
+                            mutedLabel = labels.serverNotificationsMuted,
                             dragHandleVisible = true,
                             pressed = true,
                             onClick = null,
@@ -6778,6 +6774,7 @@ private fun HardShadowPanel(
 private fun ServerSwitcherRow(
     server: RaftServerSwitcherItem,
     selected: Boolean,
+    mutedLabel: String,
     dragHandleVisible: Boolean = false,
     pressed: Boolean = false,
     onClick: (() -> Unit)?,
@@ -6785,22 +6782,19 @@ private fun ServerSwitcherRow(
 ) {
     val clickModifier =
         onClick?.let { Modifier.raftClickable(onClick = it, shape = RoundedCornerShape(RaftAppRadius.Chip), tier = RaftHoverTier.Highlight, selected = selected) } ?: Modifier
-    // web ServerSwitcherMenu `SortableServerRow`: `h-12`, `rounded-chip`, `pl-2.5 pr-1 gap-2.5`;
-    // the avatar, the name (callout medium, bold for the current server) over the `/slug`
-    // (mono meta, hint ink), then the 16dp check on the current one, the unread count, the grip.
-    // The current row wears the `brand-soft` highlight the web shows on the row that has focus
-    // when the menu opens.
+    // web ServerSwitcherMenu `SortableServerRow` / `ServerSwitcherRowLink`: `h-12`,
+    // `rounded-chip`, `pl-2.5 pr-1 gap-2.5`; the avatar (AvatarSlot `switcher-row`: 35 by touch),
+    // the name (callout medium, bold for the current server) over the `/slug` (mono meta, hint
+    // ink), then the 16dp check on the current one, the unread count, the grip. The current server
+    // is told by its bold name and check only: the web's `brand-soft` highlight follows the
+    // pointer / keyboard focus, not the current row (it stopped lighting the focused first row).
     androidx.compose.foundation.layout.Row(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(HomeServerSwitcherMenuRowHeight)
                 .background(
-                    when {
-                        pressed -> RaftColor.FillPressed
-                        selected -> RaftColor.BrandSoft
-                        else -> Color.Transparent
-                    },
+                    if (pressed) RaftColor.FillPressed else Color.Transparent,
                     RoundedCornerShape(RaftAppRadius.Chip)
                 )
                 .then(clickModifier)
@@ -6808,7 +6802,7 @@ private fun ServerSwitcherRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        ServerSwitcherAvatarTile(server)
+        ServerSwitcherAvatarTile(server, size = HomeServerSwitcherMenuAvatarSize)
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -6839,7 +6833,7 @@ private fun ServerSwitcherRow(
         if (selected) {
             RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextBlack))
         }
-        ServerSwitcherUnreadIndicator(server)
+        ServerSwitcherUnreadIndicator(server, current = selected, mutedLabel = mutedLabel)
         if (dragHandleVisible) {
             Box(modifier = Modifier.width(HomeServerSwitcherDragHandleWidth), contentAlignment = Alignment.Center) {
                 RaftLucideIcon(
@@ -6852,19 +6846,35 @@ private fun ServerSwitcherRow(
     }
 }
 
+/**
+ * web ServerRowUnread: nothing on the current server's row (you are already there) or when there
+ * is nothing new; another server's unread Activity as the pink count, or, when that server's
+ * notifications are muted, the gray mono count that reads "N, Notifications muted" to a screen
+ * reader (never a bare number). Capped at 99+.
+ */
 @Composable
-private fun ServerSwitcherUnreadIndicator(server: RaftServerSwitcherItem) {
-    val presentation = homeServerSwitcherBadgePresentation(server)
-    when (presentation.kind) {
-        HomeServerSwitcherBadgeKind.ActivityNumber,
-        HomeServerSwitcherBadgeKind.BroaderUnreadNumber ->
-            presentation.label?.let { label ->
-                // The unread-count sticker (raft-ui `SidebarItemCount`) over the already capped label;
-                // the switcher also renders outside the Home shell's designsystem theme.
-                RaftDesignSystemTheme { RaftBadge(text = label, variant = RaftBadgeVariant.Accent) }
-            }
-        HomeServerSwitcherBadgeKind.None -> Unit
+private fun ServerSwitcherUnreadIndicator(server: RaftServerSwitcherItem, current: Boolean, mutedLabel: String) {
+    val unread = homeServerSwitcherRowUnread(server, current) ?: return
+    // The switcher also renders outside the Home shell's designsystem theme.
+    RaftDesignSystemTheme {
+        if (unread.muted) {
+            RaftMutedCount(
+                unread.count,
+                modifier = Modifier.clearAndSetSemantics { contentDescription = "${raftUnreadCountText(unread.count)}, $mutedLabel" }
+            )
+        } else {
+            RaftUnreadCount(unread.count)
+        }
     }
+}
+
+/** A server row's unread in the switcher ([ServerSwitcherUnreadIndicator]); null for none. */
+internal data class HomeServerSwitcherRowUnread(val count: Int, val muted: Boolean)
+
+internal fun homeServerSwitcherRowUnread(server: RaftServerSwitcherItem, current: Boolean): HomeServerSwitcherRowUnread? {
+    if (current) return null
+    val (count, muted) = raftServerMenuUnreadCount(server) ?: return null
+    return HomeServerSwitcherRowUnread(count, muted)
 }
 
 @Composable

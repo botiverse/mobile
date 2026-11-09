@@ -2253,6 +2253,7 @@
     <string name="home_server_switcher_join_community">커뮤니티 참여</string>
     <string name="home_server_switcher_switch_or_create">서버 전환 또는 만들기</string>
     <string name="home_server_switcher_invite_human">사람 초대</string>
+    <string name="home_server_switcher_notifications_muted">알림 음소거됨</string>
     <string name="home_server_switch_failed">서버를 전환하지 못했어요. 다시 시도해 주세요.</string>
     <string name="home_error_open_direct_message">다이렉트 메시지를 열지 못했어요</string>
     <string name="home_error_open_direct_message_failed">다이렉트 메시지를 열지 못했어요</string>

@@ -2250,6 +2250,7 @@
     <string name="home_server_switcher_join_community">Присоединиться к сообществу</string>
     <string name="home_server_switcher_switch_or_create">Сменить или создать сервер</string>
     <string name="home_server_switcher_invite_human">Пригласить человека</string>
+    <string name="home_server_switcher_notifications_muted">Уведомления отключены</string>
     <string name="home_server_switch_failed">Не удалось переключиться на другой сервер. Попробуйте ещё раз.</string>
     <string name="home_error_open_direct_message">Не удалось открыть личный чат</string>
     <string name="home_error_open_direct_message_failed">Не удалось открыть личный чат</string>
