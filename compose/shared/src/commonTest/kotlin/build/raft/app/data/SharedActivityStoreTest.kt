@@ -2248,6 +2248,80 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun servedNewerReplyReplacesAThreadUpdatedOnlyPatchAtTheSameReplyCount() = runBlocking {
+        // fb-c04c1199: a joint channel's thread row got `thread:updated` (count + time) but its
+        // `message:new` came under the origin thread id, so the preview stayed on the old reply.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val shown =
+            threadItem("thread-joint").copy(
+                replyCount = 648,
+                latestActivityMessageId = MessageId("arkbriar-0344"),
+                latestActivityPreview = "old reply",
+                latestActivityAt = "2026-11-08T19:44:00Z",
+                latestActivitySeq = "21014662"
+            )
+        val served =
+            shown.copy(
+                replyCount = 650,
+                latestActivityMessageId = MessageId("notzz-1008"),
+                latestActivityPreview = "new reply",
+                latestActivityAt = "2026-11-09T02:08:23Z",
+                latestActivitySeq = "21035595"
+            )
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(shown)), snapshot(listOf(served))))
+        val store = activityStore(scope = scope, inboxRepository = inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-joint"),
+                    replyCount = 650,
+                    lastReplyAt = "2026-11-09T02:08:23Z",
+                    participantIds = emptyList()
+                )
+            )
+        )
+        assertEquals("old reply", store.state.value.items.single().latestActivityPreview)
+
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        val row = store.state.value.items.single()
+        assertEquals("new reply", row.latestActivityPreview)
+        assertEquals(MessageId("notzz-1008"), row.latestActivityMessageId)
+        assertEquals("21035595", row.latestActivitySeq)
+        scope.cancel()
+    }
+
+    @Test
+    fun laggingServedRowStillKeepsTheRealtimeReplyPatch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val shown =
+            threadItem("thread-channel-1").copy(
+                replyCount = 2,
+                latestActivityMessageId = MessageId("reply-2"),
+                latestActivityPreview = "reply 2",
+                latestActivitySeq = "20"
+            )
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(shown))))
+        val store = activityStore(scope = scope, inboxRepository = inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("reply-3", channelId = "thread-channel-1", body = "reply 3", seq = 30L))
+            )
+        )
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        val row = store.state.value.items.single()
+        assertEquals("reply 3", row.latestActivityPreview)
+        assertEquals(MessageId("reply-3"), row.latestActivityMessageId)
+        scope.cancel()
+    }
+
+    @Test
     fun threadUpdatedAdvancesFreshnessOnlyForAcceptedHighWaterChange() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val ledger = SharedThreadFreshnessLedger()
