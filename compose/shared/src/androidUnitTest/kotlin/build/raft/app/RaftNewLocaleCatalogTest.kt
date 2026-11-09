@@ -43,26 +43,46 @@ class RaftNewLocaleCatalogTest {
         return resource.desc().resolve()
     }
 
+    // One test per language: resolving every key of the catalog is slow on a busy CI runner, and
+    // all five in one test passed the 60 s hang watchdog (test.yml runs 42579048771, 42581069497).
     @Test
-    fun everyEnglishKeyResolvesInEveryNewLocale() {
+    fun everyEnglishKeyResolvesInSpanish() = assertEveryEnglishKeyResolves("es", "values-es")
+
+    @Test
+    fun everyEnglishKeyResolvesInBrazilianPortuguese() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR")
+
+    @Test
+    fun everyEnglishKeyResolvesInKorean() = assertEveryEnglishKeyResolves("ko", "values-ko")
+
+    @Test
+    fun everyEnglishKeyResolvesInTraditionalChinese() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW")
+
+    @Test
+    fun everyEnglishKeyResolvesInRussian() = assertEveryEnglishKeyResolves("ru", "values-ru")
+
+    @Test
+    fun everyNewLocaleHasItsOwnTest() {
+        assertEquals(NEW_LOCALES.map { it.first }, listOf("es", "pt-BR", "ko", "zh-TW", "ru"))
+    }
+
+    private fun assertEveryEnglishKeyResolves(tag: String, dir: String) {
         val resources = Res.allStringResources
         val english = parse("values")
         assertEquals(english.keys, resources.keys, "Res.allStringResources is the values/ catalog")
+        val catalog = parse(dir)
+        val englishTexts = resources.mapValues { (_, resource) -> resolveIn("en", resource) }
         val failures =
-            NEW_LOCALES.flatMap { (tag, dir) ->
-                val catalog = parse(dir)
-                resources.mapNotNull { (key, resource) ->
-                    val text =
-                        runCatching { resolveIn(tag, resource) }
-                            .getOrElse { return@mapNotNull "$tag/$key threw ${it::class.simpleName}: ${it.message}" }
-                    val englishText = resolveIn("en", resource)
-                    when {
-                        text.isEmpty() && englishText.isNotEmpty() -> "$tag/$key is empty"
-                        key !in catalog && text != englishText -> "$tag/$key is missing from $dir but does not show the English"
-                        key in catalog && catalog[key] != english[key] && text == englishText ->
-                            "$tag/$key is in $dir but shows the English"
-                        else -> null
-                    }
+            resources.mapNotNull { (key, resource) ->
+                val text =
+                    runCatching { resolveIn(tag, resource) }
+                        .getOrElse { return@mapNotNull "$tag/$key threw ${it::class.simpleName}: ${it.message}" }
+                val englishText = englishTexts.getValue(key)
+                when {
+                    text.isEmpty() && englishText.isNotEmpty() -> "$tag/$key is empty"
+                    key !in catalog && text != englishText -> "$tag/$key is missing from $dir but does not show the English"
+                    key in catalog && catalog[key] != english[key] && text == englishText ->
+                        "$tag/$key is in $dir but shows the English"
+                    else -> null
                 }
             }
         assertEquals(emptyList(), failures)
