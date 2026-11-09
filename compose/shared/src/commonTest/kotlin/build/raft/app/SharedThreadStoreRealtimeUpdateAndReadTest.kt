@@ -867,6 +867,96 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
         assertTrue(api.readSeqRequests.isEmpty(), api.readSeqRequests.toString())
         scope.cancel()
     }
+    private fun leftConversationNewMessage(id: String, seq: Long) =
+        SharedThreadIntent.ApplyRealtimeEvent(
+            MessageNew(
+                Message(
+                    id = MessageId(id),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = seq,
+                    author = member("u2", "Stdrc"),
+                    timestampLabel = "2026-05-19T16:01:00Z",
+                    body = "body $id"
+                )
+            )
+        )
+
+    @Test
+    fun deferredReadDoesNotMarkAConversationTheUserLeft() = runTest {
+        // fb-4440a18c (artin, 1.22.0): a message arrives, the page shows it and asks for a read inside the
+        // coalesce window (deferred), then the person leaves. The deferred retry used to fire after the
+        // pop (03:52:09.610 pop, 03:52:09.612 thread_read_start): a conversation no longer shown must not
+        // be marked read, neither by that retry nor by messages that arrive afterwards.
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = api,
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                    ),
+            )
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        store.accept(leftConversationNewMessage("m2", 11L))
+        store.accept(SharedThreadIntent.MarkVisibleRead()) // shown m2 inside the window -> deferred
+        store.dispatch(SharedThreadIntent.VisibleReadHidden) // the person leaves
+        store.accept(leftConversationNewMessage("m3", 12L)) // arrives after leaving
+        delay(5_000)
+
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty(), "left conversation marked read: ${api.readSeqRequests}")
+
+        // Coming back shows the conversation again: its next visible read goes out as before.
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        assertEquals(listOf("channel-1" to 12L), api.readSeqRequests)
+        scope.cancel()
+    }
+
+    @Test
+    fun readQueuedBehindAnInFlightReadIsDroppedWhenTheUserLeaves() = runTest {
+        // fb-4440a18c: the follow-up queued while a read is in flight (reason=in_flight) went out after the
+        // in-flight one finished, even if the page had been left by then.
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val api =
+            FakeThreadApi(failChannelMessages = true).also {
+                it.failReadAll = false
+                it.readAllDelayMillis = 1_000L
+            }
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = api,
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                    ),
+            )
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.dispatch(SharedThreadIntent.MarkVisibleRead()) // in flight for 1 s
+        store.accept(leftConversationNewMessage("m2", 11L))
+        store.dispatch(SharedThreadIntent.MarkVisibleRead()) // queued behind it
+        store.dispatch(SharedThreadIntent.VisibleReadHidden) // the person leaves before it finishes
+        delay(5_000)
+
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty(), "left conversation marked read: ${api.readSeqRequests}")
+        scope.cancel()
+    }
+
     @Test
     fun applyReplyThreadReadClearsParentUnreadProjectionAndCache() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
