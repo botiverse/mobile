@@ -3343,6 +3343,8 @@
     <string name="member_activity_overview_app_events_more">Show %1$d More</string>
     <string name="member_activity_overview_app_events_unlisted">%1$d more not listed</string>
     <string name="member_activity_overview_new_turn">New turn ↓</string>
+    <string name="member_activity_log_new_steps_one">1 new step</string>
+    <string name="member_activity_log_new_steps_many">%1$d new steps</string>
     <string name="agent_activity_memory_limit_stopped">Stopped: used more than this Computer's per-agent memory limit</string>
     <string name="agent_activity_memory_limit_stopped_with_limit">Stopped: used more than this Computer's per-agent memory limit (%1$s)</string>
     <string name="agent_activity_background_oom">A background process was stopped at the memory limit</string>

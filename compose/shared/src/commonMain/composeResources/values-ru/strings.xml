@@ -3337,6 +3337,8 @@
     <string name="member_activity_overview_app_events_more">Показать ещё %1$d</string>
     <string name="member_activity_overview_app_events_unlisted">Не показано уведомлений: %1$d</string>
     <string name="member_activity_overview_new_turn">Новый ход ↓</string>
+    <string name="member_activity_log_new_steps_one">1 новый шаг</string>
+    <string name="member_activity_log_new_steps_many">Новых шагов: %1$d</string>
     <string name="agent_activity_memory_limit_stopped">Остановлен: превышен лимит памяти на агента для этого компьютера</string>
     <string name="agent_activity_memory_limit_stopped_with_limit">Остановлен: превышен лимит памяти на агента для этого компьютера (%1$s)</string>
     <string name="agent_activity_background_oom">Фоновый процесс остановлен при достижении лимита памяти</string>

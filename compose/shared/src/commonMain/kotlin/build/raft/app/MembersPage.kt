@@ -13270,48 +13270,21 @@ private fun MembersAgentActivityTab(
                     .weight(1f)
             )
         } else {
-            val initialActivityIndex = membersAgentActivityInitialFirstVisibleIndex(rows.size)
-            val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialActivityIndex)
-            var allowBottomAnchor by remember(detail?.agentId) { mutableStateOf(true) }
-            if (autoScrollToLatest) {
-                LaunchedEffect(detail?.agentId, rows.size) {
-                    snapshotFlow {
-                        listState.isScrollInProgress to listState.isMembersActivityAtBottom(rows.lastIndex)
-                    }
-                        .distinctUntilChanged()
-                        .collect { (isScrollInProgress, isAtBottom) ->
-                            val nextAllow = membersAgentActivityNextBottomAnchor(
-                                current = allowBottomAnchor,
-                                isScrollInProgress = isScrollInProgress,
-                                isAtBottom = isAtBottom
-                            )
-                            if (allowBottomAnchor != nextAllow) {
-                                allowBottomAnchor = nextAllow
-                            }
-                        }
-                }
-                LaunchedEffect(detail?.agentId, rows.size, rows.lastOrNull()?.activityTimelineKey()) {
-                    if (rows.isNotEmpty() && allowBottomAnchor && !listState.isScrollInProgress) {
-                        listState.scrollToItem(rows.lastIndex)
-                    }
-                }
-            }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .nestedScroll(
-                        scrollUp = NestedScrollMode.SELF_FIRST,
-                        scrollDown = NestedScrollMode.SELF_FIRST
-                    ),
+            // Raw log tail (raft-design "Conversation › Following the newest"): opens at the newest,
+            // follows new entries while the reader is at the bottom, otherwise keeps their place
+            // and shows the thread's jump pill. Rows are keyed by the entry's own id.
+            MembersAgentActivityLogList(
+                rows = rows,
+                rowKey = { it.activityTimelineKey() },
+                resetKey = detail?.agentId,
+                followLatest = autoScrollToLatest,
                 // Web: the log's `py-3` plus each entry's `py-1.5` above the first and under the last.
                 contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = MembersActivityLogPaddingY),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
-            ) {
-                items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
-                    MembersAgentActivityRow(rows[index], timeContext, onOpenUrl, last = index == rows.lastIndex)
-                }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) { index, entry ->
+                MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = index == rows.lastIndex)
             }
         }
     }
@@ -15002,14 +14975,6 @@ private fun String.normalizedMembersToolName(): String =
         .substringAfterLast("/")
         .substringAfterLast(".")
         .ifBlank { trim() }
-
-private fun LazyListState.isMembersActivityAtBottom(lastIndex: Int): Boolean {
-    if (lastIndex <= 0) return true
-    if (!canScrollForward) return true
-    return layoutInfo.visibleItemsInfo.any { item ->
-        item.index == lastIndex && item.offset + item.size <= layoutInfo.viewportEndOffset + 4
-    }
-}
 
 internal fun membersAgentActivityInitialFirstVisibleIndex(itemCount: Int): Int =
     (itemCount - 1).coerceAtLeast(0)
