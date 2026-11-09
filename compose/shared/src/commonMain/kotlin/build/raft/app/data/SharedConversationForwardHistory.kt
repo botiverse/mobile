@@ -83,6 +83,26 @@ internal fun ThreadLaunchConversationIdentity.toConversationForwardEntry(
     )
 }
 
+/**
+ * Whether the AppShell arms the iOS host's trailing-edge Forward recognizer
+ * (`BridgeModule.setConversationForwardGestureEnabled`): the Beta preference is on, the shell has
+ * its authoritative Home, Home is what the user sees with its list loaded, and the window's
+ * history holds a conversation to reopen. Every place that (re)arms the gesture asks this one
+ * rule, so no path arms it off Home and none leaves it unarmed once all of these hold.
+ */
+internal fun appShellConversationForwardGestureArmed(
+    preferenceEnabled: Boolean,
+    authoritativeHomeStartAllowed: Boolean,
+    homeSurfaceVisible: Boolean,
+    homeContentReady: Boolean,
+    canForward: Boolean,
+): Boolean =
+    preferenceEnabled &&
+        authoritativeHomeStartAllowed &&
+        homeSurfaceVisible &&
+        homeContentReady &&
+        canForward
+
 internal sealed interface ConversationForwardAction {
     data class Open(
         val entry: ConversationForwardEntry,

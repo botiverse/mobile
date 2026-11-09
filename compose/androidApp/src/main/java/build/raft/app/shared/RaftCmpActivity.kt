@@ -7151,6 +7151,17 @@ internal class RaftBridgeModule(
         val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
+        // `browser: true` (BridgeModule.openUrl inBrowser): a browser even for a Raft link. Without one,
+        // the shared in-app browser rather than a plain VIEW, which Raft's own App Links route back here.
+        val inBrowser = request.optBoolean("browser", false) && mimeType == null &&
+            uri.scheme?.lowercase() in setOf("http", "https")
+        if (inBrowser && androidExternalBrowserIntent(appContext, uri) == null) {
+            RaftAppLog.record("SlockOpenUrl", "browser=unavailable fallback=in_app_browser")
+            if (!openInAppBrowserFallback(url, mimeType)) {
+                showRaftHostToast(appContext, appContext.getString(R.string.open_link_no_app_toast))
+            }
+            return null
+        }
         val viewIntent = externalUrlIntent(uri, mimeType)
         runCatching {
             appContext.startActivity(viewIntent)

@@ -10,6 +10,7 @@ CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -I"$(dirname "$HEADER")" -x c -o "$TMP_DIR/forward-admission" - <<'C'
 #include <assert.h>
+#include <string.h>
 #include "RaftConversationForwardGestureAdmission.h"
 
 static RaftConversationForwardGestureAdmission allowed(void) {
@@ -19,7 +20,12 @@ static RaftConversationForwardGestureAdmission allowed(void) {
         .navigationStackAtRoot = true,
         .velocityX = -600.0,
         .velocityY = 20.0,
+        .isLeftToRight = true,
     };
+}
+
+static int rejectedFor(RaftConversationForwardGestureAdmission input, const char *reason) {
+    return strcmp(RaftConversationForwardGestureRejectReason(input), reason) == 0;
 }
 
 int main(void) {
@@ -46,6 +52,30 @@ int main(void) {
     assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.velocityX = -50.0; input.velocityY = 200.0;
     assert(!RaftConversationForwardGestureShouldBegin(input));
+
+    // RTL: Forward comes from the left edge and moves rightward.
+    input = allowed(); input.isLeftToRight = false; input.velocityX = 600.0;
+    assert(RaftConversationForwardGestureShouldBegin(input));
+    input = allowed(); input.isLeftToRight = false;
+    assert(!RaftConversationForwardGestureShouldBegin(input));
+    // Before the finger has a velocity, the translation decides.
+    input = allowed(); input.velocityX = 0.0; input.velocityY = 0.0; input.translationX = -12.0; input.translationY = 2.0;
+    assert(RaftConversationForwardGestureShouldBegin(input));
+
+    // The diagnostics reason names the first check that refused (artin #111).
+    assert(rejectedFor(allowed(), "admitted"));
+    input = allowed(); input.enabled = false; input.modalPresented = true;
+    assert(rejectedFor(input, "not_enabled"));
+    input = allowed(); input.navigationStackAtRoot = false;
+    assert(rejectedFor(input, "not_at_root"));
+    input = allowed(); input.modalPresented = true;
+    assert(rejectedFor(input, "modal_presented"));
+    input = allowed(); input.textInputActive = true;
+    assert(rejectedFor(input, "text_input_active"));
+    input = allowed(); input.velocityX = 600.0;
+    assert(rejectedFor(input, "wrong_direction"));
+    input = allowed(); input.velocityX = -50.0; input.velocityY = 200.0;
+    assert(rejectedFor(input, "not_horizontal"));
     return 0;
 }
 C

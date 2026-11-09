@@ -4676,7 +4676,7 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileConversationForwardGest
             },
         detail =
             if (available) {
-                "Swipe left from the right edge of Home to reopen the most recent channel or direct message after going back."
+                "After going back from a chat to Home, swipe left from the right edge to reopen it."
             } else {
                 "Conversation Forward navigation is available on iOS."
             }

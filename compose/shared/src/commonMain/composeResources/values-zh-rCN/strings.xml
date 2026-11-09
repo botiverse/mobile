@@ -2428,8 +2428,8 @@
     <string name="settings_mobile_new_message_menu">新消息菜单</string>
     <string name="settings_mobile_new_message_menu_detail">按住消息时显示快捷表情和常用操作的双层紧凑菜单；关闭后使用经典消息菜单。</string>
     <string name="settings_mobile_conversation_forward_gesture">对话前进手势</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">从对话返回首页后，从屏幕右边缘向左滑动，可重新打开最近的频道或私聊。</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta。控制对话前进手势。从对话返回首页后，从屏幕右边缘向左滑动，可重新打开最近的频道或私聊。</string>
+    <string name="settings_mobile_conversation_forward_gesture_detail">从聊天返回首页后，从屏幕右边缘向左滑动，即可重新打开刚才的聊天。</string>
+    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta。控制对话前进手势。从聊天返回首页后，从屏幕右边缘向左滑动，即可重新打开刚才的聊天。</string>
     <string name="settings_mobile_home_server_avatar">首页顶部显示工作空间头像</string>
     <string name="settings_mobile_home_server_avatar_detail">在首页顶部的工作空间名称旁显示当前工作空间头像。关闭后继续使用原有的紧凑标题徽标。</string>
     <string name="settings_mobile_thread_reverse_layout">从底部显示聊天</string>

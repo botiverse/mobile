@@ -2425,8 +2425,8 @@
     <string name="settings_mobile_new_message_menu">新版訊息選單</string>
     <string name="settings_mobile_new_message_menu_detail">長按訊息時，以精簡的雙列選單顯示快速表情回應和常用操作；關閉後使用經典訊息選單。</string>
     <string name="settings_mobile_conversation_forward_gesture">對話前進手勢</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">從對話返回首頁後，從螢幕右側邊緣向左滑動，即可重新開啟最近的頻道或私訊。</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta。控制對話前進手勢。從對話返回首頁後，從螢幕右側邊緣向左滑動，即可重新開啟最近的頻道或私訊。</string>
+    <string name="settings_mobile_conversation_forward_gesture_detail">從聊天返回首頁後，從螢幕右側邊緣向左滑動，即可重新開啟剛才的聊天。</string>
+    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta。控制對話前進手勢。從聊天返回首頁後，從螢幕右側邊緣向左滑動，即可重新開啟剛才的聊天。</string>
     <string name="settings_mobile_home_server_avatar">首頁頂端顯示工作區大頭貼</string>
     <string name="settings_mobile_home_server_avatar_detail">在首頁頂端的工作區名稱旁顯示目前工作區的大頭貼。關閉後繼續使用原有的精簡標題徽章。</string>
     <string name="settings_mobile_thread_reverse_layout">從最新訊息開啟聊天</string>

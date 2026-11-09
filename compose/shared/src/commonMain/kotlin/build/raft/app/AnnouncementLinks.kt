@@ -50,8 +50,16 @@ internal sealed interface AnnouncementLinkAction {
     /** A link to Raft's own Settings: the in-app Settings page ([RaftSettingsLink]). */
     data class OpenSettings(val link: RaftSettingsLink, val target: RaftSettingsLinkTarget) : AnnouncementLinkAction
 
-    /** Anything else: the link opens as any other web link (the link setting decides where). */
-    data class OpenUrl(val url: String) : AnnouncementLinkAction
+    /**
+     * Anything else: the link opens as any other web link (the link setting decides where).
+     * [raftWebPage]: a page on Raft's own web origin the app has no screen for (the passkey
+     * announcement's `/settings/account#two-step`), opened with [RaftLinkOpenIntent.RaftWebPage]
+     * so it reaches a browser instead of bouncing off Raft's own App Link / Universal Link.
+     */
+    data class OpenUrl(val url: String, val raftWebPage: Boolean = false) : AnnouncementLinkAction {
+        val openIntent: RaftLinkOpenIntent
+            get() = if (raftWebPage) RaftLinkOpenIntent.RaftWebPage else RaftLinkOpenIntent.Ordinary
+    }
 }
 
 /**
@@ -73,6 +81,9 @@ internal fun announcementLinkAction(
     return if (settingsLink != null && target != null) {
         AnnouncementLinkAction.OpenSettings(settingsLink, target)
     } else {
-        AnnouncementLinkAction.OpenUrl(url)
+        AnnouncementLinkAction.OpenUrl(
+            url = url,
+            raftWebPage = raftOwnWebLinkPath(url, configuredWebUrl = webBaseUrl, appHosts = appHosts) != null,
+        )
     }
 }

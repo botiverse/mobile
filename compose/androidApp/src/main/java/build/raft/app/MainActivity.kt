@@ -617,32 +617,63 @@ private fun String.isRaftAppPackage(): Boolean = this == RAFT_APP_PACKAGE || sta
 
 private const val RAFT_APP_PACKAGE = "build.raft.app"
 
+/**
+ * The external browser package for a Raft web link, from the handlers Android reports for it.
+ * [defaultOnlyCandidates] (MATCH_DEFAULT_ONLY) is what Android would open: for a path Raft claims
+ * as a verified App Link (`/s/…`, e.g. an announcement's `/s/{slug}/settings/account#two-step`)
+ * Android 12+ reports only the verified Raft app there, with no browser at all. [allCandidates]
+ * (MATCH_ALL, which also lists browsers for a verified web link) is read only when that list has no
+ * external handler; its preferred package is [defaultBrowserPackage], the browser Android opens for
+ * a web page Raft does not claim.
+ */
+internal fun selectExternalBrowserPackage(
+    ownPackage: String,
+    defaultPackage: String?,
+    defaultBrowserPackage: () -> String?,
+    defaultOnlyCandidates: List<String>,
+    allCandidates: () -> List<String>,
+): String? =
+    selectExternalWebHandlerPackage(ownPackage, defaultPackage, defaultOnlyCandidates)
+        ?: selectExternalWebHandlerPackage(ownPackage, defaultBrowserPackage() ?: defaultPackage, allCandidates())
+
+/** A web page no app claims: resolves to the default browser, whatever App Links the Raft origin has. */
+private const val BrowserProbeUrl = "https://example.com/"
+
 /** An explicit browser activity for [uri], so Android App Links cannot route it to a Raft app; null if none. */
 internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
     val packageManager = context.packageManager
     val implicit =
         Intent(Intent.ACTION_VIEW, uri)
             .addCategory(Intent.CATEGORY_BROWSABLE)
-    // MATCH_DEFAULT_ONLY lists only apps picked as defaults; a device with no default browser reports none.
-    val candidates =
-        packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY).ifEmpty {
-            packageManager.queryIntentActivities(implicit, PackageManager.MATCH_ALL)
-        }
+    // MATCH_DEFAULT_ONLY lists only apps picked as defaults; a device with no default browser reports none,
+    // and a verified App Link path reports only the Raft app (selectExternalBrowserPackage).
+    val defaultOnly = packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+    val all by lazy { packageManager.queryIntentActivities(implicit, PackageManager.MATCH_ALL) }
     val defaultPackage =
         packageManager
             .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
             ?.activityInfo
             ?.packageName
     val selectedPackage =
-        selectExternalWebHandlerPackage(
+        selectExternalBrowserPackage(
             ownPackage = context.packageName,
             defaultPackage = defaultPackage,
-            candidatePackages = candidates.map { it.activityInfo.packageName }
+            defaultBrowserPackage = {
+                packageManager
+                    .resolveActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(BrowserProbeUrl)).addCategory(Intent.CATEGORY_BROWSABLE),
+                        PackageManager.MATCH_DEFAULT_ONLY,
+                    )
+                    ?.activityInfo
+                    ?.packageName
+            },
+            defaultOnlyCandidates = defaultOnly.map { it.activityInfo.packageName },
+            allCandidates = { all.map { it.activityInfo.packageName } },
         ) ?: return null
     val selected =
-        candidates.firstOrNull { candidate ->
-            candidate.activityInfo.packageName == selectedPackage
-        } ?: return null
+        defaultOnly.firstOrNull { it.activityInfo.packageName == selectedPackage }
+            ?: all.firstOrNull { it.activityInfo.packageName == selectedPackage }
+            ?: return null
     return implicit.setClassName(
         selected.activityInfo.packageName,
         selected.activityInfo.name
