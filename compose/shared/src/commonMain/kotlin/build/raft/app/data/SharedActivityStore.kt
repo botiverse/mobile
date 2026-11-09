@@ -287,6 +287,12 @@ class SharedActivityStore internal constructor(
     private val channelAccessGenerations = mutableMapOf<String, Long>()
     private var realtimeBackgroundReconcileDirty = false
     /**
+     * #13126 (observability only): the asks folded into the pending background reconcile, first
+     * trigger and count, sent with its realtime-fallback read. Set and cleared with
+     * [realtimeBackgroundReconcileDirty] (guarded by realtimeOwnerLock).
+     */
+    private var realtimeBackgroundReconcileTrigger: InboxRefreshTriggerCount? = null
+    /**
      * #triage 84d44d75: the newest patchable `message:new` (channel + seq) seen since the inbox last
      * answered at or past it (guarded by realtimeOwnerLock). One target for the whole inbox; many
      * events raise it, they never add reads (web inboxStore `inboxCatchUpTarget`, slock #11208).
@@ -344,7 +350,7 @@ class SharedActivityStore internal constructor(
                 realtimeReconcileOwedOnForeground = false
                 resumeFoldLoads = resetLoadsStarted
                 resumeNotBeforeMillis = nowMillis() + realtimeBackgroundRefreshIntervalMillis
-                scheduleRealtimeBackgroundReconcileLocked()
+                scheduleRealtimeBackgroundReconcileLocked(trigger = null)
             }
         job?.start()
     }
@@ -471,7 +477,9 @@ class SharedActivityStore internal constructor(
                 scope.launch { acceptRealtime(intent) }
             is SharedActivityIntent.ApplyRemoteDone ->
                 if (applyRemoteDone(intent.channelId, intent.doneFrontierSeq) == ActivityRemoteDoneOutcome.CannotTell) {
-                    synchronized(realtimeOwnerLock) { scheduleRealtimeBackgroundReconcileLocked() }.start()
+                    synchronized(realtimeOwnerLock) {
+                        scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
+                    }.start()
                 }
         }
     }
@@ -635,6 +643,7 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
+            realtimeBackgroundReconcileTrigger = null
             realtimeReconcileOwedOnForeground = false
             resumeFoldLoads = null
             resumeNotBeforeMillis = null
@@ -1190,9 +1199,16 @@ class SharedActivityStore internal constructor(
             // followers only).
             val threadChannelId = event.threadChannelId
             val hasRow = _state.value.items.any { it.isTaskConversation && it.threadChannelId == threadChannelId }
-            return if (hasRow) scheduleRealtimeBackgroundReconcileLocked() else null
+            return if (hasRow) scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other) else null
         }
         if (!event.refreshesActivity()) return null
+        // Web socketBridge messageNew: a message the list already shows (a repeat delivery) is an echo.
+        val trigger =
+            if (event is MessageNew && _state.value.showsMessage(event.message.id)) {
+                InboxRefreshTrigger.MessageEcho
+            } else {
+                event.inboxRefreshTrigger()
+            }
         when (event) {
             // Not past a mute (the shell's allowLocalPatch): the served row stops there.
             is MessageNew -> if (intent.allowLocalPatch) raiseRealtimeCatchUpTargetLocked(event.message)
@@ -1213,7 +1229,7 @@ class SharedActivityStore internal constructor(
         // (botiverse/slock bab9dd8c0 socketBridge.ts), through the same throttled single-flight.
         if (event is ActivityChanged) {
             val owner = _state.value.ownerServerId
-            return if (owner != null && owner == event.serverId.value) scheduleRealtimeBackgroundReconcileLocked() else null
+            return if (owner != null && owner == event.serverId.value) scheduleRealtimeBackgroundReconcileLocked(trigger) else null
         }
         // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
         // a brand-new DM row can only arrive through the canonical projection.
@@ -1235,7 +1251,7 @@ class SharedActivityStore internal constructor(
             // changes without showing foreground refresh chrome or requiring a
             // pull gesture. Read-state and broad identity-only events never use
             // this owner.
-            return scheduleRealtimeBackgroundReconcileLocked()
+            return scheduleRealtimeBackgroundReconcileLocked(trigger)
         }
         // Activity is snapshot-on-entry and patch-while-visible. Events whose
         // identity-only payload cannot safely produce a narrow row patch are
@@ -1483,13 +1499,18 @@ class SharedActivityStore internal constructor(
             )
     }
 
-    private fun scheduleRealtimeBackgroundReconcileLocked(): Job {
+    /**
+     * [trigger] names the ask for the read's `X-Raft-Fetch-Trigger` (#13126); null only for the
+     * return's own read, which is a `visibility` read and carries none.
+     */
+    private fun scheduleRealtimeBackgroundReconcileLocked(trigger: InboxRefreshTrigger?): Job {
         if (!appForeground.value) {
             // In the background nothing reads: the return reads once (onAppForegroundReturned).
             realtimeReconcileOwedOnForeground = true
             return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
         }
         realtimeBackgroundReconcileDirty = true
+        if (trigger != null) realtimeBackgroundReconcileTrigger = realtimeBackgroundReconcileTrigger.foldWith(trigger)
         // Only with a hidden window configured: without one the store behaves exactly as before.
         hiddenFoldLoads =
             if (activitySurfaceHidden && hiddenRealtimeBackgroundRefreshIntervalMillis != null) resetLoadsStarted else null
@@ -1513,8 +1534,12 @@ class SharedActivityStore internal constructor(
                         if (waitMillis <= 0L) break
                         delay(minOf(waitMillis, realtimeBackgroundRefreshIntervalMillis.coerceAtLeast(1L)))
                     }
+                    // The asks this round answers; asks made from here on count for the next round.
+                    var roundTrigger: InboxRefreshTriggerCount? = null
                     val shouldReconcile =
                         synchronized(realtimeOwnerLock) {
+                            roundTrigger = realtimeBackgroundReconcileTrigger
+                            realtimeBackgroundReconcileTrigger = null
                             if (realtimeBackgroundReconcileDirty) {
                                 realtimeBackgroundReconcileDirty = false
                                 true
@@ -1536,6 +1561,7 @@ class SharedActivityStore internal constructor(
                                     // Went to the background while waiting: no read now, one on the return.
                                     realtimeReconcileOwedOnForeground = true
                                     realtimeBackgroundReconcileDirty = false
+                                    realtimeBackgroundReconcileTrigger = null
                                     realtimeBackgroundReconcileJob = null
                                     ReconcileStep.Stop
                                 }
@@ -1544,6 +1570,7 @@ class SharedActivityStore internal constructor(
                                 foldBase != null ->
                                     if (resetLoadsStarted > foldBase) {
                                         realtimeBackgroundReconcileDirty = false
+                                        realtimeBackgroundReconcileTrigger = null
                                         ReconcileStep.Again
                                     } else {
                                         // The one read owed for the return to the foreground.
@@ -1555,11 +1582,14 @@ class SharedActivityStore internal constructor(
                                 hiddenFoldLoads?.let { fold -> resetLoadsStarted > fold } == true -> {
                                     hiddenFoldLoads = null
                                     realtimeBackgroundReconcileDirty = false
+                                    realtimeBackgroundReconcileTrigger = null
                                     ReconcileStep.Again
                                 }
                                 realtimeBackgroundRefreshWaitMillisLocked() > 0L -> {
                                     // A load started while we waited; fetch on that window's trailing edge.
                                     realtimeBackgroundReconcileDirty = true
+                                    // Still owed: this round's asks stay first in the next one.
+                                    realtimeBackgroundReconcileTrigger = roundTrigger.foldWith(realtimeBackgroundReconcileTrigger)
                                     ReconcileStep.Again
                                 }
                                 else -> ReconcileStep.Load
@@ -1573,7 +1603,8 @@ class SharedActivityStore internal constructor(
                         backgroundRefresh = true,
                         intent = SharedActivityIntent.Refresh,
                         fetchReason =
-                            if (returnRead) InboxFetchReason.Visibility else InboxFetchReason.RealtimeFallback
+                            if (returnRead) InboxFetchReason.Visibility else InboxFetchReason.RealtimeFallback,
+                        fetchTrigger = roundTrigger
                     )
                     awaitCurrentLoadIdle()
                 }
@@ -1756,7 +1787,7 @@ class SharedActivityStore internal constructor(
             "activity_read_state_patch scopeId=$channelId maxReadSeq=$maxReadSeq " +
                 "projected=${covered.size} reconcile=${uncovered.isNotEmpty()}"
         )
-        return if (uncovered.isNotEmpty()) scheduleRealtimeBackgroundReconcileLocked() else null
+        return if (uncovered.isNotEmpty()) scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other) else null
     }
 
     /**
@@ -1775,7 +1806,7 @@ class SharedActivityStore internal constructor(
         val matching = snapshot.items.filter { item -> item.readReceiptChannelId()?.value == channelId }
         if (matching.isEmpty()) {
             return if (markedUnread && current.selectedFilter == InboxFilter.Unread) {
-                scheduleRealtimeBackgroundReconcileLocked()
+                scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
             } else {
                 null
             }
@@ -1888,7 +1919,9 @@ class SharedActivityStore internal constructor(
         headerIndicator: Boolean = false,
         intent: SharedActivityIntent,
         /** Why the first page is read; sent as `X-Raft-Fetch-Reason` (see [InboxFetchReason]). */
-        fetchReason: InboxFetchReason? = null
+        fetchReason: InboxFetchReason? = null,
+        /** What asked for a realtime-fallback read; sent as `X-Raft-Fetch-Trigger` (see [InboxRefreshTrigger]). */
+        fetchTrigger: InboxRefreshTriggerCount? = null
     ) {
         val job =
             synchronized(realtimeOwnerLock) {
@@ -2120,7 +2153,7 @@ class SharedActivityStore internal constructor(
                         val result =
                             if (refresh) {
                                 val depth =
-                                    loadCanonicalDepth(serverId, filter, refreshLimit, fetchReason) { fetched ->
+                                    loadCanonicalDepth(serverId, filter, refreshLimit, fetchReason, fetchTrigger) { fetched ->
                                         publishRefreshPage(
                                             fetched = fetched,
                                             generation = generation,
@@ -2360,11 +2393,12 @@ class SharedActivityStore internal constructor(
         filter: InboxFilter,
         depth: Int,
         fetchReason: InboxFetchReason? = null,
+        fetchTrigger: InboxRefreshTriggerCount? = null,
         onPageMerged: suspend (InboxSnapshot) -> Unit = {}
     ): ActivityCanonicalDepthResult {
         val targetDepth = depth.coerceAtLeast(SharedActivityPageSize)
         val initial =
-            withInboxFetchReason(fetchReason) {
+            withInboxFetchReason(fetchReason, fetchTrigger) {
                 inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
             }
         if (initial !is DataResult.Content) return ActivityCanonicalDepthResult(initial)
@@ -2647,7 +2681,11 @@ class SharedActivityStore internal constructor(
                     synchronized(realtimeOwnerLock) {
                         if (realtimeCatchUpRetryJob !== self) return@synchronized null
                         realtimeCatchUpRetryJob = null
-                        if (activitySurfaceHidden) null else scheduleRealtimeBackgroundReconcileLocked()
+                        if (activitySurfaceHidden) {
+                            null
+                        } else {
+                            scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.CatchUpRetry)
+                        }
                     }
                 reconcileJob?.start()
             }
@@ -2680,7 +2718,15 @@ class SharedActivityStore internal constructor(
             return false
         }
         // Single-flight: a background load joins nothing while another load runs (that one settles).
-        load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.RealtimeFallback)
+        load(
+            refresh = true,
+            pullRefresh = false,
+            backgroundRefresh = true,
+            intent = SharedActivityIntent.Refresh,
+            fetchReason = InboxFetchReason.RealtimeFallback,
+            // A stale answer's recovery, not a realtime event (no shared trigger value).
+            fetchTrigger = InboxRefreshTriggerCount(InboxRefreshTrigger.Other)
+        )
         return true
     }
 
@@ -4018,7 +4064,8 @@ class SharedActivityStore internal constructor(
                     ActivityUnreadSummaryInvalidation(
                         accountId = accountId,
                         serverId = serverId,
-                        source = source
+                        source = source,
+                        trigger = intent.summaryInvalidationTrigger()
                     )
                 )
             }.onFailure { error ->
@@ -4645,6 +4692,18 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
         is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
     }
+
+/** The realtime event behind a summary invalidation (#13126); null (`other`) for the person's own actions. */
+internal fun SharedActivityIntent.summaryInvalidationTrigger(): InboxRefreshTrigger? =
+    when (this) {
+        is SharedActivityIntent.ApplyRealtimeEvent -> event.inboxRefreshTrigger()
+        is SharedActivityIntent.ApplyRealtimeSummaryEvent -> event.inboxRefreshTrigger()
+        else -> null
+    }
+
+/** The list already shows [messageId] as a row's latest message (web: the message store already had it). */
+private fun SharedActivityState.showsMessage(messageId: MessageId): Boolean =
+    snapshot?.items?.any { item -> item.lastMessageId == messageId || item.latestActivityMessageId == messageId } == true
 
 internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
     when (this) {

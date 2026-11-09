@@ -88,7 +88,9 @@ internal data class ActivityUnreadSummaryFact(
 internal data class ActivityUnreadSummaryInvalidation(
     val accountId: String,
     val serverId: String,
-    val source: String
+    val source: String,
+    /** The realtime event behind it, when one is ([InboxRefreshTrigger]); null = [InboxRefreshTrigger.Other]. */
+    val trigger: InboxRefreshTrigger? = null
 )
 
 /**
@@ -232,7 +234,9 @@ internal class ProcessActivityUnreadStore(
         reason: String,
         eventMarker: Any? = null,
         /** Only ambient realtime asked (see [realtimeMinIntervalMillis]); false reads in the short window. */
-        realtimeOnly: Boolean = false
+        realtimeOnly: Boolean = false,
+        /** What the `X-Raft-Fetch-Trigger` of a realtime-fallback read names (null = [InboxRefreshTrigger.Other]). */
+        trigger: InboxRefreshTrigger? = null
     ) {
         request(
             serverId = ServerId(owner.serverId),
@@ -241,7 +245,8 @@ internal class ProcessActivityUnreadStore(
             reason = "invalidate:$reason",
             expectedOwner = owner,
             eventMarker = eventMarker,
-            realtimeOnly = realtimeOnly
+            realtimeOnly = realtimeOnly,
+            trigger = trigger
         )
     }
 
@@ -338,7 +343,8 @@ internal class ProcessActivityUnreadStore(
         invalidate(
             owner,
             reason = "activity:${invalidation.source}",
-            realtimeOnly = invalidation.source.isRealtimeOnlyActivitySummarySource()
+            realtimeOnly = invalidation.source.isRealtimeOnlyActivitySummarySource(),
+            trigger = invalidation.trigger
         )
     }
 
@@ -359,7 +365,8 @@ internal class ProcessActivityUnreadStore(
         reason: String,
         expectedOwner: ProcessActivityUnreadOwner?,
         eventMarker: Any? = null,
-        realtimeOnly: Boolean = false
+        realtimeOnly: Boolean = false,
+        trigger: InboxRefreshTrigger? = null
     ) {
         val normalizedServerId = serverId.value.trim()
         if (normalizedServerId.isBlank()) return
@@ -431,6 +438,11 @@ internal class ProcessActivityUnreadStore(
                 }
                 entry.pendingReason = reason
                 if (!realtimeOnly) entry.pendingUrgent = true
+                // Observability only (#13126): every realtime-fallback ask folded into the round counts;
+                // the first one names it. A duplicate delivery dropped above is the same ask.
+                if (activityUnreadSummaryFetchReason(reason) == InboxFetchReason.RealtimeFallback) {
+                    entry.pendingTrigger = entry.pendingTrigger.foldWith(trigger ?: InboxRefreshTrigger.Other)
+                }
                 if (entry.active) {
                     entry.pending = true
                     entry.projection =
@@ -504,6 +516,7 @@ internal class ProcessActivityUnreadStore(
                         entry.pending = false
                         entry.pendingUrgent = false
                         entry.pendingEventMarkers = emptySet()
+                        entry.pendingTrigger = null
                         entry.projection =
                             entry.projection.copy(
                                 freshness = ActivityUnreadSummaryFreshness.Stale,
@@ -525,6 +538,9 @@ internal class ProcessActivityUnreadStore(
                     entry.inFlightEventMarkers = entry.pendingEventMarkers
                     entry.pendingEventMarkers = emptySet()
                     val reason = entry.pendingReason
+                    // This attempt answers every ask folded so far; later ones count for the next.
+                    val trigger = entry.pendingTrigger
+                    entry.pendingTrigger = null
                     entry.projection =
                         entry.projection.copy(
                             freshness = ActivityUnreadSummaryFreshness.Refreshing,
@@ -538,12 +554,13 @@ internal class ProcessActivityUnreadStore(
                         processGeneration = processGeneration,
                         generation = entry.requestGeneration,
                         factRevision = entry.factRevision,
-                        reason = reason
+                        reason = reason,
+                        trigger = trigger
                     )
                 }
             val result =
                 try {
-                    withInboxFetchReason(activityUnreadSummaryFetchReason(attempt.reason)) {
+                    withInboxFetchReason(activityUnreadSummaryFetchReason(attempt.reason), attempt.trigger) {
                         fetchSummary(owner, DataRequestPriority.Foreground)
                     }
                 } catch (cancellation: CancellationException) {
@@ -572,6 +589,7 @@ internal class ProcessActivityUnreadStore(
                         entry.active = false
                         // No later attempt of this loop covers them; let a redelivery fetch again.
                         entry.pendingEventMarkers = emptySet()
+                        entry.pendingTrigger = null
                         return@withLock false
                     }
                     val factChanged = entry.factRevision != attempt.factRevision
@@ -649,6 +667,8 @@ internal class ProcessActivityUnreadStore(
                     } else if (factChanged && entry.canonicalDirty && !entry.pending) {
                         entry.pending = true
                         entry.pendingReason = "fact_reconcile"
+                        // A local fact landed mid-read: no realtime event names this read.
+                        entry.pendingTrigger = entry.pendingTrigger.foldWith(InboxRefreshTrigger.Other)
                         // A local fact (the person's action in Activity) landed mid-read: not ambient.
                         entry.pendingUrgent = true
                     }
@@ -751,7 +771,8 @@ internal class ProcessActivityUnreadStore(
         val processGeneration: Long,
         val generation: Long,
         val factRevision: Long,
-        val reason: String
+        val reason: String,
+        val trigger: InboxRefreshTriggerCount?
     )
 
     private class Entry(
@@ -759,6 +780,8 @@ internal class ProcessActivityUnreadStore(
         var active: Boolean = false,
         var pending: Boolean = false,
         var pendingReason: String = "unspecified",
+        // The realtime-fallback asks folded into the pending round: first trigger, count (#13126).
+        var pendingTrigger: InboxRefreshTriggerCount? = null,
         // The round holds an ask other than realtime's: it keeps the short throttle window.
         var pendingUrgent: Boolean = false,
         var acceptedForegroundEpoch: Long = 0L,
@@ -835,7 +858,8 @@ internal fun processActivityUnreadRealtimeSink(
                 owner,
                 reason = "realtime:${event::class.simpleName.orEmpty()}",
                 eventMarker = event,
-                realtimeOnly = event.isAmbientActivityUnreadEvent()
+                realtimeOnly = event.isAmbientActivityUnreadEvent(),
+                trigger = event.inboxRefreshTrigger()
             )
         }
     }
