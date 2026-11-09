@@ -499,7 +499,13 @@ private fun raftComputerCardSentence(card: RaftComputerCardState, tier: RaftComp
         RaftComputerCardState.Reading -> stringResource(Res.string.settings_computers_upgrade_status_reading)
         RaftComputerCardState.CannotCheck -> stringResource(Res.string.settings_computers_upgrade_status_cannot_check)
         RaftComputerCardState.UpToDate -> stringResource(Res.string.settings_computers_upgrade_status_up_to_date)
-        is RaftComputerCardState.Upgrading -> stringResource(Res.string.settings_computers_upgrade_status_in_progress, card.version)
+        is RaftComputerCardState.Upgrading ->
+            when {
+                // Reconciler step 13 (slock #13506): the Computer first waits for this server's agents.
+                card.waitingAgents == 1 -> stringResource(Res.string.settings_computers_upgrade_status_draining_one, card.waitingAgents, card.version)
+                card.waitingAgents > 1 -> stringResource(Res.string.settings_computers_upgrade_status_draining_other, card.waitingAgents, card.version)
+                else -> stringResource(Res.string.settings_computers_upgrade_status_in_progress, card.version)
+            }
         is RaftComputerCardState.OneClick -> stringResource(Res.string.settings_computers_upgrade_status_available, card.version)
         is RaftComputerCardState.ManualUpgrade ->
             if (tier is RaftComputerVersionTier.None) {

@@ -35,6 +35,11 @@ import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ServerPublicExposedChannel
 import build.raft.app.data.ServerPublicVisibilityRepository
+import build.raft.app.data.MemberRemovalImpactRepository
+import build.raft.app.data.MemberRemovalImpactState
+import build.raft.app.data.holdsConfirm
+import build.raft.designsystem.components.RaftDialog
+import androidx.compose.ui.platform.testTag
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.SERVER_ACTION_CONFIRM
 import build.raft.app.data.SERVER_ACTION_DELETE
@@ -138,6 +143,11 @@ internal fun SharedSettingsServerContent(
     showProfileCard: Boolean = true,
     /** Owner "Public access" section; null on surfaces that do not host it (Administration, fixtures). */
     publicAccess: SettingsServerPublicAccessBinding? = null,
+    /**
+     * Leave server's confirmation reads what leaving takes offline (slock #13547) with the viewer's
+     * own id; null on surfaces without a network (fixtures), which then say nothing about Computers.
+     */
+    leaveImpact: SettingsServerLeaveImpactBinding? = null,
     onAction: (String, String?) -> Unit
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
@@ -190,7 +200,8 @@ internal fun SharedSettingsServerContent(
                 actionState = actionState,
                 onConfirmationSlugChange = onDeleteConfirmationNameChange,
                 onLeave = { onAction(SERVER_ACTION_LEAVE, null) },
-                onDelete = { onAction(SERVER_ACTION_DELETE, deleteConfirmationName.trim()) }
+                onDelete = { onAction(SERVER_ACTION_DELETE, deleteConfirmationName.trim()) },
+                leaveImpact = leaveImpact
             )
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -313,12 +324,14 @@ private fun SettingsServerDangerZoneCard(
     actionState: build.raft.app.data.SharedSettingsActionState?,
     onConfirmationSlugChange: (String) -> Unit,
     onLeave: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    leaveImpact: SettingsServerLeaveImpactBinding? = null
 ) {
     val normalizedRole = role.lowercase()
     val canLeave = normalizedRole == "admin" || normalizedRole == "member"
     val canDelete = normalizedRole == "owner" || dangerSection?.state?.name == "Available"
     var showDeleteModal by remember { mutableStateOf(false) }
+    var showLeaveModal by remember { mutableStateOf(false) }
     var modalConfirmationSlug by remember { mutableStateOf("") }
     if (!canLeave && !canDelete) {
         return
@@ -340,7 +353,8 @@ private fun SettingsServerDangerZoneCard(
                         buttonIcon = RaftLucideIconName.LogOut,
                         buttonVariant = RaftButtonVariant.Warning,
                         enabled = !leaveBusy,
-                        onClick = onLeave
+                        // Web DangerZoneSection: Leave server asks first (LeaveServerConfirmDialog).
+                        onClick = { showLeaveModal = true }
                     )
                     if (leaveConfirmed) {
                         Text(
@@ -362,6 +376,25 @@ private fun SettingsServerDangerZoneCard(
                 onClick = { showDeleteModal = true }
             )
         }
+    }
+    if (showLeaveModal) {
+        SettingsServerLeaveConfirmationDialog(
+            serverName = serverName,
+            impact =
+                rememberMemberRemovalImpact(
+                    repository = leaveImpact?.repository,
+                    serverId = leaveImpact?.serverId,
+                    // A Guest attaches no Computers (and the route refuses one asking): nothing is read.
+                    memberId = if (leaveImpact == null || normalizedRole == "guest") null else leaveImpact.currentUserId.orEmpty(),
+                ),
+            leaveBusy = leaveBusy,
+            errorMessage =
+                actionState
+                    ?.takeIf { it.action == SERVER_ACTION_LEAVE && !it.inProgress }
+                    ?.userFacingErrorMessage(localizedErrorPresentationStrings()),
+            onDismiss = { if (!leaveBusy) showLeaveModal = false },
+            onLeave = onLeave
+        )
     }
     if (showDeleteModal) {
         SettingsServerDeleteConfirmationDialog(
@@ -396,6 +429,68 @@ private fun SettingsServerDangerZoneCard(
                 }
             }
         )
+    }
+}
+
+/** What Leave server's confirmation needs to read the Computers leaving takes offline. */
+internal data class SettingsServerLeaveImpactBinding(
+    val repository: MemberRemovalImpactRepository,
+    val serverId: String?,
+    val currentUserId: String?,
+)
+
+internal const val SETTINGS_SERVER_LEAVE_DIALOG_TAG = "server-leave-dialog"
+internal const val SETTINGS_SERVER_LEAVE_CONFIRM_TAG = "server-leave-confirm-button"
+
+/**
+ * Web `LeaveServerConfirmDialog` (DangerZoneSection, slock #13547): "Leave server", what leaving
+ * loses, then which Computers you attached go offline in a warning banner. The confirm (warning)
+ * waits for that read, which gives up after 10 s, and stays available when it fails.
+ */
+@Composable
+internal fun SettingsServerLeaveConfirmationDialog(
+    serverName: String,
+    impact: MemberRemovalImpactState,
+    leaveBusy: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onLeave: () -> Unit
+) {
+    RaftDialog(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.settings_server_leave_dialog_title),
+        modifier = Modifier.testTag(SETTINGS_SERVER_LEAVE_DIALOG_TAG),
+        description = stringResource(Res.string.settings_server_leave_dialog_message, serverName),
+        dismissOnClickOutside = !leaveBusy,
+        closeLabel = stringResource(Res.string.common_close),
+        footer = {
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+                enabled = !leaveBusy
+            )
+            RaftButton(
+                text = stringResource(Res.string.settings_server_leave_dialog_confirm),
+                onClick = { if (!leaveBusy && !impact.holdsConfirm) onLeave() },
+                variant = RaftButtonVariant.Warning,
+                size = RaftButtonSize.Lg,
+                enabled = !impact.holdsConfirm,
+                loading = leaveBusy,
+                loadingLabel = stringResource(Res.string.settings_server_leave_dialog_leaving),
+                modifier = Modifier.testTag(SETTINGS_SERVER_LEAVE_CONFIRM_TAG)
+            )
+        }
+    ) {
+        if (impact != MemberRemovalImpactState.None || errorMessage != null) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                MemberRemovalImpactNote(state = impact, banner = true)
+                errorMessage?.let { message ->
+                    RaftBanner(description = message, status = RaftBannerStatus.Destructive)
+                }
+            }
+        }
     }
 }
 

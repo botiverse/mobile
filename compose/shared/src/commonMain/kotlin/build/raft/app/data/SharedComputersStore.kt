@@ -756,7 +756,10 @@ internal data class RaftDurableComputer(
     val remoteUpgradeSupported: Boolean? = null,
     val latestComputerVersion: String? = null,
     /** The managed Computer's creator, so a cold start still shows it on the detail page. */
-    val creator: RaftDurableComputerCreator? = null
+    val creator: RaftDurableComputerCreator? = null,
+    /** Computer owner v1: who Raft records as the owner (null = Public), so a cold start shows it too. */
+    val ownerUserId: String? = null,
+    val owner: RaftDurableComputerCreator? = null
 )
 
 @Serializable
@@ -767,6 +770,12 @@ internal data class RaftDurableComputerCreator(
     val avatarUrl: String? = null,
     val gravatarHash: String? = null
 )
+
+private fun SettingsComputerCreatorSnapshot.toDurableComputerCreator(): RaftDurableComputerCreator =
+    RaftDurableComputerCreator(id = id, name = name, displayName = displayName, avatarUrl = avatarUrl, gravatarHash = gravatarHash)
+
+private fun RaftDurableComputerCreator.toComputerCreatorSnapshot(): SettingsComputerCreatorSnapshot =
+    SettingsComputerCreatorSnapshot(id = id, name = name, displayName = displayName, avatarUrl = avatarUrl, gravatarHash = gravatarHash)
 
 private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRecord =
     RaftComputersDurableRecord(
@@ -795,16 +804,9 @@ private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRe
                     computerUpgradeAvailable = machine.computerUpgradeAvailable,
                     remoteUpgradeSupported = machine.remoteUpgradeSupported,
                     latestComputerVersion = machine.latestComputerVersion,
-                    creator =
-                        machine.creator?.let { creator ->
-                            RaftDurableComputerCreator(
-                                id = creator.id,
-                                name = creator.name,
-                                displayName = creator.displayName,
-                                avatarUrl = creator.avatarUrl,
-                                gravatarHash = creator.gravatarHash
-                            )
-                        }
+                    creator = machine.creator?.toDurableComputerCreator(),
+                    ownerUserId = machine.ownerUserId,
+                    owner = machine.owner?.toDurableComputerCreator()
                 )
             },
         machineCount = machineCount,
@@ -842,16 +844,9 @@ private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSli
                     computerUpgradeAvailable = machine.computerUpgradeAvailable,
                     remoteUpgradeSupported = machine.remoteUpgradeSupported,
                     latestComputerVersion = machine.latestComputerVersion,
-                    creator =
-                        machine.creator?.let { creator ->
-                            SettingsComputerCreatorSnapshot(
-                                id = creator.id,
-                                name = creator.name,
-                                displayName = creator.displayName,
-                                avatarUrl = creator.avatarUrl,
-                                gravatarHash = creator.gravatarHash
-                            )
-                        }
+                    creator = machine.creator?.toComputerCreatorSnapshot(),
+                    ownerUserId = machine.ownerUserId,
+                    owner = machine.owner?.toComputerCreatorSnapshot()
                 )
             },
         machineCount = machineCount,

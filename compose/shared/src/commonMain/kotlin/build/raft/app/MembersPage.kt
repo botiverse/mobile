@@ -121,6 +121,7 @@ import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.MemberRepository
@@ -3118,6 +3119,8 @@ private class MemberDetailRouteProvider(
     val accountBinding: () -> Pair<String, String>? = { null },
     /** DM opens: Home's DM at once, else one request per server + peer for any number of taps. */
     val directMessageOpens: build.raft.app.data.RaftDirectMessageOpens = build.raft.app.data.RaftDirectMessageOpens.shared,
+    /** Remove member's confirmation: which of the person's Computers go offline (slock #13547). */
+    val memberRemovalImpactRepository: build.raft.app.data.MemberRemovalImpactRepository? = null,
     /**
      * Runs the agent detail cache's write-through of confirmed edits: the route's composition scope (cancelled
      * with the route); a write-through already started finishes ([confirmCachedAgentDetailAsync]).
@@ -3206,6 +3209,21 @@ private class MemberDetailRouteProvider(
         // Confirmed (the save answered): the cached page follows (its disk record never holds the values).
         if (applied) confirmCachedAgentDetail()
         return applied
+    }
+
+    /**
+     * Remove member (web HumanProfileActions `removeThisMember`): `DELETE servers/:id/members/:memberId`
+     * on the server the profile was opened on; the roster drops the person once the server agrees.
+     */
+    suspend fun removeHumanMember(expectedServerId: String, memberId: String): DataResult<SettingsServerActionResult> {
+        if (!membersHumanRoleUpdateServerMatches(expectedServerId, selectedServerStore.selectedServerId.value)) {
+            return DataResult.Error(ScreenError("member_remove_server_changed", retryable = false))
+        }
+        val result = settingsRepository.removeServerMember(memberId)
+        if (result is DataResult.Content && result.data.success) {
+            serverMembersStore.removeMember(serverId = ServerId(expectedServerId), memberId = MemberId(memberId))
+        }
+        return result
     }
 
     suspend fun updateHumanRole(
@@ -3975,7 +3993,8 @@ private fun rememberMemberDetailRouteProvider(
             agentControlsApi = agentControlsApi,
             agentDetailCache = sharedStores.agentDetailCache,
             agentUpdatedSignals = sharedStores.agentUpdatedSignals,
-            accountBinding = { sharedStores.currentAccountBindingOrNull() }
+            accountBinding = { sharedStores.currentAccountBindingOrNull() },
+            memberRemovalImpactRepository = build.raft.app.data.NetworkMemberRemovalImpactRepository(networkClient)
         )
     }
 }
@@ -5042,6 +5061,43 @@ internal fun MemberDetailPageContent(
                         currentServerId = current.server.id.value,
                         ownerCount = ownerCount.takeIf { it > 0 }
                     )
+                // Remove member asks first (web HumanProfileActions' RemoveMemberConfirmDialog), and
+                // its banner says which of the person's Computers go offline (slock #13547).
+                var removeConfirmOpen by remember(current.member.id) { mutableStateOf(false) }
+                var removing by remember(current.member.id) { mutableStateOf(false) }
+                var removeFailed by remember(current.member.id) { mutableStateOf(false) }
+                if (removeConfirmOpen) {
+                    val personName = current.member.displayName.trim().ifBlank { current.member.handle }
+                    MembersRemoveMemberConfirmDialog(
+                        personName = personName,
+                        impact =
+                            rememberMemberRemovalImpact(
+                                repository = provider.memberRemovalImpactRepository,
+                                serverId = current.server.id.value,
+                                memberId = current.member.id.value,
+                            ),
+                        removing = removing,
+                        errorMessage = stringResource(Res.string.thread_members_remove_failed).takeIf { removeFailed },
+                        onDismiss = { removeConfirmOpen = false },
+                        onConfirm = {
+                            removing = true
+                            removeFailed = false
+                            routeScope.launch {
+                                val result =
+                                    runCatchingPreservingCancellation {
+                                        provider.removeHumanMember(current.server.id.value, current.member.id.value)
+                                    }.getOrNull()
+                                removing = false
+                                if (result is DataResult.Content && result.data.success) {
+                                    removeConfirmOpen = false
+                                    closeDetail()
+                                } else {
+                                    removeFailed = true
+                                }
+                            }
+                        },
+                    )
+                }
                 MembersDetailContent(
                     member = current.member,
                     currentUserId = current.currentUserId,
@@ -5074,7 +5130,8 @@ internal fun MemberDetailPageContent(
                             provider.copyMemberId(current.member, memberIdCopied)
                         },
                         onRemoveMember = if (canRemoveHumanMember) ({
-                            provider.bridge.toast(removeFromSettings)
+                            removeFailed = false
+                            removeConfirmOpen = true
                         }) else null,
                         onOpenUrl = { linkNavigator.open(it) },
                         onOpenReminderMessage = { permalink ->

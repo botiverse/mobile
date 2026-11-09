@@ -80,6 +80,11 @@ import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.COMPUTER_ACTION_DESCRIPTION
 import build.raft.app.data.COMPUTER_ACTION_RENAME
+import build.raft.app.data.COMPUTER_ACTION_OWNER
+import build.raft.app.model.MemberProfile
+import build.raft.app.data.SettingsComputerOwnerRequest
+import build.raft.designsystem.components.LocalRaftToastHostState
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
@@ -852,6 +857,8 @@ private fun RaftComputerRackCard(
             row.cardFacts(),
             Modifier.padding(start = RaftComputerCardIconSize + RaftComputerCardTitleGap, top = 2.dp),
         )
+        // Computer owner v1 (web ComputerOwnerLabel): "Owner: <name>" or "Public (no owner)".
+        RaftComputerOwnerLine(row.owner, Modifier.padding(start = RaftComputerCardIconSize + RaftComputerCardTitleGap, top = 2.dp))
         Spacer(Modifier.height(12.dp))
         RaftComputerAgentStripRow(agents, dimmed = !row.online, agentStatusResolver = agentStatusResolver, onOpenAgent = onOpenAgent)
         // Online only: an offline computer's meters would be old (web `liveDiskStatus`), and it
@@ -890,11 +897,17 @@ private fun RaftComputerRackActionRow(action: RaftComputerRackAction, onUpgrade:
                     leadingIcon = { RaftComputersIcon(RaftLucideIconName.Play) },
                 )
             }
-        RaftComputerRackAction.Upgrading ->
+        is RaftComputerRackAction.Upgrading ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                // Web: the disabled button keeps its label beside the spinner.
+                // Web: the disabled button keeps its label beside the spinner; while the Computer
+                // waits for this server's agents first, it says how many (slock #13506).
                 RaftButton(
-                    text = stringResource(Res.string.settings_computers_upgrading),
+                    text =
+                        when {
+                            action.waitingAgents == 1 -> stringResource(Res.string.settings_computers_upgrading_draining_one, action.waitingAgents)
+                            action.waitingAgents > 1 -> stringResource(Res.string.settings_computers_upgrading_draining_other, action.waitingAgents)
+                            else -> stringResource(Res.string.settings_computers_upgrading)
+                        },
                     onClick = {},
                     enabled = false,
                     leadingIcon = { RaftSpinner(size = RaftSpinnerSize.Sm) },
@@ -944,8 +957,15 @@ private fun RaftComputerListRow(row: RaftComputerRowModel, agentCount: Int, divi
         divider = divider,
         // Web phone row: the version fact on its own line (never cut by the OS), the OS below.
         subtitle = raftComputerFactsText(row.cardFacts().let { if (it is RaftComputerCardFacts.Online) it.copy(osName = null) else it }),
-        description = listOfNotNull(row.description, row.osName.takeIf { row.online }).joinToString(" · ").ifBlank { null },
-        descriptionMaxLines = 1,
+        // Computer owner v1 (web phone row's ComputerOwnerLabel): the owner line, then description and OS.
+        description =
+            listOfNotNull(
+                raftComputerOwnerLabel(row.owner),
+                listOfNotNull(row.description, row.osName.takeIf { row.online }).joinToString(" · ").ifBlank { null },
+            ).joinToString("\n"),
+        // Two lines: a row's description is one line unless it wraps.
+        wrapDescription = true,
+        descriptionMaxLines = 2,
         leading = {
             Box {
                 RaftComputerTile(row)
@@ -1484,6 +1504,12 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             refreshing = refreshing,
         )
     fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+    // Transfer owner offers the server's people: the members store's roster, no new API.
+    val ownerMembersServerId = currentServerId?.let(::ServerId)
+    val ownerMembersEntry by
+        remember(environment.serverMembersStore, ownerMembersServerId) {
+            ownerMembersServerId?.let { environment.serverMembersStore.serverMembersEntryFlow(it) } ?: kotlinx.coroutines.flow.flowOf(null)
+        }.collectAsState(ownerMembersServerId?.let { environment.serverMembersStore.currentServerMembersEntry(it) })
     val agentStatusResolver =
         remember(environment.serverMembersStore, currentServerId) {
             raftScopedAgentStatusResolver(environment.serverMembersStore, currentServerId)
@@ -1515,6 +1541,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 agentStatusResolver = agentStatusResolver,
                 computerControl = settingsState.computerControl,
                 runtimeCatalog = runtimeCatalog,
+                ownerMembers = ownerMembersEntry?.members.orEmpty(),
                 onOpenAgent = { agent ->
                     val serverId = currentServerId
                     val pageData =
@@ -1572,6 +1599,8 @@ internal fun RaftSettingsComputerDetailContent(
     computerControl: SettingsComputerControlState = SettingsComputerControlState(),
     /** The computer's server's runtime catalog ([rememberServerRuntimeCatalog]): the runtime chips. */
     runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
+    /** The server's members (the members store's roster), for the Transfer owner dialog's people. */
+    ownerMembers: List<MemberProfile> = emptyList(),
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -1610,6 +1639,7 @@ internal fun RaftSettingsComputerDetailContent(
                     onOpenAgent = onOpenAgent,
                     onOpenCreator = onOpenCreator,
                     runtimeCatalog = runtimeCatalog,
+                    ownerMembers = ownerMembers,
                 )
         }
     }
@@ -1627,6 +1657,7 @@ private fun RaftComputerDetailBody(
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
     onOpenCreator: (RaftComputerCreatorModel) -> Unit,
     runtimeCatalog: ServerRuntimeCatalog,
+    ownerMembers: List<MemberProfile>,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -1635,6 +1666,24 @@ private fun RaftComputerDetailBody(
     val canRemove = model.canRemove
     val currentAction = actionState?.takeIf { it.itemId == machineId }
     var confirmDelete by remember(machineId) { mutableStateOf(false) }
+    // Computer owner v1: the Transfer owner dialog, or a Make it mine in flight (its failure is a toast).
+    var transferOwnerOpen by remember(machineId) { mutableStateOf(false) }
+    var claimingOwner by remember(machineId) { mutableStateOf(false) }
+    var transferSubmitted by remember(machineId) { mutableStateOf(false) }
+    val ownerAction = currentAction?.takeIf { it.action == COMPUTER_ACTION_OWNER }
+    val ownerSaving = ownerAction?.inProgress == true
+    val ownerFailed = ownerAction != null && !ownerAction.inProgress && ownerAction.hasComputerActionError()
+    val toastHost = LocalRaftToastHostState.current
+    val makeMineFailed = stringResource(Res.string.settings_computers_owner_make_mine_failed)
+    LaunchedEffect(ownerSaving, ownerFailed) {
+        if (ownerSaving) return@LaunchedEffect
+        // Web: a save closes the dialog; a failed one keeps it open saying so.
+        if (transferOwnerOpen && transferSubmitted && ownerAction != null && !ownerFailed) transferOwnerOpen = false
+        if (claimingOwner) {
+            claimingOwner = false
+            if (ownerFailed) toastHost?.show(makeMineFailed, intent = RaftToastIntent.Error)
+        }
+    }
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val upgrade = raftComputerUpgradeModel(snapshot.computer, computerControl, nowMillis)
     val controls =
@@ -1657,7 +1706,8 @@ private fun RaftComputerDetailBody(
         }
         refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
         currentAction
-            ?.takeIf { !it.inProgress && it.hasComputerActionError() }
+            // The owner's failures are the dialog's line and Make it mine's toast (web).
+            ?.takeIf { !it.inProgress && it.hasComputerActionError() && it.action != COMPUTER_ACTION_OWNER }
             ?.let { failed ->
                 item(key = "action-error") {
                     RaftBanner(
@@ -1738,6 +1788,27 @@ private fun RaftComputerDetailBody(
                             }
                         }
                     }
+                    // Computer owner v1 (web ComputerOwnerField): who Raft records as its owner, or Public.
+                    Item(stringResource(Res.string.settings_computers_label_owner)) {
+                        RaftComputerOwnerField(
+                            owner = model.owner,
+                            canTransfer = model.canTransferOwner,
+                            canClaim = model.canClaimOwner,
+                            claiming = claimingOwner && ownerSaving,
+                            onOpenOwner = onOpenCreator,
+                            onTransfer = {
+                                transferSubmitted = false
+                                transferOwnerOpen = true
+                            },
+                            onClaim = {
+                                val me = snapshot.currentUserId
+                                if (me != null && !ownerSaving) {
+                                    claimingOwner = true
+                                    onIntent(SharedSettingsIntent.SetComputerOwner(SettingsComputerOwnerRequest(machineId, me)))
+                                }
+                            },
+                        )
+                    }
                 }
                 // Web: an offline Computer's version row links the notes of the version it can move to.
                 upgrade.releaseNotes?.takeIf { !snapshot.computer.online }?.let { notes ->
@@ -1787,6 +1858,23 @@ private fun RaftComputerDetailBody(
             }
         }
         item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+    if (transferOwnerOpen) {
+        val ownerUserId = snapshot.computer.ownerUserId
+        RaftTransferComputerOwnerDialog(
+            computerName = computer.name,
+            ownerUserId = ownerUserId,
+            candidates = remember(ownerMembers, ownerUserId, snapshot.currentUserId) {
+                raftComputerOwnerCandidates(ownerMembers, ownerUserId, snapshot.currentUserId)
+            },
+            saving = ownerSaving && !claimingOwner,
+            failed = ownerFailed && transferSubmitted && !claimingOwner,
+            onTransfer = { next ->
+                transferSubmitted = true
+                onIntent(SharedSettingsIntent.SetComputerOwner(SettingsComputerOwnerRequest(machineId, next)))
+            },
+            onDismiss = { transferOwnerOpen = false },
+        )
     }
     if (confirmDelete && model.assignedAgentCount > 0) {
         // Web MachineDetailPanel: a machine with agents gets a notice, not a destructive confirm.
@@ -1863,7 +1951,7 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
  * 6dp side padding is pulled back out so the avatar lines up with the other values.
  */
 @Composable
-private fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick: () -> Unit) {
+internal fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick: () -> Unit) {
     val shape = RoundedCornerShape(RaftRadius.Chip)
     Row(
         modifier =

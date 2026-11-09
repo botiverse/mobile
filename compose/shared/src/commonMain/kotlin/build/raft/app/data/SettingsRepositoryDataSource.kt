@@ -788,6 +788,17 @@ class RealSettingsRepository(
         return computersApiClient.upgradeComputer(ServerId(serverId), machineId, targetVersion)
     }
 
+    override suspend fun setComputerOwner(request: SettingsComputerOwnerRequest): DataResult<SettingsComputerActionResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val machineId = request.machineId.trim()
+        if (machineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val ownerUserId = request.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
+        logger("machine_owner_start serverId=$serverId machineId=$machineId public=${ownerUserId == null}")
+        return computersApiClient.setMachineOwner(ServerId(serverId), machineId, ownerUserId).mapComputerResult {
+            SettingsComputerActionResult(machineId = machineId, success = true, action = "owner")
+        }
+    }
+
     override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> {
         val serverId = selectedServerId() ?: return serverRequired()
         val normalizedMachineId = machineId.trim()
@@ -3010,6 +3021,8 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         latestComputerVersion = latestComputerVersion,
         latestComputerReleaseNotes = latestComputerReleaseNotes,
         creator = creator,
+        ownerUserId = ownerUserId,
+        owner = owner,
         agentScopes = agentScopes,
         osRelease = osRelease,
         runtimeVersions = runtimeVersions,

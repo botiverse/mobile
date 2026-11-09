@@ -27,6 +27,7 @@ import build.raft.app.data.ComputersRackView
 import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerControlState
+import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
@@ -58,10 +59,12 @@ import org.robolectric.annotation.GraphicsMode
  * (normal, low-disk warning, "—" when not reported) and runtime usage lines: normal, warning from
  * 80%, used up, a stale read (dimmed), "—" with nothing read, "—" with an account needing
  * attention, and Other runtimes. Each card ends with its next step: Studio restarting, build-box
- * "Upgrade to v1.0.53", old-node "Upgrading…", the laptop's restart command with its copy button;
- * gpu-rig (up to date, and the viewer may not manage it) has none.
+ * "Upgrade to v1.0.53", old-node "Waiting for 2 agents on this server…" (its upgrade waits for
+ * this server's agents first, slock #13506), the laptop's restart command with its copy button;
+ * gpu-rig (up to date, and the viewer may not manage it) has none. Under each card's facts, its
+ * owner (Studio Mac's "Owner: Artin") or "Public (no owner)" (Computer owner v1, slock #13344).
  * List (`settings.computers.list`): the same computers as phone list rows (tile with its light,
- * name with the agent count and Low disk, facts, description), no meters, no next step.
+ * name with the agent count and Low disk, facts, the owner line, description), no meters, no next step.
  * Agents carry no avatar image, so the capture draws initials without a fetch.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -189,6 +192,8 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                         memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 18 * gib, totalBytes = 64 * gib),
                         canViewRuntimeUsage = true,
                         canManage = true,
+                        ownerUserId = "user-1",
+                        owner = SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin"),
                     ),
                     SettingsComputerSnapshot(
                         id = "m-build",
@@ -230,6 +235,8 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                                 targetVersion = "1.0.53",
                                 requestedAt = "2026-10-22T02:08:00Z",
                                 state = "pending",
+                                phase = "draining",
+                                drainingAgentIds = listOf("a-old-1", "a-old-2"),
                             ),
                         canViewRuntimeUsage = true,
                         canManage = true,

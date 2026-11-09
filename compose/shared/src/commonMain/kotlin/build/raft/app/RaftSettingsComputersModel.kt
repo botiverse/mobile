@@ -75,6 +75,11 @@ internal data class RaftComputerRowModel(
     val memory: RaftComputerResourceMeter? = null,
     /** The viewer may read this computer's runtime usage (the detail page's rule). */
     val canViewRuntimeUsage: Boolean = false,
+    /**
+     * Computer owner v1 (web `ComputerOwnerLabel`): the recorded owner, "Owner: <name>"; null reads
+     * "Public (no owner)".
+     */
+    val owner: RaftComputerCreatorModel? = null,
 )
 
 /**
@@ -283,7 +288,44 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         disk = diskStatus?.takeIf { online }?.toRaftComputerResourceMeter(warn = raftComputerDiskLow(this)),
         memory = memoryStatus?.takeIf { online }?.toRaftComputerResourceMeter(warn = false),
         canViewRuntimeUsage = canViewRuntimeUsage,
+        owner = raftComputerOwner(this),
     )
+}
+
+/** Web `machine.ownerUserId ? machine.owner ?? null : null`: the owner to show, or null for Public. */
+internal fun raftComputerOwner(computer: SettingsComputerSnapshot): RaftComputerCreatorModel? =
+    computer.ownerUserId?.trim()?.takeIf { it.isNotBlank() }?.let { computer.owner?.toRaftComputerCreator() }
+
+/** One person the Transfer owner dialog offers (web `TransferComputerOwnerDialog` `people`). */
+internal data class RaftComputerOwnerCandidate(val id: String, val name: String, val isYou: Boolean)
+
+/**
+ * Web `TransferComputerOwnerDialog`: the server's members who are not Guests, never the current
+ * owner (agents are not members); the server checks the same. In roster order.
+ */
+internal fun raftComputerOwnerCandidates(
+    members: List<MemberProfile>,
+    ownerUserId: String?,
+    currentUserId: String?,
+): List<RaftComputerOwnerCandidate> {
+    val owner = ownerUserId?.trim()?.takeIf { it.isNotBlank() }
+    val me = currentUserId?.trim()?.takeIf { it.isNotBlank() }
+    val seen = HashSet<String>()
+    return members.mapNotNull { member ->
+        val id = member.id.value.trim()
+        if (member.kind != MemberKind.Human || id.isBlank() || id == owner) return@mapNotNull null
+        if (member.membershipStatus != null && member.membershipStatus != "active") return@mapNotNull null
+        if (member.serverRole?.trim()?.lowercase() == "guest") return@mapNotNull null
+        if (!seen.add(id)) return@mapNotNull null
+        RaftComputerOwnerCandidate(id = id, name = member.displayName.trim().ifBlank { member.handle }, isYou = id == me)
+    }
+}
+
+/** The dialog's Combobox filter: a case-insensitive match on the shown name; blank shows everyone. */
+internal fun raftComputerOwnerCandidatesMatching(candidates: List<RaftComputerOwnerCandidate>, query: String): List<RaftComputerOwnerCandidate> {
+    val needle = query.trim().lowercase()
+    if (needle.isEmpty()) return candidates
+    return candidates.filter { it.name.lowercase().contains(needle) }
 }
 
 /** A usage column on a card (web `RackUsageColumn`): one provider's account, named by [runtimeId]. */
@@ -424,8 +466,11 @@ internal sealed interface RaftComputerRackAction {
     /** Online, a one-click upgrade waits: "Upgrade to v{version}". */
     data class Upgrade(val version: String) : RaftComputerRackAction
 
-    /** The upgrade was asked for and is running: "Upgrading…". */
-    data object Upgrading : RaftComputerRackAction
+    /**
+     * The upgrade was asked for and is running: "Upgrading…", or "Waiting for N agents on this
+     * server…" while the Computer first waits for [waitingAgents] of them (slock #13506).
+     */
+    data class Upgrading(val waitingAgents: Int = 0) : RaftComputerRackAction
 
     /** A restart from this page, running or just finished (restarted / why it failed). */
     data class Restarting(val progress: SettingsComputerRestartProgress) : RaftComputerRackAction
@@ -455,7 +500,7 @@ internal fun raftComputerRackAction(
     restart?.takeIf { it.machineId == computer.id }?.let { return RaftComputerRackAction.Restarting(it) }
     return when (val card = upgrade.card) {
         is RaftComputerCardState.OneClick -> RaftComputerRackAction.Upgrade(card.version)
-        is RaftComputerCardState.Upgrading -> RaftComputerRackAction.Upgrading
+        is RaftComputerCardState.Upgrading -> RaftComputerRackAction.Upgrading(card.waitingAgents)
         else -> null
     }
 }
@@ -554,6 +599,12 @@ internal sealed interface RaftComputerDetailModel {
         val showsCreator: Boolean = snapshot.computer.isComputer,
         /** The human who attached it, opening their profile; null shows "No creator". */
         val creator: RaftComputerCreatorModel? = snapshot.computer.creator?.toRaftComputerCreator(),
+        /** Computer owner v1: the recorded owner, opening their profile; null shows "Public (no owner)". */
+        val owner: RaftComputerCreatorModel? = raftComputerOwner(snapshot.computer),
+        /** Transfer owner (the current owner, a server owner/admin). */
+        val canTransferOwner: Boolean = snapshot.canTransferOwner,
+        /** Make it mine (whoever connected a Public Computer). */
+        val canClaimOwner: Boolean = snapshot.canClaimOwner,
     ) : RaftComputerDetailModel
 }
 

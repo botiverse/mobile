@@ -37,7 +37,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * JVM screenshots of a computer's detail page (`settings.computer.info`): the Info section's
- * detected runtimes as chips, its created date and its creator, as on the web; and
+ * detected runtimes as chips, its created date, its creator and its owner (Computer owner v1, with
+ * Transfer owner for an admin, slock #13344), as on the web; and
  * `settings.computer.memory_limit_not_applied`, the same page with the "configured but not applied"
  * per-agent memory-limit warning (botiverse/slock #10860). Same capture, tolerance and
  * [RobolectricComposeActivityRule] as [ActivityConversationRowsScreenshotTest]; CI uploads the
@@ -141,11 +142,14 @@ private fun ComputerDetailVisualContent(appearance: RaftAppAppearance, agentScop
                     createdAt = "2026-10-08T09:14:00Z",
                     // No photo or Gravatar, so the capture draws the placeholder person without a fetch.
                     creator = SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin"),
+                    ownerUserId = "user-1",
+                    owner = SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin"),
                     agentScopes = agentScopes,
                 ),
             workspaces = emptyList(),
             agents = emptyList(),
             sections = emptyList(),
+            canTransferOwner = true,
         )
     val model = raftComputerDetailModel(ScreenLoadState.Content(snapshot), machineId = "m-1", targetServerId = null, currentServerId = "server-1")
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {

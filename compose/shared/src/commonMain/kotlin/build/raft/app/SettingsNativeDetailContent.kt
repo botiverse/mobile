@@ -21,6 +21,8 @@ import build.raft.app.data.ServerPublicVisibilityRepository
 import build.raft.app.data.ServerAppearanceRepository
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SERVER_ACTION_PROFILE_SAVE
+import build.raft.app.data.SERVER_ACTION_LEAVE
+import build.raft.app.data.MemberRemovalImpactRepository
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedHomeIntent
@@ -216,6 +218,7 @@ internal fun SettingsNativeDetailScreen() {
         diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
         serverPublicVisibilityRepository = environment.serverPublicVisibilityRepository,
         serverAppearanceRepository = environment.serverAppearanceRepository,
+        memberRemovalImpactRepository = environment.memberRemovalImpactRepository,
         authStore = environment.authStore,
         // Only the Pro theme gate opens it: the upgrade dialog (`pro_theme`) where the app offers
         // upgrades, the view-only Plan & Billing page on iOS.
@@ -307,6 +310,8 @@ internal fun SettingsNativeDetailPageContent(
     serverPublicVisibilityRepository: ServerPublicVisibilityRepository? = null,
     /** With [authStore], drives Settings > Theme's server themes; null shows light and dark only. */
     serverAppearanceRepository: ServerAppearanceRepository? = null,
+    /** Leave server's confirmation reads what leaving takes offline; null says nothing about Computers. */
+    memberRemovalImpactRepository: MemberRemovalImpactRepository? = null,
     authStore: RaftAuthSessionStore? = null,
     onOpenBillingPage: () -> Unit = {},
     webBaseUrl: String = "",
@@ -623,6 +628,16 @@ internal fun SettingsNativeDetailPageContent(
             }
             SettingsNativeDetailPage.Server -> {
                 val currentServer = session?.currentServerSummary()
+                // Left the server (web `handleLeave` then selects another): re-read the server list,
+                // which drops this one and moves the selection, then close the page.
+                val leaveAction = settingsState.actionState?.takeIf { it.action == SERVER_ACTION_LEAVE }
+                val left = leaveAction != null && !leaveAction.inProgress && !leaveAction.hasUserFacingError()
+                LaunchedEffect(left) {
+                    if (left) {
+                        runCatchingPreservingCancellation { authDataSource.loadServers() }
+                        onBack()
+                    }
+                }
                 val publicAccess =
                     rememberSettingsServerPublicAccessBinding(
                         repository = serverPublicVisibilityRepository,
@@ -646,12 +661,22 @@ internal fun SettingsNativeDetailPageContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     publicAccess = publicAccess,
+                    leaveImpact =
+                        memberRemovalImpactRepository?.let { repository ->
+                            SettingsServerLeaveImpactBinding(
+                                repository = repository,
+                                serverId = currentServer?.id?.value,
+                                currentUserId = session?.user?.id,
+                            )
+                        },
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
                             itemId?.trim()?.takeIf { it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.UpdateServerProfile(SettingsServerProfileUpdateRequest(name = it)))
                             }
+                        // Leave server's dialog confirmed (web DangerZoneSection `handleLeave`).
+                        SERVER_ACTION_LEAVE -> onSettingsIntent(SharedSettingsIntent.LeaveServer)
                         "openAdministration" -> onOpenAdministrationPage()
                         else -> Unit
                     }

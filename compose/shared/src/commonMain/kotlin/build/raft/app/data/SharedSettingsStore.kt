@@ -483,6 +483,8 @@ sealed interface SharedSettingsIntent {
     data class RestartComputer(val machineId: String) : SharedSettingsIntent
     /** Remote upgrade v2 to the policy's exact [targetVersion]. */
     data class UpgradeComputer(val machineId: String, val targetVersion: String) : SharedSettingsIntent
+    /** Computer owner v1: transfer, make Public (null), or Make it mine; the page reloads the Computer after. */
+    data class SetComputerOwner(val request: SettingsComputerOwnerRequest) : SharedSettingsIntent
     /** Copies one of the computer detail page's terminal commands. */
     data class CopyComputerCommand(val command: String) : SharedSettingsIntent
     /** Opens the public Raft Computer install guide ([COMPUTER_INSTALL_DOCS_URL]). */
@@ -980,6 +982,9 @@ class SharedSettingsDataSource(
 
     suspend fun upgradeComputer(request: SettingsComputerUpgradeRequest): DataResult<SettingsComputerUpgradeRequestSnapshot> =
         settingsRepository?.upgradeComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun setComputerOwner(request: SettingsComputerOwnerRequest): DataResult<SettingsComputerActionResult> =
+        settingsRepository?.setComputerOwner(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     /**
      * Web `getComputerCommands(serverSlug, deploymentEnv, getServerUrl())`: the session's server slug,
@@ -2308,6 +2313,11 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.RestartComputer -> restartComputer(intent.machineId)
             is SharedSettingsIntent.UpgradeComputer -> upgradeComputer(intent.machineId, intent.targetVersion)
+            is SharedSettingsIntent.SetComputerOwner -> {
+                runAction(COMPUTER_ACTION_OWNER, intent.request.machineId) {
+                    dataSource.setComputerOwner(intent.request).applyComputerActionReloadResult(COMPUTER_ACTION_OWNER, intent.request.machineId)
+                }
+            }
             is SharedSettingsIntent.CopyComputerCommand -> {
                 val command = intent.command.trim().takeIf { it.isNotBlank() } ?: return
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.CopyText(command))
@@ -2485,7 +2495,15 @@ class SharedSettingsStore(
             }
             SharedSettingsIntent.LeaveServer -> {
                 runAction(SERVER_ACTION_LEAVE) {
-                    dataSource.leaveServer().applyServerActionResult(SERVER_ACTION_LEAVE)
+                    when (val result = dataSource.leaveServer()) {
+                        // Left: the server is no longer this account's to read, so its snapshot is
+                        // not reloaded (that read would fail and read as a failed leave); the page
+                        // reloads the server list and closes.
+                        is DataResult.Content ->
+                            _state.value =
+                                _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_LEAVE, inProgress = false))
+                        else -> result.applyServerActionResult(SERVER_ACTION_LEAVE)
+                    }
                 }
             }
             is SharedSettingsIntent.DeleteServer -> {
@@ -3768,6 +3786,23 @@ class SharedSettingsStore(
         }
     }
 
+    /** Like [applyComputerSnapshotActionResult] for an action whose answer is not the snapshot (owner). */
+    private suspend fun DataResult<SettingsComputerActionResult>.applyComputerActionReloadResult(
+        action: String,
+        machineId: String
+    ) {
+        when (this) {
+            is DataResult.Content ->
+                dataSource.loadComputerDetail(machineId, forceComputers = true).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Empty ->
+                DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Error ->
+                DataResult.Error(error).applyComputerDetailActionResult(action, machineId)
+            is DataResult.NoPermission ->
+                DataResult.NoPermission(blocker).applyComputerDetailActionResult(action, machineId)
+        }
+    }
+
     /**
      * After a successful computer delete action, clear the page route + reload the
      * list so the deleted machine disappears from the list, and surface the
@@ -4184,6 +4219,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RegisterComputer,
             is SharedSettingsIntent.RestartComputer,
             is SharedSettingsIntent.UpgradeComputer,
+            is SharedSettingsIntent.SetComputerOwner,
             is SharedSettingsIntent.CopyComputerCommand,
             SharedSettingsIntent.OpenComputerInstallGuide,
             SharedSettingsIntent.ShowAddComputerDialog,
@@ -4273,11 +4309,20 @@ private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
                     currentUserId = session?.user?.id,
                     computer = data.computer
                 )
+            val owner =
+                settingsComputerOwnerPermissions(
+                    serverRole = session.settingsCurrentServer()?.role,
+                    currentUserId = session?.user?.id,
+                    computer = data.computer
+                )
             DataResult.Content(
                 data.copy(
                     canManageMachines = permissions.canEdit || permissions.canRemove,
                     canEditMachine = permissions.canEdit,
-                    canRemoveMachine = permissions.canRemove
+                    canRemoveMachine = permissions.canRemove,
+                    canTransferOwner = owner.canTransfer,
+                    canClaimOwner = owner.canClaim,
+                    currentUserId = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
                 )
             )
         }
@@ -4287,6 +4332,31 @@ private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
     }
 
 internal data class SettingsComputerPermissions(val canEdit: Boolean, val canRemove: Boolean)
+
+internal data class SettingsComputerOwnerPermissions(val canTransfer: Boolean, val canClaim: Boolean)
+
+/**
+ * Computer owner v1 (slock #13344 `ComputerOwnerField`, the server's computerOwnerService rule):
+ * Transfer owner for the current owner and a server owner/admin (`editMachines`); Make it mine for
+ * whoever connected a Public Computer (the attacher of a managed Computer, the machine row's
+ * registrant for a raw daemon). The owner has no other rights.
+ */
+internal fun settingsComputerOwnerPermissions(
+    serverRole: String?,
+    currentUserId: String?,
+    computer: SettingsComputerSnapshot
+): SettingsComputerOwnerPermissions {
+    val role = serverRole?.trim()
+    val userId = currentUserId?.trim()?.takeIf { it.isNotBlank() }
+    val ownerUserId = computer.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
+    val connector =
+        userId != null &&
+            if (computer.isComputer) computer.attachedByCurrentUser else computer.creatorUserId?.trim() == userId
+    return SettingsComputerOwnerPermissions(
+        canTransfer = role == "owner" || role == "admin" || (userId != null && ownerUserId == userId),
+        canClaim = ownerUserId == null && connector
+    )
+}
 
 /**
  * Mirrors the server gate `canManageMachineResource` (slock packages/server/src/routes/servers.ts):
@@ -4446,6 +4516,8 @@ internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val MOBILE_ACTION_THREAD_REVERSE_LAYOUT = "threadReverseLayout"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
+/** Computer owner v1: transfer owner, make Public, or Make it mine. */
+internal const val COMPUTER_ACTION_OWNER = "setComputerOwner"
 internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
 internal const val COMPUTER_ACTION_ROTATE_KEY = "rotateComputerKey"

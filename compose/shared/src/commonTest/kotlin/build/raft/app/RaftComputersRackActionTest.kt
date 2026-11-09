@@ -63,10 +63,16 @@ class RaftComputersRackActionTest {
     @Test
     fun upgradeAskedForOrPendingReadsUpgrading() {
         val submitting = SettingsComputerControlState(upgradeSubmitting = SettingsComputerUpgradeRequest(machineId = "m1", targetVersion = "1.0.53"))
-        assertEquals(RaftComputerRackAction.Upgrading, action(computer(), submitting))
+        assertEquals(RaftComputerRackAction.Upgrading(), action(computer(), submitting))
 
         val pending = SettingsComputerUpgradeRequestSnapshot(id = "u1", targetVersion = "1.0.53", requestedAt = "2026-10-22T09:00:00Z", state = "pending")
-        assertEquals(RaftComputerRackAction.Upgrading, action(computer(upgradeRequest = pending)))
+        assertEquals(RaftComputerRackAction.Upgrading(), action(computer(upgradeRequest = pending)))
+        // botiverse/slock #13506: while the Computer waits for this server's agents, the row says how many.
+        assertEquals(
+            RaftComputerRackAction.Upgrading(waitingAgents = 3),
+            action(computer(upgradeRequest = pending.copy(phase = "draining", drainingAgentIds = listOf("a1", "a2", "a3"))))
+        )
+        assertEquals(RaftComputerRackAction.Upgrading(), action(computer(upgradeRequest = pending.copy(phase = "installing"))))
     }
 
     @Test

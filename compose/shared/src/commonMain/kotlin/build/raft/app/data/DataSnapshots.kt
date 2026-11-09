@@ -1687,6 +1687,14 @@ data class SettingsComputerSnapshot(
     val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null,
     /** Server `creator`: the human who attached a managed Computer; null when none (raw daemon, departed attacher). */
     val creator: SettingsComputerCreatorSnapshot? = null,
+    /**
+     * Computer owner v1 (slock #13344, server `ownerUserId`): who Raft records as this Computer's
+     * owner; null = a Public Computer (also an older server). Not the connector ([creatorUserId],
+     * [attachedByCurrentUser]); display and transfer only.
+     */
+    val ownerUserId: String? = null,
+    /** The owner's public identity (server `owner`); shown only while [ownerUserId] is set. */
+    val owner: SettingsComputerCreatorSnapshot? = null,
     /** Server `agentScopes`: the per-agent memory scope state the machine reported while online; null otherwise. */
     val agentScopes: SettingsComputerAgentScopesSnapshot? = null,
     /** Server `osRelease`: the OS name and version ("Ubuntu 24.04"), reported by Linux Computers only. */
@@ -1774,7 +1782,18 @@ data class SettingsComputerUpgradeRequestSnapshot(
     val state: String,
     val observedVersion: String? = null,
     val reason: String? = null,
-    val resolvedAt: String? = null
+    val resolvedAt: String? = null,
+    /** When the server settles the request as `no_response` (ISO), drain wait included; null on older servers. */
+    val deadlineAt: String? = null,
+    /**
+     * Reconciler step 13, only on a pending request whose Computer waits for its agents first:
+     * `draining` while they finish their work, `installing` once that wait is over; null otherwise.
+     */
+    val phase: String? = null,
+    /** The agents of THIS server still finishing their work while [phase] is `draining` (other servers' are not listed). */
+    val drainingAgentIds: List<String> = emptyList(),
+    /** When the drain stops waiting (ISO). */
+    val drainDeadlineAt: String? = null
 )
 
 /** `versionGate` of a machines row (slock packages/shared/src/index.ts `ComputerVersionGate`). */
@@ -1825,7 +1844,16 @@ data class SettingsComputerDetailSnapshot(
     /** Delete: creator, attaching user, or the `removeMachines` capability (owner/admin). */
     val canRemoveMachine: Boolean = false,
     /** For the terminal commands the page offers; null while the session has no server slug. */
-    val commandContext: SettingsComputerCommandContext? = null
+    val commandContext: SettingsComputerCommandContext? = null,
+    /**
+     * Computer owner v1 (web `ComputerOwnerField`): Transfer owner, for the current owner and a
+     * server owner/admin (`editMachines`). The server checks the same (403 otherwise).
+     */
+    val canTransferOwner: Boolean = false,
+    /** Make it mine: a Public Computer, for whoever connected it (the attacher; a raw daemon's registrant). */
+    val canClaimOwner: Boolean = false,
+    /** The viewer's user id: Make it mine sends it, and the transfer list marks "(you)". */
+    val currentUserId: String? = null
 )
 
 data class SettingsSectionErrorSnapshot(

@@ -115,6 +115,12 @@ interface RaftComputersApi {
      */
     suspend fun controlComputer(serverId: ServerId, machineId: String, action: String, body: String): HomeNetworkResponse =
         error("controlComputer is not implemented")
+    /**
+     * Computer owner v1 (slock #13344): `PUT servers/:id/machines/:machineId/owner` with body
+     * `{ownerUserId}` (a member's id, or null for Public); answers `{machine}` as `GET …/machines` lists it.
+     */
+    suspend fun setMachineOwner(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse =
+        error("setMachineOwner is not implemented")
 }
 
 internal class RaftComputersNetworkApi(
@@ -173,6 +179,15 @@ internal class RaftComputersNetworkApi(
             priority = DataRequestPriority.Foreground,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/computer/${action.trim()}",
             method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun setMachineOwner(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/owner",
+            method = "PUT",
             serverIdOverride = serverId,
             bodyText = body
         )
@@ -365,6 +380,16 @@ internal class RaftComputersApiClient(
         }
     }
 
+    /**
+     * Computer owner v1: record [ownerUserId] as the Computer's owner, or make it Public (null). The
+     * answer's machine is the row as the list shows it; an answer without one still succeeded.
+     */
+    suspend fun setMachineOwner(serverId: ServerId, machineId: String, ownerUserId: String?): DataResult<ComputerOwnerChange> =
+        transport.setMachineOwner(serverId, machineId, buildComputerOwnerBody(ownerUserId)).mapComputersBody(
+            "computer_owner_contract_mismatch",
+            ComputerOwnerResponseDto.serializer()
+        ) { wire -> ComputerOwnerChange(machine = wire.machine?.toSummary()) }
+
     suspend fun rotateMachineKey(serverId: ServerId, machineId: String): DataResult<ComputerApiKeyRotationSummary> =
         transport.rotateMachineKey(serverId, machineId).mapComputersBody(
             "computer_rotate_key_contract_mismatch",
@@ -525,6 +550,10 @@ internal data class ComputerSummary(
     val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null,
     /** The human who attached a managed Computer (server `creator`); null for raw daemons or a departed attacher. */
     val creator: SettingsComputerCreatorSnapshot? = null,
+    /** Computer owner v1 (server `ownerUserId`): who Raft records as the owner; null = Public (or an older server). */
+    val ownerUserId: String? = null,
+    /** The owner's public identity (server `owner`); null when Public or the server could not resolve it. */
+    val owner: SettingsComputerCreatorSnapshot? = null,
     /** Server `agentScopes`: per-agent memory scope state; null when offline, off, or from an older server/daemon. */
     val agentScopes: SettingsComputerAgentScopesSnapshot? = null,
     /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
@@ -571,6 +600,16 @@ internal data class ComputerRuntimeModelsSummary(
     val defaultModel: String?
 )
 internal data class ComputerCommandResult(val ok: Boolean)
+
+/** `PUT …/owner` accepted: [machine] is the Computer as the list shows it (null when the server sent none). */
+internal data class ComputerOwnerChange(val machine: ComputerSummary?)
+
+/** `{ ownerUserId }`, null encoded as JSON null (Public). */
+internal fun buildComputerOwnerBody(ownerUserId: String?): String =
+    buildJsonObject { put("ownerUserId", ownerUserId?.trim()?.takeIf { it.isNotBlank() }) }.toString()
+
+@Serializable
+private data class ComputerOwnerResponseDto(val machine: ComputerDto? = null)
 
 private fun <T> runtimeFormContractError(code: String): DataResult<T> =
     DataResult.Error(ScreenError(code = code, retryable = false))
@@ -708,6 +747,10 @@ private data class ComputerDto(
     // GET /:id/machines in routes/servers.ts: `creator: computerLinkedMachineCreators.get(m.id) ?? null`,
     // the active attacher of a managed Computer (services/computerCredentialService.ts ComputerCreatorSummary).
     val creator: ComputerCreatorDto? = null,
+    // Computer owner v1 (slock #13344): `ownerUserId` (null = a Public Computer) and the resolved
+    // `owner` (the same public identity as `creator`). Not the connector; display and transfer only.
+    val ownerUserId: String? = null,
+    val owner: ComputerCreatorDto? = null,
     // services/machineReadModel.ts `agentScopes: MachineAgentScopesStatus | null` (packages/shared/src/agentMemoryLimit.ts),
     // null unless the machine is online and its daemon reports `machine:agent_scopes`.
     val agentScopes: MachineAgentScopesDto? = null,
@@ -817,7 +860,13 @@ private data class ComputerUpgradeRequestDto(
     val state: String? = null,
     val observedVersion: String? = null,
     val reason: String? = null,
-    val resolvedAt: String? = null
+    val resolvedAt: String? = null,
+    // computerUpgradeRequestService.ts `projectComputerUpgradeRequest` (slock #13506): the request's
+    // own deadline, and while its Computer waits for agents first, `phase` with this server's agents.
+    val deadlineAt: String? = null,
+    val phase: String? = null,
+    val drainingAgentIds: List<String>? = null,
+    val drainDeadlineAt: String? = null
 ) {
     fun toSnapshot(): SettingsComputerUpgradeRequestSnapshot? {
         val requestId = id?.takeIf { it.isNotBlank() } ?: return null
@@ -829,7 +878,11 @@ private data class ComputerUpgradeRequestDto(
             state = state?.takeIf { it.isNotBlank() } ?: "pending",
             observedVersion = observedVersion,
             reason = reason,
-            resolvedAt = resolvedAt
+            resolvedAt = resolvedAt,
+            deadlineAt = deadlineAt?.trim()?.takeIf { it.isNotBlank() },
+            phase = phase?.trim()?.takeIf { it == "draining" || it == "installing" },
+            drainingAgentIds = drainingAgentIds.orEmpty().map { it.trim() }.filter { it.isNotBlank() }.distinct(),
+            drainDeadlineAt = drainDeadlineAt?.trim()?.takeIf { it.isNotBlank() }
         )
     }
 }
@@ -942,6 +995,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         remoteUpgradeSupported = remoteUpgradeSupported,
         versionGate = versionGate?.toSnapshot(),
         creator = creator?.toSnapshot(),
+        ownerUserId = ownerUserId?.trim()?.takeIf { it.isNotBlank() },
+        owner = owner?.toSnapshot(),
         agentScopes = agentScopes?.toSnapshot(),
         diskStatus = diskStatus?.toStatus(),
         memoryStatus = memoryStatus?.toStatus()

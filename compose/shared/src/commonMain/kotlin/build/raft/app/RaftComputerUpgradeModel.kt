@@ -143,7 +143,10 @@ internal fun raftComputerVersionTier(computer: SettingsComputerSnapshot): RaftCo
     )
 }
 
-/** Server deadline of an upgrade request (`UPGRADE_REQUEST_DEADLINE_MS`). */
+/**
+ * Server deadline of an upgrade request (`UPGRADE_REQUEST_DEADLINE_MS`): only the fallback for an
+ * older server whose request carries no `deadlineAt`.
+ */
 internal const val RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS = 30L * 60L * 1000L
 
 /** How long an offline Computer with an upgrade in flight reads as "restarting for the upgrade". */
@@ -151,6 +154,27 @@ internal const val RAFT_COMPUTER_UPGRADE_RECONNECT_GRACE_MILLIS = 3L * 60L * 100
 
 private fun raftComputerEpochMillis(iso: String?): Long? =
     iso?.trim()?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, localOffsetMinutes = 0) }
+
+/**
+ * Web `computerUpgradeRequestDeadlineMs` (slock #13506): how long the server waits for [request]
+ * before settling it as `no_response`, its own `deadlineAt - requestedAt` (both server clock, so no
+ * skew; longer when the Computer waits for its agents first), else
+ * [RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS].
+ */
+internal fun raftComputerUpgradeRequestDeadlineMillis(request: SettingsComputerUpgradeRequestSnapshot): Long {
+    val deadline = raftComputerEpochMillis(request.deadlineAt) ?: return RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS
+    val requested = raftComputerEpochMillis(request.requestedAt) ?: return RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS
+    val millis = deadline - requested
+    return if (millis > 0L) millis else RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS
+}
+
+/**
+ * Web `useComputerUpgradeCard` (slock #13506): how many of THIS server's agents the Computer waits
+ * for before it installs the upgrade in flight; 0 when it does not wait (no drain, `installing`, an
+ * older server without a phase, or nobody left).
+ */
+internal fun raftComputerUpgradeWaitingAgents(inFlight: SettingsComputerUpgradeRequestSnapshot?): Int =
+    if (inFlight?.phase == "draining") inFlight.drainingAgentIds.size else 0
 
 /** Web `computerUpgradeInFlight`: the server's pending row, else the request this page saw accepted. */
 internal fun raftComputerUpgradeInFlight(
@@ -168,7 +192,7 @@ internal fun raftComputerUpgradeInFlight(
         if (rowAt != null && mineAt != null && rowAt >= mineAt) return null
     }
     if (computer.online && computer.computerVersion == mine.request.targetVersion) return null
-    if (nowMillis >= mine.acceptedAtMillis + RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS) return null
+    if (nowMillis >= mine.acceptedAtMillis + raftComputerUpgradeRequestDeadlineMillis(mine.request)) return null
     return mine.request
 }
 
@@ -210,7 +234,8 @@ internal sealed interface RaftComputerCardState {
     data object Reading : RaftComputerCardState
     data object CannotCheck : RaftComputerCardState
     data object UpToDate : RaftComputerCardState
-    data class Upgrading(val version: String) : RaftComputerCardState
+    /** [waitingAgents]: the Computer first waits for this many of this server's agents (0: the plain copy). */
+    data class Upgrading(val version: String, val waitingAgents: Int = 0) : RaftComputerCardState
     data class OneClick(val version: String) : RaftComputerCardState
     data class ManualUpgrade(val version: String) : RaftComputerCardState
     data class Commands(val version: String, val refusedNotAllowed: Boolean) : RaftComputerCardState
@@ -259,7 +284,7 @@ internal fun raftComputerUpgradeModel(
             fact is RaftComputerVersionFact.Outdated -> {
                 val version = fact.availableVersion
                 when {
-                    inFlight != null -> RaftComputerCardState.Upgrading(inFlight.targetVersion)
+                    inFlight != null -> RaftComputerCardState.Upgrading(inFlight.targetVersion, raftComputerUpgradeWaitingAgents(inFlight))
                     submittingVersion != null -> RaftComputerCardState.Upgrading(submittingVersion)
                     refusal == RaftComputerUpgradeRefusal.NotAllowed -> RaftComputerCardState.Commands(version, refusedNotAllowed = true)
                     refusal == RaftComputerUpgradeRefusal.WebUpgradeOff || refusal == RaftComputerUpgradeRefusal.TooOld ->
