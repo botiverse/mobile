@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -132,6 +133,15 @@ internal fun settingsWideDetailPage(
     key: String,
     storeScope: RaftShellStoreScope,
     feedbackWeb: Boolean = false,
+    /** A search result's setting to open the section at ([SETTINGS_SEARCH_ANCHOR]). */
+    anchor: SettingsSearchAnchorRequest? = null,
+): Pair<String, JSONObject>? =
+    settingsWideDetailPageWithoutAnchor(key, storeScope, feedbackWeb)?.also { (_, pageData) -> pageData.putSettingsSearchAnchor(anchor) }
+
+private fun settingsWideDetailPageWithoutAnchor(
+    key: String,
+    storeScope: RaftShellStoreScope,
+    feedbackWeb: Boolean,
 ): Pair<String, JSONObject>? =
     when (key) {
         SettingsDestinationBilling -> settingsWideWebPage(SettingsWebViewSurface.Billing, storeScope)
@@ -176,6 +186,8 @@ internal fun SettingsWideListDetail(
     collapsed: Boolean = false,
     onCollapsedChange: ((Boolean) -> Unit)? = null,
     onResizingChange: (Boolean) -> Unit = {},
+    /** Search settings at the top of the list (the results stay there, the open one selected). */
+    search: SettingsSearchHost? = null,
 ) {
     val rowKeys = payload.items.map { it.key }
     val showing = settingsWideDetailKey(picked, rowKeys, feedbackWeb)
@@ -197,6 +209,7 @@ internal fun SettingsWideListDetail(
                 selectedKey = showing,
                 bottomContentPadding = bottomContentPadding,
                 onSelect = onPick,
+                search = search,
             )
         },
         detailPane = { modifier ->
@@ -226,40 +239,57 @@ internal fun SettingsWideSidebarList(
     selectedKey: String?,
     bottomContentPadding: Dp,
     onSelect: (String) -> Unit,
+    search: SettingsSearchHost? = null,
 ) {
     val groups = payload.items.groupConsecutiveBy { it.section }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(horizontal = RaftAppSpacing.Sm),
-    ) {
-        groups.forEach { (section, rows) ->
-            if (section != null) {
-                item(key = "section:$section") { RaftSidebarGroupLabel(section) }
-            }
-            item(key = "gap-top:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
-            items(rows, key = { it.key }) { row ->
-                RaftSidebarItem(
-                    title = row.title,
-                    selected = row.key == selectedKey,
-                    onClick = { onSelect(row.key) },
-                    leading = { SettingsRowIcon(row.key, row.iconName) },
-                    // raft-ui 0.26 (#758): a row that leaves Raft (iOS Billing) ends in ↗.
-                    trailing =
-                        if (row.opensExternally) {
-                            {
-                                RaftLucideIcon(
-                                    RaftLucideIconName.ArrowUpRight,
-                                    Modifier.size(raftSidebarItemIconSize()),
-                                    color = raftArgbHex(LocalRaftContentColor.current),
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                )
-            }
-            item(key = "gap-bottom:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+    val searchResults = search?.let { rememberSettingsSearchResults(it, payload) }
+    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        if (search != null) {
+            // web: the field at the top of the sidebar, `px-2 pt-2 pb-1`, pinned as the list scrolls.
+            SettingsSearchField(
+                host = search,
+                results = searchResults.orEmpty(),
+                modifier = Modifier.padding(start = RaftAppSpacing.Sm, top = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs),
+            )
         }
-        item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm),
+        ) {
+            if (search != null && search.state.searching) {
+                settingsSearchResultItems(search, searchResults.orEmpty())
+                item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+                return@LazyColumn
+            }
+            groups.forEach { (section, rows) ->
+                if (section != null) {
+                    item(key = "section:$section") { RaftSidebarGroupLabel(section) }
+                }
+                item(key = "gap-top:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                items(rows, key = { it.key }) { row ->
+                    RaftSidebarItem(
+                        title = row.title,
+                        selected = row.key == selectedKey,
+                        onClick = { onSelect(row.key) },
+                        leading = { SettingsRowIcon(row.key, row.iconName) },
+                        // raft-ui 0.26 (#758): a row that leaves Raft (iOS Billing) ends in ↗.
+                        trailing =
+                            if (row.opensExternally) {
+                                {
+                                    RaftLucideIcon(
+                                        RaftLucideIconName.ArrowUpRight,
+                                        Modifier.size(raftSidebarItemIconSize()),
+                                        color = raftArgbHex(LocalRaftContentColor.current),
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                    )
+                }
+                item(key = "gap-bottom:${rows.first().key}") { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+            }
+            item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+        }
     }
 }
 

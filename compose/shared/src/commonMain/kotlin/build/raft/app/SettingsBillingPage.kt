@@ -91,11 +91,11 @@ internal fun settingsBillingLeavesRaft(target: SettingsBillingOpenTarget = setti
 // iOS (artin 11-02, App Store review): never the in-app WebView. The same Billing route draws the
 // native view-only page there (SettingsWebViewScreen), so the route, the wide pane and restored
 // routes stay as they are.
-internal fun Pager.openSettingsBillingPage(storeScope: RaftShellStoreScope) {
+internal fun Pager.openSettingsBillingPage(storeScope: RaftShellStoreScope, anchor: SettingsSearchAnchorRequest? = null) {
     when (settingsBillingOpenTarget()) {
         SettingsBillingOpenTarget.ExternalBrowser -> openSettingsBillingInBrowser(storeScope)
         SettingsBillingOpenTarget.InAppWebView,
-        SettingsBillingOpenTarget.ViewOnly -> openSettingsWebViewPage(SettingsWebViewSurface.Billing, storeScope)
+        SettingsBillingOpenTarget.ViewOnly -> openSettingsWebViewPage(SettingsWebViewSurface.Billing, storeScope, anchor = anchor)
     }
 }
 

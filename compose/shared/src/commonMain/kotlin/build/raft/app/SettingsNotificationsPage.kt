@@ -123,6 +123,7 @@ internal fun SettingsNotificationsContent(
     val now = nowEpochMillis ?: raftNowEpochMillis()
     val zone = timeZoneId ?: raftCurrentTimeZoneId()
     LazyColumn(
+        state = rememberSettingsSearchListState(),
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         // Web `stack-y-6` between the sections.
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -178,14 +179,16 @@ internal fun SettingsNotificationsContent(
                     item {
                         // The web's CurrentServerNotificationsCard; an older server without the
                         // unified settings keeps the previous workspace card.
-                        if (accountSettings != null && currentServer != null) {
-                            SettingsNotificationCurrentServerCard(currentServer)
-                        } else {
-                            SettingsServerNotificationModeCard(
-                                snapshot = snapshot,
-                                actionState = actionState,
-                                onServerNotificationModeChange = onServerNotificationModeChange
-                            )
+                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("mute-server", SettingsSearchCardShape)) {
+                            if (accountSettings != null && currentServer != null) {
+                                SettingsNotificationCurrentServerCard(currentServer)
+                            } else {
+                                SettingsServerNotificationModeCard(
+                                    snapshot = snapshot,
+                                    actionState = actionState,
+                                    onServerNotificationModeChange = onServerNotificationModeChange
+                                )
+                            }
                         }
                     }
                     item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -259,11 +262,13 @@ internal fun SettingsNotificationsContent(
                     }
                     if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available) {
                         item {
-                            SettingsPushPreviewModeCard(
-                                snapshot = snapshot,
-                                actionState = actionState,
-                                onPushPreviewModeChange = onPushPreviewModeChange
-                            )
+                            Box(Modifier.fillMaxWidth().settingsSearchAnchor("notification-preview", SettingsSearchCardShape)) {
+                                SettingsPushPreviewModeCard(
+                                    snapshot = snapshot,
+                                    actionState = actionState,
+                                    onPushPreviewModeChange = onPushPreviewModeChange
+                                )
+                            }
                         }
                     }
                 }
@@ -317,14 +322,16 @@ private fun SettingsPushStatusCard(
             SettingsFormErrorText(actionState)
         }
         RaftListRowGroup {
-            SettingsNotificationSwitchRow(
-                title = stringResource(Res.string.settings_notifications_message_title),
-                detail = stringResource(Res.string.settings_notifications_message_detail),
-                checked = notificationPreferenceSnapshot.enabled,
-                enabled = !preferenceBusy,
-                divider = false,
-                onCheckedChange = onNotificationPreferenceChange
-            )
+            Box(Modifier.fillMaxWidth().settingsSearchAnchor("push-notifications")) {
+                SettingsNotificationSwitchRow(
+                    title = stringResource(Res.string.settings_notifications_message_title),
+                    detail = stringResource(Res.string.settings_notifications_message_detail),
+                    checked = notificationPreferenceSnapshot.enabled,
+                    enabled = !preferenceBusy,
+                    divider = false,
+                    onCheckedChange = onNotificationPreferenceChange
+                )
+            }
             val backgroundConnection = remember { RaftBackgroundConnectionControlsRegistry.offeredControls() }
             if (backgroundConnection != null) {
                 // Android without Google Play services: the same preference keeps the realtime connection

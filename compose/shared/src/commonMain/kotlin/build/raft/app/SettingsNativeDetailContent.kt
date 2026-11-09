@@ -172,6 +172,8 @@ internal fun SettingsNativeDetailScreen() {
         }
     }
 
+    // A Settings search result opened this page at a setting: its row is brought into view and located.
+    ProvideSettingsSearchLocator(pager.pageData.params) {
     SettingsNativeDetailPageContent(
         session = session,
         authDataSource = environment.authDataSource,
@@ -227,6 +229,7 @@ internal fun SettingsNativeDetailScreen() {
         webBaseUrl = environment.webBaseUrl,
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
+    }
 }
 
 /**

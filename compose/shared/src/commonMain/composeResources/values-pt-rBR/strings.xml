@@ -4018,4 +4018,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d de %2$d Artifacts</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d comentário novo</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d comentários novos</string>
+    <string name="settings_search_placeholder">Pesquisar nas configurações</string>
+    <string name="settings_search_clear">Limpar pesquisa</string>
+    <string name="settings_search_no_match">Nenhuma configuração corresponde a “%1$s”</string>
+    <string name="settings_search_no_match_description">Tente outra palavra ou pesquise em tudo para encontrar mensagens e pessoas.</string>
+    <string name="settings_search_everywhere">Pesquisar em tudo</string>
+    <string name="settings_search_plan">Gerenciar plano</string>
+    <string name="settings_search_invite_links">Links de convite</string>
+    <string name="settings_search_single_sign_on">Login único (SSO)</string>
+    <string name="settings_search_single_sign_on_description">Permita que as pessoas com e-mail nos domínios da sua empresa entrem no Raft com o seu provedor de identidade e, se quiser, torne isso obrigatório.</string>
 </resources>

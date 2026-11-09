@@ -30,6 +30,8 @@ import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.rememberRaftSaveStatus
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -54,6 +56,7 @@ internal fun SettingsLanguageRegionContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
+        state = rememberSettingsSearchListState(),
         // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
         // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
@@ -108,11 +111,13 @@ internal fun SettingsLanguageRegionContent(
                 val busy = settingsLanguageRegionBusy(actionState, pick)
                 (mobileState as? ScreenLoadState.Content)?.data?.let { mobileSnapshot ->
                     item {
-                        SettingsAppLanguageCard(
-                            snapshot = mobileSnapshot,
-                            actionState = actionState,
-                            onLocaleChange = onLocaleChange
-                        )
+                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("display-language", SettingsSearchCardShape)) {
+                            SettingsAppLanguageCard(
+                                snapshot = mobileSnapshot,
+                                actionState = actionState,
+                                onLocaleChange = onLocaleChange
+                            )
+                        }
                     }
                 }
                 item {
@@ -161,6 +166,7 @@ private fun SettingsLanguagePreferenceCard(
     val languageStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_LANGUAGE, pick, actionState, languageFailure)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Languages, title = stringResource(Res.string.settings_language_title)) {
         SettingsSegmentedControlField(
+            modifier = Modifier.settingsSearchAnchor("translation-mode"),
             label = stringResource(Res.string.settings_translation_mode),
             detail = stringResource(Res.string.settings_translation_mode_detail),
             selectedValue = selectedDisplay,
@@ -198,16 +204,19 @@ private fun SettingsDateTimePreferenceCard(
     val timezoneStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_TIMEZONE, pick, actionState, dateTimeFailure)
     val timeFormatStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_TIME_FORMAT, pick, actionState, dateTimeFailure)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Clock, title = stringResource(Res.string.settings_date_time_title)) {
-        SettingsComboboxField(
-            label = stringResource(Res.string.settings_timezone),
-            description = stringResource(Res.string.settings_timezone_detail),
-            value = settingsLanguageRegionShownValue(snapshot.timezone.selectedKey, LANGUAGE_REGION_ACTION_TIMEZONE, pick, actionState),
-            options = snapshot.timezone.toComboboxOptions(),
-            onValueChange = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TIMEZONE, it, actionState)) },
-            enabled = snapshot.timezone.available && !busy,
-            saveStatus = timezoneStatus
-        )
+        Box(Modifier.fillMaxWidth().settingsSearchAnchor("timezone")) {
+            SettingsComboboxField(
+                label = stringResource(Res.string.settings_timezone),
+                description = stringResource(Res.string.settings_timezone_detail),
+                value = settingsLanguageRegionShownValue(snapshot.timezone.selectedKey, LANGUAGE_REGION_ACTION_TIMEZONE, pick, actionState),
+                options = snapshot.timezone.toComboboxOptions(),
+                onValueChange = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TIMEZONE, it, actionState)) },
+                enabled = snapshot.timezone.available && !busy,
+                saveStatus = timezoneStatus
+            )
+        }
         SettingsSegmentedControlField(
+            modifier = Modifier.settingsSearchAnchor("time-format"),
             label = stringResource(Res.string.settings_time_format),
             detail = stringResource(Res.string.settings_time_format_detail),
             selectedValue = settingsLanguageRegionShownValue(snapshot.timeFormat.selectedKey, LANGUAGE_REGION_ACTION_TIME_FORMAT, pick, actionState),

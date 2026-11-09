@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -112,6 +113,7 @@ internal fun SettingsMobileContent(
     visibility: SettingsAppPreferenceVisibility = settingsAppPreferenceVisibility(),
 ) {
     LazyColumn(
+        state = rememberSettingsSearchListState(),
         // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
         // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
@@ -194,12 +196,14 @@ internal fun LazyListScope.settingsAppPreferenceItems(
             )
         }
         item {
-            SettingsComposerSendKeyCard(
-                snapshot = snapshot,
-                actionState = actionState,
-                onComposerSendKeyChange = onComposerSendKeyChange,
-                hardwareKeyboard = visibility.hardwareKeyboardComposerCopy
-            )
+            Box(Modifier.fillMaxWidth().settingsSearchAnchor("send-with", SettingsSearchCardShape)) {
+                SettingsComposerSendKeyCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onComposerSendKeyChange = onComposerSendKeyChange,
+                    hardwareKeyboard = visibility.hardwareKeyboardComposerCopy
+                )
+            }
         }
         if (visibility.multiShellHost) {
             item {
