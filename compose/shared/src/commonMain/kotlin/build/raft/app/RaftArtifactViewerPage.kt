@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -273,6 +274,25 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean) {
 
 private const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
 
+/** After this long without the document shown, the viewer logs where its load stands. */
+internal const val RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS = 10_000L
+
+/** The viewer's open line: the Artifact id (as the link wrote it), its pinned version, the web host only. */
+internal fun raftArtifactViewerOpenLogLine(target: ArtifactLinkTarget, scopeKnown: Boolean, webBaseUrl: String): String {
+    val id = target.id.filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(48)
+    val host = raftWebOriginOf(webBaseUrl)?.substringAfter("://") ?: "<none>"
+    return "artifact_viewer_open artifact=$id version=${target.version ?: "latest"} scope=${if (scopeKnown) "known" else "unknown"} webHost=$host"
+}
+
+internal fun raftArtifactViewerSummaryLogToken(answer: ArtifactSummaryAnswer?): String =
+    when (answer) {
+        is ArtifactSummaryAnswer.Ok -> "ok"
+        ArtifactSummaryAnswer.Unavailable -> "unavailable"
+        is ArtifactSummaryAnswer.Deleted -> "deleted"
+        ArtifactSummaryAnswer.Failed -> "failed"
+        null -> "none"
+    }
+
 /** The device's Desktop Mode choice; null where no app-scope store is installed (fixtures). */
 private fun raftArtifactViewerDesktopModePreference(): ArtifactViewerDesktopModePreferenceRepository? =
     runCatching { ArtifactViewerDesktopModePreferenceRepository(build.raft.app.data.raftSharedPreferenceStore()) }.getOrNull()
@@ -321,6 +341,12 @@ private fun RaftArtifactViewerScreen() {
     }
     val scope = remember(params.toString()) { host.scope() }
     val webBaseUrl = remember(params.toString()) { host.webBaseUrl }
+    LaunchedEffect(Unit) {
+        raftLogInfo(
+            RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,
+            raftArtifactViewerOpenLogLine(target, scopeKnown = scope != null, webBaseUrl = webBaseUrl),
+        )
+    }
     // Open in browser: the page as the web shows it. The WebView: the same page under this title bar.
     val pageUrl = remember(webBaseUrl, target) { raftArtifactViewerPageUrl(webBaseUrl, target) }
     val embeddedPageUrl = remember(webBaseUrl, target) { raftArtifactViewerEmbeddedPageUrl(webBaseUrl, target) }
@@ -355,6 +381,7 @@ private fun RaftArtifactViewerScreen() {
             ArtifactSummaryAnswer.Unavailable, is ArtifactSummaryAnswer.Deleted -> bodyState = RaftArtifactViewerBodyState.Unavailable
             ArtifactSummaryAnswer.Failed, null -> Unit
         }
+        raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_summary result=${raftArtifactViewerSummaryLogToken(answer)}")
     }
     LaunchedEffect(bodyState) {
         // After the WebView left the screen (and was parked), so the eviction destroys it too.
@@ -399,6 +426,7 @@ private fun RaftArtifactViewerScreen() {
                 if (scope == null) {
                     // An unknown subject reuses nothing and keeps nothing: the page in the browser, as before.
                     LaunchedEffect(Unit) {
+                        raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_browser_fallback reason=no_scope")
                         host.bridge.openUrl(pageUrl, inBrowser = true)
                         closePage()
                     }
@@ -441,6 +469,17 @@ private fun RaftArtifactViewerWebBody(
     // A new document needs the session before it loads; a kept one already has it, so it is
     // attached in the first frame and gets the session's script once the session is read.
     if (kept == null && session == null) {
+        // Nothing loads until the session is read: say so when it takes long (or never comes, e.g.
+        // a session of another account than the viewer's scope).
+        val readSession by rememberUpdatedState(snapshot.session)
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS)
+            // sessionRead=true here means a session of another account than the viewer's scope.
+            raftLogWarn(
+                RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,
+                "artifact_viewer_waiting_session elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS sessionRead=${readSession != null}",
+            )
+        }
         RaftCenteredLoading(stringResource(Res.string.common_loading))
         return
     }
@@ -490,6 +529,20 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     LaunchedEffect(navigated) { if (navigated && kept != null) visible = true }
+    // Diagnostics: a load still covered after a while, and what the page reached when it closes.
+    val latestState by rememberUpdatedState(
+        "kept=${kept != null} showsTarget=$showsTarget visible=$visible documentReady=$documentReady " +
+            "navigated=$navigated session=${session != null}"
+    )
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS)
+        if (!visible || !documentReady) {
+            raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_load_slow elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS $latestState")
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState") }
+    }
     val density = LocalDensity.current
     val bottomInsetPx =
         raftArtifactViewerWebBottomInsetPx(

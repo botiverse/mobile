@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.MutableContextWrapper
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
@@ -35,11 +34,11 @@ internal object RaftAndroidWebViewKeepAlive {
         parked = null
         if (view.isDestroyed || view.keepAliveKey != key) {
             view.destroy()
-            Log.i(LOG_TAG, "keep_alive result=dropped reason=other_key")
+            raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=other_key")
             return null
         }
         view.attachFromKeepAlive(hostContext, events)
-        Log.i(LOG_TAG, "keep_alive result=reused")
+        raftLogInfo(LOG_TAG, "keep_alive result=reused")
         return view
     }
 
@@ -52,7 +51,7 @@ internal object RaftAndroidWebViewKeepAlive {
         parked = view
         handler.removeCallbacks(expire)
         handler.postDelayed(expire, KEEP_ALIVE_MS)
-        Log.i(LOG_TAG, "keep_alive result=parked")
+        raftLogInfo(LOG_TAG, "keep_alive result=parked")
         return true
     }
 
@@ -67,7 +66,7 @@ internal object RaftAndroidWebViewKeepAlive {
         val view = RaftAndroidSandboxWebView(MutableContextWrapper(context), RaftWebViewEvents())
         view.applyConfig(config)
         park(view)
-        Log.i(LOG_TAG, "keep_alive result=prewarmed")
+        raftLogInfo(LOG_TAG, "keep_alive result=prewarmed")
     }
 
     fun kept(key: String): RaftAndroidSandboxWebView? {
@@ -86,7 +85,7 @@ internal object RaftAndroidWebViewKeepAlive {
         val view = parked ?: return
         parked = null
         view.destroy()
-        Log.i(LOG_TAG, "keep_alive result=dropped reason=$reason")
+        raftLogInfo(LOG_TAG, "keep_alive result=dropped reason=$reason")
     }
 }
 
