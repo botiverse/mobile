@@ -3805,8 +3805,6 @@
     <string name="action_card_question_waiting_for_your_answer">%1$s está aguardando sua resposta</string>
     <string name="action_card_question_waiting_for_answer">Aguardando a resposta de %1$s</string>
     <string name="action_card_question_answered_by">%1$s respondeu %2$s</string>
-    <string name="action_card_question_answer_line">%1$s: %2$s</string>
-    <string name="action_card_question_answered">Respondida</string>
     <string name="action_card_question_someone">Alguém</string>
     <string name="action_card_question_expired_line">%1$s não respondeu em %2$s. %3$s foi avisado.</string>
     <string name="action_card_question_expired_line_anyone">Ninguém respondeu em %1$s. %2$s foi avisado.</string>

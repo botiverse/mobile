@@ -4106,8 +4106,6 @@
     <string name="action_card_question_waiting_for_your_answer">%1$s ждёт вашего ответа</string>
     <string name="action_card_question_waiting_for_answer">Ждём ответа: %1$s</string>
     <string name="action_card_question_answered_by">Ответ (%1$s): %2$s</string>
-    <string name="action_card_question_answer_line">%1$s: %2$s</string>
-    <string name="action_card_question_answered">Отвечено</string>
     <string name="action_card_question_someone">Кто-то</string>
     <string name="action_card_question_expired_line">%1$s: нет ответа за %2$s. Агент %3$s уведомлён.</string>
     <string name="action_card_question_expired_line_anyone">За %1$s никто не ответил. Агент %2$s уведомлён.</string>

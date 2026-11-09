@@ -18,6 +18,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ActionCardSpecButton
@@ -294,7 +295,7 @@ internal fun ThreadActionCardSpecView(
             canSubmit = canAnswer,
             submitting = inline != null && slice.busy == inline.buttonId,
             hint = question.buttonRowHint,
-            answeredLine = if (card.isExecuted) question.buttonRowAnswered else null,
+            answeredLine = if (card.isExecuted) question.answeredLine else null,
             error = error,
             displayLocale = displayLocale,
             onSend = { values -> inline?.let { send(it)(values) } },
@@ -307,7 +308,9 @@ internal fun ThreadActionCardSpecView(
             status = card.actionCardSpecStatus(),
             record = record,
             blockedReason = blockedReason,
-            readOnly = !commitEnabled || question?.asked == false,
+            readOnly = !commitEnabled,
+            // Someone else's question: the same card, its controls disabled (who is asked never changes the shape).
+            controlsDisabled = question?.asked == false,
             busyElementKey = slice.busyElement(typedPending),
             error = error,
             endedLine = endedLine,
@@ -322,7 +325,15 @@ internal fun ThreadActionCardSpecView(
         displayLocale = displayLocale,
         linkNavigable = { button -> button.actionCardSpecLinkNavigable(card.sourceServerId, viewerServerId) },
         fitLabels = inline != null,
-        slim = question?.let { RaftActionCardSlim(title = it.slimTitle, description = it.slimDescription, answeredLine = it.slimAnswered, endedLine = it.endedLine) },
+        slim =
+            question?.let {
+                RaftActionCardSlim(
+                    title = it.slimTitle,
+                    description = it.slimDescription,
+                    statusLine = if (card.isExecuted) it.answeredLine else it.endedLine?.let(::AnnotatedString),
+                    statusCheck = card.isExecuted,
+                )
+            },
         footer =
             inline?.let { form ->
                 {
@@ -348,20 +359,20 @@ internal fun ThreadActionCardSpecView(
  * - [asked]: the viewer is the person asked ([questionAsksViewer]);
  * - [single] / [text]: whether it asks one question, and that question's text;
  * - C: [buttonRowHint] ("Fixer is waiting for your answer · 7 days left", or "Waiting for Maya to
- *   answer") and [buttonRowAnswered] ("Maya answered Postgres");
- * - ended unanswered: [endedLine] ("Mei didn't answer within 3 days. Scout was told.", "Scout withdrew these questions.");
- * - B: [slimTitle] (the one question, or "Fixer has 3 questions", raft-design #1095), [slimDescription] ("Fixer is asking you · 7 days left", or "Waiting for Maya") and
- *   [slimAnswered] ("Maya: Postgres").
+ *   answer");
+ * - B: [slimTitle] (the one question, or "Fixer has 3 questions", raft-design #1095) and
+ *   [slimDescription] ("Fixer is asking you · 7 days left", or "Waiting for Maya · 7 days left");
+ * - both, where the controls were once it is over: [answeredLine] ("✓ Maya answered **Postgres**")
+ *   or [endedLine] ("Mei didn't answer within 3 days. Scout was told.", "Scout withdrew these questions.").
  */
 internal data class QuestionCardWords(
     val asked: Boolean,
     val single: Boolean,
     val text: String?,
     val buttonRowHint: String?,
-    val buttonRowAnswered: String?,
+    val answeredLine: AnnotatedString?,
     val slimTitle: String?,
     val slimDescription: String?,
-    val slimAnswered: String?,
     /** Ended without an answer: the one line where the question's options (C) or the card (B, folded) were. */
     val endedLine: String?,
 )
@@ -415,7 +426,7 @@ private fun rememberQuestionCardWords(
                 asked -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_waiting_for_your_answer, asker), timeLeft)
                 else -> stringResource(Res.string.action_card_question_waiting_for_answer, addressee)
             },
-        buttonRowAnswered = answer?.let { stringResource(Res.string.action_card_question_answered_by, answerer, it) } ?: record,
+        answeredLine = answer?.let { questionAnsweredText(answerer, it) } ?: record?.let(::AnnotatedString),
         slimTitle =
             when {
                 single -> text
@@ -426,9 +437,8 @@ private fun rememberQuestionCardWords(
             when {
                 !waiting -> null
                 asked -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_asking_you, asker), timeLeft)
-                else -> stringResource(Res.string.action_card_question_waiting_for, addressee)
+                else -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_waiting_for, addressee), timeLeft)
             },
-        slimAnswered = answer?.let { stringResource(Res.string.action_card_question_answer_line, answerer, it) },
         endedLine = endedLine,
     )
 }

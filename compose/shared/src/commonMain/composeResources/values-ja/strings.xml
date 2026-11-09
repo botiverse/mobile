@@ -3814,8 +3814,6 @@
     <string name="action_card_question_waiting_for_your_answer">%1$s があなたの回答を待っています</string>
     <string name="action_card_question_waiting_for_answer">%1$s の回答を待っています</string>
     <string name="action_card_question_answered_by">%1$s の回答：%2$s</string>
-    <string name="action_card_question_answer_line">%1$s：%2$s</string>
-    <string name="action_card_question_answered">回答済み</string>
     <string name="action_card_question_someone">誰か</string>
     <string name="action_card_question_expired_line">%1$s は %2$s 以内に回答しませんでした。%3$s に伝えました。</string>
     <string name="action_card_question_expired_line_anyone">%1$s 以内に誰も回答しませんでした。%2$s に伝えました。</string>

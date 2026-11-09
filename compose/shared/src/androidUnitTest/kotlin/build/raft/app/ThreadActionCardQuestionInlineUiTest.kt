@@ -7,6 +7,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.data.ActionCardExecuteOutcome
@@ -283,19 +284,36 @@ class ThreadActionCardQuestionInlineUiTest {
     }
 
     @Test
-    fun theSlimCardForSomeoneElseSaysWhoItWaitsFor() = runRobolectricComposeUiTest {
-        showCard(mayaCard(ActionCardSpecFixtures.questionCardJson(inline = false)), viewer = "u-ada")
-        onNodeWithText("Waiting for Maya").assertExists()
-        onNodeWithText("Answer Question").assertDoesNotExist()
+    fun theSlimCardForSomeoneElseIsTheSameCardWithItsControlsDisabled() = runRobolectricComposeUiTest {
+        // Who is asked changes only what can be pressed, never the shape: no fold, no "View only".
+        showCard(mayaCard(ActionCardSpecFixtures.questionCardJson(options = listOf("Fix all 4 on a branch", "One at a time, ask me each", "Just list them for me", "Skip them", "Ask Ada"))).copy(questions = listOf(ThreadActionCardQuestion("single", 5))), viewer = "u-ada")
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Waiting for Maya · 7 days left").assertExists()
+        onNodeWithText("Skip them").assertIsNotEnabled()
+        onNodeWithText("Other").assertIsNotEnabled()
         onNodeWithText("View only").assertDoesNotExist()
+        onNodeWithContentDescription("Show or hide details").assertDoesNotExist()
     }
 
     @Test
-    fun anAnsweredSlimCardIsOneLineWithAnswered() = runRobolectricComposeUiTest {
+    fun aSheetSlimCardForSomeoneElseKeepsItsButtonDisabled() = runRobolectricComposeUiTest {
+        showCard(mayaCard(ActionCardSpecFixtures.questionCardJson(inline = false)), viewer = "u-ada")
+        onNodeWithText("Waiting for Maya · 7 days left").assertExists()
+        onNodeWithText("Answer Question").assertIsNotEnabled()
+        onNodeWithContentDescription("Show or hide details").assertDoesNotExist()
+    }
+
+    @Test
+    fun anAnsweredSlimCardKeepsItsTitleAndSaysWhoAnsweredWhereTheControlsWere() = runRobolectricComposeUiTest {
         val card = mayaCard(ActionCardSpecFixtures.questionCardAnsweredJson(), state = "executed", executedBy = "Maya").copy(questions = listOf(ThreadActionCardQuestion("single", 6)))
         showCard(card, viewer = "u-maya")
-        onNodeWithText("Maya: Fix all 4 on a branch").assertExists()
-        onNodeWithText("Answered").assertExists()
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Maya answered Fix all 4 on a branch").assertExists()
+        // No fold into a row, no status tag, no record rows repeating the answer.
+        onNodeWithText("Answered").assertDoesNotExist()
+        onNodeWithText("Done").assertDoesNotExist()
+        onNodeWithText("Maya: Fix all 4 on a branch").assertDoesNotExist()
+        onNodeWithContentDescription("Show or hide details").assertDoesNotExist()
         onNodeWithText("Answer Question").assertDoesNotExist()
     }
 
@@ -319,12 +337,20 @@ class ThreadActionCardQuestionInlineUiTest {
     }
 
     @Test
-    fun anExpiredSlimCardFoldsToOneLineAskedOfAnyone() = runRobolectricComposeUiTest {
-        val json = ActionCardSpecFixtures.questionCardJson(options = listOf("Fix all 4 on a branch", "One at a time, ask me each", "Just list them for me", "Skip them", "Ask Ada"))
-        val card = mayaCard(json, state = "expired").copy(questionAddresseeUserId = null, questionAddresseeHandle = null, questionAsksAnyone = true, questions = listOf(ThreadActionCardQuestion("single", 5)))
+    fun anExpiredSlimCardKeepsItsTitleAndNamesWhoDidntAnswer() = runRobolectricComposeUiTest {
+        val card = mayaCard(ActionCardSpecFixtures.questionCardJson(options = listOf("Fix all 4 on a branch", "One at a time, ask me each", "Just list them for me", "Skip them", "Ask Ada")), state = "expired").copy(questions = listOf(ThreadActionCardQuestion("single", 5)))
+        showCard(card, viewer = "u-maya")
+        onNodeWithText("How should I go about them?").assertExists()
+        onNodeWithText("Maya didn't answer within 7 days. Fixer was told.").assertExists()
+        onNodeWithText("Expired").assertDoesNotExist()
+        onNodeWithText("Skip them").assertDoesNotExist()
+        onNodeWithContentDescription("Show or hide details").assertDoesNotExist()
+    }
+
+    @Test
+    fun anExpiredCardAskedOfAnyoneSaysNobodyAnswered() = runRobolectricComposeUiTest {
+        val card = mayaCard(state = "expired").copy(questionAddresseeUserId = null, questionAddresseeHandle = null, questionAsksAnyone = true)
         showCard(card, viewer = "u-maya")
         onNodeWithText("Nobody answered within 7 days. Fixer was told.").assertExists()
-        onNodeWithText("Expired").assertExists()
-        onNodeWithText("Skip them").assertDoesNotExist() // folded
     }
 }

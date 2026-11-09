@@ -3814,8 +3814,6 @@
     <string name="action_card_question_waiting_for_your_answer">%1$s 在等你回答</string>
     <string name="action_card_question_waiting_for_answer">等待 %1$s 回答</string>
     <string name="action_card_question_answered_by">%1$s 回答了：%2$s</string>
-    <string name="action_card_question_answer_line">%1$s：%2$s</string>
-    <string name="action_card_question_answered">已回答</string>
     <string name="action_card_question_someone">某人</string>
     <string name="action_card_question_expired_line">%1$s 在 %2$s 内没有回答，已告知 %3$s。</string>
     <string name="action_card_question_expired_line_anyone">%1$s 内无人回答，已告知 %2$s。</string>

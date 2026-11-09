@@ -68,7 +68,7 @@ class ThreadActionCardScreenshotTest {
     @Test
     fun questionCardsDark() = capture("thread.action-cards.question.dark", RaftAppAppearance.Dark) { ThreadQuestionCardsVisualContent(answered = false) }
 
-    /** The same cards answered: C's "✓ Maya answered …" line, B's "Maya: …" with a green Answered. */
+    /** The same cards answered: "✓ Maya answered **…**" where the controls were, on C and on B (still a card, unfolded, no tag). */
     @Test
     fun questionCardsAnsweredLight() = capture("thread.action-cards.question.answered", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = true) }
 
@@ -78,7 +78,7 @@ class ThreadActionCardScreenshotTest {
     /**
      * The same cards ended unanswered, each keeping its shape (raft-design "When it ends
      * unanswered"): C expired / withdrawn, the question over its one status line, no buttons; B
-     * expired (asked of anyone) / withdrawn, folded to that line.
+     * expired (Maya) / withdrawn, the same card with that line where its controls were, unfolded.
      */
     @Test
     fun questionCardsEndedLight() = capture("thread.action-cards.question.ended", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = false, ended = true) }
@@ -293,11 +293,8 @@ private fun ThreadQuestionCardsVisualContent(answered: Boolean, ended: Boolean =
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Show(card(ActionCardSpecFixtures.questionCardJson(), 3).copy(state = "expired", questionExpiresInMinutes = 3 * 1_440), viewer = "u-maya")
                 Show(card(ActionCardSpecFixtures.questionCardJson(), 3).copy(state = "withdrawn"), viewer = "u-ada")
-                Show(
-                    card(ActionCardSpecFixtures.questionCardJson(options = fiveOptions), 5)
-                        .copy(state = "expired", questionAddresseeUserId = null, questionAddresseeHandle = null, questionAsksAnyone = true),
-                    viewer = "u-maya",
-                )
+                // B expired asks Maya by name, as C does ("Nobody answered" is only for a card asked of anyone).
+                Show(card(ActionCardSpecFixtures.questionCardJson(options = fiveOptions), 5).copy(state = "expired"), viewer = "u-maya")
                 val several = Json.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), ActionCardSpecFixtures.rawCard("question_card"))
                 Show(
                     card(several, 3).copy(state = "withdrawn", questions = listOf(ThreadActionCardQuestion("single", 3), ThreadActionCardQuestion("multiple", 3), ThreadActionCardQuestion("text"))),
@@ -310,6 +307,8 @@ private fun ThreadQuestionCardsVisualContent(answered: Boolean, ended: Boolean =
             Show(card(ActionCardSpecFixtures.questionCardJson(), 3), viewer = "u-maya")
             Show(card(ActionCardSpecFixtures.questionCardJson(), 3), viewer = "u-ada")
             Show(card(ActionCardSpecFixtures.questionCardJson(options = fiveOptions), 5), viewer = "u-maya")
+            // The same B for someone who isn't asked: the same card, its options disabled, no fold.
+            if (!answered) Show(card(ActionCardSpecFixtures.questionCardJson(options = fiveOptions), 5), viewer = "u-ada")
             Show(card(ActionCardSpecFixtures.questionCardJson(inline = false), 3).copy(questions = listOf(ThreadActionCardQuestion("single", 6))), viewer = "u-ada")
             // Several questions (the vector's sheet card): "Fixer has 3 questions".
             if (!answered) {

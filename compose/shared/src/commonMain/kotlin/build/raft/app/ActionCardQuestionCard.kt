@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -20,6 +22,10 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -42,7 +48,8 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftMessageActionCardDefaults
-import build.raft.designsystem.components.RaftMessageActionCardHeaderDescription
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -224,7 +231,8 @@ internal fun ActionCardSpecTree.withoutSlimQuestionRows(singleQuestion: Boolean)
  * Tapping an option submits it at once (the 1.5 s "Submitted · Undo" of [QuestionUndoableSubmit]);
  * "Other" opens the one-line input for the person's own answer, sent with its own button. A viewer
  * who isn't asked sees the buttons disabled ([canSubmit] false) and "Waiting for Maya to answer".
- * Answered, the buttons give way to one line, "✓ Maya answered Postgres" ([answeredLine]).
+ * Answered, the buttons give way to one line, "✓ Maya answered **Postgres**" ([answeredLine],
+ * [QuestionStatusLine]).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -237,7 +245,7 @@ internal fun ActionCardQuestionButtonRow(
     canSubmit: Boolean,
     submitting: Boolean,
     hint: String?,
-    answeredLine: String?,
+    answeredLine: AnnotatedString?,
     error: String?,
     displayLocale: String,
     onSend: (Map<String, ActionCardFormValue>) -> Unit,
@@ -251,7 +259,7 @@ internal fun ActionCardQuestionButtonRow(
             RaftText(question, style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.foreground)
             val field = inline?.fields?.singleOrNull()
             when {
-                answeredLine != null -> RaftMessageActionCardHeaderDescription(answeredLine, check = true)
+                answeredLine != null -> QuestionStatusLine(answeredLine, check = true)
                 inline != null && field != null ->
                     QuestionButtons(
                         inline = inline,
@@ -269,6 +277,41 @@ internal fun ActionCardQuestionButtonRow(
             }
             error?.takeIf { it.isNotBlank() }?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm) }
         }
+    }
+}
+
+/**
+ * A question's one status line where its controls were (raft-design questions.md), on C and B
+ * alike: `text-footnote` `foreground-muted`, led by an ink check when it says who answered ([check]).
+ * Spans in [text] keep their own style (the answer in bold `foreground`, [questionAnsweredText]).
+ */
+@Composable
+internal fun QuestionStatusLine(text: AnnotatedString, check: Boolean) {
+    val colors = RaftTheme.colors
+    val style = RaftTheme.typography.footnote
+    Row(verticalAlignment = Alignment.Top) {
+        if (check) {
+            val lineHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
+            Box(Modifier.padding(top = ((lineHeight - 16.dp) / 2).coerceAtLeast(0.dp), end = 6.dp)) {
+                RaftGlyphIcon(RaftGlyph.Check, size = 16.dp, color = colors.foreground)
+            }
+        }
+        RaftText(text, style = style, color = colors.foregroundMuted)
+    }
+}
+
+/**
+ * "Maya answered **Postgres**": the localized line with the answer in bold body ink
+ * (`foreground`), the rest as the line around it.
+ */
+@Composable
+internal fun questionAnsweredText(answerer: String, answer: String): AnnotatedString {
+    val line = stringResource(Res.string.action_card_question_answered_by, answerer, answer)
+    val at = line.lastIndexOf(answer)
+    val bold = SpanStyle(fontWeight = FontWeight.Bold, color = RaftTheme.colors.foreground)
+    return buildAnnotatedString {
+        append(line)
+        if (at >= 0 && answer.isNotEmpty()) addStyle(bold, at, at + answer.length)
     }
 }
 
