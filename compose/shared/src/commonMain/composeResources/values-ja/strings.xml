@@ -2987,8 +2987,8 @@
     <string name="settings_developer_verbose_diagnostics_detail">重複したリアルタイムイベント、アバター・Markdown・スクロールの詳細、成功したすべてのリクエストもアプリのログに記録します。フィードバックに添付されるログが大きくなります。アプリを再起動するとオフになります。</string>
     <string name="settings_developer_nav3_stack">Navigation 3 ページスタック</string>
     <string name="settings_developer_nav3_stack_detail">移行済みのページをアプリのウィンドウ内で開きます（Android）。次回のアプリ起動時に反映されます。</string>
-    <string name="settings_developer_ios_native_nav">iOS ネイティブナビゲーション</string>
-    <string name="settings_developer_ios_native_nav_detail">移行済みのページのタイトルとボタンをシステムのナビゲーションバーに表示し、システムのスワイプで戻ります（iPhone）。次回のアプリ起動時に反映されます。</string>
+    <string name="settings_mobile_ios_native_nav">iOS ネイティブナビゲーション</string>
+    <string name="settings_mobile_ios_native_nav_detail">移行済みのページのタイトルとボタンをシステムのナビゲーションバーに表示し、システムのスワイプで戻ります（iPhone）。次回のアプリ起動時に反映されます。</string>
     <string name="settings_developer_presets">プリセット</string>
     <string name="settings_developer_presets_detail">プリセットを選択して環境フォームに反映し、保存して適用します。</string>
     <string name="settings_developer_presets_empty">このホストから利用できるプリセットはありません。</string>

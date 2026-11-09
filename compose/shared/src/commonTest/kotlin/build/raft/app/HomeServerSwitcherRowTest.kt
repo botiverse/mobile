@@ -60,6 +60,7 @@ class HomeServerSwitcherRowTest {
                     titleMenuJson: String,
                     hasBack: Boolean,
                     nested: Boolean,
+                    titleImage: RaftNativeTabBarAvatar?,
                 ) {
                     extras = Json.parseToJsonElement(extrasJson).jsonObject
                     titleMenu = titleMenuJson

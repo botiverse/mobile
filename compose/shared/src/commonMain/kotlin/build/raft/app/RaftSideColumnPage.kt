@@ -285,6 +285,7 @@ internal fun raftSideColumnBackAction(
         enabled = enabled,
         keepVisible = true,
         systemSymbol = systemSymbol,
+        iconName = RaftLucideIconName.ArrowLeft.wireName,
     ) { size -> RaftGlyphIcon(RaftGlyph.ArrowLeft, size = size) }
 
 /**
@@ -309,4 +310,5 @@ internal fun raftSideColumnLucideAction(
         attentionDescription = attentionDescription,
         priority = priority,
         systemSymbol = systemSymbol,
+        iconName = icon.wireName,
     ) { size -> RaftContentLucideIcon(icon, size = size) }

@@ -299,6 +299,21 @@ private fun FontFamily.encodedSpaceGroteskWeight(): FontWeight? =
         else -> null
     }
 
+/**
+ * The PostScript name of a Space Grotesk token's face ("SpaceGrotesk-Bold"), the name a native
+ * host resolves with `UIFont(name:size:)` (the faces are registered through UIAppFonts); null for
+ * any other family.
+ */
+internal fun TextStyle.raftSpaceGroteskFaceName(): String? =
+    when (fontFamily) {
+        SpaceGroteskBold -> "SpaceGrotesk-Bold"
+        SpaceGroteskSemiBold -> "SpaceGrotesk-SemiBold"
+        SpaceGroteskMedium -> "SpaceGrotesk-Medium"
+        SpaceGroteskRegular -> "SpaceGrotesk-Regular"
+        SpaceGroteskLight -> "SpaceGrotesk-Light"
+        else -> null
+    }
+
 private fun renderedSpaceGroteskWeight(fontFamily: FontFamily, requestedWeight: FontWeight): FontWeight =
     if (raftPlatformPreservesEncodedFontWeightForFallback()) {
         fontFamily.encodedSpaceGroteskWeight() ?: requestedWeight

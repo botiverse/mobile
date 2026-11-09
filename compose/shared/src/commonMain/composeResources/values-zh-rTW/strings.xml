@@ -2982,8 +2982,8 @@
     <string name="settings_developer_text_input_trace_detail">將輸入框中的每次鍵盤編輯與文字同步記錄到 App 記錄中（只記長度，不記內容），用於回報輸入法問題。</string>
     <string name="settings_developer_nav3_stack">Navigation 3 頁面堆疊</string>
     <string name="settings_developer_nav3_stack_detail">已遷移的頁面會在 App 視窗內開啟（Android）。下次啟動 App 時生效。</string>
-    <string name="settings_developer_ios_native_nav">iOS 原生導覽</string>
-    <string name="settings_developer_ios_native_nav_detail">已遷移頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回（iPhone）。下次啟動 App 時生效。</string>
+    <string name="settings_mobile_ios_native_nav">iOS 原生導覽</string>
+    <string name="settings_mobile_ios_native_nav_detail">已遷移頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回（iPhone）。下次啟動 App 時生效。</string>
     <string name="settings_developer_presets">預設組合</string>
     <string name="settings_developer_presets_detail">選擇預設組合以填入環境表單，再儲存即可套用。</string>
     <string name="settings_developer_presets_empty">此主機沒有可用的預設組合。</string>

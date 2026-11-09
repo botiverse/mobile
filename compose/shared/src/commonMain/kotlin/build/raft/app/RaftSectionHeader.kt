@@ -168,6 +168,9 @@ internal fun RaftTopPageHeader(
     // iPhone Duo side column: the column holds Back and the actions, so the Compose head stays.
     val nativeHeadMapped = !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null, nativeActions)
     if (!nativeHeadMapped) RaftNativeNavBarDecline()
+    // The title's channel tile / DM avatar as this head draws it, captured offscreen for the bar.
+    val nativeTitleLeading = nativeTitleExtras.leading
+    var nativeTitleImage by remember(nativeTitleLeading) { mutableStateOf<RaftNativeTabBarAvatar?>(null) }
     if (
         nativeHeadMapped &&
         raftNativeNavBarPublish(
@@ -178,6 +181,7 @@ internal fun RaftTopPageHeader(
             titleMenu = nativeTitleMenu,
             onBack = onBack ?: nativeOnBack,
             onTitleClick = onTitleClick ?: nativeOnTitleClick,
+            titleImage = nativeTitleImage,
         )
     ) {
         RaftNativeNavBarHeadSpacer(
@@ -185,7 +189,11 @@ internal fun RaftTopPageHeader(
             modifier = modifier.fillMaxWidth(),
             // The page's top safe area includes the host bar; a head below the top keeps none.
             liveTop = topSafeArea,
-        )
+        ) {
+            if (nativeTitleLeading != null) {
+                RaftNativeNavBarTitleImageCapture(nativeTitleLeading) { nativeTitleImage = it }
+            }
+        }
         if (showBodyTopBanner) {
             RaftAppShellBodyTopBanner()
         }
