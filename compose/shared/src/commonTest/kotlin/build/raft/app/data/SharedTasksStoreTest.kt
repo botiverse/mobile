@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.TaskOpenTarget
+import build.raft.app.taskOpenSurface
+import build.raft.app.taskOpenTarget
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -744,6 +747,44 @@ class SharedTasksStoreTest {
         assertFalse(serverB.canClaim)
         assertFalse(store.projection("server-a", SharedTasksScope.Server).needsCanonicalRefetch)
         assertFalse(store.projection("server-b", SharedTasksScope.Server).needsCanonicalRefetch)
+    }
+
+    @Test
+    fun sameRevisionTaskUpdatedThatCreatesTheConversationReplacesThePendingTask() = runBlocking {
+        // artin 1.22.0: the first send into a task without a conversation creates it (POST
+        // /tasks/:id/conversation, no revision bump); its `task:updated` was dropped as stale, so
+        // the task kept opening as the empty pending page and the sent message was never shown.
+        val store = SharedTasksDataStore()
+        val pending =
+            task("task-158", TaskStatus.InProgress, channelId = ChannelId("channel-1"), revision = 4L)
+                .copy(conversationAnchored = true)
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot = TaskSnapshot(tasks = listOf(pending), summaryCounts = emptyMap())
+        )
+        assertEquals(
+            TaskOpenTarget.PendingConversation,
+            store.channelProjectionFlow("server-1", "channel-1", null).first().tasks.single().taskOpenTarget(true)
+        )
+
+        val conversation = ChannelId("task-conversation-158")
+        assertEquals(
+            SharedTaskFactFoldOutcome.Accepted,
+            store.upsertTask("server-1", pending.copy(conversationChannelId = conversation))
+        )
+
+        val opened = store.channelProjectionFlow("server-1", "channel-1", null).first().tasks.single()
+        assertEquals(conversation, opened.conversationChannelId)
+        assertEquals(TaskOpenTarget.Conversation(conversation), opened.taskOpenTarget(true))
+        assertEquals(null, opened.taskOpenSurface(true))
+
+        // A copy of the same revision read before the conversation existed does not take it away.
+        assertEquals(SharedTaskFactFoldOutcome.StaleIgnored, store.upsertTask("server-1", pending))
+        assertEquals(
+            conversation,
+            store.channelProjectionFlow("server-1", "channel-1", null).first().tasks.single().conversationChannelId
+        )
     }
 
     @Test
