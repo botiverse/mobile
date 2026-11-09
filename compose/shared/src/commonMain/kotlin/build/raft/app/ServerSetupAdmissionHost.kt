@@ -267,6 +267,7 @@ internal fun rememberServerSetupAdmissionHost(
                         ) {
                             SettingsWebViewContent(
                                 url = url,
+                                diagnosticsName = "server_setup",
                                 allowNavigation = false,
                                 allowedNavigationSchemes = setOf("http", "https"),
                                 injectedJavaScript = injectedJavaScript,

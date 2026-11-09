@@ -321,6 +321,14 @@ internal class RaftDesktopWryWebView(
             panel.evaluateJavaScript(policy.guardRuntimeScript(script)) {}
             return
         }
+        if (command == RaftWebViewController.COMMAND_PROBE_DOCUMENT_CONTENT) {
+            // The fixed, read-only probe ('1'/'0'), so not fenced like runtime scripts.
+            panel.evaluateJavaScript(RaftWebViewContentProbeScript) { result ->
+                val answer = raftWebViewDecodeContentProbe(RaftDesktopWebViewPolicy.decodeEvaluatedString(result) ?: result)
+                SwingUtilities.invokeLater { if (!disposed) events.onContentProbe(answer) }
+            }
+            return
+        }
         when (command) {
             RaftWebViewController.COMMAND_GO_BACK -> if (panel.canGoBack()) panel.goBack()
             RaftWebViewController.COMMAND_GO_FORWARD -> if (panel.canGoForward()) panel.goForward()

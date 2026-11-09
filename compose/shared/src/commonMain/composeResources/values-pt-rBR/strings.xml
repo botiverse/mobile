@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">Nenhum resultado corresponde à sua pesquisa.</string>
     <string name="settings_webview_error_title">Não foi possível carregar esta página</string>
     <string name="settings_webview_error_body">Verifique sua conexão e tente novamente.</string>
+    <string name="settings_webview_crash_body">A página parou inesperadamente. Tente novamente.</string>
     <string name="tab_home">Início</string>
     <string name="tab_tasks">Tarefas</string>
     <string name="tab_members">Membros</string>

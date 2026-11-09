@@ -315,6 +315,7 @@ internal fun ReleaseNotesWebViewBody(
     SettingsWebViewContent(
         url = url,
         modifier = Modifier.fillMaxSize(),
+        diagnosticsName = "release_notes",
         allowedNavigationSchemes = setOf("http", "https"),
         controller = controller,
         onLoadCommit = {

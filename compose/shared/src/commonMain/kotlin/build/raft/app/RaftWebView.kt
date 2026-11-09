@@ -59,6 +59,18 @@ internal class RaftWebViewController {
         return true
     }
 
+    /**
+     * Asks the attached renderer whether its top-level document shows anything
+     * ([RaftWebViewContentProbeScript]); the answer comes as [RaftWebViewEvents.onContentProbe].
+     * Never queued: a probe is about the document showing now. Returns whether it was sent.
+     */
+    fun probeDocumentContent(): Boolean {
+        if (flushingCommands) return false
+        val binding = commandBinding ?: return false
+        binding.dispatch(COMMAND_PROBE_DOCUMENT_CONTENT)
+        return true
+    }
+
     private fun issueCommand(command: String) {
         val binding = commandBinding
         if (binding == null || flushingCommands) {
@@ -97,6 +109,7 @@ internal class RaftWebViewController {
         internal const val COMMAND_GO_FORWARD = "goForward"
         internal const val COMMAND_RELOAD = "reload"
         internal const val COMMAND_STOP = "stop"
+        internal const val COMMAND_PROBE_DOCUMENT_CONTENT = "probeDocumentContent"
         internal const val COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX = "evaluateJavaScript:"
     }
 }
@@ -130,15 +143,23 @@ internal fun RaftSandboxWebView(
     mainFrameOrigin: String? = null,
     frameHosts: Set<String> = emptySet(),
     keepAliveKey: String? = null,
+    /** Guards this WebView's load ([RaftWebViewLoadWatchdog]): wired to its events, timer and probe run here. */
+    loadWatchdog: RaftWebViewLoadWatchdog? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.onLoadCommit = onLoadCommit
-    events.onLoadSuccess = onLoadSuccess
-    events.onLoadFailure = onLoadFailure
+    events.onLoadSuccess =
+        if (loadWatchdog == null) onLoadSuccess else { { loadWatchdog.onLoadFinished(); onLoadSuccess() } }
+    events.onLoadFailure =
+        if (loadWatchdog == null) onLoadFailure else { reason -> loadWatchdog.onLoadFailed(); onLoadFailure(reason) }
     events.onNavigationBlocked = onNavigationBlocked
     events.onUrlChange = onUrlChange
-    events.onNavigationStateChange = onNavigationStateChange
+    events.onNavigationStateChange =
+        if (loadWatchdog == null) onNavigationStateChange else { state -> loadWatchdog.onNavigationState(state); onNavigationStateChange(state) }
     events.onHostMessage = onHostMessage
+    events.onContentProbe = { hasContent -> loadWatchdog?.onContentProbe(hasContent) }
+    events.onContentProcessGone = { reason -> loadWatchdog?.onProcessGone(reason) }
+    if (loadWatchdog != null) RaftWebViewLoadWatchdogEffect(loadWatchdog, controller)
     val allowedNavigationSchemesValue = allowedNavigationSchemes.toRaftWebViewAllowedNavigationSchemesValue()
     val config =
         remember(
@@ -239,7 +260,8 @@ internal fun RaftWebView(
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
-    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
+    loadWatchdog: RaftWebViewLoadWatchdog? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -251,6 +273,7 @@ internal fun RaftWebView(
         ephemeral = ephemeral,
         injectedJavaScript = injectedJavaScript,
         hostEventsEnabled = hostEventsEnabled,
+        loadWatchdog = loadWatchdog,
         onLoadCommit = onLoadCommit,
         onLoadSuccess = onLoadSuccess,
         onLoadFailure = onLoadFailure,

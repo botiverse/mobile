@@ -331,6 +331,10 @@ internal class RaftIosSandboxWebView(
             if (sameTrustedDocument && script.isNotEmpty()) view.evaluateJavaScript(script, completionHandler = null)
             return
         }
+        if (command == RaftWebViewController.COMMAND_PROBE_DOCUMENT_CONTENT) {
+            probeDocumentContent(view)
+            return
+        }
         when (command) {
             RaftWebViewController.COMMAND_GO_BACK -> if (view.canGoBack) view.goBack()
             RaftWebViewController.COMMAND_GO_FORWARD -> if (view.canGoForward) view.goForward()
@@ -348,6 +352,23 @@ internal class RaftIosSandboxWebView(
             else -> return
         }
         notifyNavigationState(force = true)
+    }
+
+    /**
+     * The fixed, read-only [RaftWebViewContentProbeScript] (a '1'/'0' string, nothing of the page's
+     * data), so it is not fenced like runtime scripts. Main frame only (WKWebView's default world).
+     * No scripts or no readable answer: null (fail open).
+     */
+    private fun probeDocumentContent(view: WKWebView) {
+        if (!allowScripts) {
+            events.onContentProbe(null)
+            return
+        }
+        view.evaluateJavaScript(RaftWebViewContentProbeScript) { result, _ ->
+            if (!disposed && raftIsSameObjCObject(view, webView)) {
+                events.onContentProbe(raftWebViewDecodeContentProbe(result as? String))
+            }
+        }
     }
 
     /** Returns true when the source changed (state reset, load pending). */
@@ -460,9 +481,14 @@ internal class RaftIosSandboxWebView(
         notifyLoadFailure(error.localizedDescription)
     }
 
-    /** task #6: rebuild and reload after the web content process was reclaimed. */
+    /**
+     * task #6: rebuild and reload after the web content process was reclaimed. The host's load
+     * watchdog hears of it first: an error state when the page was not up yet (dm #102).
+     */
     internal fun contentProcessDidTerminate(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
+        events.onContentProcessGone("web_content_process_terminated")
+        if (disposed) return
         lastSuccessfulURL = ""
         lastLoadFailureKey = ""
         rebuildWebView()

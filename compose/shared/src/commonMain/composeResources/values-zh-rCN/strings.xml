@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">没有与搜索条件匹配的结果。</string>
     <string name="settings_webview_error_title">无法加载此页面</string>
     <string name="settings_webview_error_body">请检查网络连接后重试。</string>
+    <string name="settings_webview_crash_body">页面意外停止运行，请重试。</string>
     <string name="tab_home">主页</string>
     <string name="tab_tasks">任务</string>
     <string name="tab_members">成员</string>

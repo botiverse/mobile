@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">No hay resultados que coincidan con tu búsqueda.</string>
     <string name="settings_webview_error_title">No se pudo cargar esta página</string>
     <string name="settings_webview_error_body">Revisa tu conexión e inténtalo de nuevo.</string>
+    <string name="settings_webview_crash_body">La página se detuvo de forma inesperada. Inténtalo de nuevo.</string>
     <string name="tab_home">Inicio</string>
     <string name="tab_tasks">Tareas</string>
     <string name="tab_members">Miembros</string>

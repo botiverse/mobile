@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">検索条件に一致する結果はありません。</string>
     <string name="settings_webview_error_title">ページを読み込めませんでした</string>
     <string name="settings_webview_error_body">接続を確認して、もう一度お試しください。</string>
+    <string name="settings_webview_crash_body">ページが予期せず停止しました。もう一度お試しください。</string>
     <string name="tab_home">ホーム</string>
     <string name="tab_tasks">タスク</string>
     <string name="tab_members">メンバー</string>

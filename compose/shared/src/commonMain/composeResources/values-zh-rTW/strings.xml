@@ -32,6 +32,7 @@
     <string name="empty_no_search_results">沒有符合搜尋條件的結果。</string>
     <string name="settings_webview_error_title">無法載入此頁面</string>
     <string name="settings_webview_error_body">請檢查網路連線，然後再試一次。</string>
+    <string name="settings_webview_crash_body">頁面意外停止運作，請再試一次。</string>
     <string name="tab_home">首頁</string>
     <string name="tab_tasks">任務</string>
     <string name="tab_members">成員</string>

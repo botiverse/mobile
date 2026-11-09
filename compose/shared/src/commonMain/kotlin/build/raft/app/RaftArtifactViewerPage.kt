@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -490,21 +491,27 @@ private fun RaftArtifactViewerScreen() {
                         closePage()
                     }
                 } else {
-                    RaftArtifactViewerWebBody(
-                        host = host,
-                        scope = scope,
-                        target = target,
-                        pageUrl = embeddedPageUrl,
-                        controller = controller,
-                        desktopMode = desktopMode,
-                        onStay = { next ->
-                            if (raftArtifactViewerRereadsLatest(addressed, next)) latestReads += 1
-                            addressed = next
-                            barStore?.dispatch(ArtifactViewerBarIntent.VersionShown(next.version))
-                        },
-                        onPanel = { panel -> barStore?.dispatch(ArtifactViewerBarIntent.PanelObserved(panel)) },
-                        onLeave = { bodyState = RaftArtifactViewerBodyState.Left(it) },
-                    )
+                    // Retry after a stalled / crashed load: a new WebView (nothing kept), a new timer.
+                    var webRetry by remember { mutableStateOf(0) }
+                    key(webRetry) {
+                        RaftArtifactViewerWebBody(
+                            host = host,
+                            scope = scope,
+                            target = target,
+                            pageUrl = embeddedPageUrl,
+                            controller = controller,
+                            desktopMode = desktopMode,
+                            retry = webRetry,
+                            onRetry = { webRetry += 1 },
+                            onStay = { next ->
+                                if (raftArtifactViewerRereadsLatest(addressed, next)) latestReads += 1
+                                addressed = next
+                                barStore?.dispatch(ArtifactViewerBarIntent.VersionShown(next.version))
+                            },
+                            onPanel = { panel -> barStore?.dispatch(ArtifactViewerBarIntent.PanelObserved(panel)) },
+                            onLeave = { bodyState = RaftArtifactViewerBodyState.Left(it) },
+                        )
+                    }
                 }
         }
     }
@@ -518,6 +525,8 @@ private fun RaftArtifactViewerWebBody(
     pageUrl: String,
     controller: RaftWebViewController,
     desktopMode: Boolean,
+    retry: Int,
+    onRetry: () -> Unit,
     onStay: (RaftArtifactViewerNavigation.Stay) -> Unit,
     onPanel: (ArtifactViewerPanel) -> Unit,
     onLeave: (RaftArtifactViewerNavigation) -> Unit,
@@ -547,6 +556,15 @@ private fun RaftArtifactViewerWebBody(
         return
     }
     val src = kept?.src ?: pageUrl
+    val loadWatchdog = remember { RaftWebViewLoadWatchdog(page = "artifact_viewer", url = src, retry = retry) }
+    val loadError = loadWatchdog.showsError
+    LaunchedEffect(loadError) {
+        if (!loadError) return@LaunchedEffect
+        // The WebView left the screen (and may have been parked): never keep a stalled or crashed
+        // document for the next open.
+        RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+        raftWebViewKeepAliveClear()
+    }
     val showsTarget = remember(scope, target) { kept != null && RaftArtifactViewerMemory.cache.keptDocumentShows(scope, target) }
     var visible by remember { mutableStateOf(showsTarget) }
     var documentReady by remember { mutableStateOf(false) }
@@ -623,7 +641,7 @@ private fun RaftArtifactViewerWebBody(
                 .background(RaftColor.SurfaceWhite)
                 .padding(bottom = with(density) { bottomInsetPx.toDp() }),
     ) {
-        RaftSandboxWebView(
+        if (!loadError) RaftSandboxWebView(
             url = src,
             modifier = Modifier.fillMaxSize().alpha(if (visible) 1f else 0f),
             allowScripts = true,
@@ -642,6 +660,7 @@ private fun RaftArtifactViewerWebBody(
             // The content frame (desktop declares it; see RaftWebViewConfig.frameHosts).
             frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
             keepAliveKey = scope.keepAliveKey,
+            loadWatchdog = loadWatchdog,
             onLoadCommit = {
                 visible = true
                 RaftArtifactOpenTrace.mark("webview_commit")
@@ -672,7 +691,16 @@ private fun RaftArtifactViewerWebBody(
             surface = SettingsWebViewSurface.ArtifactViewer,
             logger = host.bridge::log,
         )
-        if (!visible) RaftCenteredLoading(stringResource(Res.string.common_loading))
+        if (loadError) {
+            SettingsWebViewErrorContent(
+                actionLabel = stringResource(Res.string.common_retry),
+                actionIcon = RaftLucideIconName.RefreshCw,
+                body = settingsWebViewErrorBody(loadWatchdog.state.phase),
+                onAction = onRetry,
+            )
+        } else if (!visible) {
+            RaftCenteredLoading(stringResource(Res.string.common_loading))
+        }
     }
 }
 
