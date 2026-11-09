@@ -136,9 +136,9 @@ private fun installUnhandledExceptionHook(sink: RaftIosUnhandledExceptionSink) {
     previous =
         setUnhandledExceptionHook { throwable ->
             try {
-                val reason = throwable::class.qualifiedName.orEmpty().ifEmpty { "Throwable" } +
-                    (throwable.message?.let { ": $it" } ?: "")
-                sink.recordUnhandledException(reason = reason, stack = throwable.stackTraceToString())
+                // Clipped reason + compacted frames: the record is one 2048-character line.
+                val record = raftUnhandledExceptionRecord(throwable, throwable::class.qualifiedName.orEmpty())
+                sink.recordUnhandledException(reason = record.reason, stack = record.stack)
             } catch (_: Throwable) {
                 // Recording is best effort; never mask the original exception.
             }

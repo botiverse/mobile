@@ -8,6 +8,10 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import build.raft.designsystem.focus.RaftAutofocusGuard
@@ -73,6 +77,8 @@ fun RaftWindowDialog(
     // A page pushed over this one closes the window first: the covered page stops composing.
     RaftDismissOnPageCover(onDismissRequest)
     RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
+    // The host's window (read outside the dialog: its own layer may not have a size yet).
+    val hostWindow = LocalWindowInfo.current
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = raftWindowDialogPlatformProperties(properties),
@@ -80,6 +86,7 @@ fun RaftWindowDialog(
         RaftDialogWindowPolicy(isDark = RaftTheme.isDark, keepsHostKeyboard = properties.keepsHostKeyboard)
         Box(
             Modifier
+                .raftBoundedWindowLayer { hostWindow.containerSize }
                 .fillMaxSize()
                 .then(if (properties.drawScrim) Modifier.background(RaftTheme.scrim) else Modifier),
         ) {
@@ -87,6 +94,45 @@ fun RaftWindowDialog(
         }
     }
 }
+
+/**
+ * The constraints a window layer's content is measured with: [constraints] where they are
+ * bounded, the host window ([window], px) on an unbounded axis, or null when neither is known yet.
+ *
+ * CMP iOS measures a dialog layer whose scene has no size yet with unbounded constraints (the
+ * scene's root gets `Constraints()`; the layer's measure policy hands them on). Full-window content
+ * then gets an infinite width or height, and a pager or lazy list in it throws ("Horizontally
+ * scrollable component was measured with an infinity maximum width constraints", the image
+ * lightbox crash on 1.20.0, Hands f36226a4).
+ */
+internal fun raftWindowLayerConstraints(constraints: Constraints, window: IntSize): Constraints? {
+    if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) return constraints
+    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else window.width
+    val height = if (constraints.hasBoundedHeight) constraints.maxHeight else window.height
+    if (width <= 0 || height <= 0) return null
+    return Constraints(
+        minWidth = constraints.minWidth.coerceAtMost(width),
+        maxWidth = width,
+        minHeight = constraints.minHeight.coerceAtMost(height),
+        maxHeight = height,
+    )
+}
+
+/**
+ * Measures a window layer's content within [raftWindowLayerConstraints]. Bounded constraints pass
+ * through unchanged. While neither the layer nor the host window has a size, the content is not
+ * measured for that pass (it lays out once the size arrives, the next frame).
+ */
+internal fun Modifier.raftBoundedWindowLayer(window: () -> IntSize): Modifier =
+    layout { measurable, constraints ->
+        val bounded = raftWindowLayerConstraints(constraints, window())
+        if (bounded == null) {
+            layout(constraints.minWidth, constraints.minHeight) {}
+        } else {
+            val placeable = measurable.measure(bounded)
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
+    }
 
 /**
  * The platform [DialogProperties] for [properties]: no framework outside-click wrapper (the
