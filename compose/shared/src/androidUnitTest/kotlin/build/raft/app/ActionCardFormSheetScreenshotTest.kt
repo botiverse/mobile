@@ -87,9 +87,9 @@ class ActionCardFormSheetScreenshotTest {
     fun questionChoiceOtherDark() =
         capture("action-card.question.choice-other.dark", RaftAppAppearance.Dark, questionValues("window" to ActionCardFormValue.Choice(emptyList(), "周五上午")), form = questionForm)
 
-    // Step 1 untouched: Next is held back and the line under the list says why.
+    // Step 1 with Next tapped before choosing: the page stays and the line under the list says why.
     @Test
-    fun questionPendingLight() = capture("action-card.question.pending", RaftAppAppearance.Light, questionValues(), form = questionForm)
+    fun questionPendingLight() = capture("action-card.question.pending", RaftAppAppearance.Light, questionValues(), form = questionForm, tried = true)
 
     // Step 2 of 3: a multiple Choice (checkboxes) with one option ticked and Other typed, under the back arrow.
     @Test
@@ -124,6 +124,7 @@ class ActionCardFormSheetScreenshotTest {
         submitting: Boolean = false,
         form: ActionCardSpecForm = fixtures.form,
         page: Int = 0,
+        tried: Boolean = false,
     ) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
@@ -143,6 +144,7 @@ class ActionCardFormSheetScreenshotTest {
                             candidates = fixtures.candidates,
                             modifier = Modifier.fillMaxSize(),
                             page = page,
+                            tried = tried,
                         )
                     }
                 }
