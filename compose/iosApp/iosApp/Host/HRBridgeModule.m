@@ -83,6 +83,9 @@ static unsigned long long const RaftDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
 static NSUInteger const RaftDiagnosticsLogMaxFiles = 4;
 static NSUInteger const RaftDiagnosticsMaxLaunchSessions = 5;
 static NSUInteger const RaftDiagnosticsAttachmentMaxLogFiles = 20;
+/// Raw log bytes a feedback report attaches (shared RaftFeedbackDiagnosticsBudget.DefaultBudgetBytes):
+/// newest launch first, newest shard first; the newest shard is always attached.
+static unsigned long long const RaftDiagnosticsAttachmentMaxLogBytes = 1024ULL * 1024ULL;
 static NSUInteger const RaftDiagnosticsMinimumRetainedSnapshotCount = 5;
 static NSTimeInterval const RaftDiagnosticsFeedbackPruneMinimumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSUInteger const RaftDiagnosticsOutstandingLimit = 512;
@@ -2125,11 +2128,20 @@ static NSDictionary *RaftDiagnosticsPrepareAttachmentFiles(NSDictionary *about, 
         NSMutableSet<NSString *> *reservedSnapshotPaths = [NSMutableSet setWithObject:path];
         NSArray<NSString *> *files = RaftDiagnosticsLogFiles();
         NSUInteger fileCount = MIN(files.count, RaftDiagnosticsAttachmentMaxLogFiles);
+        unsigned long long attachedLogBytes = 0;
         for (NSUInteger index = 0; index < fileCount; index++) {
             NSString *logPath = files[index];
             if (![fileManager isReadableFileAtPath:logPath]) {
                 continue;
             }
+            unsigned long long logBytes =
+                [[fileManager attributesOfItemAtPath:logPath error:nil][NSFileSize] unsignedLongLongValue];
+            // Only the newest shards within the budget; a shard that does not fit is skipped so a
+            // smaller one of the launch before can still fill the remainder.
+            if (attachmentPaths.count > 1 && attachedLogBytes + logBytes > RaftDiagnosticsAttachmentMaxLogBytes) {
+                continue;
+            }
+            attachedLogBytes += logBytes;
             NSString *sessionName = logPath.stringByDeletingLastPathComponent.lastPathComponent;
             NSString *snapshotLogDir = [sessionName hasPrefix:@"launch-"]
                 ? [snapshotDir stringByAppendingPathComponent:sessionName]
