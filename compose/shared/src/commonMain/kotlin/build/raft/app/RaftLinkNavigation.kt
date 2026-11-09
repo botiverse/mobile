@@ -21,6 +21,15 @@ import build.raft.app.compat.pager.Pager
 internal enum class RaftLinkOpenIntent {
     Ordinary,
     ForceExternal,
+
+    /**
+     * A page of Raft's own web the app has no screen for (an announcement's
+     * `/settings/account#two-step`). The link setting still decides where it opens, but "Default
+     * browser" asks the host for a real browser (`browser: true`): Raft claims its own origin as
+     * Android App Links / iOS Universal Links, so a plain VIEW of it can route straight back into
+     * the app, which has nothing to show for it.
+     */
+    RaftWebPage,
 }
 
 internal enum class RaftLinkOpenTarget {
@@ -170,6 +179,8 @@ internal class RaftLinkNavigator(
     private val openInAppBrowser: (String) -> Boolean,
     private val openExternalBrowser: (String) -> Unit,
     private val onRejected: (RaftLinkRejectReason) -> Unit,
+    /** [RaftLinkOpenIntent.RaftWebPage] in the default browser: a browser even for a Raft link. */
+    private val openRaftWebPageInBrowser: (String) -> Unit = openExternalBrowser,
 ) {
     fun open(
         rawUrl: String,
@@ -186,7 +197,11 @@ internal class RaftLinkNavigator(
                 }
             }
             RaftLinkOpenTarget.ExternalBrowser -> {
-                openExternalBrowser(decision.url)
+                if (intent == RaftLinkOpenIntent.RaftWebPage) {
+                    openRaftWebPageInBrowser(decision.url)
+                } else {
+                    openExternalBrowser(decision.url)
+                }
                 decision
             }
             RaftLinkOpenTarget.Rejected -> {
@@ -227,6 +242,7 @@ internal fun rememberRaftLinkNavigator(
                 bridge.logWarn("link_open_rejected reason=${reason.name.lowercase()}")
                 bridge.toast(rejectedMessage)
             },
+            openRaftWebPageInBrowser = { url -> bridge.openUrl(url, inBrowser = true) },
         )
     }
 }

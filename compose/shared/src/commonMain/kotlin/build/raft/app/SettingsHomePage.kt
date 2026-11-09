@@ -9176,7 +9176,7 @@ private fun RaftAppShellReadyContent(
                                 ) {
                                     is AnnouncementLinkAction.OpenSettings ->
                                         openSettingsFromLink(action.link, action.target, source = "announcement")
-                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url)
+                                    is AnnouncementLinkAction.OpenUrl -> linkNavigator.open(action.url, action.openIntent)
                                     null -> Unit
                                 }
                             }
