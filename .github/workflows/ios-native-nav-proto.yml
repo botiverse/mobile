@@ -7,11 +7,8 @@
 name: iOS native nav capture (on demand)
 
 on:
-  # On demand; a push runs it only when this file changes (so ordinary pushes never take a macOS
-  # runner, and a branch can trigger it before the file reaches the default branch).
-  push:
-    paths:
-      - ".github/workflows/ios-native-nav-proto.yml"
+  # Manual only (artin 11-09): a tag push counts every file as changed, so a paths filter still
+  # ran this on release tags.
   workflow_dispatch:
 
 permissions:
