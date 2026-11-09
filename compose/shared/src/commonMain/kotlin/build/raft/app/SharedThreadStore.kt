@@ -7978,6 +7978,13 @@ internal sealed interface SharedThreadIntent {
     data class MarkVisibleRead(val visibleTailIndex: Int? = null) : SharedThreadIntent
 
     /**
+     * fb-4440a18c: the page no longer shows this conversation (left, covered by another page, app in
+     * the background). A deferred or queued visible read is dropped and none goes out until the next
+     * [MarkVisibleRead], so messages that arrive after leaving stay unread.
+     */
+    data object VisibleReadHidden : SharedThreadIntent
+
+    /**
      * botiverse/slock #11687: Mark as Unread from inside an open reply thread (its header ⋯ and its
      * messages' menus). The whole thread, as the server's `/unread` marks it; it then stays unread
      * while this page shows it (its visible reads are held for [threadChannelId]).
@@ -8138,6 +8145,11 @@ internal class SharedThreadStore(
     private var deferredReadJob: Job? = null
     private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadAt: TimeMark? = null
+    // fb-4440a18c (artin, 1.22.0): whether the page still shows this conversation. The page's
+    // visible-read gate only covers its own dispatch; the deferred retry and the queued in-flight
+    // follow-up run later, after the page may have been left, covered or backgrounded, and must not
+    // mark anything read then. MarkVisibleRead opens it, [SharedThreadIntent.VisibleReadHidden] shuts it.
+    private var visibleReadShown: Boolean = true
     // botiverse/slock #11687: the thread this page marked unread. Its visible reads are held while
     // the page shows it (web threadUnreadHold / autoReadHold), so the open page does not read it
     // again at once; leaving the page (a new store) or showing another thread ends the hold.
@@ -8293,8 +8305,12 @@ internal class SharedThreadStore(
                 }
             }
             is SharedThreadIntent.MarkVisibleRead -> {
+                // Opened here, not in the launched block: a VisibleReadHidden dispatched right after
+                // must not be undone by this read starting later.
+                visibleReadShown = true
                 scope.launch { markVisibleRead(intent.visibleTailIndex) }
             }
+            SharedThreadIntent.VisibleReadHidden -> hideVisibleRead()
             is SharedThreadIntent.MarkThreadUnread -> {
                 scope.launch { markThreadUnread(intent.threadChannelId) }
             }
@@ -8383,7 +8399,11 @@ internal class SharedThreadStore(
                     event = intent.event,
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
-            is SharedThreadIntent.MarkVisibleRead -> markVisibleRead(intent.visibleTailIndex)
+            is SharedThreadIntent.MarkVisibleRead -> {
+                visibleReadShown = true
+                markVisibleRead(intent.visibleTailIndex)
+            }
+            SharedThreadIntent.VisibleReadHidden -> hideVisibleRead()
             is SharedThreadIntent.MarkThreadUnread -> markThreadUnread(intent.threadChannelId)
             SharedThreadIntent.FirstContentReady -> markFirstContentReady()
             SharedThreadIntent.LoadMembers -> loadMembers()
@@ -11089,7 +11109,27 @@ internal class SharedThreadStore(
             .maxOrNull()
     }
 
+    /** fb-4440a18c: the page stopped showing this conversation; nothing it queued may be marked now. */
+    private fun hideVisibleRead() {
+        visibleReadShown = false
+        val hadDeferred = deferredReadJob?.isActive == true
+        deferredReadJob?.cancel()
+        deferredReadJob = null
+        val dropped = pendingReadMarker
+        pendingReadMarker = null
+        if (hadDeferred || dropped != null) {
+            diagnosticsLogger?.invoke(
+                "thread_read_skip channelId=${dropped?.channelId.orEmpty()} reason=not_shown " +
+                    "deferred=$hadDeferred pending=${dropped?.latestMessageId.orEmpty()}"
+            )
+        }
+    }
+
     private suspend fun markVisibleRead(visibleTailIndex: Int? = null) {
+        if (!visibleReadShown) {
+            diagnosticsLogger?.invoke("thread_read_skip reason=not_shown")
+            return
+        }
         val authorityState = _state.value
         if (
             authorityState.accessResolution != ThreadAccessResolution.Resolved ||
@@ -11159,7 +11199,9 @@ internal class SharedThreadStore(
 
         var nextMarker: ThreadVisibleReadMarker? = marker
         while (nextMarker != null) {
-            if (!authorityStillCurrent()) {
+            // A follow-up queued while the previous read was in flight goes out only if the page still
+            // shows the conversation (fb-4440a18c: it was sent after the person had left).
+            if (!authorityStillCurrent() || !visibleReadShown) {
                 pendingReadMarker = null
                 return
             }

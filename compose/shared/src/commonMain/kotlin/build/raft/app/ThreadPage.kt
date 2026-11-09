@@ -10443,7 +10443,14 @@ private fun SharedThreadRouteContentContent(
             )
         ) {
             threadViewModel.dispatch(SharedThreadIntent.MarkVisibleRead(visibleReadTailIndex))
+        } else if (!active || !threadHostForeground || !hostInUse) {
+            // fb-4440a18c: left, covered by another page, or in the background. The store's
+            // deferred / queued reads for this page must not go out now.
+            threadViewModel.dispatch(SharedThreadIntent.VisibleReadHidden)
         }
+    }
+    DisposableEffect(threadViewModel) {
+        onDispose { threadViewModel.dispatch(SharedThreadIntent.VisibleReadHidden) }
     }
     fun sendPendingLocalMessage(
         localMessageId: String,
