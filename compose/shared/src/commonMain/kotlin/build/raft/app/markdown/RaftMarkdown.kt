@@ -3625,10 +3625,11 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
     }
 
 // Reference styling mirrors raft-ui (message-reference.recipe.ts, lib/inline-chip.ts):
-// - a #channel / DM ref is a solid `attention-soft` chip, a thread ref an `info-soft` one:
-//   0.875em semibold ink, 6px at each end, `rounded-sticker`, no underline;
-// - the reader's own @mention and a message ref (`#channel msg=id`) are the yellow sticker
-//   (MessageReferenceText variant="primary") with a 1.5px `sticker-ink` inset ring in the same box;
+// - a #channel / DM ref is a solid `attention-soft` chip, a thread ref and a message ref
+//   (`#channel msg=id`) an `info-soft` one: 0.875em semibold ink, 6px at each end,
+//   `rounded-sticker`, no underline;
+// - the reader's own @mention is the yellow sticker (MessageReferenceText variant="primary") with
+//   a 1.5px `sticker-ink` inset ring in the same box; yellow means only "@you";
 // - anyone else's @mention is bold ink at the sentence's size, underlined only while pressed.
 // The chip box is a RaftInlineBoxStyle annotation; the 0.875em size is a span inside it
 // ([raftMarkdownRichTextTagFontSizeStyle]) so the box painter measures the chip's own text.
@@ -3694,6 +3695,8 @@ private fun raftRichTextChromeKind(
     when {
         active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
             RaftRichTextChromeKind.Thread
+        // A pending message ref keeps its cyan chip (yellow is only "@you").
+        active && kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         active -> RaftRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> RaftRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> RaftRichTextChromeKind.OrdinaryMention

@@ -169,11 +169,12 @@ object RaftRichTextChromeStyleTokens {
             id = "active"
         )
 
-    // A message ref (`#channel msg=id`) is MessageReferenceText variant="primary" on the web too
-    // (MessageItem), the same sticker.
+    // A message ref (`#channel msg=id`, `dm:@peer msg=id`) is cyan like a thread ref (web #13664,
+    // raft-design #1083): yellow is reserved for the reader's own mention.
     val Message =
-        stickerChip(
-            id = "message"
+        referenceChip(
+            id = "message",
+            chipFill = RaftRichTextColorToken.InfoSoft
         )
 
     private fun referenceChip(
@@ -499,6 +500,8 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
     when {
         active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
             RaftRichTextChromeKind.Thread
+        // A pending message ref keeps its cyan chip (yellow is only "@you").
+        active && kind == ThreadMarkdownTagKind.Message -> RaftRichTextChromeKind.Message
         active -> RaftRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> RaftRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> RaftRichTextChromeKind.OrdinaryMention

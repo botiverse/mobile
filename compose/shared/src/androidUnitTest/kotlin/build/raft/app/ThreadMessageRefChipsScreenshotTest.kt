@@ -22,7 +22,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * artin: the app does not render the web's message-reference chip. All four forms in a message,
- * light and dark, as the web's yellow sticker with the literal target: `#triage msg=…`,
+ * light and dark, as the cyan reference chip (like a thread ref) with the literal target: `#triage msg=…`,
  * `#triage:short msg=…`, `dm:@Lagoon msg=…`, `dm:@Lagoon:short msg=…`. `#nope msg=…` names a channel
  * the reader does not have and stays plain text, `` `#triage msg=…` `` is code, and with an invalid
  * id only `#triage` is a chip. Plain `#triage` and `#triage:short` chips sit next to them.
