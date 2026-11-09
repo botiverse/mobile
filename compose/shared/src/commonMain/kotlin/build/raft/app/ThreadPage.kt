@@ -12694,7 +12694,9 @@ private fun SharedThreadRouteContentContent(
                 ThreadInPlaceTextSelectionHost(
                     enabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable(),
                     // Web: copying a selection shows nothing (artin 2026-11-02).
-                    copyText = { text -> bridge.copyToPasteboard(text) }
+                    copyText = { text -> bridge.copyToPasteboard(text) },
+                    // artin dm:#99: a finger long press on the body opens only the Compact menu.
+                    fingerPressOpensMessageMenu = newMessageMenuEnabled,
                 )
             }
         // read_receipts_v0: other participants' read positions for this page's scope (null = no hydrate).
@@ -30056,9 +30058,11 @@ private fun ThreadMessageCardContent(
                                 onShowActions(anchor)
                             },
                             onInputReady = onLongPressInputReady,
+                            // Mouse, trackpad and stylus presses on the body select text in place; a
+                            // finger's is the row's (the Compact menu) when the toggle is on.
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
-                                    { offset -> selection.bodyContainsRowOffset(offset) }
+                                    { offset -> selection.ownsRowPressAt(offset) }
                                 },
                             onPointerDown =
                                 inPlaceSelection?.let { selection ->
