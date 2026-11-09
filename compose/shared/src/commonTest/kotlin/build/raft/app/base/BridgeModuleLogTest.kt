@@ -19,8 +19,10 @@ class BridgeModuleLogTest {
     private val captured = mutableListOf<Triple<String, String, String>>()
 
     private fun installCapture() {
+        // Only the bridge's own lines: the volume policy may emit its own per-minute summary
+        // lines (another tag) through the same sink when a window closes mid-test on a slow runner.
         installRaftPlatformLogSink { level, tag, message ->
-            captured += Triple(level, tag, message)
+            if (tag == BridgeModule.BRIDGE_LOG_TAG) captured += Triple(level, tag, message)
         }
     }
 
