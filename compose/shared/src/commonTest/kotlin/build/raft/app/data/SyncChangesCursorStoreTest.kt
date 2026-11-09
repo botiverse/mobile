@@ -45,6 +45,36 @@ class SyncChangesCursorStoreTest {
     }
 
     @Test
+    fun `failures are counted per cursor survive a new store and reset on write`() {
+        val store = RaftSyncCursorStore(preferences)
+        store.write(syncTestScope, "c1.1.1")
+        assertEquals(1, store.recordFailure(syncTestScope, "c1.1.1"))
+
+        val reopened = RaftSyncCursorStore(preferences)
+        assertEquals(1, reopened.failures(syncTestScope))
+        assertEquals(2, reopened.recordFailure(syncTestScope, "c1.1.1"))
+        // A cursor that is no longer the stored one counts as a first failure and changes nothing.
+        assertEquals(1, reopened.recordFailure(syncTestScope, "c1.0.0"))
+        assertEquals(2, reopened.failures(syncTestScope))
+
+        reopened.write(syncTestScope, "c1.1.1")
+        assertEquals(0, reopened.failures(syncTestScope))
+        reopened.recordFailure(syncTestScope, "c1.1.1")
+        reopened.write(syncTestScope, "c1.2.1")
+        assertEquals(0, reopened.failures(syncTestScope))
+        assertEquals(0, reopened.failures(syncTestScope.copy(serverId = "server-2")))
+    }
+
+    @Test
+    fun `a document written before the failure count reads as no failures`() {
+        preferences.values[SYNC_CHANGES_CURSOR_STORAGE_KEY] =
+            """{"version":1,"entries":[{"environmentId":"https://api.example.test","accountId":"user-1","serverId":"server-1","cursor":"c1.1.1"}]}"""
+        val store = RaftSyncCursorStore(preferences)
+        assertEquals("c1.1.1", store.read(syncTestScope))
+        assertEquals(0, store.failures(syncTestScope))
+    }
+
+    @Test
     fun `scope needs every part and normalizes the environment`() {
         assertEquals(syncTestScope, RaftSyncScope.of(" https://api.example.test/ ", "user-1", " server-1"))
         assertNull(RaftSyncScope.of("https://api.example.test", " ", "server-1"))
