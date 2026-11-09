@@ -8763,6 +8763,9 @@ private fun SharedThreadRouteContentContent(
     // `feedback:submit` cards open the Feedback WebView only where Settings > Feedback is the web page
     // (Compose desktop; settingsFeedbackUsesWebPage) and the viewing server is known. No server flag.
     val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
+    // A done feedback card's "View in Settings" opens its ticket: the native ticket page on Android /
+    // iOS (1.23), the web page where cards open it (Compose desktop).
+    val feedbackTicketPageAvailable = raftFeedbackTicketPageAvailable(currentServerId)
     // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
     // source message and the composer drops "As Task".
     // The session is captured a few frames after the page composes; until then the shell's server
@@ -9468,7 +9471,7 @@ private fun SharedThreadRouteContentContent(
     val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
     // Keyed on flags only: each card selects its own slice of the store's state.
     val actionCardSpecHost =
-        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id) {
+        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, feedbackTicketPageAvailable, actionCardSpecStore, currentSession?.user?.id) {
             ThreadActionCardSpecHost(
                 specEnabled = { serverId ->
                     serverId != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY)
@@ -9493,10 +9496,10 @@ private fun SharedThreadRouteContentContent(
                 isDirectMessageChannel = { channelId -> channelId in latestActionCardDirectMessageIds },
                 viewerUserId = currentSession?.user?.id,
                 clientOs = featureFlagClientOs(),
-                feedbackPageAvailable = feedbackCardEntryEnabled,
+                feedbackPageAvailable = feedbackTicketPageAvailable,
                 openFeedbackTicket = { ticketId ->
                     bridge.log("thread_feedback_ticket_open hasTicket=${ticketId != null}")
-                    pager.openSettingsFeedbackWebViewPage(storeScope, ticketId = ticketId)
+                    pager.openSettingsFeedbackPage(storeScope, ticketId = ticketId)
                 },
                 openPlan = {
                     bridge.log("thread_view_plan_open")

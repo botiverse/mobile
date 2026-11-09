@@ -7260,14 +7260,9 @@ private fun RaftAppShellReadyContent(
             SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope, anchor)
             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
-            // The native submit form on Android / iOS; the ticket web page only where the App cannot
-            // submit natively (Compose desktop), see settingsFeedbackUsesWebPage.
-            SettingsDestinationHandsFeedback ->
-                if (settingsFeedbackUsesWebPage()) {
-                    pager.openSettingsFeedbackWebViewPage(storeScope)
-                } else {
-                    pager.openSettingsHandsFeedbackPage(storeScope)
-                }
+            // The native ticket list on Android / iOS (1.23); the ticket web page only where the App
+            // cannot submit natively (Compose desktop), see settingsFeedbackUsesWebPage.
+            SettingsDestinationHandsFeedback -> pager.openSettingsFeedbackPage(storeScope)
             else -> {
                 val page = SettingsNativeDetailPage.fromKey(key)
                 if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope, anchor = anchor)) {
@@ -7838,10 +7833,8 @@ private fun RaftAppShellReadyContent(
                                     railInlineSecondaryDestination = null
                                     settingsWidePicked = SettingsDestinationHandsFeedback
                                     onAppShellTabSelected("settings")
-                                } else if (feedbackWeb) {
-                                    pager.openSettingsFeedbackWebViewPage(storeScope)
                                 } else {
-                                    pager.openSettingsHandsFeedbackPage(storeScope)
+                                    pager.openSettingsFeedbackPage(storeScope, feedbackWeb = feedbackWeb)
                                 }
                             },
                         )

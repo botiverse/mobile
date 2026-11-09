@@ -91,6 +91,7 @@ class RaftStackPageAllowlistTest {
         listOf(
             SETTINGS_ACCOUNT_PAGE, // avatar picker; sign-out replaces the window
             SETTINGS_HANDS_FEEDBACK_PAGE, // attachment picker, camera
+            build.raft.app.SETTINGS_FEEDBACK_TICKETS_PAGE, // the ticket list; opens the form over itself
             SETTINGS_STORAGE_PAGE,
             RELEASE_NOTES_PAGE,
             SETTINGS_COMPUTERS_PAGE,

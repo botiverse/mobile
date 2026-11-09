@@ -199,4 +199,24 @@ class RaftFeedbackCardEntryTest {
             settingsFeedbackCardEntryFromPageData(JSONObject().put(SETTINGS_FEEDBACK_ACTION_CARD_SERVER_ID, viewingServerId))
         )
     }
+
+    @Test
+    fun aDoneCardsTicketOpensTheNativeTicketPageWhereFeedbackIsNative() {
+        // Android / iOS (1.23): the native ticket page needs no viewing server.
+        assertTrue(raftFeedbackTicketPageAvailable(null, feedbackWeb = false))
+        assertTrue(raftFeedbackTicketPageAvailable(viewingServerId, feedbackWeb = false))
+        // Compose desktop: the web page, once the viewing server is known.
+        assertTrue(raftFeedbackTicketPageAvailable(viewingServerId, feedbackWeb = true))
+        assertFalse(raftFeedbackTicketPageAvailable(null, feedbackWeb = true))
+    }
+
+    @Test
+    fun theNativeTicketPageCarriesOnlyAUuidTicket() {
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-feedback", initialServerId = viewingServerId)
+        val onTicket = settingsFeedbackTicketsPageData(scope, ticketId = " $cardMessageId ")
+        assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, onTicket.optString("pageName"))
+        assertEquals(cardMessageId, onTicket.optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
+        assertEquals("", settingsFeedbackTicketsPageData(scope, ticketId = "not-a-ticket").optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
+        assertEquals("", settingsFeedbackTicketsPageData(scope).optString(SETTINGS_FEEDBACK_TICKETS_TICKET_ID))
+    }
 }

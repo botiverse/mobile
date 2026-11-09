@@ -365,6 +365,22 @@ internal class SharedRaftNetworkClient(
         path: String,
         serverIdOverride: ServerId?,
         maxBytes: Int,
+    ): HomeNetworkBytesResponse = requestBytesInternal(priority, path, serverIdOverride, maxBytes, extraHeaders = emptyMap())
+
+    override suspend fun requestBytesWithHeaders(
+        priority: DataRequestPriority,
+        path: String,
+        headers: Map<String, String>,
+        serverIdOverride: ServerId?,
+        maxBytes: Int,
+    ): HomeNetworkBytesResponse = requestBytesInternal(priority, path, serverIdOverride, maxBytes, extraHeaders = headers)
+
+    private suspend fun requestBytesInternal(
+        priority: DataRequestPriority,
+        path: String,
+        serverIdOverride: ServerId?,
+        maxBytes: Int,
+        extraHeaders: Map<String, String>,
     ): HomeNetworkBytesResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedPath = path.networkDiagnosticsPath()
@@ -391,12 +407,18 @@ internal class SharedRaftNetworkClient(
                         val answer =
                             raftStreamingGet(
                                 url = absoluteUrl(requestBaseUrl, path),
+                                // Auth and server binding win over a same-named extra header.
                                 requestHeaders =
-                                    mapOf(
-                                        "Accept" to "*/*",
-                                        HEADER_AUTHORIZATION to auth.authorization,
-                                        HEADER_SERVER_ID to auth.serverId,
-                                    ),
+                                    extraHeaders.filterKeys { name ->
+                                        !name.equals(HEADER_AUTHORIZATION, ignoreCase = true) &&
+                                            !name.equals(HEADER_SERVER_ID, ignoreCase = true) &&
+                                            !name.equals("Accept", ignoreCase = true)
+                                    } +
+                                        mapOf(
+                                            "Accept" to "*/*",
+                                            HEADER_AUTHORIZATION to auth.authorization,
+                                            HEADER_SERVER_ID to auth.serverId,
+                                        ),
                                 priority = priority.toNetworkPriority(),
                                 connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
                                 socketTimeoutMillis = null,
