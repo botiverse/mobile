@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
 import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
 import androidx.compose.runtime.Composable
@@ -79,6 +80,8 @@ internal fun SettingsAppShellHomeContent(
     onBack: (() -> Unit)? = null,
     /** The server's `slack_bridge_v0` flag: the IM Bridges row. */
     imBridgesEnabled: Boolean = false,
+    /** Search settings on top of the list; null: no field. */
+    search: SettingsSearchHost? = null,
 ) {
     // The phone's Settings: Computers and Apps are on the server panel that opened it.
     val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled, serverPanelPages = true)
@@ -93,6 +96,7 @@ internal fun SettingsAppShellHomeContent(
         onBack = onBack,
         onSelect = onSelect,
         scrollToTopRequest = scrollToTopRequest,
+        search = search,
     )
 }
 
@@ -343,9 +347,13 @@ internal fun SettingsHomeContent(
     onHeaderClick: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     scrollToTopRequest: Int = 0,
+    /** Search settings above the groups (raft-design settings.md#searching-settings); null: none. */
+    search: SettingsSearchHost? = null,
     onSelect: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
+    val searchResults = search?.let { rememberSettingsSearchResults(it, payload) }
+    val searching = search?.state?.searching == true
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequestFence.consume(scrollToTopRequest)) listState.animateScrollToTopExpressive()
@@ -384,16 +392,30 @@ internal fun SettingsHomeContent(
                 nativeOnTitleClick = onHeaderClick,
             )
         }
+        if (search != null) {
+            // Pinned above the list as it scrolls (web `sticky top-0 px-2 pt-2 pb-1`), 8dp from the
+            // screen edges like the rows.
+            SettingsSearchField(
+                host = search,
+                results = searchResults.orEmpty(),
+                modifier = Modifier.raftSafeAreaHorizontalPadding().padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 4.dp),
+            )
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            item {
-                SettingsHubSidebarList(
-                    items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
-                    onSelect = onSelect,
-                )
+            if (search != null && searching) {
+                // The results take the groups' place while there is text.
+                settingsSearchResultItems(search, searchResults.orEmpty(), Modifier.padding(horizontal = 8.dp))
+            } else {
+                item {
+                    SettingsHubSidebarList(
+                        items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
+                        onSelect = onSelect,
+                    )
+                }
             }
             item {
                 Spacer(Modifier.height(bottomContentPadding))

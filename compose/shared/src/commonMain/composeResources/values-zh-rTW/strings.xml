@@ -4018,4 +4018,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d / 共 %2$d 個 Artifact</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d 則新留言</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d 則新留言</string>
+    <string name="settings_search_placeholder">搜尋設定</string>
+    <string name="settings_search_clear">清除搜尋</string>
+    <string name="settings_search_no_match">沒有和「%1$s」相關的設定</string>
+    <string name="settings_search_no_match_description">換個詞試試，或在全部內容中搜尋訊息和人。</string>
+    <string name="settings_search_everywhere">搜尋全部</string>
+    <string name="settings_search_plan">管理方案</string>
+    <string name="settings_search_invite_links">邀請連結</string>
+    <string name="settings_search_single_sign_on">單一登入（SSO）</string>
+    <string name="settings_search_single_sign_on_description">讓公司電子郵件網域下的成員使用你們的身分識別提供者登入 Raft，也可以要求他們必須這樣登入。</string>
 </resources>

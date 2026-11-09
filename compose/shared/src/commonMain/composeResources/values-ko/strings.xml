@@ -4018,4 +4018,13 @@
     <string name="artifacts_dashboard_count_filtered_many">Artifact %2$d개 중 %1$d개</string>
     <string name="artifacts_dashboard_new_comments_one">새 댓글 %1$d개</string>
     <string name="artifacts_dashboard_new_comments_many">새 댓글 %1$d개</string>
+    <string name="settings_search_placeholder">설정 검색</string>
+    <string name="settings_search_clear">검색어 지우기</string>
+    <string name="settings_search_no_match">‘%1$s’에 해당하는 설정이 없어요</string>
+    <string name="settings_search_no_match_description">다른 단어로 검색하거나, 전체 검색에서 메시지와 사람을 찾아보세요.</string>
+    <string name="settings_search_everywhere">전체 검색</string>
+    <string name="settings_search_plan">요금제 관리</string>
+    <string name="settings_search_invite_links">초대 링크</string>
+    <string name="settings_search_single_sign_on">싱글 사인온(SSO)</string>
+    <string name="settings_search_single_sign_on_description">회사 이메일 도메인의 사용자가 회사 ID 공급자로 Raft에 로그인하도록 하고, 필요하면 이를 필수로 지정합니다.</string>
 </resources>

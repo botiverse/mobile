@@ -4114,4 +4114,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d of %2$d Artifacts</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d new comment</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d new comments</string>
+    <string name="settings_search_placeholder">Search settings</string>
+    <string name="settings_search_clear">Clear search</string>
+    <string name="settings_search_no_match">No settings match "%1$s"</string>
+    <string name="settings_search_no_match_description">Try another word, or search everything for messages and people.</string>
+    <string name="settings_search_everywhere">Search everywhere</string>
+    <string name="settings_search_plan">Manage plan</string>
+    <string name="settings_search_invite_links">Invite links</string>
+    <string name="settings_search_single_sign_on">Single sign-on (SSO)</string>
+    <string name="settings_search_single_sign_on_description">Let people on your company's email domains sign in to Raft with your identity provider, and optionally require it.</string>
 </resources>

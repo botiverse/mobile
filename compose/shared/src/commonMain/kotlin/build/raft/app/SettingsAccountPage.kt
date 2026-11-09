@@ -301,6 +301,8 @@ private fun SettingsAccountScreen() {
                 ticketSupported = raftPlatformSupportsHandsFeedbackSubmit(),
             )
         }
+    // A Settings search result opened this page at a setting: its row is brought into view and located.
+    ProvideSettingsSearchLocator(pager.pageData.params) {
     SettingsDetailShell(
         title = stringResource(Res.string.settings_account_title),
         subtitle = "",
@@ -371,6 +373,7 @@ private fun SettingsAccountScreen() {
                 )
             }
         )
+    }
     }
 }
 
@@ -495,6 +498,7 @@ internal fun SettingsAccountContent(
     val disconnectSubmitted = remember { mutableStateOf(false) }
     RaftDesignSystemTheme {
         LazyColumn(
+            state = rememberSettingsSearchListState(),
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -522,7 +526,11 @@ internal fun SettingsAccountContent(
                 }
             }
             // Web order: the Account card, Session (Sign out), then Share usage data.
-            item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
+            item {
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("sign-out", SettingsSearchCardShape)) {
+                    SettingsLogoutAction(localizedPayload) { onEvent("logout", null) }
+                }
+            }
             if (localizedPayload.usageDataVisible) {
                 item {
                     SettingsAccountUsageDataRow(
@@ -595,7 +603,7 @@ internal class SettingsAccountDeletionUi(
 @Composable
 private fun SettingsDeleteAccountRow(onClick: () -> Unit) {
     val title = stringResource(Res.string.settings_account_delete)
-    RaftListRowGroup(Modifier.fillMaxWidth()) {
+    RaftListRowGroup(Modifier.fillMaxWidth().settingsSearchAnchor("delete-account", SettingsSearchCardShape)) {
         RaftListRow(
             title = title,
             variant = RaftListRowVariant.Plain,
@@ -741,7 +749,7 @@ private fun SettingsAccountProfileCard(
     ) {
         RaftField(
             label = payload.displayNameLabel,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().settingsSearchAnchor("display-name"),
             enabled = payload.canEditProfile && !payload.saveInProgress,
             labelSize = RaftFieldLabelSize.Sm
         ) {
@@ -765,7 +773,7 @@ private fun SettingsAccountProfileCard(
         }
         RaftField(
             label = payload.handleLabel.takeIf { it.isNotBlank() },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().settingsSearchAnchor("username"),
             labelSize = RaftFieldLabelSize.Sm
         ) {
             SettingsReadOnlyPrefixedField(
@@ -775,7 +783,9 @@ private fun SettingsAccountProfileCard(
                 copyText = profile.handle.removePrefix("@").ifBlank { null }
             )
         }
-        SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
+        Box(Modifier.fillMaxWidth().settingsSearchAnchor("email")) {
+            SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
+        }
         // Web: the form's one error banner, between Email and Save Profile.
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
             SettingsAccountWarning(stringResource(Res.string.settings_account_avatar_upload_failed, code))
@@ -794,13 +804,15 @@ private fun SettingsAccountProfileCard(
             SettingsConnectedAccounts(payload, connectedAccounts, onEvent, onRequestDisconnect)
             RaftSeparator()
         }
-        SettingsPasswordDisclosure(
-            title = payload.changePasswordTitle,
-            expanded = passwordExpandedState.value,
-            enabled = payload.canChangePassword && !payload.passwordInProgress
-        ) {
-            passwordExpandedState.value = !passwordExpandedState.value
-            passwordDraftError.value = null
+        Box(Modifier.fillMaxWidth().settingsSearchAnchor("password")) {
+            SettingsPasswordDisclosure(
+                title = payload.changePasswordTitle,
+                expanded = passwordExpandedState.value,
+                enabled = payload.canChangePassword && !payload.passwordInProgress
+            ) {
+                passwordExpandedState.value = !passwordExpandedState.value
+                passwordDraftError.value = null
+            }
         }
         if (passwordExpandedState.value) {
             SettingsPasswordForm(

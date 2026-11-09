@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -249,6 +250,41 @@ fun RaftSidebarItem(
     )
 }
 
+/**
+ * raft-ui SidebarItem `wrap` with `SidebarItemContent stacked` (a Settings search result): the
+ * name over a second line, both drawn by the caller in the given style and ink ([title] in body
+ * semibold, [subtitle] in footnote `foreground-muted`; `sticker-ink` on the selected sticker), so
+ * a result can mark the words it matched. Otherwise [RaftSidebarItem]: the same shape, states,
+ * padding and minimum height; the second line makes it about 56dp with a finger.
+ */
+@Composable
+fun RaftSidebarItemStacked(
+    title: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    subtitle: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    interactionSource: MutableInteractionSource? = null,
+) {
+    RaftSidebarItemLayout(
+        titleText = title,
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = RaftRowTone.Default,
+        subtitle = null,
+        leading = null,
+        trailing = null,
+        interactionSource = interactionSource,
+        onLongClick = null,
+        onLongClickLabel = null,
+        menuOpen = false,
+        titleTrailing = null,
+        variant = RaftSidebarItemVariant.Default,
+        stackedSubtitle = subtitle,
+    )
+}
+
 /** [RaftSidebarItem]'s layout; [titleText] draws the one-line name in the given style and ink. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -267,6 +303,7 @@ private fun RaftSidebarItemLayout(
     menuOpen: Boolean,
     titleTrailing: (@Composable () -> Unit)?,
     variant: RaftSidebarItemVariant,
+    stackedSubtitle: (@Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -357,7 +394,13 @@ private fun RaftSidebarItemLayout(
                     contentAlignment = Alignment.Center,
                 ) { leading() }
             }
-            Row(
+            if (stackedSubtitle != null) {
+                // SidebarItemContent `stacked`: the name over its second line.
+                Column(Modifier.weight(1f)) {
+                    titleText(Modifier, typography.body.copy(fontWeight = titleWeight), look.ink)
+                    stackedSubtitle(Modifier, typography.footnote, subtitleInk)
+                }
+            } else Row(
                 Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
