@@ -2424,8 +2424,8 @@
     <string name="settings_mobile_new_message_menu">Novo menu de mensagens</string>
     <string name="settings_mobile_new_message_menu_detail">Toque e segure uma mensagem para ver reações rápidas e ações comuns em um menu compacto de duas linhas. Desative para usar o menu de mensagens clássico.</string>
     <string name="settings_mobile_conversation_forward_gesture">Gesto de avançar na conversa</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">Depois de voltar, deslize para a esquerda a partir da borda direita do Início para reabrir o canal ou a mensagem direta mais recente.</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controla o gesto de avançar na conversa. Depois de voltar ao Início, deslize para a esquerda a partir da borda direita para reabrir o canal ou a mensagem direta mais recente.</string>
+    <string name="settings_mobile_conversation_forward_gesture_detail">Depois de voltar de uma conversa para o Início, deslize para a esquerda a partir da borda direita para reabri-la.</string>
+    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controla o gesto de avançar na conversa. Depois de voltar de uma conversa para o Início, deslize para a esquerda a partir da borda direita da tela para reabri-la.</string>
     <string name="settings_mobile_home_server_avatar">Avatar do espaço de trabalho no cabeçalho do Início</string>
     <string name="settings_mobile_home_server_avatar_detail">Mostra o avatar do espaço de trabalho atual ao lado do nome no cabeçalho do Início. Desative para manter o selo de título compacto atual.</string>
     <string name="settings_mobile_thread_reverse_layout">Abrir conversas na mensagem mais recente</string>
