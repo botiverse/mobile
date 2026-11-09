@@ -26,9 +26,13 @@ If access is denied, ask for the app role; do not borrow another identity.
 Android (one `raft-feedback-*.zip`):
 ```
 raft-diagnostics-summary.txt
-app_logs/raft-diagnostics.jsonl (+ .1 .. .N rotations), recent-memory.jsonl
+app_logs/launch-<id>/raft-diagnostics.jsonl[.N], recent-memory.jsonl
+app_logs/feedback-selection.txt      (1.23+: which shards were attached / omitted)
 auth_logs/raft-auth-critical.jsonl   (when present)
 ```
+From 1.23 a report attaches at most 1 MiB of app logs, newest launch first (a
+shard may be a tail that starts at a full line); older shards stay on the
+device. iOS applies the same 1 MiB budget to its attachments.
 iOS (separate attachments, not one zip): summary, then
 `launch-<session>/launch-<UTC yyyyMMddTHHmmssZ>-raft-diagnostics.jsonl[.N]` and
 `flat/raft-diagnostics.jsonl`. The leaf name carries the launch time, so names
@@ -64,6 +68,18 @@ grep -rhE '"ts":"2026-10-20T14:(19|20|21):' app_logs/*.jsonl* \
 | Realtime | `SlockRealtimeDomain` `realtime_domain_accept*` |
 
 Check `dropped` / `truncated` before concluding an event never happened.
+
+From 1.23 routine high-frequency events are summarized
+(`RaftDiagnosticsVolumePolicy`, shared): `RaftDiagnostics diagnostics_summary
+key=<tag>:<event>[:<sub>] count= kept= suppressed= windowMs= sampleIds= distinctIds=`
+replaces the lines past the first one(s) per key and minute. Duplicate realtime
+skips, avatar, markdown preparse/recompose, viewport intents and per-request
+network successes are not written at all unless Settings > Developer > Verbose
+diagnostics was on; `diagnostics_verbose_off` carries their counts per minute.
+Warnings, errors, failures, auth, sends, navigation, artifact viewer/WebView,
+thread reads, activity, tasks and lifecycle lines are never summarized. An
+absent routine line is therefore not proof it never happened: check the
+summaries. Builds up to 1.22 wrote `diagnostics_coalesced` counts instead.
 
 ## 5. Close the loop
 

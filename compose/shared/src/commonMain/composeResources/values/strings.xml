@@ -2983,6 +2983,8 @@
     <string name="settings_developer_route_launcher_detail">Open Kuikly route launcher and icon compare.</string>
     <string name="settings_developer_text_input_trace">Text input trace</string>
     <string name="settings_developer_text_input_trace_detail">Log every keyboard edit and text sync in text fields to the app logs (lengths only, never the text), for IME bug reports.</string>
+    <string name="settings_developer_verbose_diagnostics">Verbose diagnostics</string>
+    <string name="settings_developer_verbose_diagnostics_detail">Also write duplicate realtime events, avatar, markdown and scroll details, and every successful request to the app logs. Feedback reports get larger. Turns off when the app restarts.</string>
     <string name="settings_developer_nav3_stack">Navigation 3 page stack</string>
     <string name="settings_developer_nav3_stack_detail">Open the pages moved so far inside the app window (Android). Takes effect on the next app start.</string>
     <string name="settings_developer_ios_native_nav">iOS native navigation</string>

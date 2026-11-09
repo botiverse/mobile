@@ -237,13 +237,18 @@ internal fun ActionCardQuestionInlineForm(
     val latestValues by rememberUpdatedState(values)
     val waiting = undoable.waiting
     val busy = submitting || waiting
-    val pending = actionCardFormHasPendingChoice(inline.fields, values)
+    // The submit tried with a required question unanswered: only then does each say what it lacks.
+    var pendingShown by remember(inline.formId) { mutableStateOf(false) }
     val tapSubmits = actionCardTapSubmitsForm(inline.fields, values)
     val fieldNames = inline.fields.map { it.name }
 
     val submit = submit@{
         val now = latestValues
-        if (submitting || undoable.waiting || !canSubmit || actionCardFormHasPendingChoice(inline.fields, now)) return@submit
+        if (submitting || undoable.waiting || !canSubmit) return@submit
+        if (actionCardFormHasPendingChoice(inline.fields, now)) {
+            pendingShown = true
+            return@submit
+        }
         val issues = checkActionCardFormValues(inline.form, now)
         clientIssues = issues
         if (issues.isEmpty()) undoable.start(now)
@@ -282,6 +287,7 @@ internal fun ActionCardQuestionInlineForm(
                 onEnter = { submit() },
                 number = if (inline.fields.size > 1) index + 1 else null,
                 onPicked = if (canSubmit) ({ picked(field.name) }) else null,
+                showPending = pendingShown,
             )
         }
         when {
@@ -304,7 +310,7 @@ internal fun ActionCardQuestionInlineForm(
                         text = renderActionCardMsgText(inline.buttonLabel, displayLocale),
                         onClick = { submit() },
                         variant = RaftButtonVariant.Default,
-                        enabled = canSubmit && !pending && !busy,
+                        enabled = canSubmit && !busy,
                         loading = submitting,
                     )
                 }

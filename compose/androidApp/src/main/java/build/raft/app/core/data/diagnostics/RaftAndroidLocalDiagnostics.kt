@@ -1,6 +1,11 @@
 package build.raft.app.core.data.diagnostics
 
 import build.raft.app.BuildConfig
+import build.raft.app.RaftDiagnosticsVolumePolicy
+import build.raft.app.RaftFeedbackDiagnosticsBudget
+import build.raft.app.RaftFeedbackLogFile
+import build.raft.app.RaftFeedbackLogPick
+import build.raft.app.RaftVerboseDiagnostics
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -27,11 +32,16 @@ object RaftAndroidLocalDiagnostics {
     private const val FeedbackZipExtension = ".zip"
     private const val FeedbackSnapshotName = "raft-diagnostics-summary.txt"
     private const val RecentDiagnosticsMaxChars = 120_000
+    /** Raw bytes of app logs (in-memory tail + shards) a feedback zip carries. */
+    private const val FeedbackLogBudgetBytes = RaftFeedbackDiagnosticsBudget.DefaultBudgetBytes
+    /** The in-memory tail duplicates the newest shard; it is the fallback when file writes failed. */
+    private const val RecentMemoryMaxChars = 48_000
     private const val MaxValueLength = 512
     private const val MaxQueuedMessageLength = 8_192
     private const val MaxQueuedThreadNameLength = 128
 
-    private val coalescer = RaftDiagnosticsCoalescer()
+    /** Android-native lines (RaftAppLog); shared lines are admitted by the shared queue's own policy. */
+    private val volumePolicy = RaftDiagnosticsVolumePolicy()
     private val inFlightRequests = RaftInFlightRequests()
 
     private val dispatchQueue =
@@ -75,6 +85,19 @@ object RaftAndroidLocalDiagnostics {
         enqueueLog(level, tag, message, includeNonCritical, DiagnosticCriticalHint.None)
     }
 
+    /** A line from the shared log queue; [persist] false keeps it out of the ring (logcat only). */
+    fun recordSharedLog(level: String, tag: String, message: String, persist: Boolean) {
+        enqueueLog(
+            level,
+            tag,
+            message,
+            includeNonCritical = true,
+            criticalHint = DiagnosticCriticalHint.None,
+            persist = persist,
+            volumeAdmitted = true,
+        )
+    }
+
     internal fun recordCriticalLog(
         level: String,
         tag: String,
@@ -99,6 +122,8 @@ object RaftAndroidLocalDiagnostics {
         message: String,
         includeNonCritical: Boolean,
         criticalHint: DiagnosticCriticalHint?,
+        persist: Boolean = true,
+        volumeAdmitted: Boolean = false,
     ) {
         val queuedMessage = message.take(MaxQueuedMessageLength)
         dispatchQueue.enqueue(
@@ -117,6 +142,8 @@ object RaftAndroidLocalDiagnostics {
                         } else {
                             DiagnosticCriticalHint.None
                         },
+                persist = persist,
+                volumeAdmitted = volumeAdmitted,
             )
         )
     }
@@ -140,13 +167,23 @@ object RaftAndroidLocalDiagnostics {
         inFlightRequests.observe(sanitized.message, sanitized.timestampMillis)
         if (authEvent != null) {
             RaftAuthCriticalJournal.record(sanitized, authEvent)
-        } else if (RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
+        } else if (entry.persist && RaftPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
             // Logcat above still gets every line; only the persistent ring is rate limited.
+            if (entry.volumeAdmitted) {
+                RaftGeneralLogRing.record(sanitized)
+                return
+            }
             val admission =
-                coalescer.admit(sanitized.level, sanitized.tag, sanitized.message, sanitized.timestampMillis)
+                volumePolicy.admit(
+                    sanitized.level,
+                    sanitized.tag,
+                    sanitized.message,
+                    sanitized.timestampMillis,
+                    verbose = RaftVerboseDiagnostics.enabled,
+                )
             admission.summaries.forEach { summary ->
                 RaftGeneralLogRing.record(
-                    sanitized.copy(level = "info", tag = RaftDiagnosticsCoalescer.SummaryTag, message = summary)
+                    sanitized.copy(level = "info", tag = RaftDiagnosticsVolumePolicy.SummaryTag, message = summary)
                 )
             }
             if (admission.persist) RaftGeneralLogRing.record(sanitized)
@@ -154,21 +191,21 @@ object RaftAndroidLocalDiagnostics {
     }
 
     /**
-     * Before an export reads the ring: the counts the coalescer is still holding back, and the
+     * Before an export reads the ring: the counts the volume policy is still holding back, and the
      * requests that started and have not finished (their start lines are not persisted).
      */
-    private fun drainCoalescedSummaries() {
+    private fun drainDiagnosticsSummaries() {
         val now = System.currentTimeMillis()
-        coalescer.drain(now).forEach { summary ->
-            recordLog("info", RaftDiagnosticsCoalescer.SummaryTag, summary)
+        volumePolicy.drain(now).forEach { summary ->
+            recordLog("info", RaftDiagnosticsVolumePolicy.SummaryTag, summary)
         }
         inFlightRequests.unfinished(now).forEach { line -> recordLog("warn", InFlightTag, line) }
     }
 
-    /** Persists the coalescer's counts so far (memory-telemetry thread, every 30s in foreground). */
-    internal fun checkpointCoalescedCounts() {
-        coalescer.checkpoint(System.currentTimeMillis()).forEach { summary ->
-            recordLog("info", RaftDiagnosticsCoalescer.SummaryTag, summary)
+    /** Writes the summaries of closed windows (memory-telemetry thread, every 30s in foreground). */
+    internal fun sweepDiagnosticsSummaries() {
+        volumePolicy.sweep(System.currentTimeMillis()).forEach { summary ->
+            recordLog("info", RaftDiagnosticsVolumePolicy.SummaryTag, summary)
         }
     }
 
@@ -185,11 +222,13 @@ object RaftAndroidLocalDiagnostics {
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
         val appContext = context.applicationContext
-        drainCoalescedSummaries()
+        drainDiagnosticsSummaries()
         check(flush()) { "diagnostics_flush_timeout operation=prepare_archive" }
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
         pruneFeedbackArchives(feedbackDir)
         val archive = File(feedbackDir, "$FeedbackFilePrefix${System.currentTimeMillis()}$FeedbackZipExtension")
+        var selectedFiles = 0
+        var selectedBytes = 0L
         ZipOutputStream(archive.outputStream().buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(FeedbackSnapshotName))
             zip.write(summaryText.toByteArray(StandardCharsets.UTF_8))
@@ -202,21 +241,30 @@ object RaftAndroidLocalDiagnostics {
                 zip.write(performanceTraceJsonl.toByteArray(StandardCharsets.UTF_8))
                 zip.closeEntry()
             }
-            val recentJsonl = RaftGeneralLogRing.exportRecentJsonl()
-            if (recentJsonl.isNotBlank()) {
+            val recentBytes =
+                RaftGeneralLogRing.exportRecentJsonl(RecentMemoryMaxChars).toByteArray(StandardCharsets.UTF_8)
+            if (recentBytes.isNotEmpty()) {
                 zip.putNextEntry(ZipEntry(uniqueDiagnosticsZipEntryName("app_logs/recent-memory.jsonl", seenNames)))
-                zip.write(recentJsonl.toByteArray(StandardCharsets.UTF_8))
+                zip.write(recentBytes)
                 zip.closeEntry()
             }
-            RaftGeneralLogRing.logFiles(appContext).forEach { file ->
-                if (file.isFile && file.length() > 0L) {
-                    val relativePath = RaftGeneralLogRing.archiveRelativeLogPath(appContext, file)
-                    val entryName = uniqueDiagnosticsZipEntryName("app_logs/$relativePath", seenNames)
-                    zip.putNextEntry(ZipEntry(entryName))
-                    file.inputStream().buffered().use { input -> input.copyTo(zip) }
-                    zip.closeEntry()
+            // Only the newest launch(es) within the budget, not every rotated shard.
+            val selection = selectFeedbackLogFiles(appContext, budgetBytes = FeedbackLogBudgetBytes - recentBytes.size)
+            selection.picks.forEach { pick ->
+                val file = File(pick.file.path)
+                val entryName = uniqueDiagnosticsZipEntryName("app_logs/${selection.entryNames.getValue(pick.file.path)}", seenNames)
+                zip.putNextEntry(ZipEntry(entryName))
+                file.inputStream().buffered().use { input ->
+                    if (pick.truncated) copyTailFromLineStart(input, file.length(), pick.includedBytes, zip)
+                    else input.copyTo(zip)
                 }
+                zip.closeEntry()
             }
+            zip.putNextEntry(ZipEntry(uniqueDiagnosticsZipEntryName("app_logs/feedback-selection.txt", seenNames)))
+            zip.write(selection.description.toByteArray(StandardCharsets.UTF_8))
+            zip.closeEntry()
+            selectedFiles = selection.picks.size
+            selectedBytes = selection.picks.sumOf { it.includedBytes }
             RaftAuthCriticalJournal.logFiles(appContext).forEach { file ->
                 val relativePath = RaftAuthCriticalJournal.relativeLogPath(appContext, file)
                 val entryName = uniqueDiagnosticsZipEntryName("auth_logs/$relativePath", seenNames)
@@ -235,14 +283,15 @@ object RaftAndroidLocalDiagnostics {
         recordLog(
             "info",
             Tag,
-            "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} app_log_files=${RaftGeneralLogRing.logFiles(appContext).size}"
+            "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} " +
+                "app_log_files=$selectedFiles/${RaftGeneralLogRing.logFiles(appContext).size} app_log_bytes=$selectedBytes"
         )
         return archive
     }
 
     fun exportRecentDiagnosticsText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
         val appContext = context.applicationContext
-        drainCoalescedSummaries()
+        drainDiagnosticsSummaries()
         if (!flush()) {
             return "Diagnostics snapshot unavailable because pending logs did not flush."
         }
@@ -348,6 +397,53 @@ object RaftAndroidLocalDiagnostics {
 
     internal fun feedbackDir(context: Context): File = File(context.cacheDir, FeedbackDirName)
 
+    internal class FeedbackLogSelection(
+        val picks: List<RaftFeedbackLogPick>,
+        val entryNames: Map<String, String>,
+        val description: String,
+    )
+
+    internal fun selectFeedbackLogFiles(context: Context, budgetBytes: Long): FeedbackLogSelection {
+        val appContext = context.applicationContext
+        val files = RaftGeneralLogRing.logFiles(appContext).filter { it.isFile && it.length() > 0L }
+        val entryNames = files.associate { it.path to RaftGeneralLogRing.archiveRelativeLogPath(appContext, it) }
+        val candidates =
+            files.map { file ->
+                RaftFeedbackLogFile(
+                    path = file.path,
+                    launchId = file.parentFile?.name.orEmpty(),
+                    sizeBytes = file.length(),
+                    modifiedMillis = file.lastModified(),
+                )
+            }
+        val budget = budgetBytes.coerceAtLeast(RaftFeedbackDiagnosticsBudget.MinTailBytes)
+        val picks = RaftFeedbackDiagnosticsBudget.select(candidates, budget)
+        val description =
+            RaftFeedbackDiagnosticsBudget.describe(candidates, picks, budget) { entryNames.getValue(it.path) }
+        return FeedbackLogSelection(picks, entryNames, description)
+    }
+
+}
+
+/**
+ * Copies the last [tailBytes] of [input] (length [length]) from the first full line on, so a
+ * truncated shard in the feedback zip still parses as JSONL.
+ */
+internal fun copyTailFromLineStart(input: java.io.InputStream, length: Long, tailBytes: Long, output: java.io.OutputStream) {
+    if (length > tailBytes) {
+        // Stop one byte early: if the tail starts exactly at a line, that byte is the newline.
+        var remaining = length - tailBytes - 1L
+        while (remaining > 0L) {
+            val skipped = input.skip(remaining)
+            if (skipped <= 0L) break
+            remaining -= skipped
+        }
+        while (true) {
+            val next = input.read()
+            if (next < 0 || next == '\n'.code) break
+        }
+    }
+    input.copyTo(output)
 }
 
 internal fun uniqueDiagnosticsZipEntryName(name: String, seenNames: MutableSet<String>): String {

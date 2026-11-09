@@ -136,6 +136,92 @@ class ThreadInPlaceTextSelectionTest {
         )
     }
 
+    // artin dm:#99 (iOS): with the New Message Menu on, a finger long press on the body showed the
+    // selection's menu first and the Compact menu then opened over it. A finger press is the row's.
+    @Test
+    fun aFingerPressOnTheBodyIsTheRowsWhenTheNewMenuIsOn() {
+        assertTrue(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Touch))
+        assertTrue(
+            threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Unknown),
+            "a down without a tool type counts as a finger, as the row's taps do"
+        )
+        assertFalse(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Mouse))
+        assertFalse(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = true, PointerType.Stylus))
+        // Desktop's always-on pointer selection with the toggle off: a touchscreen finger still selects.
+        assertFalse(threadInPlaceSelectionYieldsPressToRow(fingerPressOpensMessageMenu = false, PointerType.Touch))
+    }
+
+    @Test
+    fun aYieldedFingerLongPressOnTheBodyRoutesToTheMessageMenu() {
+        val pressOnSelectableBody =
+            threadInPlaceSelectionOwnsRowPress(pressOnBody = true, pressYieldedToRow = true)
+        assertFalse(pressOnSelectableBody)
+        assertEquals(
+            ThreadMessageLongPressRoute.MessageMenu,
+            threadMessageLongPressRoute(inPlaceSelectionEnabled = true, pressOnSelectableBody = pressOnSelectableBody)
+        )
+        // A mouse or stylus long press on the body is still the selection's.
+        assertEquals(
+            ThreadMessageLongPressRoute.InPlaceSelection,
+            threadMessageLongPressRoute(
+                inPlaceSelectionEnabled = true,
+                pressOnSelectableBody = threadInPlaceSelectionOwnsRowPress(pressOnBody = true, pressYieldedToRow = false)
+            )
+        )
+        assertFalse(threadInPlaceSelectionOwnsRowPress(pressOnBody = false, pressYieldedToRow = false))
+    }
+
+    @Test
+    fun theSelectionNeverReachesItsLongPressTimeoutForAYieldedPress() {
+        assertEquals(500L, threadInPlaceSelectionLongPressTimeoutMillis(500L, pressYieldedToRow = false))
+        assertEquals(
+            ThreadInPlaceSelectionYieldedLongPressTimeoutMillis,
+            threadInPlaceSelectionLongPressTimeoutMillis(500L, pressYieldedToRow = true)
+        )
+        assertTrue(ThreadInPlaceSelectionYieldedLongPressTimeoutMillis >= 60L * 60L * 1000L)
+    }
+
+    @Test
+    fun aSelectionAYieldedFingerPressStillStartedIsCleared() {
+        // iOS selects a word on a finger double tap without waiting for a long press.
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.Clear,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = true, startedByTouch = true, coversAll = false)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.Clear,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = true, startedByTouch = true, coversAll = true)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.WidenToWholeMessage,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = false, startedByTouch = true, coversAll = false)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionAppearedAction.Keep,
+            threadInPlaceSelectionAppearedAction(pressYieldedToRow = false, startedByTouch = false, coversAll = false)
+        )
+    }
+
+    @Test
+    fun theControllerRecordsWhetherEachBodyPressIsYieldedAndThenOpensNoSelectionMenu() {
+        val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {}, fingerPressOpensMessageMenu = true)
+        val controller = ThreadInPlaceSelectionController("m1", host)
+        assertFalse(controller.bodyPressYieldedToRow, "no press yet")
+        controller.onBodyPointerPress(PointerType.Touch)
+        assertTrue(controller.bodyPressYieldedToRow)
+        // No layout here, so the legacy toolbar path would fail anyway; a yielded press refuses first.
+        assertFalse(controller.showMenuAtRootRect(Rect(0f, 0f, 10f, 10f)))
+        assertFalse(controller.menuRequested, "no selection menu under the message menu")
+        controller.onBodyPointerPress(PointerType.Mouse)
+        assertFalse(controller.bodyPressYieldedToRow, "the next mouse press selects again")
+        controller.onBodyPointerPress(PointerType.Stylus)
+        assertFalse(controller.bodyPressYieldedToRow)
+
+        val toggleOff = ThreadInPlaceSelectionController("m2", ThreadInPlaceTextSelectionHost(enabled = true, copyText = {}))
+        toggleOff.onBodyPointerPress(PointerType.Touch)
+        assertFalse(toggleOff.bodyPressYieldedToRow, "without the toggle a finger keeps selecting (desktop)")
+    }
+
     @Test
     fun onlyAFingersSelectionWidensToTheWholeMessage() {
         assertTrue(

@@ -31,8 +31,9 @@ Quiver docs: `/docs/agent-cli-feedback`. Everything below is app-owned.)
 ```
 raft-diagnostics-summary.txt       human-readable environment/session summary
 app_logs/
-  raft-diagnostics.jsonl           current app log (JSONL); rotations .1 .. .N
+  launch-<id>/raft-diagnostics.jsonl  app log (JSONL) per launch; rotations .1 .. .N
   recent-memory.jsonl              recent in-memory events
+  feedback-selection.txt           (1.23+) shards attached / omitted under the budget
 auth_logs/
   raft-auth-critical.jsonl         bounded auth-critical journal when present
 ```
@@ -104,6 +105,22 @@ Each diagnostics JSONL line is one JSON object. On Android these live under
 
 `tag` groups by subsystem, `event` is the specific log point, and `message`
 carries the `key=value` payload. Sort by `ts` (or `seq`) to reconstruct order.
+
+## Size budget and summaries (1.23+)
+
+A report attaches at most 1 MiB of raw app logs (`RaftFeedbackDiagnosticsBudget`):
+the newest launch newest shard first, with a reserve for the end of the launch
+before it; a shard that does not fit whole is attached as its tail from the first
+full line. iOS applies the same byte budget to its attachment list. Before 1.23
+every shard of the last five launches went (fb-c04c1199: 31 shards, 29 MB).
+
+The writer also summarizes (`RaftDiagnosticsVolumePolicy`): routine
+high-frequency events keep their first line(s) per key and minute and one
+`diagnostics_summary key=… count=… kept=… suppressed=… sampleIds=… distinctIds=…`
+line; duplicate realtime skips, avatar, markdown preparse/recompose, viewport
+intents and per-request network successes are written only with Settings >
+Developer > Verbose diagnostics on (`diagnostics_verbose_off` counts them
+otherwise). Warnings, errors and failures are always written.
 
 ## Triage tips
 

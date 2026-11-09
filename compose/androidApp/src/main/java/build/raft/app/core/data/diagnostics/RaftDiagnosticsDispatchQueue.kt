@@ -20,6 +20,10 @@ internal data class PendingDiagnosticLog(
     val sequence: Long,
     val includeNonCritical: Boolean,
     val criticalHint: DiagnosticCriticalHint,
+    /** False: logcat only; the volume policy kept it out of the persistent ring. */
+    val persist: Boolean = true,
+    /** A shared line: the shared queue's volume policy already admitted it. */
+    val volumeAdmitted: Boolean = false,
 )
 
 internal data class SanitizedDiagnosticLog(
