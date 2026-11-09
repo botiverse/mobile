@@ -151,11 +151,18 @@ internal interface RaftSyncChangesSink {
     /**
      * Retake [snapshots] through the existing list endpoints ([reason]: `first_sync`, `reset_<reason>`).
      * False when one could not be taken: the cursor is then not advanced, so the next pull asks again.
+     * A list this viewer may not read (403) counts as taken ([RaftSyncSnapshotRead.NotReadable]).
      */
     suspend fun reloadSnapshots(scope: RaftSyncScope, snapshots: Set<RaftSyncSnapshot>, reason: String): Boolean
 
     /** Applies one page's changes. */
     suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan)
+
+    /**
+     * Reads again what an earlier pull's reloads failed to read ([RaftSyncReloadLedger]), at the
+     * start of a pull from a cursor: a page with no changes reloads nothing by itself.
+     */
+    suspend fun retakeFailedReloads(scope: RaftSyncScope) {}
 }
 
 internal sealed interface RaftSyncPullResult {
@@ -166,7 +173,17 @@ internal sealed interface RaftSyncPullResult {
         val resetReason: String?,
         /** Stopped at [SYNC_CHANGES_MAX_PAGES_PER_PULL] with `hasMore` still set. */
         val truncated: Boolean,
-    ) : RaftSyncPullResult
+        /** The stored cursor differs from the one the pull started from (equality only: it stays opaque). */
+        val cursorAdvanced: Boolean = true,
+    ) : RaftSyncPullResult {
+        /**
+         * Go on in a follow-up pull: stopped at the page cap with more waiting, and the cursor moved.
+         * A server answering `hasMore` with the cursor it was given would otherwise be pulled
+         * again forever, 40 requests a round (Tenny, #proj-mobile:#112 should-fix a).
+         */
+        val needsFollowUp: Boolean
+            get() = truncated && cursorAdvanced
+    }
 
     data class Failed(val code: String) : RaftSyncPullResult {
         /**
@@ -188,10 +205,14 @@ internal sealed interface RaftSyncPullResult {
  * - No cursor: read the current cursor (no `since`), take every snapshot, store the cursor, then
  *   pull from it. A change the snapshots already hold may come again; applying by (entity, id) is
  *   idempotent.
- * - Cursor: pull pages and apply each one; store the page's cursor after it is applied; while
- *   `hasMore`, pull again at once (at most [maxPagesPerPull] pages per pull).
+ * - Cursor: first read again what an earlier pull's reloads failed to read
+ *   ([RaftSyncChangesSink.retakeFailedReloads]); then pull pages and apply each one; store the
+ *   page's cursor after it is applied; while `hasMore`, pull again at once (at most
+ *   [maxPagesPerPull] pages per pull).
  * - `reset`: retake `reset.snapshots` (always after [snapshotJitterDelay], whatever the trigger: a
  *   reset reaches every client at once), then store the returned cursor.
+ * - A snapshot this viewer may not read (403: a guest's `servers/:id/members`) is not a failure:
+ *   the sink counts it as taken (Tenny, #proj-mobile:#112).
  * - A failed pull (network, 5xx, a request past [requestTimeoutMillis], a snapshot that failed)
  *   forgets the cursor (contract, Tenny 10-27): a cursor that keeps failing must not fail forever,
  *   the next pull re-bootstraps as a first sync, after [snapshotJitterDelay] (every client fails
@@ -258,7 +279,8 @@ internal class RaftSyncChangesEngine(
                 "sync_changes_pull serverId=${scope.serverId} trigger=$trigger " + when (result) {
                     is RaftSyncPullResult.Synced ->
                         "result=synced pages=${result.pages} changes=${result.changes} firstSync=${result.firstSync} " +
-                            "reset=${result.resetReason ?: "none"} truncated=${result.truncated}"
+                            "reset=${result.resetReason ?: "none"} truncated=${result.truncated} " +
+                            "cursorAdvanced=${result.cursorAdvanced}"
                     is RaftSyncPullResult.Failed -> "result=failed code=${result.code}"
                 } + " durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
@@ -278,7 +300,20 @@ internal class RaftSyncChangesEngine(
         var pages = 0
         var changes = 0
         var cursor = cursors.read(scope)
+        val startCursor = cursor
         val rebootstrap = synchronized(lock) { scope in droppedAfterFailure }
+        // A first sync takes every snapshot: nothing to retake on top of it.
+        if (cursor != null) {
+            if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
+            // A retake that throws must not drop the cursor (a failed pull would): the pages go on.
+            try {
+                sink.retakeFailedReloads(scope)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                logger("sync_changes_retake serverId=${scope.serverId} result=exception type=${error::class.simpleName ?: "unknown"}")
+            }
+        }
         while (true) {
             if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
             if (cursor == null) {
@@ -302,7 +337,9 @@ internal class RaftSyncChangesEngine(
                 cursor = start.cursor
             }
             if (pages >= maxPagesPerPull) {
-                return RaftSyncPullResult.Synced(pages, changes, firstSync, resetReason, truncated = true)
+                return RaftSyncPullResult.Synced(
+                    pages, changes, firstSync, resetReason, truncated = true, cursorAdvanced = cursor != startCursor,
+                )
             }
             val page =
                 when (val fetch = fetch(serverId, since = cursor)) {
@@ -335,7 +372,9 @@ internal class RaftSyncChangesEngine(
             cursors.write(scope, page.cursor)
             cursor = page.cursor
             if (!page.hasMore) {
-                return RaftSyncPullResult.Synced(pages, changes, firstSync, resetReason, truncated = false)
+                return RaftSyncPullResult.Synced(
+                    pages, changes, firstSync, resetReason, truncated = false, cursorAdvanced = cursor != startCursor,
+                )
             }
         }
     }

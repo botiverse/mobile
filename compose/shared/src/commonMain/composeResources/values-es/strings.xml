@@ -2982,8 +2982,8 @@
     <string name="settings_developer_text_input_trace_detail">Registra en los registros de la app cada edición del teclado y sincronización de texto en los campos (solo longitudes, nunca el texto), para reportar errores del IME.</string>
     <string name="settings_developer_nav3_stack">Pila de páginas de Navigation 3</string>
     <string name="settings_developer_nav3_stack_detail">Abre las páginas migradas hasta ahora dentro de la ventana de la app (Android). Se aplica la próxima vez que inicies la app.</string>
-    <string name="settings_developer_ios_native_nav">Navegación nativa de iOS</string>
-    <string name="settings_developer_ios_native_nav_detail">Muestra los títulos y botones de las páginas migradas en la barra de navegación del sistema, con el gesto de deslizar para volver del sistema (iPhone). Se aplica la próxima vez que inicies la app.</string>
+    <string name="settings_mobile_ios_native_nav">Navegación nativa de iOS</string>
+    <string name="settings_mobile_ios_native_nav_detail">Muestra los títulos y botones de las páginas migradas en la barra de navegación del sistema, con el gesto de deslizar para volver del sistema (iPhone). Se aplica la próxima vez que inicies la app.</string>
     <string name="settings_developer_presets">Ajustes predefinidos</string>
     <string name="settings_developer_presets_detail">Elige un ajuste predefinido para completar el formulario del entorno y luego guarda para aplicarlo.</string>
     <string name="settings_developer_presets_empty">Este host no tiene ajustes predefinidos disponibles.</string>
@@ -4042,4 +4042,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d de %2$d Artifacts</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d comentario nuevo</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d comentarios nuevos</string>
+    <string name="settings_search_placeholder">Buscar en Configuración</string>
+    <string name="settings_search_clear">Borrar búsqueda</string>
+    <string name="settings_search_no_match">Ningún ajuste coincide con “%1$s”</string>
+    <string name="settings_search_no_match_description">Prueba con otra palabra o busca en todo para encontrar mensajes y personas.</string>
+    <string name="settings_search_everywhere">Buscar en todo</string>
+    <string name="settings_search_plan">Administrar plan</string>
+    <string name="settings_search_invite_links">Enlaces de invitación</string>
+    <string name="settings_search_single_sign_on">Inicio de sesión único (SSO)</string>
+    <string name="settings_search_single_sign_on_description">Permite que las personas con el correo de los dominios de tu empresa inicien sesión en Raft con tu proveedor de identidad y, si quieres, exígelo.</string>
 </resources>

@@ -2987,8 +2987,8 @@
     <string name="settings_developer_verbose_diagnostics_detail">同时把重复的实时事件、头像、Markdown 与滚动细节以及每个成功的请求写入应用日志。反馈附带的日志会变大。重启应用后自动关闭。</string>
     <string name="settings_developer_nav3_stack">Navigation 3 页面栈</string>
     <string name="settings_developer_nav3_stack_detail">已迁移的页面在应用窗口内打开（安卓）。下次启动应用时生效。</string>
-    <string name="settings_developer_ios_native_nav">iOS 原生导航</string>
-    <string name="settings_developer_ios_native_nav_detail">已迁移页面的标题和按钮显示在系统导航栏中，使用系统的滑动返回（iPhone）。下次启动应用时生效。</string>
+    <string name="settings_mobile_ios_native_nav">iOS 原生导航</string>
+    <string name="settings_mobile_ios_native_nav_detail">已迁移页面的标题和按钮显示在系统导航栏中，使用系统的滑动返回（iPhone）。下次启动应用时生效。</string>
     <string name="settings_developer_presets">预设</string>
     <string name="settings_developer_presets_detail">选择预设填充环境表单，然后保存应用。</string>
     <string name="settings_developer_presets_empty">此宿主没有可用预设。</string>
@@ -4138,4 +4138,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d / 共 %2$d 个 Artifact</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d 条新评论</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d 条新评论</string>
+    <string name="settings_search_placeholder">搜索设置</string>
+    <string name="settings_search_clear">清除搜索</string>
+    <string name="settings_search_no_match">没有和“%1$s”相关的设置</string>
+    <string name="settings_search_no_match_description">换个词试试，或者在全部内容中搜索消息和人。</string>
+    <string name="settings_search_everywhere">搜索全部</string>
+    <string name="settings_search_plan">管理套餐</string>
+    <string name="settings_search_invite_links">邀请链接</string>
+    <string name="settings_search_single_sign_on">单点登录（SSO）</string>
+    <string name="settings_search_single_sign_on_description">让公司邮箱域名下的成员用你们的身份提供方登录 Raft，也可以要求他们必须这样登录。</string>
 </resources>

@@ -107,11 +107,14 @@ internal fun SettingsAppearanceContent(
     onOpenTheme: () -> Unit = {},
 ) {
     LazyColumn(
+        state = rememberSettingsSearchListState(),
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
     ) {
         if (showModeCard) {
             item {
-                SettingsAppearanceThemeCard(title = stringResource(Res.string.settings_appearance_theme_title))
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("theme", SettingsSearchCardShape)) {
+                    SettingsAppearanceThemeCard(title = stringResource(Res.string.settings_appearance_theme_title))
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -167,13 +170,15 @@ internal fun SettingsAppearanceContent(
                 }
             is ScreenLoadState.Content ->
                 item {
-                    SettingsAppearanceFontSizeCard(
-                        snapshot = state.data,
-                        fontSizeDraft = fontSizeDraft,
-                        actionState = actionState,
-                        onFontSizeDraftChange = onFontSizeDraftChange,
-                        onSubmit = onSave
-                    )
+                    Box(Modifier.fillMaxWidth().settingsSearchAnchor("message-font-size", SettingsSearchCardShape)) {
+                        SettingsAppearanceFontSizeCard(
+                            snapshot = state.data,
+                            fontSizeDraft = fontSizeDraft,
+                            actionState = actionState,
+                            onFontSizeDraftChange = onFontSizeDraftChange,
+                            onSubmit = onSave
+                        )
+                    }
                 }
         }
         item {
@@ -222,6 +227,7 @@ private fun SettingsAppearanceDisplaySwitches(
     RaftDesignSystemTheme {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             SettingsAppearanceSwitchRow(
+                anchorId = "live-agent-activity",
                 title = stringResource(Res.string.settings_appearance_live_agent_activity_title),
                 description = stringResource(Res.string.settings_appearance_live_agent_activity_description),
                 checked = visual?.showLiveAgentActivity ?: RaftDisplayPreferenceRuntime.showLiveAgentActivity,
@@ -229,6 +235,7 @@ private fun SettingsAppearanceDisplaySwitches(
                 divider = false
             )
             SettingsAppearanceSwitchRow(
+                anchorId = "show-agent-model",
                 title = stringResource(Res.string.settings_appearance_show_agent_model_title),
                 description = stringResource(Res.string.settings_appearance_show_agent_model_description),
                 checked = visual?.showAgentModelName ?: RaftDisplayPreferenceRuntime.showAgentModelName,
@@ -236,6 +243,7 @@ private fun SettingsAppearanceDisplaySwitches(
                 divider = true
             )
             SettingsAppearanceSwitchRow(
+                anchorId = "hide-empty-sidebar-sections",
                 title = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_title),
                 description = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_description),
                 checked = visual?.hideEmptySidebarSections ?: RaftDisplayPreferenceRuntime.hideEmptySidebarSections,
@@ -262,11 +270,13 @@ private fun SettingsAppearanceSwitchRow(
     description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    divider: Boolean
+    divider: Boolean,
+    /** The Settings search id of the row ([settingsSearchAnchor]); null: not in the index. */
+    anchorId: String? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    Column(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().then(if (anchorId != null) Modifier.settingsSearchAnchor(anchorId) else Modifier)) {
         if (divider) {
             Box(
                 Modifier.fillMaxWidth().padding(start = 16.dp).height(RaftAppStroke.Thin).background(colors.lineHairline)

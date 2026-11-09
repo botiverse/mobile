@@ -3548,6 +3548,9 @@ private fun RaftAppShellReadyContent(
     var adaptiveListPaneResizing by remember { mutableStateOf(false) }
     // artin 2026-10-29: the section the wide Settings detail shows (null: the default, Account).
     var settingsWidePicked by remember { mutableStateOf<String?>(null) }
+    // The setting a Settings search result opened the picked section at (its row and the request).
+    var settingsWideAnchor by remember { mutableStateOf<Pair<String, SettingsSearchAnchorRequest>?>(null) }
+    var settingsSearchOpenNonce by remember { mutableStateOf(0L) }
     // A drag only defers the fold while it can still be in progress: desktop mode on, dual pane.
     // (The handle also reports the end when it goes inactive or leaves composition.)
     val listPaneResizeDefersFold =
@@ -5550,6 +5553,24 @@ private fun RaftAppShellReadyContent(
         onSearchHandoffApplied()
     }
 
+    // Settings search's No match > Search everywhere: Search with the same query, the way a
+    // conversation search's "Search all" hands it over (the Search tab, or the rail's inline Search).
+    fun openSearchEverywhere(query: String, source: String) {
+        val navRail =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
+        val target = appShellSearchHandoffTarget(navRail)
+        bridge.log("app_shell_search_everywhere source=$source queryLength=${query.length} target=$target")
+        searchOverlayHandoffNonce -= 1
+        searchTabQueryRequest = RaftSearchTabQueryRequest(query.trim(), nonce = searchOverlayHandoffNonce)
+        when (target) {
+            AppShellSearchHandoffTarget.SearchTab -> openSearchTab(source = source)
+            AppShellSearchHandoffTarget.RailInlineSearch -> railInlineSecondaryDestination = AppShellRailSearchKey
+        }
+    }
+
     val handleAppShellBack by rememberUpdatedState {
         if (popMainRoute()) {
             bridge.log(
@@ -7204,15 +7225,16 @@ private fun RaftAppShellReadyContent(
     // from the server panel, with Back (Members and Computers are on the panel now,
     // so they no longer lead it); its rows keep their attention dots. The wide rail
     // keeps its Settings page as before.
-    val openSettingsRow: (String) -> Unit = { key ->
+    // A Settings row's page; [anchor]: a Settings search result's setting to open it at.
+    val openSettingsRowAt: (String, SettingsSearchAnchorRequest?) -> Unit = { key, anchor ->
         prewarmAdmissionGate.invalidate("settings_open_page:$key")
         settingsHeaderTaps.reset()
         when (key) {
-            SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
+            SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope, anchor)
             SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
             SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
             SettingsDestinationDocumentation -> bridge.openUrl(RaftDocumentationUrl, inBrowser = true)
-            SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
+            SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope, anchor)
             SettingsDestinationComputers -> {
                 if (!navRailActive) {
                     RaftProductEvents.navEntrySelected(
@@ -7223,7 +7245,7 @@ private fun RaftAppShellReadyContent(
                 }
                 openComputersPage()
             }
-            SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
+            SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope, anchor)
             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
             // The native submit form on Android / iOS; the ticket web page only where the App cannot
@@ -7236,12 +7258,13 @@ private fun RaftAppShellReadyContent(
                 }
             else -> {
                 val page = SettingsNativeDetailPage.fromKey(key)
-                if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
+                if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope, anchor = anchor)) {
                     bridge.logWarn("settings_native_detail_rejected page=$key")
                 }
             }
         }
     }
+    val openSettingsRow: (String) -> Unit = { key -> openSettingsRowAt(key, null) }
 
     // A link to Raft's own web Settings (an announcement's "Choose a theme"): the in-app page, on
     // the server the link names, as the Settings rows open it; the Settings home for a tab the
@@ -8766,6 +8789,15 @@ private fun RaftAppShellReadyContent(
                             remember(readyServerId, settingsFeatureFlagRevision) {
                                 settingsImBridgesEnabled(sharedStores.serverFeatureFlags, readyServerId)
                             }
+                        // Search settings (raft-design settings.md#searching-settings): the query
+                        // stays while Settings stays on one server; who can find what follows the
+                        // role and the server flags the pages read themselves.
+                        val settingsSearchState = rememberSettingsSearchState(readyServerId)
+                        val settingsSearchContext =
+                            remember(settingsSession, readyServerId, settingsFeatureFlagRevision) {
+                                settingsSearchContext(settingsSession, sharedStores.serverFeatureFlags, readyServerId)
+                            }
+                        val settingsSearchServerName = settingsSession?.settingsThemeServer()?.name.orEmpty()
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
                             // section opens beside the list (SettingsWideSplit.kt). Feedback opens in
@@ -8787,6 +8819,7 @@ private fun RaftAppShellReadyContent(
                                             }
                                             bridge.log("settings_wide_pick row=$key")
                                             settingsWidePicked = pick.key
+                                            settingsWideAnchor = null
                                         }
                                         SettingsWidePick.Push -> openSettingsRow(key)
                                     }
@@ -8794,7 +8827,28 @@ private fun RaftAppShellReadyContent(
                                 onBackToDefault = {
                                     bridge.log("settings_wide_back from=$settingsWidePicked")
                                     settingsWidePicked = null
+                                    settingsWideAnchor = null
                                 },
+                                search =
+                                    SettingsSearchHost(
+                                        state = settingsSearchState,
+                                        context = settingsSearchContext,
+                                        serverName = settingsSearchServerName,
+                                        active = active,
+                                        selectedId = settingsWideAnchor?.takeIf { it.first == settingsWidePicked }?.second?.id,
+                                        onOpen = { setting ->
+                                            val anchor = SettingsSearchAnchorRequest(setting.id, ++settingsSearchOpenNonce)
+                                            bridge.log("settings_search_open id=${setting.id} row=${setting.rowKey} mode=wide")
+                                            when (val pick = settingsWidePick(setting.rowKey, feedbackWeb)) {
+                                                is SettingsWidePick.Detail -> {
+                                                    settingsWidePicked = pick.key
+                                                    settingsWideAnchor = pick.key to anchor
+                                                }
+                                                SettingsWidePick.Push -> openSettingsRowAt(setting.rowKey, anchor)
+                                            }
+                                        },
+                                        onSearchEverywhere = { query -> openSearchEverywhere(query, "settings_search_everywhere") },
+                                    ),
                                 detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
                                 bottomContentPadding = appShellBottomContentInset,
                                 collapsed = sidebarCollapse.isHidden(RaftCollapsibleColumn.Sidebar),
@@ -8807,8 +8861,11 @@ private fun RaftAppShellReadyContent(
                                     },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 detailPane = { key, modifier ->
+                                    val detailAnchor = settingsWideAnchor?.takeIf { it.first == key }?.second
                                     val detailPage =
-                                        remember(key, storeScope, feedbackWeb) { settingsWideDetailPage(key, storeScope, feedbackWeb) }
+                                        remember(key, storeScope, feedbackWeb, detailAnchor) {
+                                            settingsWideDetailPage(key, storeScope, feedbackWeb, detailAnchor)
+                                        }
                                     if (detailPage != null) {
                                         RaftChildPage(
                                             pageName = detailPage.first,
@@ -8837,6 +8894,23 @@ private fun RaftAppShellReadyContent(
                             bottomContentPadding =
                                 if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,
+                            search =
+                                SettingsSearchHost(
+                                    state = settingsSearchState,
+                                    context = settingsSearchContext,
+                                    serverName = settingsSearchServerName,
+                                    active = active,
+                                    // The page is pushed; Back returns to the results with the query kept.
+                                    onOpen = { setting ->
+                                        bridge.log("settings_search_open id=${setting.id} row=${setting.rowKey} mode=push")
+                                        openSettingsRowAt(setting.rowKey, SettingsSearchAnchorRequest(setting.id, ++settingsSearchOpenNonce))
+                                    },
+                                    onSearchEverywhere = { query ->
+                                        // Settings may be a page over the shell (the server panel's): close it first.
+                                        stackPageClose?.invoke()
+                                        openSearchEverywhere(query, "settings_search_everywhere")
+                                    },
+                                ),
                             onSettingsHeaderClick = {
                                 prewarmAdmissionGate.invalidate("settings_header")
                                 if (settingsHeaderTaps.tap()) {

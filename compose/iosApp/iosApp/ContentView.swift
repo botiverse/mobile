@@ -224,7 +224,7 @@ let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
 @objc final class RaftNativeNavProto: NSObject {
     /// This process's decision, read once (shared RaftIosNativeNavFlag): the server flag
     /// `mobile_ios_native_nav_v1` (default off, last evaluation kept on the device) or the
-    /// Settings > Developer switch, iPhone only. Off, no page gets a bridge or the real bar and the
+    /// Settings > Mobile switch (Beta), iPhone only. Off, no page gets a bridge or the real bar and the
     /// app behaves as before. A Debug build also takes `RAFT_NATIVE_NAV=1|0` from the launch
     /// environment (CI captures); a release build never reads it.
     @objc static let enabled: Bool = {
@@ -360,8 +360,13 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         extrasJson: String,
         titleMenuJson: String,
         hasBack: Bool,
-        nested: Bool
+        nested: Bool,
+        titleImage: RaftNativeTabBarAvatar?
     ) {
+        if titleImage !== lastTitleImageSource {
+            lastTitleImageSource = titleImage
+            lastTitleImage = titleImage.flatMap { RaftNativeNavTitleView.image(from: $0) }
+        }
         lastTitle = title
         lastSubtitle = subtitle
         lastActionsJson = actionsJson
@@ -395,6 +400,9 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     }
 
     private var lastTitleMenuJson = "[]"
+    /// The title view's tile / avatar as the app drew it (RaftNativeNavBarTitleImageCapture).
+    private var lastTitleImageSource: RaftNativeTabBarAvatar?
+    private var lastTitleImage: UIImage?
     private var lastBarWidth: CGFloat = 0
     private var lastHasBack = false
     private var lastNested = false
@@ -410,6 +418,10 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
         let item = owner.navigationItem
         let isStackRoot = owner.navigationController?.viewControllers.first === owner
+        // The Compose head's type on the bar's own title (artin, task #98: too small).
+        if let bar = owner.navigationController?.navigationBar {
+            RaftNativeNavBarType.style(bar)
+        }
         item.title = lastTitle
         // Ask for the previous title on the next page's Back.
         item.backButtonTitle = lastTitle
@@ -445,8 +457,8 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             // A compact-height bar (landscape iPhone) has room for one line only.
             let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
             let view = RaftNativeNavTitleView(
-                title: lastTitle, subtitle: compact ? nil : lastSubtitle, leading: leading, badge: badge, refreshing: refreshing,
-                compact: compact, chevron: chevron
+                title: lastTitle, subtitle: compact ? nil : lastSubtitle, leading: leading, leadingImage: lastTitleImage,
+                badge: badge, refreshing: refreshing, compact: compact, chevron: chevron
             )
             if titleTap {
                 view.isUserInteractionEnabled = true
@@ -486,7 +498,8 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         if lastHasBack && isStackRoot {
             let back = UIBarButtonItem(
                 title: nil,
-                image: UIImage(systemName: "chevron.backward"),
+                // The Compose head's Back glyph (RaftBackButton: arrow-left).
+                image: RaftNativeNavIcon.image(asset: "lucide-arrow-left", symbol: "chevron.backward"),
                 primaryAction: UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: "back") },
                 menu: nil
             )
@@ -533,7 +546,9 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         let overflow = actions.filter { $0.placement == "overflow" }
         if !overflow.isEmpty {
             let menu = UIMenu(children: overflow.map { menuElement($0) })
-            let more = UIBarButtonItem(title: nil, image: UIImage(systemName: "ellipsis"), primaryAction: nil, menu: menu)
+            let more = UIBarButtonItem(
+                title: nil, image: RaftNativeNavIcon.image(asset: "lucide-ellipsis", symbol: "ellipsis"), primaryAction: nil, menu: menu
+            )
             more.accessibilityLabel = "More"
             barItems.append(more)
         }
@@ -567,6 +582,8 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     private struct Action {
         let id: String
         let label: String
+        /// The design-system glyph (`lucide-<name>` in the asset catalog), preferred over [symbol].
+        let asset: String?
         let symbol: String?
         let badge: Int?
         let attention: Bool
@@ -583,6 +600,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         return Action(
             id: id,
             label: row["label"] as? String ?? id,
+            asset: row["imageAsset"] as? String,
             symbol: row["systemSymbol"] as? String,
             badge: (row["badge"] as? NSNumber)?.intValue,
             attention: (row["attention"] as? Bool) ?? false,
@@ -603,7 +621,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
 
     /// A ⋯ / title-menu row (a submenu when it has children).
     private func menuElement(_ action: Action) -> UIMenuElement {
-        let image = action.symbol.flatMap { UIImage(systemName: $0) }
+        let image = RaftNativeNavIcon.image(asset: action.asset, symbol: action.symbol, pointSize: RaftNativeNavIcon.menuPointSize)
         if !action.children.isEmpty {
             return UIMenu(title: action.label, image: image, children: action.children.map { menuElement($0) })
         }
@@ -625,9 +643,10 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         return row
     }
 
-    /// A bar button: a symbol (else its label as text); a submenu opens on tap; a count badge.
+    /// A bar button: its design-system glyph, else its SF Symbol, else its label as text; a submenu
+    /// opens on tap; a count badge.
     private func barItem(_ action: Action) -> UIBarButtonItem {
-        let image = action.symbol.flatMap { UIImage(systemName: $0) }
+        let image = RaftNativeNavIcon.image(asset: action.asset, symbol: action.symbol)
         let button: UIBarButtonItem
         if !action.children.isEmpty {
             button = UIBarButtonItem(
@@ -867,22 +886,118 @@ final class RaftScrollMirror: UIScrollView {
     override var isDragging: Bool { simulatedDragging || super.isDragging }
 }
 
+/// The design-system (Lucide) glyphs of the bar, from the asset catalog (`lucide-<name>`, template
+/// SVGs generated with the Compose catalog), drawn at the Compose head's icon size; SF Symbols only
+/// when a glyph has no asset (artin, task #98: the bar's SF Symbols were not our icons).
+enum RaftNativeNavIcon {
+    /// The Compose head's / side column's icon size (RaftSideActionColumnDefaults.IconSize).
+    static let barPointSize: CGFloat = 22
+    static let menuPointSize: CGFloat = 20
+    private static var cache: [String: UIImage] = [:]
+
+    /// [asset] (template, tinted by the bar) at [pointSize], else the SF Symbol [symbol], else nil.
+    static func image(asset: String?, symbol: String?, pointSize: CGFloat = barPointSize) -> UIImage? {
+        if let asset, let image = lucide(asset, pointSize: pointSize) {
+            return image
+        }
+        return symbol.flatMap { UIImage(systemName: $0) }
+    }
+
+    static func lucide(_ name: String, pointSize: CGFloat) -> UIImage? {
+        let key = "\(name)@\(pointSize)"
+        if let cached = cache[key] { return cached }
+        guard let source = UIImage(named: name) else { return nil }
+        let size = CGSize(width: pointSize, height: pointSize)
+        // The SVG keeps its vector data, so it re-renders sharp at this size.
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            source.draw(in: CGRect(origin: .zero, size: size))
+        }.withRenderingMode(.alwaysTemplate)
+        cache[key] = image
+        return image
+    }
+}
+
+/// The bar's type: the Compose head's tokens (shared RaftNativeNavBarTypography: `text-headline`
+/// Space Grotesk Bold 17 for the title, `text-caption` for the line under it) instead of the
+/// system's 17pt semibold (artin, task #98: the title read too small).
+enum RaftNativeNavBarType {
+    private static let styledBars = NSHashTable<UINavigationBar>.weakObjects()
+
+    static func font(_ spec: RaftNativeNavBarFont, size: CGFloat? = nil, fallbackWeight: UIFont.Weight) -> UIFont {
+        let pointSize = size ?? CGFloat(spec.size)
+        if let name = spec.fontName, let font = UIFont(name: name, size: pointSize) {
+            return font
+        }
+        return .systemFont(ofSize: pointSize, weight: fallbackWeight)
+    }
+
+    static var title: RaftNativeNavBarFont { RaftNativeNavBarTypography.shared.title() }
+    static var subtitle: RaftNativeNavBarFont { RaftNativeNavBarTypography.shared.subtitle() }
+
+    static var titleFont: UIFont { font(title, fallbackWeight: .bold) }
+    static var subtitleFont: UIFont { font(subtitle, fallbackWeight: .medium) }
+
+    /// The title attributes of [bar]'s appearances (inline, large, iOS 26 subtitle), once per bar.
+    /// Copies of the bar's own appearances, so its background (the iOS 26 glass) stays the system's.
+    static func style(_ bar: UINavigationBar) {
+        guard !styledBars.contains(bar) else { return }
+        styledBars.add(bar)
+        let titleSpec = title
+        var titleAttributes: [NSAttributedString.Key: Any] = [.font: font(titleSpec, fallbackWeight: .bold)]
+        if titleSpec.kern != 0 { titleAttributes[.kern] = CGFloat(titleSpec.kern) }
+        var largeAttributes = titleAttributes
+        // A large title keeps UIKit's size (34pt), in the app's face.
+        largeAttributes[.font] = font(titleSpec, size: 34, fallbackWeight: .bold)
+        let subtitleAttributes: [NSAttributedString.Key: Any] = [.font: subtitleFont]
+        func styled(_ appearance: UINavigationBarAppearance) -> UINavigationBarAppearance {
+            let copy = appearance.copy()
+            copy.titleTextAttributes = appearance.titleTextAttributes.merging(titleAttributes) { $1 }
+            copy.largeTitleTextAttributes = appearance.largeTitleTextAttributes.merging(largeAttributes) { $1 }
+            // iOS 26 navigation subtitles; looked up at run time like the item's subtitle.
+            if copy.responds(to: NSSelectorFromString("setSubtitleTextAttributes:")) {
+                copy.setValue(subtitleAttributes, forKey: "subtitleTextAttributes")
+            }
+            return copy
+        }
+        bar.standardAppearance = styled(bar.standardAppearance)
+        if let compact = bar.compactAppearance { bar.compactAppearance = styled(compact) }
+        if let edge = bar.scrollEdgeAppearance { bar.scrollEdgeAppearance = styled(edge) }
+        if let compactEdge = bar.compactScrollEdgeAppearance { bar.compactScrollEdgeAppearance = styled(compactEdge) }
+    }
+}
+
 /// The conversation's title: channel glyph tile / DM avatar / server tile, title over subtitle,
 /// the refresh spinner, a count badge (what the Compose head carried beside its title), and the
-/// chevron of a title that opens a menu (Home's server switcher).
+/// chevron of a title that opens a menu (Home's server switcher). The channel tile / DM avatar is
+/// the app's own drawing when it has arrived ([leadingImage]); until then a stand-in in the same
+/// shape (the sticker: 4pt corners, 1.5pt ink edge).
 final class RaftNativeNavTitleView: UIStackView {
     private let compact: Bool
 
+    /// The app-drawn tile / avatar's size in points (shared RaftNativeNavBarTitleImageSize).
+    static let leadingImagePoints: CGFloat = 28
+
+    /// A captured tile / avatar (non-premultiplied ARGB at the device scale) as a UIImage.
+    static func image(from pixels: RaftNativeTabBarAvatar) -> UIImage? {
+        let count = Int(pixels.argb.size)
+        let argb = (0..<count).map { pixels.argb.get(index: Int32($0)) }
+        guard let decoded = RaftIosServerAvatarImage.image(argb: argb, width: Int(pixels.width), height: Int(pixels.height)),
+              let cgImage = decoded.cgImage else { return nil }
+        let scale = max(1, CGFloat(pixels.width) / leadingImagePoints)
+        return UIImage(cgImage: cgImage, scale: scale, orientation: .up)
+    }
+
     init(
-        title: String, subtitle: String?, leading: [String: Any]?, badge: String?, refreshing: Bool, compact: Bool = false,
-        chevron: String? = nil
+        title: String, subtitle: String?, leading: [String: Any]?, leadingImage: UIImage? = nil, badge: String?,
+        refreshing: Bool, compact: Bool = false, chevron: String? = nil
     ) {
         self.compact = compact
         super.init(frame: .zero)
         axis = .horizontal
         alignment = .center
         spacing = 8
-        if let leading, let view = Self.leadingView(leading, size: compact ? 22 : 28) {
+        let leadingSize: CGFloat = compact ? 22 : Self.leadingImagePoints
+        if let leading, let view = Self.leadingView(leading, image: leadingImage, size: leadingSize) {
             addArrangedSubview(view)
         }
         let text = UIStackView()
@@ -890,8 +1005,11 @@ final class RaftNativeNavTitleView: UIStackView {
         text.alignment = .leading
         text.spacing = 0
         let titleLabel = UILabel()
-        titleLabel.text = title
-        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        let titleSpec = RaftNativeNavBarType.title
+        titleLabel.attributedText = NSAttributedString(
+            string: title,
+            attributes: [.font: RaftNativeNavBarType.font(titleSpec, fallbackWeight: .bold), .kern: CGFloat(titleSpec.kern)]
+        )
         titleLabel.textColor = .label
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -899,7 +1017,7 @@ final class RaftNativeNavTitleView: UIStackView {
         if let subtitle, !subtitle.isEmpty {
             let sub = UILabel()
             sub.text = subtitle
-            sub.font = .systemFont(ofSize: 12)
+            sub.font = RaftNativeNavBarType.subtitleFont
             sub.textColor = .secondaryLabel
             sub.lineBreakMode = .byTruncatingTail
             sub.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -908,8 +1026,12 @@ final class RaftNativeNavTitleView: UIStackView {
         addArrangedSubview(text)
         if let chevron {
             // After the title, as UIKit's own title-menu chevron sits.
-            let symbol = chevron == "up" ? "chevron.up" : "chevron.down"
-            let image = UIImageView(image: UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
+            // The design-system chevron (lucide-chevron-down / -up), the SF Symbol only as fallback.
+            let up = chevron == "up"
+            let image = UIImageView(
+                image: RaftNativeNavIcon.image(asset: up ? "lucide-chevron-up" : "lucide-chevron-down", symbol: nil, pointSize: 14)
+                    ?? UIImage(systemName: up ? "chevron.up" : "chevron.down", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+            )
             image.tintColor = .secondaryLabel
             image.setContentCompressionResistancePriority(.required, for: .horizontal)
             image.setContentHuggingPriority(.required, for: .horizontal)
@@ -919,7 +1041,7 @@ final class RaftNativeNavTitleView: UIStackView {
         if let badge {
             let label = UILabel()
             label.text = " \(badge) "
-            label.font = .systemFont(ofSize: 12, weight: .semibold)
+            label.font = RaftNativeNavBarType.font(RaftNativeNavBarType.subtitle, fallbackWeight: .semibold)
             label.textColor = .secondaryLabel
             label.layer.borderColor = UIColor.separator.cgColor
             label.layer.borderWidth = 1
@@ -986,116 +1108,106 @@ final class RaftNativeNavTitleView: UIStackView {
         )
     }
 
-    private static func leadingView(_ leading: [String: Any], size: CGFloat) -> UIView? {
-        switch leading["kind"] as? String {
-        case "channel":
-            let tile = UIView()
-            tile.backgroundColor = color(leading["tileArgb"], fallback: .systemYellow)
-            tile.layer.cornerRadius = 7
-            tile.layer.borderWidth = 1.5
-            let ink = color(leading["inkArgb"], fallback: .label)
-            tile.layer.borderColor = ink.cgColor
-            let symbol: String
-            if (leading["publicPage"] as? Bool) == true {
-                symbol = "globe"
-            } else {
-                switch leading["channelKind"] as? String {
-                case "private": symbol = "lock"
-                case "joint": symbol = "arrow.triangle.branch"
-                default: symbol = "number"
-                }
-            }
-            let image = UIImageView(image: UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)))
-            image.tintColor = ink
-            image.translatesAutoresizingMaskIntoConstraints = false
-            tile.addSubview(image)
-            tile.translatesAutoresizingMaskIntoConstraints = false
+    /// The tile / avatar: the app's drawing ([image]) when it has arrived, else a stand-in in the
+    /// Compose head's shape (raft-ui sticker: 4pt corners, 1.5pt ink edge): the channel tile with
+    /// its Lucide glyph, or the person's initials in Space Grotesk on their fill.
+    private static func leadingView(_ leading: [String: Any], image: UIImage?, size: CGFloat) -> UIView? {
+        let kind = leading["kind"] as? String
+        // The native Home title's server tile (#4464): drawn here from its own image / initial.
+        if kind == "server" { return serverTile(leading, size: size) }
+        guard kind == "channel" || kind == "avatar" else { return nil }
+        if let image {
+            let view = UIImageView(image: image)
+            view.contentMode = .scaleAspectFit
+            view.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                tile.widthAnchor.constraint(equalToConstant: size),
-                tile.heightAnchor.constraint(equalToConstant: size),
-                image.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
-                image.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+                view.widthAnchor.constraint(equalToConstant: size),
+                view.heightAnchor.constraint(equalToConstant: size),
             ])
-            return tile
-        case "avatar":
-            let circle = UIView()
-            circle.backgroundColor = color(leading["fillArgb"], fallback: .systemPurple)
-            circle.layer.cornerRadius = size / 2
-            circle.clipsToBounds = true
-            circle.translatesAutoresizingMaskIntoConstraints = false
+            return view
+        }
+        let ink = color(leading["inkArgb"], fallback: .label)
+        let tile = UIView()
+        tile.layer.cornerRadius = 4
+        tile.layer.borderWidth = 1.5
+        tile.layer.borderColor = ink.cgColor
+        tile.clipsToBounds = true
+        tile.translatesAutoresizingMaskIntoConstraints = false
+        var constraints = [
+            tile.widthAnchor.constraint(equalToConstant: size),
+            tile.heightAnchor.constraint(equalToConstant: size),
+        ]
+        if kind == "channel" {
+            tile.backgroundColor = color(leading["tileArgb"], fallback: .systemYellow)
+            let glyphSize = (size / 2).rounded()
+            let glyph = UIImageView(image: RaftNativeNavIcon.image(asset: leading["imageAsset"] as? String, symbol: "number", pointSize: glyphSize))
+            glyph.tintColor = ink
+            glyph.translatesAutoresizingMaskIntoConstraints = false
+            tile.addSubview(glyph)
+            constraints += [
+                glyph.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+                glyph.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            ]
+        } else {
+            tile.backgroundColor = color(leading["fillArgb"], fallback: .systemPurple)
             let label = UILabel()
             let words = ((leading["label"] as? String) ?? "").split(separator: " ").prefix(2)
             label.text = words.compactMap { $0.first.map(String.init) }.joined().uppercased()
-            label.font = .systemFont(ofSize: 12, weight: .bold)
-            label.textColor = .white
-            label.translatesAutoresizingMaskIntoConstraints = false
-            circle.addSubview(label)
-            let image = UIImageView()
-            image.contentMode = .scaleAspectFill
-            image.translatesAutoresizingMaskIntoConstraints = false
-            circle.addSubview(image)
-            NSLayoutConstraint.activate([
-                circle.widthAnchor.constraint(equalToConstant: size),
-                circle.heightAnchor.constraint(equalToConstant: size),
-                label.centerXAnchor.constraint(equalTo: circle.centerXAnchor),
-                label.centerYAnchor.constraint(equalTo: circle.centerYAnchor),
-                image.leadingAnchor.constraint(equalTo: circle.leadingAnchor),
-                image.trailingAnchor.constraint(equalTo: circle.trailingAnchor),
-                image.topAnchor.constraint(equalTo: circle.topAnchor),
-                image.bottomAnchor.constraint(equalTo: circle.bottomAnchor),
-            ])
-            if let urlText = leading["imageUrl"] as? String, let url = URL(string: urlText) {
-                URLSession.shared.dataTask(with: url) { data, _, _ in
-                    guard let data, let loaded = UIImage(data: data) else { return }
-                    DispatchQueue.main.async { image.image = loaded }
-                }.resume()
-            }
-            return circle
-        case "server":
-            // raft-ui server avatar (the web switcher's trigger): the ink tile with the server's
-            // initial in brand yellow, under the server's image when it has one.
-            let tile = UIView()
-            tile.backgroundColor = color(leading["fillArgb"], fallback: .black)
-            tile.layer.cornerRadius = 4
-            tile.layer.borderWidth = 1.5
-            tile.layer.borderColor = color(leading["fillArgb"], fallback: .black).cgColor
-            tile.clipsToBounds = true
-            tile.translatesAutoresizingMaskIntoConstraints = false
-            let label = UILabel()
-            label.text = String(((leading["label"] as? String) ?? "").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
-            label.font = .monospacedSystemFont(ofSize: size >= 28 ? 14 : 12, weight: .bold)
-            label.textColor = color(leading["inkArgb"], fallback: .systemYellow)
+            label.font = RaftNativeNavBarType.font(RaftNativeNavBarType.title, size: (size * 0.42).rounded(), fallbackWeight: .bold)
+            label.textColor = ink
             label.translatesAutoresizingMaskIntoConstraints = false
             tile.addSubview(label)
-            let image = UIImageView()
-            image.contentMode = .scaleAspectFill
-            image.translatesAutoresizingMaskIntoConstraints = false
-            tile.addSubview(image)
-            NSLayoutConstraint.activate([
-                tile.widthAnchor.constraint(equalToConstant: size),
-                tile.heightAnchor.constraint(equalToConstant: size),
+            constraints += [
                 label.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
                 label.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-                image.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
-                image.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
-                image.topAnchor.constraint(equalTo: tile.topAnchor),
-                image.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
-            ])
-            if let urlText = leading["imageUrl"] as? String, let url = URL(string: urlText) {
-                URLSession.shared.dataTask(with: url) { data, _, _ in
-                    guard let data, let loaded = UIImage(data: data) else { return }
-                    DispatchQueue.main.async {
-                        image.image = loaded
-                        // An uploaded image brings its own ground (a transparent one shows the bar).
-                        tile.backgroundColor = .clear
-                        label.isHidden = true
-                    }
-                }.resume()
-            }
-            return tile
-        default:
-            return nil
+            ]
         }
+        NSLayoutConstraint.activate(constraints)
+        return tile
+    }
+
+    private static func serverTile(_ leading: [String: Any], size: CGFloat) -> UIView {
+        // raft-ui server avatar (the web switcher's trigger): the ink tile with the server's
+        // initial in brand yellow, under the server's image when it has one.
+        let tile = UIView()
+        tile.backgroundColor = color(leading["fillArgb"], fallback: .black)
+        tile.layer.cornerRadius = 4
+        tile.layer.borderWidth = 1.5
+        tile.layer.borderColor = color(leading["fillArgb"], fallback: .black).cgColor
+        tile.clipsToBounds = true
+        tile.translatesAutoresizingMaskIntoConstraints = false
+        let label = UILabel()
+        label.text = String(((leading["label"] as? String) ?? "").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
+        label.font = .monospacedSystemFont(ofSize: size >= 28 ? 14 : 12, weight: .bold)
+        label.textColor = color(leading["inkArgb"], fallback: .systemYellow)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        tile.addSubview(label)
+        let image = UIImageView()
+        image.contentMode = .scaleAspectFill
+        image.translatesAutoresizingMaskIntoConstraints = false
+        tile.addSubview(image)
+        NSLayoutConstraint.activate([
+            tile.widthAnchor.constraint(equalToConstant: size),
+            tile.heightAnchor.constraint(equalToConstant: size),
+            label.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            image.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
+            image.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
+            image.topAnchor.constraint(equalTo: tile.topAnchor),
+            image.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
+        ])
+        if let urlText = leading["imageUrl"] as? String, let url = URL(string: urlText) {
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                guard let data, let loaded = UIImage(data: data) else { return }
+                DispatchQueue.main.async {
+                    image.image = loaded
+                    // An uploaded image brings its own ground (a transparent one shows the bar).
+                    tile.backgroundColor = .clear
+                    label.isHidden = true
+                }
+            }.resume()
+        }
+        return tile
     }
 }
 

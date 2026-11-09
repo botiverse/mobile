@@ -2979,8 +2979,8 @@
     <string name="settings_developer_text_input_trace_detail">Записывать в журнал приложения каждое изменение с клавиатуры и синхронизацию текста в полях ввода (только длину, без самого текста) — для отчётов об ошибках IME.</string>
     <string name="settings_developer_nav3_stack">Стек страниц Navigation 3</string>
     <string name="settings_developer_nav3_stack_detail">Открывать уже перенесённые страницы внутри окна приложения (Android). Вступит в силу при следующем запуске приложения.</string>
-    <string name="settings_developer_ios_native_nav">Нативная навигация iOS</string>
-    <string name="settings_developer_ios_native_nav_detail">Показывать заголовки и кнопки перенесённых страниц в системной панели навигации и использовать системный жест «назад» (iPhone). Вступит в силу при следующем запуске приложения.</string>
+    <string name="settings_mobile_ios_native_nav">Нативная навигация iOS</string>
+    <string name="settings_mobile_ios_native_nav_detail">Показывать заголовки и кнопки перенесённых страниц в системной панели навигации и использовать системный жест «назад» (iPhone). Вступит в силу при следующем запуске приложения.</string>
     <string name="settings_developer_presets">Пресеты</string>
     <string name="settings_developer_presets_detail">Выберите пресет для заполнения формы окружения и сохраните, чтобы применить его.</string>
     <string name="settings_developer_presets_empty">На этом хосте нет доступных пресетов.</string>
@@ -4119,4 +4119,13 @@
     <string name="action_card_question_wait_minutes_other">%1$d мин</string>
     <string name="action_card_question_asker_has_questions_one">%1$s: %2$d вопрос</string>
     <string name="action_card_question_asker_has_questions_other">%1$s: вопросов — %2$d</string>
+    <string name="settings_search_placeholder">Поиск по настройкам</string>
+    <string name="settings_search_clear">Очистить поиск</string>
+    <string name="settings_search_no_match">Нет настроек по запросу «%1$s»</string>
+    <string name="settings_search_no_match_description">Попробуйте другое слово или поищите везде — среди сообщений и людей.</string>
+    <string name="settings_search_everywhere">Искать везде</string>
+    <string name="settings_search_plan">Управлять тарифом</string>
+    <string name="settings_search_invite_links">Ссылки-приглашения</string>
+    <string name="settings_search_single_sign_on">Единый вход (SSO)</string>
+    <string name="settings_search_single_sign_on_description">Пользователи с адресами на доменах вашей компании смогут входить в Raft через ваш провайдер удостоверений. При желании этот способ входа можно сделать обязательным.</string>
 </resources>

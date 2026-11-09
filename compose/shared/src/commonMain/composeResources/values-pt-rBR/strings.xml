@@ -2982,8 +2982,8 @@
     <string name="settings_developer_text_input_trace_detail">Registra nos logs do app cada edição do teclado e sincronização de texto nos campos (apenas tamanhos, nunca o texto), para relatar bugs do IME.</string>
     <string name="settings_developer_nav3_stack">Pilha de páginas do Navigation 3</string>
     <string name="settings_developer_nav3_stack_detail">Abre as páginas migradas até agora dentro da janela do app (Android). Entra em vigor na próxima vez que o app for iniciado.</string>
-    <string name="settings_developer_ios_native_nav">Navegação nativa do iOS</string>
-    <string name="settings_developer_ios_native_nav_detail">Mostra os títulos e botões das páginas migradas na barra de navegação do sistema, com o gesto de deslizar para voltar do sistema (iPhone). Entra em vigor na próxima vez que o app for iniciado.</string>
+    <string name="settings_mobile_ios_native_nav">Navegação nativa do iOS</string>
+    <string name="settings_mobile_ios_native_nav_detail">Mostra os títulos e botões das páginas migradas na barra de navegação do sistema, com o gesto de deslizar para voltar do sistema (iPhone). Entra em vigor na próxima vez que o app for iniciado.</string>
     <string name="settings_developer_presets">Predefinições</string>
     <string name="settings_developer_presets_detail">Escolha uma predefinição para preencher o formulário do ambiente e salve para aplicá-la.</string>
     <string name="settings_developer_presets_empty">Nenhuma predefinição disponível neste host.</string>
@@ -4042,4 +4042,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d de %2$d Artifacts</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d comentário novo</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d comentários novos</string>
+    <string name="settings_search_placeholder">Pesquisar nas configurações</string>
+    <string name="settings_search_clear">Limpar pesquisa</string>
+    <string name="settings_search_no_match">Nenhuma configuração corresponde a “%1$s”</string>
+    <string name="settings_search_no_match_description">Tente outra palavra ou pesquise em tudo para encontrar mensagens e pessoas.</string>
+    <string name="settings_search_everywhere">Pesquisar em tudo</string>
+    <string name="settings_search_plan">Gerenciar plano</string>
+    <string name="settings_search_invite_links">Links de convite</string>
+    <string name="settings_search_single_sign_on">Login único (SSO)</string>
+    <string name="settings_search_single_sign_on_description">Permita que as pessoas com e-mail nos domínios da sua empresa entrem no Raft com o seu provedor de identidade e, se quiser, torne isso obrigatório.</string>
 </resources>

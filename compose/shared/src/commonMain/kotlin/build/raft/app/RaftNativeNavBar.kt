@@ -15,7 +15,9 @@ import androidx.compose.foundation.MutatePriority
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
@@ -66,10 +68,13 @@ const val RaftNativeNavBarHostIdPageDataKey = "slockNativeNavBarHostId"
 enum class RaftNativeNavBarPlacement { Leading, Trailing, Overflow }
 
 /**
- * One bar button (or ⋯ / title-menu row): [systemSymbol] is an SF Symbol name (null: a text
- * button, or a menu row without an image); [badge] a count on the button; [attention] the "new"
- * dot (the bell); [checked] a menu row's checkmark (the current server); [children] makes it a
- * submenu (a button whose tap opens the menu).
+ * One bar button (or ⋯ / title-menu row): [icon] is the design-system (Lucide) glyph the Compose
+ * head draws for it, which the host draws from its asset catalog (`lucide-<name>`, see
+ * [raftNativeNavBarImageAssetName]); [systemSymbol] is the SF Symbol the host falls back to when
+ * there is no [icon] or its asset is missing (both null: a text button, or a menu row without an
+ * image); [badge] a count on the button; [attention] the "new" dot (the bell); [checked] a menu
+ * row's checkmark (the current server); [children] makes it a submenu (a button whose tap opens
+ * the menu).
  */
 data class RaftNativeNavBarAction(
     val id: String,
@@ -85,7 +90,15 @@ data class RaftNativeNavBarAction(
     val children: List<RaftNativeNavBarAction> = emptyList(),
     /** Ranks for the trailing buttons: the higher stay out of the ⋯ longer (Duo column rule). */
     val priority: Int = 0,
+    val icon: RaftLucideIconName? = null,
 )
+
+/**
+ * iOS asset-catalog name of a design-system glyph (`Assets.xcassets/lucide-<wire name>.imageset`,
+ * generated with the Compose catalog by scripts/generate_lucide_icons.py, template rendering), the
+ * same names the native tab bar uses.
+ */
+internal fun raftNativeNavBarImageAssetName(icon: RaftLucideIconName): String = raftNativeTabBarImageAssetName(icon)
 
 /** At most this many trailing buttons beside the ⋯ (the Duo column's two-action rule). */
 internal const val RaftNativeNavBarMaxTrailing = 2
@@ -118,8 +131,17 @@ sealed interface RaftNativeNavBarTitleLeading {
     /** The conversation's channel glyph tile: `channel` / `private` / `joint`, or on the public page. */
     data class Channel(val channelKind: String?, val onPublicPage: Boolean) : RaftNativeNavBarTitleLeading
 
-    /** A DM peer's avatar: [imageUrl] when it is a plain http(s) image, else [label]'s initials on [fillArgb]. */
-    data class Avatar(val label: String, val imageUrl: String?, val fillArgb: String) : RaftNativeNavBarTitleLeading
+    /**
+     * A DM peer's avatar, any wire value [RaftAppAvatar] draws (an uploaded or Gravatar photo, a
+     * pixel avatar, [label]'s initials on [fill]). The app draws it and hands the host the pixels
+     * ([RaftNativeNavBarTitleImageCapture]); the host only draws [label]'s initials on [fill] until
+     * they arrive.
+     */
+    data class Avatar(
+        val label: String,
+        val avatarWireValue: String?,
+        val fill: Color,
+    ) : RaftNativeNavBarTitleLeading
 
     /**
      * A server's avatar (raft-ui `type="server"`, the web switcher trigger's): [imageUrl] when it
@@ -160,6 +182,8 @@ internal data class RaftNativeNavBarHead(
     val onBack: (() -> Unit)? = null,
     /** A tap on the title (scroll to top, the Settings developer unlock). */
     val onTitleClick: (() -> Unit)? = null,
+    /** The title view's leading image as drawn by the app ([RaftNativeNavBarTitleImageCapture]); null until drawn. */
+    val titleImage: RaftNativeTabBarAvatar? = null,
 )
 
 /** Implemented by the host (Swift). Called on the main thread. */
@@ -173,6 +197,10 @@ interface RaftNativeNavBarListener {
      * its own (`actionTapped("back")`); [nested]: the head is not the page's first (an in-page
      * sub-view over it). A pushed page pops with the stack's Back unless the head is [nested] with
      * a Back; at the stack's root the host shows the head's Back as a leading button.
+     * Buttons and rows carry `"imageAsset":"lucide-<name>"` (the design-system glyph, preferred)
+     * and/or `"systemSymbol"` (the fallback). [titleImage]: the title view's leading tile / avatar
+     * as the app draws it (non-premultiplied ARGB at the device scale, [RaftNativeNavBarTitleImageSize]
+     * points square); null: draw the extras' fallback.
      */
     fun onNativeNavBarChanged(
         title: String,
@@ -182,6 +210,7 @@ interface RaftNativeNavBarListener {
         titleMenuJson: String,
         hasBack: Boolean,
         nested: Boolean,
+        titleImage: RaftNativeTabBarAvatar?,
     )
 
     /** No head on screen publishes (a tab with its own Compose head): hide the bar. */
@@ -288,10 +317,11 @@ class RaftNativeNavBarBridge {
                 if (head.onTitleClick == null) extras else JsonObject(extras + ("titleTap" to kotlinx.serialization.json.JsonPrimitive(true)))
             }.toString()
         val subtitle = head.subtitle?.takeIf { it.isNotBlank() }
-        val wire = listOf(head.title, subtitle, actionsJson, extrasJson, titleMenuJson, hasBack, nested)
+        // The title image compares by identity: one instance per captured image.
+        val wire = listOf(head.title, subtitle, actionsJson, extrasJson, titleMenuJson, hasBack, nested, head.titleImage)
         if (wire == lastWire) return
         lastWire = wire
-        listener?.onNativeNavBarChanged(head.title, subtitle, actionsJson, extrasJson, titleMenuJson, hasBack, nested)
+        listener?.onNativeNavBarChanged(head.title, subtitle, actionsJson, extrasJson, titleMenuJson, hasBack, nested, head.titleImage)
     }
 
     // --- Large-title collapse -------------------------------------------------------------------
@@ -362,6 +392,13 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                         put("publicPage", lead.onPublicPage)
                         put("tileArgb", raftArgbHex(RaftColor.Brand))
                         put("inkArgb", raftArgbHex(RaftColor.StickerInk))
+                        // The Compose tile's glyph (the public page's hash-globe has no asset: globe).
+                        put(
+                            "imageAsset",
+                            raftNativeNavBarImageAssetName(
+                                if (lead.onPublicPage) RaftLucideIconName.Globe else lead.channelKind.threadChannelHeaderIcon()
+                            )
+                        )
                     }
                 )
             is RaftNativeNavBarTitleLeading.Avatar ->
@@ -370,8 +407,8 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                     buildJsonObject {
                         put("kind", "avatar")
                         put("label", lead.label)
-                        lead.imageUrl?.let { put("imageUrl", it) }
-                        put("fillArgb", lead.fillArgb)
+                        put("fillArgb", raftArgbHex(lead.fill))
+                        put("inkArgb", raftArgbHex(RaftColor.StickerInk))
                     }
                 )
             is RaftNativeNavBarTitleLeading.Server ->
@@ -404,6 +441,7 @@ private fun List<RaftNativeNavBarAction>.toJsonArray(): kotlinx.serialization.js
             addJsonObject {
                 put("id", action.id)
                 put("label", action.label)
+                action.icon?.let { put("imageAsset", raftNativeNavBarImageAssetName(it)) }
                 action.systemSymbol?.let { put("systemSymbol", it) }
                 action.badge?.let { put("badge", it) }
                 if (action.attention) put("attention", true)
@@ -477,6 +515,7 @@ internal fun raftNativeNavBarPublish(
     titleMenu: List<RaftNativeNavBarAction> = emptyList(),
     onBack: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
+    titleImage: RaftNativeTabBarAvatar? = null,
 ): Boolean {
     val drawn = LocalRaftNativeNavBar.current
     // Capture only: with the prototype off the page still registers its actions in the script
@@ -488,16 +527,17 @@ internal fun raftNativeNavBarPublish(
         if (active) bridge.activate(entry)
         onDispose { bridge.deactivate(entry) }
     }
-    val head = RaftNativeNavBarHead(title, subtitle, actions, extras, titleMenu, onBack, onTitleClick)
+    val head = RaftNativeNavBarHead(title, subtitle, actions, extras, titleMenu, onBack, onTitleClick, titleImage)
     SideEffect { if (active) bridge.publish(entry, head) }
     return drawn != null
 }
 
 /**
  * The Duo side column's actions ([RaftSideAction], the one source of a head's buttons) as bar
- * buttons: the same ids, labels, enabled / attention states and the same two-visible rule (a
- * negative [RaftSideAction.priority] goes to the ⋯ first). An action without an SF Symbol gets
- * the one [raftNativeNavBarSymbolFor] knows for its id, else none (a text button / a plain row).
+ * buttons: the same ids, labels, glyphs ([RaftSideAction.iconName], the Lucide icon the column
+ * draws), enabled / attention states and the same two-visible rule (a negative
+ * [RaftSideAction.priority] goes to the ⋯ first). The SF Symbol fallback is the action's own, else
+ * the one [raftNativeNavBarSymbolFor] knows for its id.
  */
 internal fun List<RaftSideAction>.toRaftNativeNavBarActions(): List<RaftNativeNavBarAction> =
     map { action ->
@@ -509,8 +549,15 @@ internal fun List<RaftSideAction>.toRaftNativeNavBarActions(): List<RaftNativeNa
             attention = action.attention,
             enabled = action.enabled,
             priority = if (action.keepVisible) Int.MAX_VALUE else action.priority,
+            icon = action.iconName?.let(::raftLucideIconNameForWire),
         )
     }
+
+private val raftLucideIconNamesByWire: Map<String, RaftLucideIconName> by lazy {
+    RaftLucideIconName.entries.associateBy { it.wireName }
+}
+
+internal fun raftLucideIconNameForWire(wireName: String): RaftLucideIconName? = raftLucideIconNamesByWire[wireName]
 
 /** SF Symbols for the side-column action ids whose column draws a Lucide glyph (prototype table). */
 internal fun raftNativeNavBarSymbolFor(id: String): String? =
@@ -533,7 +580,13 @@ internal fun raftNativeNavBarSymbolFor(id: String): String? =
  * would make the content jump. Otherwise the live top safe area.
  */
 @Composable
-internal fun RaftNativeNavBarHeadSpacer(bridge: RaftNativeNavBarBridge, modifier: Modifier = Modifier, liveTop: Dp) {
+internal fun RaftNativeNavBarHeadSpacer(
+    bridge: RaftNativeNavBarBridge,
+    modifier: Modifier = Modifier,
+    liveTop: Dp,
+    // Never seen: an offscreen capture ([RaftNativeNavBarTitleImageCapture]) rides here.
+    content: @Composable BoxScope.() -> Unit = {},
+) {
     // A head at the top (liveTop > 0) keeps the host bar's real height, also when the status bar
     // is hidden (landscape iPhone), where the page's own top padding is a fixed 12dp.
     val hostTop = raftNativeNavBarLiveTop()
@@ -546,7 +599,8 @@ internal fun RaftNativeNavBarHeadSpacer(bridge: RaftNativeNavBarBridge, modifier
                 val height = heightPt.dp.roundToPx().coerceAtLeast(0)
                 val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
                 layout(constraints.maxWidth, height) { placeable.place(0, 0) }
-            }
+            },
+        content = content,
     )
 }
 

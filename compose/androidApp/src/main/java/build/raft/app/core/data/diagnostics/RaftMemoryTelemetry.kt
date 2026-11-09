@@ -319,6 +319,13 @@ internal object RaftMemoryTelemetry {
 
     /** Runs on [handler]. */
     private fun onTrim(level: Int) {
+        // UI_HIDDEN and the background levels mean no activity is shown: the app is in the
+        // background now, not after the rotation debounce. A kill inside those 2 s (Hands 40eb8cea:
+        // importance 400, trim ui_hidden, 4 s after launch) otherwise kept "in foreground".
+        if (trimMeansUiHidden(level)) {
+            handler.removeCallbacks(goBackground)
+            onForegroundChanged(false)
+        }
         val snapshot = current ?: return
         current =
             snapshot.copy(
@@ -414,6 +421,9 @@ internal object RaftMemoryTelemetry {
             }
         }
 }
+
+/** Whether an `onTrimMemory` [level] says no UI is shown: UI_HIDDEN (20) and the background levels above it. */
+internal fun trimMeansUiHidden(level: Int): Boolean = level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
 
 /** Second field of /proc/self/statm (resident pages); -1 when unreadable. */
 internal fun parseStatmResidentPages(statm: String): Long =

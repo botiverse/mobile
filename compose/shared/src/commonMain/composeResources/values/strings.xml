@@ -2987,8 +2987,8 @@
     <string name="settings_developer_verbose_diagnostics_detail">Also write duplicate realtime events, avatar, markdown and scroll details, and every successful request to the app logs. Feedback reports get larger. Turns off when the app restarts.</string>
     <string name="settings_developer_nav3_stack">Navigation 3 page stack</string>
     <string name="settings_developer_nav3_stack_detail">Open the pages moved so far inside the app window (Android). Takes effect on the next app start.</string>
-    <string name="settings_developer_ios_native_nav">iOS native navigation</string>
-    <string name="settings_developer_ios_native_nav_detail">Show the migrated pages' titles and buttons in the system navigation bar, with the system swipe back (iPhone). Takes effect on the next app start.</string>
+    <string name="settings_mobile_ios_native_nav">iOS native navigation</string>
+    <string name="settings_mobile_ios_native_nav_detail">Show the migrated pages' titles and buttons in the system navigation bar, with the system swipe back (iPhone). Takes effect on the next app start.</string>
     <string name="settings_developer_presets">Presets</string>
     <string name="settings_developer_presets_detail">Choose a preset to fill the environment form, then save to apply it.</string>
     <string name="settings_developer_presets_empty">No presets are available from this host.</string>
@@ -4138,4 +4138,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d of %2$d Artifacts</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d new comment</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d new comments</string>
+    <string name="settings_search_placeholder">Search settings</string>
+    <string name="settings_search_clear">Clear search</string>
+    <string name="settings_search_no_match">No settings match "%1$s"</string>
+    <string name="settings_search_no_match_description">Try another word, or search everything for messages and people.</string>
+    <string name="settings_search_everywhere">Search everywhere</string>
+    <string name="settings_search_plan">Manage plan</string>
+    <string name="settings_search_invite_links">Invite links</string>
+    <string name="settings_search_single_sign_on">Single sign-on (SSO)</string>
+    <string name="settings_search_single_sign_on_description">Let people on your company's email domains sign in to Raft with your identity provider, and optionally require it.</string>
 </resources>

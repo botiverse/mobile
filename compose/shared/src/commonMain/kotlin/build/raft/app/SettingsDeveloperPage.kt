@@ -20,7 +20,6 @@ import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
-import build.raft.app.nav.RaftIosNativeNavFlag
 import build.raft.app.nav.RaftNav3StackFlag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,10 +61,6 @@ internal fun SharedSettingsDeveloperContent(
     val preferences = remember { build.raft.app.data.raftSharedPreferenceStore() }
     var nav3StackLocalEnabled by remember { mutableStateOf(RaftNav3StackFlag.localOverride(preferences)) }
     var verboseDiagnosticsEnabled by remember { mutableStateOf(RaftVerboseDiagnostics.enabled) }
-    // iPhone only (the iOS host sets hostSupported); null hides the row.
-    var iosNativeNavEnabled by remember {
-        mutableStateOf(if (RaftIosNativeNavFlag.hostSupported) RaftIosNativeNavFlag.stored(preferences) else null)
-    }
     val payload =
         snapshot.toDeveloperPayload(
             state = state,
@@ -74,8 +69,7 @@ internal fun SharedSettingsDeveloperContent(
             copy = settingsDeveloperPayloadCopy(),
             textInputTraceEnabled = RaftTextInputDiagnostics.enabled,
             verboseDiagnosticsEnabled = verboseDiagnosticsEnabled,
-            nav3StackLocalEnabled = nav3StackLocalEnabled,
-            iosNativeNavEnabled = iosNativeNavEnabled
+            nav3StackLocalEnabled = nav3StackLocalEnabled
         )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
@@ -91,11 +85,6 @@ internal fun SharedSettingsDeveloperContent(
                 // Read once at app launch: the switch takes effect on the next start.
                 RaftNav3StackFlag.setLocalOverride(preferences, value == "true")
                 nav3StackLocalEnabled = RaftNav3StackFlag.localOverride(preferences)
-            }
-            DEVELOPER_ACTION_IOS_NATIVE_NAV -> {
-                // Read once at app launch: the switch takes effect on the next start.
-                RaftIosNativeNavFlag.setLocalOverride(preferences, value == "true")
-                iosNativeNavEnabled = RaftIosNativeNavFlag.stored(preferences)
             }
         }
     }
@@ -354,7 +343,6 @@ internal fun SharedSettingsLocalFeatureOverrideDetailContent(
 internal const val DEVELOPER_ACTION_TEXT_INPUT_TRACE = "textInputTrace"
 internal const val DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS = "verboseDiagnostics"
 internal const val DEVELOPER_ACTION_NAV3_STACK = "nav3Stack"
-internal const val DEVELOPER_ACTION_IOS_NATIVE_NAV = "iosNativeNav"
 private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
 private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
 private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
@@ -425,8 +413,6 @@ internal data class SettingsDeveloperPayloadCopy(
     val verboseDiagnosticsDetail: String = "Also write duplicate realtime events, avatar, markdown and scroll details, and every successful request to the app logs. Feedback reports get larger. Turns off when the app restarts.",
     val nav3Stack: String = "Navigation 3 page stack",
     val nav3StackDetail: String = "Open the pages moved so far inside the app window (Android). Takes effect on the next app start.",
-    val iosNativeNav: String = "iOS native navigation",
-    val iosNativeNavDetail: String = "Show the migrated pages' titles and buttons in the system navigation bar, with the system swipe back (iPhone). Takes effect on the next app start.",
     val on: String = "On",
     val off: String = "Off"
 )
@@ -458,8 +444,6 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
         verboseDiagnosticsDetail = stringResource(Res.string.settings_developer_verbose_diagnostics_detail),
         nav3Stack = stringResource(Res.string.settings_developer_nav3_stack),
         nav3StackDetail = stringResource(Res.string.settings_developer_nav3_stack_detail),
-        iosNativeNav = stringResource(Res.string.settings_developer_ios_native_nav),
-        iosNativeNavDetail = stringResource(Res.string.settings_developer_ios_native_nav_detail),
         on = stringResource(Res.string.settings_state_on),
         off = stringResource(Res.string.settings_state_off)
     )
@@ -559,9 +543,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy(),
     textInputTraceEnabled: Boolean = false,
     verboseDiagnosticsEnabled: Boolean = false,
-    nav3StackLocalEnabled: Boolean = false,
-    // null: the host offers no iOS native navigation (not an iPhone): no row.
-    iosNativeNavEnabled: Boolean? = null
+    nav3StackLocalEnabled: Boolean = false
 ): RaftSharedSettingsPayload {
     val environmentDetail =
         when (state) {
@@ -652,21 +634,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 enabled = true,
                                 toggleValue = nav3StackLocalEnabled
                             )
-                        ) +
-                            listOfNotNull(
-                                iosNativeNavEnabled?.let { enabled ->
-                                    RaftSharedSettingsRow(
-                                        key = DEVELOPER_ACTION_IOS_NATIVE_NAV,
-                                        iconName = RaftLucideIconName.Route,
-                                        title = copy.iosNativeNav,
-                                        detail = copy.iosNativeNavDetail,
-                                        value = (!enabled).toString(),
-                                        status = if (enabled) copy.on else copy.off,
-                                        enabled = true,
-                                        toggleValue = enabled
-                                    )
-                                }
-                            )
+                        )
                 )
             )
     )

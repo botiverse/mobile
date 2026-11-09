@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -212,8 +213,64 @@ class SyncChangesEngineTest {
 
         val result = engine(api, RecordingSyncChangesSink(), maxPages = 2).pull(syncTestScope, trigger = "test")
 
-        assertEquals(true, assertIs<RaftSyncPullResult.Synced>(result).truncated)
+        val synced = assertIs<RaftSyncPullResult.Synced>(result)
+        assertEquals(true, synced.truncated)
+        assertTrue(synced.cursorAdvanced)
+        // The provider goes on in a follow-up pull.
+        assertTrue(synced.needsFollowUp)
         assertEquals("c1.3.1.k", cursors.read(syncTestScope))
+    }
+
+    @Test
+    fun `a capped pull that left the cursor where it was asks for no follow-up`() = runTest {
+        // A server answering hasMore with the cursor it was given (#proj-mobile:#112 should-fix a):
+        // without the stop the follow-up pulls would chain forever, 40 requests each.
+        cursors.write(syncTestScope, "c1.1.1")
+        val api =
+            ScriptedSyncChangesApi(
+                syncPage(syncChangesBody("c1.1.1", hasMore = true)),
+                syncPage(syncChangesBody("c1.1.1", hasMore = true)),
+            )
+
+        val result = assertIs<RaftSyncPullResult.Synced>(engine(api, RecordingSyncChangesSink(), maxPages = 2).pull(syncTestScope, trigger = "test"))
+
+        assertTrue(result.truncated)
+        assertFalse(result.cursorAdvanced)
+        assertFalse(result.needsFollowUp)
+        assertEquals("c1.1.1", cursors.read(syncTestScope))
+        // A first sync that stops at the cap did move the cursor (none before): it goes on.
+        preferences.values.clear()
+        val first =
+            ScriptedSyncChangesApi(
+                syncPage(syncChangesBody("c1.5.1")),
+                syncPage(syncChangesBody("c1.5.1", hasMore = true)),
+            )
+        assertTrue(assertIs<RaftSyncPullResult.Synced>(engine(first, RecordingSyncChangesSink(), maxPages = 1).pull(syncTestScope, trigger = "test")).needsFollowUp)
+    }
+
+    @Test
+    fun `a pull from a cursor first retakes what earlier reloads failed and a first sync does not`() = runTest {
+        val log = mutableListOf<String>()
+        val sink =
+            object : RaftSyncChangesSink by RecordingSyncChangesSink(calls = log) {
+                override suspend fun retakeFailedReloads(scope: RaftSyncScope) {
+                    log += "retake"
+                }
+            }
+        val api =
+            ScriptedSyncChangesApi(
+                syncPage(syncChangesBody("c1.10.100")),
+                syncPage(syncChangesBody("c1.11.100")),
+                syncPage(syncChangesBody("c1.12.100", changes = listOf(syncDelete(12, "agent", "a-1")))),
+            )
+        val engine = engine(api, sink)
+
+        engine.pull(syncTestScope, trigger = "server_selected")
+        assertEquals(listOf("snapshots:first_sync"), log)
+
+        log.clear()
+        engine.pull(syncTestScope, trigger = "foreground")
+        assertEquals(listOf("retake", "apply"), log)
     }
 
     @Test

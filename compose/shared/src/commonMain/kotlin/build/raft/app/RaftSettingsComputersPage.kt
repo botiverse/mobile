@@ -454,6 +454,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                         label = stringResource(Res.string.settings_computers_rack_view_label),
                         systemSymbol = if (rackView == ComputersRackView.List) "list.bullet" else "square.grid.2x2",
                         onClick = {},
+                        icon = if (rackView == ComputersRackView.List) RaftLucideIconName.LayoutList else RaftLucideIconName.LayoutGrid,
                         children =
                             listOf(
                                 RaftNativeNavBarAction(
@@ -462,6 +463,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                                     "list.bullet",
                                     { choose(ComputersRackView.List) },
                                     checked = rackView == ComputersRackView.List,
+                                    icon = RaftLucideIconName.LayoutList,
                                 ),
                                 RaftNativeNavBarAction(
                                     "computers-rack-view-cards",
@@ -469,6 +471,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                                     "square.grid.2x2",
                                     { choose(ComputersRackView.Cards) },
                                     checked = rackView == ComputersRackView.Cards,
+                                    icon = RaftLucideIconName.LayoutGrid,
                                 ),
                             ),
                     )

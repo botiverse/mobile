@@ -7727,7 +7727,7 @@ private fun MembersHumanDetailHeader(
         nativeSubtitle = member.detailHandle,
         nativeActions =
             if (canMessage) {
-                listOf(RaftNativeNavBarAction("member-message", messageLabel, "message", onOpenDirectMessage))
+                listOf(RaftNativeNavBarAction("member-message", messageLabel, "message", onOpenDirectMessage, icon = RaftLucideIconName.DirectMessage))
             } else {
                 emptyList()
             },
@@ -7845,10 +7845,10 @@ internal fun MembersDetailHeader(
             actions =
                 buildList {
                     if (onOpenLounge != null) {
-                        add(RaftNativeNavBarAction("member-lounge", nativeLoungeLabel, "person.2", onOpenLounge))
+                        add(RaftNativeNavBarAction("member-lounge", nativeLoungeLabel, "person.2", onOpenLounge, icon = RaftLucideIconName.Users))
                     }
                     if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
-                        add(RaftNativeNavBarAction("member-message", nativeMessageLabel, "message", onOpenDirectMessage))
+                        add(RaftNativeNavBarAction("member-message", nativeMessageLabel, "message", onOpenDirectMessage, icon = RaftLucideIconName.DirectMessage))
                     }
                     if (member.kind == MemberKind.Agent) {
                         add(
@@ -7857,6 +7857,8 @@ internal fun MembersDetailHeader(
                                 nativeMoreLabel,
                                 "ellipsis",
                                 { onRequestManagementMenu(threeDotButtonAnchorResolver.resolve()) },
+                                // Web AgentProfileOverflowMenu: EllipsisVertical, as the Compose head.
+                                icon = RaftLucideIconName.EllipsisVertical,
                             )
                         )
                     }

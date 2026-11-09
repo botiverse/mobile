@@ -70,9 +70,12 @@ internal fun settingsWebViewPageData(
     versionCode: String = "",
     feedbackCardEntry: RaftFeedbackCardEntry? = null,
     feedbackTicketId: String? = null,
+    /** A search result's setting: the web page opens at `#<id>` (Billing, Administration). */
+    anchor: SettingsSearchAnchorRequest? = null,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_WEB_VIEW_PAGE)
+        putSettingsSearchAnchor(anchor)
         put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName)
         put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
@@ -98,10 +101,11 @@ internal fun Pager.openSettingsWebViewPage(
     versionCode: String = "",
     feedbackCardEntry: RaftFeedbackCardEntry? = null,
     feedbackTicketId: String? = null,
+    anchor: SettingsSearchAnchorRequest? = null,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, feedbackCardEntry, feedbackTicketId),
+        settingsWebViewPageData(surface, storeScope, versionCode, feedbackCardEntry, feedbackTicketId, anchor),
     )
 }
 
@@ -157,6 +161,8 @@ private fun SettingsWebViewScreen() {
             settingsWebViewSurfaceFromPageData(pager.pageData.params)
         }
     val wideDetailClose = LocalRaftSettingsWideDetailClose.current
+    // A Settings search result opens the web page at its setting (`#<id>`, web useScrollToSettingsSection).
+    val searchAnchor = remember(pager.pageData.params) { settingsSearchAnchorFromPageData(pager.pageData.params) }
     fun closeSection() =
         settingsPageClose(wideDetailClose) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     when (surface) {
@@ -175,7 +181,7 @@ private fun SettingsWebViewScreen() {
                         pager = pager,
                         title = stringResource(Res.string.settings_billing_title),
                         iconName = RaftLucideIconName.CreditCard,
-                        spec = settingsBillingWebViewSpec,
+                        spec = remember(searchAnchor) { settingsBillingWebViewSpec.withSettingsSearchAnchor(searchAnchor) },
                     )
                 SettingsBillingOpenTarget.ViewOnly -> SettingsBillingViewOnlyPage(pager)
             }
@@ -216,7 +222,7 @@ private fun SettingsWebViewScreen() {
                 pager = pager,
                 title = stringResource(Res.string.settings_server_administration_title),
                 iconName = RaftLucideIconName.Shield,
-                spec = settingsAdministrationWebViewSpec,
+                spec = remember(searchAnchor) { settingsAdministrationWebViewSpec.withSettingsSearchAnchor(searchAnchor) },
             )
         SettingsWebViewSurface.ImBridges ->
             StandaloneSettingsWebViewPage(
@@ -257,6 +263,13 @@ private fun SettingsWebViewInvalidRoute(pager: Pager) {
  * deliberately no [build.raft.app.data.SharedSettingsDestination] here: a Web surface must not
  * start a second native Settings store load for content that the SPA is already fetching.
  */
+/** [this] spec, its page opened at [anchor]'s setting (`#<id>`); unchanged without one. */
+internal fun StandaloneSettingsWebViewSpec.withSettingsSearchAnchor(anchor: SettingsSearchAnchorRequest?): StandaloneSettingsWebViewSpec {
+    if (anchor == null) return this
+    val build = buildWebUrl
+    return copy(buildWebUrl = { webBaseUrl, session, localeTag -> settingsSearchWebUrlWithAnchor(build(webBaseUrl, session, localeTag), anchor) })
+}
+
 internal data class StandaloneSettingsWebViewSpec(
     val surface: SettingsWebViewSurface,
     val includeLocaleQuery: Boolean = false,

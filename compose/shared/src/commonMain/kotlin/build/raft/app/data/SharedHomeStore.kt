@@ -92,6 +92,11 @@ internal class SharedHomeStore(
     private var dataSource: SharedHomeDataSource,
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
+    /**
+     * Incremental sync's reload ledger: the Home read settles a Home reload a sync change asked
+     * for, so a failed one is read again by the next pull (#proj-mobile:#112). Null: no sync.
+     */
+    private val syncReloads: RaftSyncReloadLedger? = null,
     private val presenceFlushDelayMillis: Long = 250L,
     /**
      * A server switch whose Home hasn't loaded by then stops waiting (artin 10-23: a switch spun
@@ -2697,7 +2702,22 @@ internal class SharedHomeStore(
             }
         val pendingReadsAtRequest =
             pendingReadOwner?.let { owner -> readReceiptCoordinator?.pendingReadSeqs(owner) }.orEmpty()
-        val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
+        val syncReadServer = activeServer?.value ?: activeSession.currentServerId
+        val syncReadTicket = syncReadServer?.let { syncReloads?.beginListRead(it, RaftSyncListRead.Home) }
+        val dataResult =
+            try {
+                dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                if (syncReadServer != null && syncReadTicket != null) {
+                    syncReloads?.endListRead(syncReadServer, RaftSyncListRead.Home, syncReadTicket, RaftSyncSnapshotRead.Failed)
+                }
+                throw throwable
+            }
+        if (syncReadServer != null && syncReadTicket != null) {
+            syncReloads?.endListRead(syncReadServer, RaftSyncListRead.Home, syncReadTicket, dataResult.syncSnapshotRead())
+        }
         if (sessionGeneration != homeSessionGeneration.value) {
             diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
             return

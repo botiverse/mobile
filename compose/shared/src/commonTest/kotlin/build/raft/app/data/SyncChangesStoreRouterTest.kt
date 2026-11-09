@@ -10,6 +10,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Pulled changes reach each store through its reducer (rows: botiverse/slock 0d030e341 list items). */
@@ -17,7 +19,10 @@ class SyncChangesStoreRouterTest {
     private class RecordingTargets : RaftSyncStoreTargets {
         var server: ServerSummary? = ServerSummary(id = ServerId("server-1"), name = "Workspace", slug = "workspace")
         var names: Map<String, String> = mapOf("m-1" to "Mac")
-        var rosterOk = true
+        /** What the roster's list reads answer (one per shell store), as the provider classifies them. */
+        var rosterResults: List<DataResult<*>?> = listOf(DataResult.Content(Unit))
+        var machineResults: List<DataResult<*>?> = listOf(DataResult.Content(Unit))
+        var channelMembersOk = true
         val calls = mutableListOf<String>()
         val rosterUpserts = mutableListOf<MemberProfile>()
         val rosterDeletes = mutableListOf<Pair<MemberId, MemberKind>>()
@@ -61,19 +66,20 @@ class SyncChangesStoreRouterTest {
             return remoteDoneOutcomes[channelId] ?: ActivityRemoteDoneOutcome.CannotTell
         }
 
-        override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) {
+        override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String): Boolean {
             calls += "channel_members"
             channelMemberRefreshes += channelIds
+            return channelMembersOk
         }
 
-        override suspend fun reloadRoster(serverId: String, reason: String): Boolean {
+        override suspend fun reloadRoster(serverId: String, reason: String): RaftSyncSnapshotRead {
             calls += "roster_reload"
-            return rosterOk
+            return rosterResults.syncSnapshotRead()
         }
 
-        override suspend fun reloadMachines(serverId: String, reason: String): Boolean {
+        override suspend fun reloadMachines(serverId: String, reason: String): RaftSyncSnapshotRead {
             calls += "machines_reload"
-            return true
+            return machineResults.syncSnapshotRead()
         }
 
         val messages = mutableListOf<Message>()
@@ -85,7 +91,17 @@ class SyncChangesStoreRouterTest {
     }
 
     private val targets = RecordingTargets()
-    private val router = RaftSyncChangesStoreRouter(targets)
+    private val ledger = RaftSyncReloadLedger()
+    private val router = RaftSyncChangesStoreRouter(targets, ledger)
+    private val cursors = RaftSyncCursorStore(SyncTestPreferences())
+
+    private fun engine(vararg answers: RaftSyncChangesFetch) =
+        RaftSyncChangesEngine(api = ScriptedSyncChangesApi(*answers), cursors = cursors, sink = router)
+
+    /** `servers/:id/members` for a guest: slock routes/servers.ts:2121 answers 403 (MemberRepositoryDataSource maps it). */
+    private val guestForbidden =
+        DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access", traceId = null))
+    private val serverUnavailable = DataResult.Error(ScreenError(code = "server_unavailable", traceId = null))
 
     private suspend fun apply(vararg changes: String) {
         router.apply(syncTestScope, parseSyncChangesPage(syncChangesBody("c1.9.1", changes = changes.toList()))!!.changes.toSyncApplyPlan())
@@ -286,8 +302,151 @@ class SyncChangesStoreRouterTest {
         assertEquals(listOf<Set<String>?>(null), targets.channelMemberRefreshes)
 
         targets.calls.clear()
-        targets.rosterOk = false
+        targets.rosterResults = listOf(serverUnavailable)
         assertFalse(router.reloadSnapshots(syncTestScope, setOf(RaftSyncSnapshot.Agents), reason = "reset_forced"))
         assertEquals(listOf("roster_reload"), targets.calls)
+    }
+
+    @Test
+    fun `only a 403 that is the server's answer for this viewer counts as not readable`() {
+        assertEquals(RaftSyncSnapshotRead.Taken, DataResult.Content(Unit).syncSnapshotRead())
+        assertEquals(RaftSyncSnapshotRead.Taken, DataResult.Empty(EmptyReason.NoMembers).syncSnapshotRead())
+        assertEquals(RaftSyncSnapshotRead.NotReadable, guestForbidden.syncSnapshotRead())
+        assertEquals(RaftSyncSnapshotRead.Failed, serverUnavailable.syncSnapshotRead())
+        assertEquals(RaftSyncSnapshotRead.Failed, authSessionRequiredResult().syncSnapshotRead())
+        // An edge block is not the server's answer: it may pass on the next try.
+        val edgeBlocked =
+            DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", serverMessage = "edge_blocked", traceId = null))
+        assertEquals(RaftSyncSnapshotRead.Failed, edgeBlocked.syncSnapshotRead())
+        // Several shell stores: one read is enough; refused beats failed; nothing read is a failure.
+        assertEquals(RaftSyncSnapshotRead.Taken, listOf(serverUnavailable, DataResult.Content(Unit)).syncSnapshotRead())
+        assertEquals(RaftSyncSnapshotRead.NotReadable, listOf(null, guestForbidden).syncSnapshotRead())
+        assertEquals(RaftSyncSnapshotRead.Failed, listOf<DataResult<*>?>(null).syncSnapshotRead())
+        assertEquals(RaftSyncSnapshotRead.Failed, emptyList<DataResult<*>?>().syncSnapshotRead())
+    }
+
+    @Test
+    fun `a guest's first sync completes and keeps its cursor though the server roster is a 403`() = runTest {
+        // #proj-mobile:#112 must-fix: the 403 dropped the cursor, so every reconnect started over.
+        targets.rosterResults = listOf(guestForbidden)
+        val first =
+            engine(syncPage(syncChangesBody("c1.10.100")), syncPage(syncChangesBody("c1.11.100")))
+                .pull(syncTestScope, trigger = "server_selected")
+
+        assertEquals(true, assertIs<RaftSyncPullResult.Synced>(first).firstSync)
+        assertTrue("roster_reload" in targets.calls)
+        assertEquals("c1.11.100", cursors.read(syncTestScope))
+
+        // The reconnect pulls from that cursor: no snapshot is taken again.
+        targets.calls.clear()
+        val again = engine(syncPage(syncChangesBody("c1.12.100"))).pull(syncTestScope, trigger = "reconnect")
+        assertEquals(false, assertIs<RaftSyncPullResult.Synced>(again).firstSync)
+        assertEquals(emptyList(), targets.calls)
+        assertEquals("c1.12.100", cursors.read(syncTestScope))
+    }
+
+    @Test
+    fun `a viewer without viewMachines keeps its cursor through a machines 403 and a reset`() = runTest {
+        targets.machineResults = listOf(guestForbidden)
+        cursors.write(syncTestScope, "c1.1.1")
+        val reset = """{"reason":"forced","snapshots":["machines"]}"""
+
+        val result = engine(syncPage(syncChangesBody("c1.2.1", reset = reset))).pull(syncTestScope, trigger = "reconnect")
+
+        assertEquals("forced", assertIs<RaftSyncPullResult.Synced>(result).resetReason)
+        assertEquals(listOf("machines_reload"), targets.calls)
+        assertEquals("c1.2.1", cursors.read(syncTestScope))
+        // Not a failure: the next pull does not read it again.
+        assertTrue(ledger.takeRetakes("server-1").isEmpty)
+    }
+
+    @Test
+    fun `a 5xx roster still fails the first sync and keeps no cursor`() = runTest {
+        targets.rosterResults = listOf(serverUnavailable)
+
+        val result = engine(syncPage(syncChangesBody("c1.10.100"))).pull(syncTestScope, trigger = "server_selected")
+
+        val failed = assertIs<RaftSyncPullResult.Failed>(result)
+        assertEquals("snapshot_failed", failed.code)
+        assertTrue(failed.needsFullRefetchFallback)
+        assertNull(cursors.read(syncTestScope))
+    }
+
+    @Test
+    fun `a failed Home reload after a page is read again by the next pull`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        engine(syncPage(syncChangesBody("c1.2.1", changes = listOf(syncUpsert(2, "channel", "ch-1", """{"id":"ch-1"}""")))))
+            .pull(syncTestScope, trigger = "foreground")
+        assertEquals(listOf("home", "activity"), targets.calls)
+        assertEquals("c1.2.1", cursors.read(syncTestScope))
+
+        // Home's load (sent after the request) fails; Activity's reads.
+        val homeTicket = ledger.beginListRead("server-1", RaftSyncListRead.Home)
+        val activityTicket = ledger.beginListRead("server-1", RaftSyncListRead.Activity)
+        ledger.endListRead("server-1", RaftSyncListRead.Home, homeTicket, serverUnavailable.syncSnapshotRead())
+        ledger.endListRead("server-1", RaftSyncListRead.Activity, activityTicket, RaftSyncSnapshotRead.Taken)
+
+        // The next pull, with no changes, reads Home again (only Home), before its page.
+        targets.calls.clear()
+        engine(syncPage(syncChangesBody("c1.3.1"))).pull(syncTestScope, trigger = "foreground")
+        assertEquals(listOf("home"), targets.calls)
+
+        // That read succeeds: the pull after it reads nothing.
+        val retakeTicket = ledger.beginListRead("server-1", RaftSyncListRead.Home)
+        ledger.endListRead("server-1", RaftSyncListRead.Home, retakeTicket, RaftSyncSnapshotRead.Taken)
+        targets.calls.clear()
+        engine(syncPage(syncChangesBody("c1.4.1"))).pull(syncTestScope, trigger = "foreground")
+        assertEquals(emptyList(), targets.calls)
+    }
+
+    @Test
+    fun `a Home read sent before the change settles nothing and a later success clears a failure`() {
+        val before = ledger.beginListRead("server-1", RaftSyncListRead.Home)
+        ledger.requestListRead("server-1", RaftSyncListRead.Home)
+        // The load in flight when the change came may predate it: its failure is not the reload's.
+        ledger.endListRead("server-1", RaftSyncListRead.Home, before, RaftSyncSnapshotRead.Failed)
+        assertTrue(ledger.takeRetakes("server-1").isEmpty)
+
+        val after = ledger.beginListRead("server-1", RaftSyncListRead.Home)
+        ledger.endListRead("server-1", RaftSyncListRead.Home, after, RaftSyncSnapshotRead.Failed)
+        // A pull-to-refresh that reads Home before the next pull: nothing left to retake.
+        ledger.endListRead("server-1", RaftSyncListRead.Home, ledger.beginListRead("server-1", RaftSyncListRead.Home), RaftSyncSnapshotRead.Taken)
+        assertTrue(ledger.takeRetakes("server-1").isEmpty)
+
+        // A request whose read fails is retaken once: the retake asks again.
+        ledger.requestListRead("server-1", RaftSyncListRead.Activity)
+        ledger.endListRead("server-1", RaftSyncListRead.Activity, ledger.beginListRead("server-1", RaftSyncListRead.Activity), RaftSyncSnapshotRead.Failed)
+        assertEquals(setOf(RaftSyncListRead.Activity), ledger.takeRetakes("server-1").lists)
+        assertTrue(ledger.takeRetakes("server-1").isEmpty)
+    }
+
+    @Test
+    fun `failed channel member and roster reloads after a page are retaken by the next pull`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        targets.channelMembersOk = false
+        targets.rosterResults = listOf(serverUnavailable)
+        engine(
+            syncPage(
+                syncChangesBody(
+                    "c1.2.1",
+                    changes = listOf(syncDelete(2, "channel_member", "ch-1:user:u-2"), """{"seq":3,"entity":"agent","id":"a-1","op":"quarantined"}"""),
+                )
+            )
+        ).pull(syncTestScope, trigger = "foreground")
+        assertEquals(listOf("channel_members", "roster_reload"), targets.calls)
+        // The cursor goes on: the rows were applied.
+        assertEquals("c1.2.1", cursors.read(syncTestScope))
+
+        targets.channelMembersOk = true
+        targets.rosterResults = listOf(DataResult.Content(Unit))
+        targets.calls.clear()
+        engine(syncPage(syncChangesBody("c1.3.1"))).pull(syncTestScope, trigger = "foreground")
+        assertEquals(listOf("roster_reload", "channel_members"), targets.calls)
+        // Every loaded roster: which channels failed is not kept.
+        assertEquals(null, targets.channelMemberRefreshes.last())
+
+        targets.calls.clear()
+        engine(syncPage(syncChangesBody("c1.4.1"))).pull(syncTestScope, trigger = "foreground")
+        assertEquals(emptyList(), targets.calls)
     }
 }

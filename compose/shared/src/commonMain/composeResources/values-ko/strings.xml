@@ -2982,8 +2982,8 @@
     <string name="settings_developer_text_input_trace_detail">입력란의 모든 키보드 편집과 텍스트 동기화를 앱 로그에 기록해요(길이만 기록하고 내용은 기록하지 않아요). 입력기(IME) 버그 신고용이에요.</string>
     <string name="settings_developer_nav3_stack">Navigation 3 페이지 스택</string>
     <string name="settings_developer_nav3_stack_detail">지금까지 이전된 페이지를 앱 창 안에서 열어요(Android). 다음에 앱을 시작할 때 적용돼요.</string>
-    <string name="settings_developer_ios_native_nav">iOS 기본 내비게이션</string>
-    <string name="settings_developer_ios_native_nav_detail">이전된 페이지의 제목과 버튼을 시스템 내비게이션 바에 표시하고, 시스템의 스와이프로 뒤로 가기를 사용해요(iPhone). 다음에 앱을 시작할 때 적용돼요.</string>
+    <string name="settings_mobile_ios_native_nav">iOS 기본 내비게이션</string>
+    <string name="settings_mobile_ios_native_nav_detail">이전된 페이지의 제목과 버튼을 시스템 내비게이션 바에 표시하고, 시스템의 스와이프로 뒤로 가기를 사용해요(iPhone). 다음에 앱을 시작할 때 적용돼요.</string>
     <string name="settings_developer_presets">프리셋</string>
     <string name="settings_developer_presets_detail">프리셋을 선택해 환경 양식을 채운 다음, 저장해서 적용하세요.</string>
     <string name="settings_developer_presets_empty">이 호스트에서 사용할 수 있는 프리셋이 없어요.</string>
@@ -4042,4 +4042,13 @@
     <string name="artifacts_dashboard_count_filtered_many">Artifact %2$d개 중 %1$d개</string>
     <string name="artifacts_dashboard_new_comments_one">새 댓글 %1$d개</string>
     <string name="artifacts_dashboard_new_comments_many">새 댓글 %1$d개</string>
+    <string name="settings_search_placeholder">설정 검색</string>
+    <string name="settings_search_clear">검색어 지우기</string>
+    <string name="settings_search_no_match">‘%1$s’에 해당하는 설정이 없어요</string>
+    <string name="settings_search_no_match_description">다른 단어로 검색하거나, 전체 검색에서 메시지와 사람을 찾아보세요.</string>
+    <string name="settings_search_everywhere">전체 검색</string>
+    <string name="settings_search_plan">요금제 관리</string>
+    <string name="settings_search_invite_links">초대 링크</string>
+    <string name="settings_search_single_sign_on">싱글 사인온(SSO)</string>
+    <string name="settings_search_single_sign_on_description">회사 이메일 도메인의 사용자가 회사 ID 공급자로 Raft에 로그인하도록 하고, 필요하면 이를 필수로 지정합니다.</string>
 </resources>

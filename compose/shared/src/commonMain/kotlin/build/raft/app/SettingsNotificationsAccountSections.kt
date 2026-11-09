@@ -164,7 +164,7 @@ internal fun SettingsNotificationPauseSection(
         RaftCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (saveFailed) SettingsNotificationsSaveFailed()
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.settingsSearchAnchor("pause-notifications"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsNotificationsControlTitle(pauseTitle)
                     if (pausedUntil != null) {
                         Row(
@@ -224,7 +224,7 @@ internal fun SettingsNotificationPauseSection(
                     }
                 }
                 val quietTitle = stringResource(Res.string.settings_notifications_quiet_hours_title)
-                RaftListRowGroup {
+                RaftListRowGroup(Modifier.settingsSearchAnchor("quiet-hours", SettingsSearchCardShape)) {
                     RaftListRow(
                         title = quietTitle,
                         variant = RaftListRowVariant.Plain,
@@ -369,7 +369,7 @@ internal fun SettingsNotificationContentSection(
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (saveFailed) SettingsNotificationsSaveFailed()
                 val previewTitle = stringResource(Res.string.settings_notifications_preview_mode_title)
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.settingsSearchAnchor("notification-preview"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsNotificationsControlTitle(previewTitle)
                     SettingsNotificationsNote(stringResource(Res.string.settings_notifications_preview_mode_detail))
                     val labels = PushPreviewMode.entries.associateWith { stringResource(it.settingsPreviewModeLabel()) }
@@ -404,7 +404,7 @@ internal fun SettingsNotificationContentSection(
                     }
                 }
                 val soundTitle = stringResource(Res.string.settings_notifications_sound_title)
-                RaftListRowGroup {
+                RaftListRowGroup(Modifier.settingsSearchAnchor("notification-sound", SettingsSearchCardShape)) {
                     RaftListRow(
                         title = soundTitle,
                         variant = RaftListRowVariant.Plain,

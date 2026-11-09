@@ -2982,8 +2982,8 @@
     <string name="settings_developer_text_input_trace_detail">將輸入框中的每次鍵盤編輯與文字同步記錄到 App 記錄中（只記長度，不記內容），用於回報輸入法問題。</string>
     <string name="settings_developer_nav3_stack">Navigation 3 頁面堆疊</string>
     <string name="settings_developer_nav3_stack_detail">已遷移的頁面會在 App 視窗內開啟（Android）。下次啟動 App 時生效。</string>
-    <string name="settings_developer_ios_native_nav">iOS 原生導覽</string>
-    <string name="settings_developer_ios_native_nav_detail">已遷移頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回（iPhone）。下次啟動 App 時生效。</string>
+    <string name="settings_mobile_ios_native_nav">iOS 原生導覽</string>
+    <string name="settings_mobile_ios_native_nav_detail">已遷移頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回（iPhone）。下次啟動 App 時生效。</string>
     <string name="settings_developer_presets">預設組合</string>
     <string name="settings_developer_presets_detail">選擇預設組合以填入環境表單，再儲存即可套用。</string>
     <string name="settings_developer_presets_empty">此主機沒有可用的預設組合。</string>
@@ -4042,4 +4042,13 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d / 共 %2$d 個 Artifact</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d 則新留言</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d 則新留言</string>
+    <string name="settings_search_placeholder">搜尋設定</string>
+    <string name="settings_search_clear">清除搜尋</string>
+    <string name="settings_search_no_match">沒有和「%1$s」相關的設定</string>
+    <string name="settings_search_no_match_description">換個詞試試，或在全部內容中搜尋訊息和人。</string>
+    <string name="settings_search_everywhere">搜尋全部</string>
+    <string name="settings_search_plan">管理方案</string>
+    <string name="settings_search_invite_links">邀請連結</string>
+    <string name="settings_search_single_sign_on">單一登入（SSO）</string>
+    <string name="settings_search_single_sign_on_description">讓公司電子郵件網域下的成員使用你們的身分識別提供者登入 Raft，也可以要求他們必須這樣登入。</string>
 </resources>

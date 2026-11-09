@@ -143,6 +143,7 @@ internal fun SharedSettingsServerContent(
     val visualFullHeight = settingsVisualFullHeightEnabled()
     // Web: each section is `mb-6`, 24dp apart.
     LazyColumn(
+        state = rememberSettingsSearchListState(),
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
@@ -163,12 +164,14 @@ internal fun SharedSettingsServerContent(
         // Web ServerTabContent order: Profile, then Public access.
         if (publicAccess != null && publicAccess.state.sectionVisible) {
             item {
-                SettingsServerPublicAccessCard(
-                    state = publicAccess.state,
-                    webBaseUrl = publicAccess.webBaseUrl,
-                    onIntent = publicAccess.onIntent,
-                    onCopyUrl = publicAccess.onCopyUrl
-                )
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("public-access", SettingsSearchCardShape)) {
+                    SettingsServerPublicAccessCard(
+                        state = publicAccess.state,
+                        webBaseUrl = publicAccess.webBaseUrl,
+                        onIntent = publicAccess.onIntent,
+                        onCopyUrl = publicAccess.onCopyUrl
+                    )
+                }
             }
         }
         payload.sections.forEach { section ->
@@ -226,7 +229,7 @@ private fun SettingsServerProfileFormCard(
         ) {
             RaftField(
                 label = stringResource(Res.string.settings_server_label_name),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().settingsSearchAnchor("server-name"),
                 labelSize = RaftFieldLabelSize.Sm,
                 enabled = canSave && !busy
             ) {
@@ -328,7 +331,7 @@ private fun SettingsServerDangerZoneCard(
     // Web DangerZoneSection: Leave Server and Delete Server are cards of their own, 12dp apart.
     SettingsFormSection(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(Res.string.settings_section_danger_zone_title)) {
         if (canLeave) {
-            RaftCard(modifier = Modifier.fillMaxWidth()) {
+            RaftCard(modifier = Modifier.fillMaxWidth().settingsSearchAnchor("leave-server", SettingsSearchCardShape)) {
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SettingsServerActionRow(
                         title = stringResource(Res.string.settings_server_action_leave),

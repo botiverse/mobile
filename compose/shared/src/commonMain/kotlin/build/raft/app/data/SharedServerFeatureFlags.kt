@@ -226,6 +226,21 @@ const val ACCOUNT_DELETION_FEATURE_FLAG_KEY: String = "account_deletion_v0"
  */
 const val AGENT_LOUNGE_FEATURE_FLAG_KEY: String = "agent_lounge_v0"
 
+/**
+ * Public servers (botiverse/slock `packages/shared/src/featureFlags.ts` `PUBLIC_SERVER_FEATURE_FLAG_KEY`):
+ * per server, default off. Read by Settings search, which finds Server > Public access only for the
+ * owner while it is on (the section itself shows once `GET /servers/:id/public-visibility` answers).
+ */
+const val PUBLIC_SERVER_FEATURE_FLAG_KEY: String = "public_server_v0"
+
+/**
+ * Server SSO v1 (botiverse/slock `packages/server/src/services/featureFlagService.ts`
+ * `SERVER_SSO_FEATURE_FLAG_KEY`, rfcs/083-server-sso.md §8): per server, default off. Read by
+ * Settings search, which finds Administration > Single sign-on for an admin only while it is on
+ * (web `useServerSsoShown`: `GET /servers/:id/sso` answers 404 while off).
+ */
+const val SERVER_SSO_FEATURE_FLAG_KEY: String = "server_sso_v1"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -256,6 +271,9 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
     ACCOUNT_DELETION_FEATURE_FLAG_KEY,
     AGENT_LOUNGE_FEATURE_FLAG_KEY,
+    // Settings search: who finds Public access and Single sign-on.
+    PUBLIC_SERVER_FEATURE_FLAG_KEY,
+    SERVER_SSO_FEATURE_FLAG_KEY,
 )
 
 /**

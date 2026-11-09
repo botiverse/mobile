@@ -1,6 +1,7 @@
 package build.raft.app.core.data.diagnostics
 
 import android.app.ApplicationExitInfo
+import android.content.ComponentCallbacks2
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -133,5 +134,14 @@ class RaftMemoryTelemetryTest {
         assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_003L, trimLevel = 15))
         assertFalse(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_004L, trimLevel = 10))
         assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 45_003L, trimLevel = 10))
+    }
+
+    @Test
+    fun uiHiddenAndBackgroundTrimLevelsMeanNoUiIsShown() {
+        assertFalse(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE))
+        assertFalse(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL))
+        assertTrue(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN))
+        assertTrue(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_BACKGROUND))
+        assertTrue(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_COMPLETE))
     }
 }

@@ -178,6 +178,11 @@ class SharedActivityStore internal constructor(
      * first page ran while a conversation covered Activity).
      */
     private val hiddenRealtimeBackgroundRefreshIntervalMillis: Long? = null,
+    /**
+     * Incremental sync's reload ledger: the inbox read settles an Activity reload a sync change
+     * asked for, so a failed one is read again by the next pull (#proj-mobile:#112). Null: no sync.
+     */
+    private val syncReloads: RaftSyncReloadLedger? = null,
     /** Monotonic clock for the throttle window and the local Done/read hold; injectable for virtual time. */
     private val nowMillis: () -> Long = activityMonotonicClock(),
     /**
@@ -2397,10 +2402,19 @@ class SharedActivityStore internal constructor(
         onPageMerged: suspend (InboxSnapshot) -> Unit = {}
     ): ActivityCanonicalDepthResult {
         val targetDepth = depth.coerceAtLeast(SharedActivityPageSize)
+        val syncReadTicket = syncReloads?.beginListRead(serverId.value, RaftSyncListRead.Activity)
         val initial =
-            withInboxFetchReason(fetchReason, fetchTrigger) {
-                inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
+            try {
+                withInboxFetchReason(fetchReason, fetchTrigger) {
+                    inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                syncReadTicket?.let { syncReloads?.endListRead(serverId.value, RaftSyncListRead.Activity, it, RaftSyncSnapshotRead.Failed) }
+                throw throwable
             }
+        syncReadTicket?.let { syncReloads?.endListRead(serverId.value, RaftSyncListRead.Activity, it, initial.syncSnapshotRead()) }
         if (initial !is DataResult.Content) return ActivityCanonicalDepthResult(initial)
 
         var combined = initial.data.copy(items = initial.data.items.dedupeActivityItems())

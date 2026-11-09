@@ -1,5 +1,7 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +59,7 @@ internal fun SettingsThemeContent(
     val hasServer = serverTheme?.state?.visible == true
     val sections = settingsThemePageSections(hasServer)
     LazyColumn(
+        state = rememberSettingsSearchListState(),
         // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
         // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
@@ -68,11 +71,19 @@ internal fun SettingsThemeContent(
             }
         }
         if (SettingsThemePageSection.Mode in sections) {
-            item { SettingsAppearanceThemeCard(title = stringResource(Res.string.settings_theme_group_mode)) }
+            item {
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("theme", SettingsSearchCardShape)) {
+                    SettingsAppearanceThemeCard(title = stringResource(Res.string.settings_theme_group_mode))
+                }
+            }
         }
         val pickerSections = sections.filter { it != SettingsThemePageSection.Mode }
         if (serverTheme != null && pickerSections.isNotEmpty()) {
-            item { SettingsServerThemePickerCard(serverTheme, pickerSections) }
+            item {
+                Box(Modifier.fillMaxWidth().settingsSearchAnchor("server-theme", SettingsSearchCardShape)) {
+                    SettingsServerThemePickerCard(serverTheme, pickerSections)
+                }
+            }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }

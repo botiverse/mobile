@@ -26,6 +26,8 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
+import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.nav.RaftIosNativeNavFlag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +44,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -85,17 +88,21 @@ internal data class SettingsAppPreferenceVisibility(
     val multiShellHost: Boolean,
     /** Composer key copy about Enter / Shift+Enter instead of the soft keyboard's action key. */
     val hardwareKeyboardComposerCopy: Boolean,
+    /** "iOS native navigation (Beta)": only on an iPhone host ([RaftIosNativeNavFlag.hostSupported]). */
+    val iosNativeNav: Boolean = false,
 )
 
 internal fun settingsAppPreferenceVisibility(
     finePointer: Boolean = raftPlatformHasFinePointer(),
     supportsInAppBrowser: Boolean = raftPlatformSupportsInAppBrowser(),
     supportsMultiShellHost: Boolean = raftPlatformSupportsMultiShellHost(),
+    supportsIosNativeNav: Boolean = RaftIosNativeNavFlag.hostSupported,
 ): SettingsAppPreferenceVisibility =
     SettingsAppPreferenceVisibility(
         linkOpenMode = supportsInAppBrowser,
         multiShellHost = supportsMultiShellHost,
         hardwareKeyboardComposerCopy = finePointer,
+        iosNativeNav = supportsIosNativeNav,
     )
 
 /**
@@ -112,6 +119,7 @@ internal fun SettingsMobileContent(
     visibility: SettingsAppPreferenceVisibility = settingsAppPreferenceVisibility(),
 ) {
     LazyColumn(
+        state = rememberSettingsSearchListState(),
         // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
         // (12 with a finger: sizing v12, raft-ui 0.65 desktop density).
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
@@ -186,6 +194,9 @@ internal fun LazyListScope.settingsAppPreferenceItems(
                 )
             }
         }
+        if (visibility.iosNativeNav) {
+            item { SettingsIosNativeNavCard() }
+        }
         item {
             SettingsActivityTaskStatusBadgesCard(
                 snapshot = snapshot,
@@ -194,12 +205,14 @@ internal fun LazyListScope.settingsAppPreferenceItems(
             )
         }
         item {
-            SettingsComposerSendKeyCard(
-                snapshot = snapshot,
-                actionState = actionState,
-                onComposerSendKeyChange = onComposerSendKeyChange,
-                hardwareKeyboard = visibility.hardwareKeyboardComposerCopy
-            )
+            Box(Modifier.fillMaxWidth().settingsSearchAnchor("send-with", SettingsSearchCardShape)) {
+                SettingsComposerSendKeyCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onComposerSendKeyChange = onComposerSendKeyChange,
+                    hardwareKeyboard = visibility.hardwareKeyboardComposerCopy
+                )
+            }
         }
         if (visibility.multiShellHost) {
             item {
@@ -815,6 +828,58 @@ private fun SettingsConversationForwardGestureCard(
             actionState.errorCode != null
         ) {
             SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+/**
+ * iOS native navigation (Beta; artin, task #98: out of the hidden Developer page). The same stored
+ * switch as before ([RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE]), so a choice made there stays; it
+ * shows what the next start decides (the switch, else the server's last value: off by default).
+ * Read once per process, so it takes effect on the next app start (the detail says so).
+ */
+@Composable
+private fun SettingsIosNativeNavCard() {
+    val preferences = remember { raftSharedPreferenceStore() }
+    var enabled by remember { mutableStateOf(RaftIosNativeNavFlag.stored(preferences)) }
+    val status = stringResource(if (enabled) Res.string.settings_mobile_status_enabled else Res.string.settings_state_off)
+    SettingsFormSectionCard(
+        iconName = RaftLucideIconName.Smartphone,
+        title = stringResource(Res.string.settings_mobile_ios_native_nav)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = enabled, role = Role.Switch) { checked ->
+                        RaftIosNativeNavFlag.setLocalOverride(preferences, checked)
+                        enabled = RaftIosNativeNavFlag.stored(preferences)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsConnectedAppsBadge(stringResource(Res.string.settings_badge_beta))
+                    Text(
+                        status,
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray
+                    )
+                }
+                Text(
+                    stringResource(Res.string.settings_mobile_ios_native_nav_detail),
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            RaftSwitch(checked = enabled, onCheckedChange = null)
         }
     }
 }
