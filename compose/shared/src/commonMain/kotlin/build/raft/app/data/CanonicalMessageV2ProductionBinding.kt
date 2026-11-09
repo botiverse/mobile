@@ -1008,9 +1008,12 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             1 -> kinds.single()
             else -> return log("ambiguous_scope_kind")
         }
-        // Task v2: a task window is written by its enter snapshot and live frames only; paging pages
-        // carry no parent context to convert under (TODO(task-v2 P1): extend task windows too).
-        if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return log("task_window_extend_unsupported")
+        // Task #proj-mobile:#46: a task page converts under its task's channel, as its enter snapshot did.
+        val taskParentChannelId = if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) {
+            taskParentChannelOf(partition, scopeId, rawMessages) ?: return log("task_parent_unknown")
+        } else {
+            null
+        }
         val scope = SyncScopeKey(partition = partition, scopeId = scopeId, scopeKind = scopeKind)
 
         // A reply page is converted under the parent its stored cursor names, and only when that is
@@ -1030,7 +1033,8 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         // Row by row, with the counts the response embeds: a row whose count is unknown is left out and the claim
         // splits around it. Never a `channels/{id}/threads` request.
         val rows = fetcher.convertPageRows(
-            partition, scopeId, scopeKind, rawMessages, storedParent, replyCountByParentId = replyCountByParentId.orEmpty(),
+            partition, scopeId, scopeKind, rawMessages, storedParent, taskParentChannelId,
+            replyCountByParentId = replyCountByParentId.orEmpty(),
         )
         val envelopes = rows.envelopes
         if (envelopes.isEmpty()) return log(rows.firstRefusal ?: "canonical_v2_snapshot_not_full_v6")
@@ -1088,6 +1092,26 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
         }
+    }
+
+    /**
+     * Task #proj-mobile:#46: the channel a task conversation's paging page converts under, the same one its enter
+     * snapshot used ([CanonicalMessageV2EnteredScopeLoader.persistEnteredPage]): the rows' own
+     * `conversationContext.parentChannelId` when they name exactly one, else `channels/{id}`. `null` = rows that
+     * disagree, or no parent the server confirms: nothing is written, never guessed.
+     */
+    private suspend fun taskParentChannelOf(
+        partition: DurablePartitionKey,
+        scopeId: SyncScopeId,
+        rawMessages: JsonArray,
+    ): SyncScopeId? {
+        val rowParents = rawMessages.mapNotNull { row ->
+            ((row as? JsonObject)?.get("conversationContext") as? JsonObject)?.stringOrNull("parentChannelId")
+        }.toSet()
+        if (rowParents.size > 1) return null
+        val parent = rowParents.singleOrNull()
+            ?: fetcher.topLevelKind(partition, scopeId)?.takeIf { it.first == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND }?.second
+        return parent?.takeIf { it.isNotBlank() && it == it.trim() && it != scopeId }
     }
 
     /**
@@ -1211,9 +1235,12 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             1 -> kinds.single()
             else -> return log("ambiguous_scope_kind")
         }
-        // Task v2: a task window is written by its enter snapshot and live frames only; paging pages
-        // carry no parent context to convert under (TODO(task-v2 P1): extend task windows too).
-        if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return log("task_window_extend_unsupported")
+        // Task #proj-mobile:#46: as [extendWithAdjacentPage], under the task's channel.
+        val taskParentChannelId = if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) {
+            taskParentChannelOf(partition, channelId, rawMessages) ?: return log("task_parent_unknown")
+        } else {
+            null
+        }
         val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
         val storedParent = if (replyParent == null) {
             null
@@ -1226,7 +1253,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
         val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
         // Phase 2b: row by row — a bad row is left out and the page's claim is split around it.
-        val rows = fetcher.convertPageRows(partition, channelId, scopeKind, rawMessages, storedParent)
+        val rows = fetcher.convertPageRows(partition, channelId, scopeKind, rawMessages, storedParent, taskParentChannelId)
         val envelopes = rows.envelopes
         if (envelopes.isEmpty()) return log(rows.firstRefusal ?: "canonical_v2_snapshot_not_full_v6")
         val foreign = envelopes.any { envelope ->
@@ -1457,7 +1484,8 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             ?: channelType?.takeIf { it in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS }
             ?: fetcher.topLevelKind(partition, channelId)?.first
             ?: return ContextPageScope.Refused("scope_kind_unknown")
-        // As the sibling writers: a task window is never extended from a page (no task parent to convert under).
+        // A task window takes older / newer / latest pages (task #proj-mobile:#46), not yet an anchor context page:
+        // this path resolves no task parent to convert under.
         if (kind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return ContextPageScope.Refused("task_window_extend_unsupported")
         val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = kind)
         if (kind != REPLY_THREAD_SCOPE_KIND) return ContextPageScope.Resolved(scope, null)
