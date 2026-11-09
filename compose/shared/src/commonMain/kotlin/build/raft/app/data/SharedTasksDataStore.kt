@@ -202,9 +202,19 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
         return SharedTaskFactFold(conflictState, projectedTask = null, outcome = SharedTaskFactFoldOutcome.Conflict)
     }
 
+    // A task's conversation is created without a revision bump (slock `ensureTaskConversation` only
+    // sets `conversationChannelId`; its `task:updated` repeats the revision). That copy is the same
+    // revision-owned fact plus the conversation: take it, or the task keeps opening as pending and
+    // the first message sent into it is never shown.
+    val gainsConversation =
+        currentFact != null &&
+            revisionOrder == 0 &&
+            currentFact.conversationChannelId == null &&
+            incomingFact.conversationChannelId != null
     val acceptsIncoming =
         currentFact == null ||
             revisionOrder > 0 ||
+            gainsConversation ||
             (currentFact.revision == null && incomingFact.revision == null && currentServerHasRoute) ||
             (authoritativeRefresh && currentlyConflicted && revisionOrder == 0)
     if (currentlyConflicted && !acceptsIncoming) {
