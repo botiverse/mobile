@@ -192,6 +192,45 @@ fun <T> RaftChoicePickerSheetSurface(
     )
 }
 
+/**
+ * [RaftChoicePicker]'s bottom sheet for a trigger of the caller's own (a header's version line)
+ * rather than the select field: shown while composed, closed by [onDismissRequest] (Back, a tap
+ * on the scrim). The same sheet as the picker's: [title], the [options] with their descriptions
+ * and badges, the chosen [value] bold with a check, the search row only past
+ * [RaftComboboxSheetThreshold] options (the picker rule). Picking calls [onValueChange] (not for
+ * the value already chosen) and then [onDismissRequest].
+ */
+@Composable
+fun <T> RaftChoicePickerSheet(
+    value: T?,
+    options: List<RaftComboboxOption<T>>,
+    onValueChange: (T) -> Unit,
+    onDismissRequest: () -> Unit,
+    title: String,
+    emptyText: (query: String) -> String,
+    searchPlaceholder: String = "Search",
+) {
+    var query by remember { mutableStateOf("") }
+    RaftSheetWindow(onDismissRequest = onDismissRequest) { surfaceModifier ->
+        RaftChoicePickerSheetSurface(
+            value = value,
+            options = options,
+            onPick = { picked ->
+                if (picked != value) onValueChange(picked)
+                onDismissRequest()
+            },
+            title = title,
+            emptyText = emptyText,
+            searchable = raftChoicePickerVariant(options.size) == RaftChoicePickerVariant.SearchSheet,
+            query = query,
+            onQueryChange = { query = it },
+            searchPlaceholder = searchPlaceholder,
+            modifier = surfaceModifier,
+            inWindow = true,
+        )
+    }
+}
+
 /** A group heading among radios: `text-caption` bold `foreground-hint`, 12dp above a later group. */
 @Composable
 private fun RaftChoicePickerGroupLabel(text: String, first: Boolean) {

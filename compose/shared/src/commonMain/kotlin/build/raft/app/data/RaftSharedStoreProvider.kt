@@ -595,6 +595,9 @@ internal class RaftSharedStoreProvider private constructor(
     }
     val artifactSummaryStore: SharedArtifactSummaryStore by artifactSummaryStoreLazy
 
+    /** The Artifact viewer's native bar: its counts, versions and following (`/api/artifacts/:id…`). */
+    val artifactViewerRepository: ArtifactViewerRepository by lazy { NetworkArtifactViewerRepository(networkClient) }
+
     /**
      * Workspace Artifacts: the publish check's screenshots on the Artifact cards on screen
      * (`GET /api/objects/artifact/{id}/files/{fileId}`), in memory for this viewer.

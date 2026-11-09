@@ -173,7 +173,7 @@ class RaftArtifactViewerCacheTest {
     fun viewerAddresses() {
         assertEquals("$web/artifacts/${target.id}", raftArtifactViewerPageUrl(web, target))
         assertEquals("$web/artifacts/${target.id}/v/3", raftArtifactViewerPageUrl(web, ArtifactLinkTarget(target.id, 3)))
-        assertEquals("$web/artifacts/$RAFT_ARTIFACT_VIEWER_WARM_SEGMENT?embed=raft-settings-v1&shell=host", raftArtifactViewerWarmUrl("$web/"))
+        assertEquals("$web/artifacts/$RAFT_ARTIFACT_VIEWER_WARM_SEGMENT?embed=raft-settings-v1&shell=host&chrome=none", raftArtifactViewerWarmUrl("$web/"))
         // Route data is identity only: the Artifact and its pinned version, never its title or kind.
         val pageData = raftArtifactViewerPageData(ArtifactLinkTarget(target.id, 3))
         assertEquals(ArtifactLinkTarget(target.id, 3), pageData.raftArtifactViewerTargetOrNull())
