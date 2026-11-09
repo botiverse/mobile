@@ -2253,6 +2253,7 @@
     <string name="home_server_switcher_join_community">Unirse a la comunidad</string>
     <string name="home_server_switcher_switch_or_create">Cambiar o crear servidor</string>
     <string name="home_server_switcher_invite_human">Invitar a una persona</string>
+    <string name="home_server_switcher_notifications_muted">Notificaciones silenciadas</string>
     <string name="home_server_switch_failed">No se pudo cambiar de servidor. Inténtalo de nuevo.</string>
     <string name="home_error_open_direct_message">No se pudo abrir el mensaje directo</string>
     <string name="home_error_open_direct_message_failed">No se pudo abrir el mensaje directo</string>
