@@ -259,7 +259,8 @@ sealed interface SharedTasksRouteIntent {
      */
     data object CatchUp : SharedTasksRouteIntent
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
-    data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
+    /** [reason]: a move into Backlog says what would bring the task back (optional, slock #12962). */
+    data class UpdateStatus(val task: TaskSummary, val status: TaskStatus, val reason: String? = null) : SharedTasksRouteIntent
 
     /** Assign (or, with `assignee == null`, unassign) a task from the task card. */
     data class AssignTask(val task: TaskSummary, val assignee: MemberProfile?) : SharedTasksRouteIntent
@@ -282,7 +283,12 @@ sealed interface SharedTasksRouteIntent {
      * does not expose a create CTA, so this intent is only ever dispatched from a
      * channel-mode panel.
      */
-    data class CreateTasks(val channelId: ChannelId, val titles: List<String>) : SharedTasksRouteIntent
+    data class CreateTasks(
+        val channelId: ChannelId,
+        val titles: List<String>,
+        /** Task v2 Create Task's Status (slock #12963); null sends none (the server's default). */
+        val status: TaskStatus? = null,
+    ) : SharedTasksRouteIntent
 }
 
 sealed interface SharedTasksEvent {
@@ -621,7 +627,7 @@ internal class SharedTasksViewModel(
                 statusJob?.cancel()
                 statusJob =
                     runtimeScope.launch {
-                        updateStatus(action.task, action.status)
+                        updateStatus(action.task, action.status, action.reason)
                     }
             }
             is SharedTasksRouteIntent.AssignTask -> {
@@ -663,7 +669,7 @@ internal class SharedTasksViewModel(
                 store.accept(SharedTasksIntent.CreateTasksStarted(operation))
                 createJob =
                     runtimeScope.launch {
-                        createTasks(operation, cleanedTitles)
+                        createTasks(operation, cleanedTitles, action.status)
                     }
             }
             SharedTasksRouteIntent.ClearNavigationError ->
@@ -1033,7 +1039,7 @@ internal class SharedTasksViewModel(
             }
     }
 
-    private suspend fun updateStatus(task: TaskSummary, status: TaskStatus) {
+    private suspend fun updateStatus(task: TaskSummary, status: TaskStatus, reason: String? = null) {
         val skipReason = state.value.taskStatusUpdateSkipReason(task, status)
         if (skipReason != null) {
             state.value.currentTaskSummary(task.id.value)?.let { currentTask ->
@@ -1079,7 +1085,7 @@ internal class SharedTasksViewModel(
                 val result =
                     useCase.updateTaskStatus(
                         mutationServerId,
-                        TasksStatusUpdateRequest(mutationTask.id, status)
+                        TasksStatusUpdateRequest(mutationTask.id, status, reason)
                     )
             ) {
                 is DataResult.Content -> {
@@ -1288,7 +1294,7 @@ internal class SharedTasksViewModel(
         }
     }
 
-    private suspend fun createTasks(operation: TasksCreateOperationId, titles: List<String>) {
+    private suspend fun createTasks(operation: TasksCreateOperationId, titles: List<String>, status: TaskStatus? = null) {
         val serverId = useCase.currentServerId()
         val isLocalChannelScope = scope is SharedTasksScope.Channel && scope.channelId == operation.channelId
         if (serverId == null || !isLocalChannelScope) {
@@ -1306,7 +1312,7 @@ internal class SharedTasksViewModel(
                 val result =
                     useCase.createTasks(
                         serverId,
-                        TasksCreateRequest(operation.channelId, titles)
+                        TasksCreateRequest(operation.channelId, titles, status)
                     )
             ) {
                 is DataResult.Content -> {

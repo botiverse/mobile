@@ -11,10 +11,14 @@ data class TasksLoadRequest(
 
 data class TasksStatusUpdateRequest(
     val taskId: TaskId,
-    val status: TaskStatus
+    val status: TaskStatus,
+    /** A move into Backlog: what would bring the task back (slock #12962). Blank is no reason. */
+    val reason: String? = null
 )
 
 data class TasksCreateRequest(
     val channelId: ChannelId,
-    val titles: List<String>
+    val titles: List<String>,
+    /** Task v2: the status every created task starts in (web `TASK_CREATE_STATUSES`); null = the server's default. */
+    val status: TaskStatus? = null
 )

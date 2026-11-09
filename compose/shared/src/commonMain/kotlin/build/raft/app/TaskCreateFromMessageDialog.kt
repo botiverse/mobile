@@ -22,6 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.model.TaskStatus
+import build.raft.app.data.DefaultTaskCreateStatus
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -56,8 +58,9 @@ internal fun taskTitleFromMessage(text: String): String {
 /**
  * Task v2: "Create Task from Message" (slock web `CreateTaskDialog` with `sourceMessage`): the
  * message quoted (sender, three lines), then one title per task — the first starts as the
- * message's text — "Add Another", Cancel and Create (Create N Tasks). [onSubmit] gets the
- * non-blank titles; [errorText] is the failure banner (the server's `error` when it gave one, as
+ * message's text — "Add Another", on task v2 the Status field ([statusField]: Backlog, Todo or In
+ * Progress, Todo by default), Cancel and Create (Create N Tasks). [onSubmit] gets the non-blank
+ * titles and the chosen status (null without the field); [errorText] is the failure banner (the server's `error` when it gave one, as
  * web shows it, else "Failed to create task"). Nothing dismisses it while [submitting].
  */
 @Composable
@@ -66,11 +69,14 @@ internal fun TaskCreateFromMessageDialog(
     submitting: Boolean,
     errorText: String?,
     onDismiss: () -> Unit,
-    onSubmit: (List<String>) -> Unit,
+    onSubmit: (titles: List<String>, status: TaskStatus?) -> Unit,
+    statusField: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     var titles by remember(source.messageId) { mutableStateOf(listOf(taskTitleFromMessage(source.text))) }
+    var status by remember(source.messageId) { mutableStateOf(DefaultTaskCreateStatus) }
+    val chosenStatus = status.takeIf { statusField }
     val filled = titles.map { it.trim() }.filter { it.isNotBlank() }
     val batch = titles.size > 1
     // The one commit: the footer's Create on a wide window, the phone sheet's head button.
@@ -95,7 +101,7 @@ internal fun TaskCreateFromMessageDialog(
         contentSpacing = RaftAppSpacing.Md,
         presentation = RaftDialogPresentation.Sheet,
         commitLabel = commitLabel,
-        onCommit = { onSubmit(filled) },
+        onCommit = { onSubmit(filled, chosenStatus) },
         commitEnabled = commitEnabled,
     ) {
         Column(
@@ -157,6 +163,14 @@ internal fun TaskCreateFromMessageDialog(
                     leadingIcon = { RaftGlyphIcon(RaftGlyph.Plus, size = 16.dp) },
                 )
             }
+            if (statusField) {
+                TaskCreateStatusField(
+                    value = status,
+                    onValueChange = { status = it },
+                    titleCount = filled.size,
+                    enabled = !submitting,
+                )
+            }
         }
         RaftDialogFooter {
             RaftButton(
@@ -168,7 +182,7 @@ internal fun TaskCreateFromMessageDialog(
             )
             RaftButton(
                 text = commitLabel,
-                onClick = { onSubmit(filled) },
+                onClick = { onSubmit(filled, chosenStatus) },
                 enabled = commitEnabled,
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg,
@@ -200,6 +214,7 @@ internal suspend fun submitTasksFromMessage(
     serverId: String,
     tasksDataSource: build.raft.app.data.SharedTasksDataSource,
     tasksDataStore: build.raft.app.data.SharedTasksDataStore?,
+    status: TaskStatus? = null,
 ): TaskCreateFromMessageOutcome =
     when (
         val result =
@@ -208,6 +223,7 @@ internal suspend fun submitTasksFromMessage(
                 channelId = source.channelId,
                 titles = titles,
                 sourceMessageId = source.messageId,
+                status = status,
             )
     ) {
         is build.raft.app.data.DataResult.Content -> {
@@ -256,13 +272,14 @@ internal class TaskCreateFromMessageFlow {
         tasksDataSource: build.raft.app.data.SharedTasksDataSource,
         tasksDataStore: build.raft.app.data.SharedTasksDataStore?,
         fallbackError: String,
+        status: TaskStatus? = null,
     ): TaskCreateFromMessageOutcome? {
         val current = source ?: return null
         if (submitting) return null
         submitting = true
         errorText = null
         try {
-            val outcome = submitTasksFromMessage(current, titles, serverId, tasksDataSource, tasksDataStore)
+            val outcome = submitTasksFromMessage(current, titles, serverId, tasksDataSource, tasksDataStore, status)
             when (outcome) {
                 is TaskCreateFromMessageOutcome.Created -> source = null
                 is TaskCreateFromMessageOutcome.Failed -> errorText = outcome.serverMessage ?: fallbackError

@@ -244,7 +244,7 @@ internal fun TasksStatusMenuVisualContent() {
             Spacer(Modifier.height(4.dp))
             RaftTaskStatusMenuPanel(
                 items =
-                    build.raft.app.data.taskStatusChoices(TaskStatus.InProgress, inReviewRetired = false).map { status ->
+                    build.raft.app.data.taskStatusChoices(TaskStatus.InProgress, v2Task = false).map { status ->
                         RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                     },
                 selectedId = TaskStatus.InProgress.name,

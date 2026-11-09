@@ -35,9 +35,10 @@ class TaskPendingPageTest {
         assertTrue(model.bar.statusEditable)
         assertTrue(model.bar.assigneeEditable)
         // Web: every status, from any status, for everyone (the server has no transition table),
-        // but In Review, retired for a task with its own conversation (web slock #12884).
+        // but In Review, retired for a task with its own conversation (web slock #12884); Backlog
+        // first, as a v2 task offers it (web slock #12963).
         assertEquals(
-            listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Closed),
+            listOf(TaskStatus.Backlog, TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Closed),
             model.bar.statusOptions.map(TaskStatusOption::status),
         )
         // The same bar the conversation page shows for this task once its conversation exists.

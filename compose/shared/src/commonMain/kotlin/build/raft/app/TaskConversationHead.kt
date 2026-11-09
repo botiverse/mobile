@@ -91,6 +91,7 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.TaskConversationHeaderState
+import build.raft.app.data.taskStatusPickAsksBacklogReason
 import build.raft.app.data.TaskDetailLoad
 import build.raft.app.data.TaskHistoryDetail
 import build.raft.app.data.TaskHistoryField
@@ -929,7 +930,11 @@ private fun TaskHeadHistoryTimeline(rows: List<TaskHeadHistoryRow>) {
                 taskStatus = row.markerStatus?.raftTaskStatus(),
                 content =
                     if (detail is TaskHistoryDetail.Transition) {
-                        { TaskHeadTransition(detail.from, detail.to) }
+                        {
+                            TaskHeadTransition(detail.from, detail.to)
+                            // What would bring it back, under the move (web TimelineDetail).
+                            detail.reason?.let { reason -> RaftTimelineDetail(reason) }
+                        }
                     } else {
                         details[index]?.let { text -> { RaftTimelineDetail(text) } }
                     },
@@ -1017,8 +1022,21 @@ internal fun TaskConversationHeadRoute(
     placement: TaskHeadPlacement = TaskHeadPlacement.Page,
     /** The task's server: the head's faces read its member directory. */
     serverId: String? = null,
+    /**
+     * A move into Backlog, after its reason was asked (web TaskBacklogReasonPopover): the reason, null
+     * for none. Null: Backlog goes through [onUpdateStatus] without asking.
+     */
+    onMoveToBacklog: ((reason: String?) -> Unit)? = null,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
+    var backlogReasonOpen by remember(task.id) { mutableStateOf(false) }
+    val onSelectStatus: (TaskStatus) -> Unit = { status ->
+        if (onMoveToBacklog != null && taskStatusPickAsksBacklogReason(task.status, status)) {
+            backlogReasonOpen = true
+        } else {
+            onUpdateStatus(status)
+        }
+    }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
     val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
     val onOpenAssignee = {
@@ -1031,7 +1049,7 @@ internal fun TaskConversationHeadRoute(
         val content: @Composable () -> Unit = {
             TaskHeadContent(
                 model = model,
-                onSelectStatus = onUpdateStatus,
+                onSelectStatus = onSelectStatus,
                 onOpenAssignee = onOpenAssignee,
                 onOpenSource = onOpenSource,
                 onOpenEarlierDiscussion = onOpenEarlierDiscussion,
@@ -1048,7 +1066,7 @@ internal fun TaskConversationHeadRoute(
             TaskHeadPlacement.FirstRow -> TaskHeadFrame(content)
             TaskHeadPlacement.Page -> TaskConversationHead(
                 model = model,
-                onSelectStatus = onUpdateStatus,
+                onSelectStatus = onSelectStatus,
                 onOpenAssignee = onOpenAssignee,
                 onOpenSource = onOpenSource,
                 onOpenEarlierDiscussion = onOpenEarlierDiscussion,
@@ -1070,6 +1088,18 @@ internal fun TaskConversationHeadRoute(
                     if (currentId != nextId) onAssign(member)
                 },
                 onDismiss = { assigneeSheetOpen = false },
+            )
+        }
+        // Held by the placement whose menu asked (each placement is its own route), beside the assignee sheet.
+        if (backlogReasonOpen && onMoveToBacklog != null) {
+            TaskBacklogReasonDialog(
+                taskNumber = task.taskNumber,
+                onDismiss = { backlogReasonOpen = false },
+                onConfirm = { reason ->
+                    backlogReasonOpen = false
+                    // Someone else may have parked it meanwhile: then there is nothing left to write.
+                    if (task.status != TaskStatus.Backlog) onMoveToBacklog(reason)
+                },
             )
         }
     }

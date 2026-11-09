@@ -1841,7 +1841,7 @@
     <string name="tasks_create_hint">Crea una con el botón Nueva tarea.</string>
     <string name="tasks_empty_filtered_detail">Prueba otra combinación o borra la selección actual.</string>
     <string name="tasks_empty_server_detail">Los tableros de tareas de mensajes directos y de agentes se excluyen a propósito de esta vista de todo el servidor.</string>
-    <string name="tasks_empty_backlog">No hay tareas en el backlog</string>
+    <string name="tasks_empty_backlog">No hay tareas en espera</string>
     <string name="tasks_empty_unknown">No hay tareas con este estado</string>
     <string name="tasks_empty_todo">No hay tareas pendientes</string>
     <string name="tasks_empty_in_progress">No hay tareas en curso</string>
@@ -1870,7 +1870,7 @@
     <string name="tasks_assignee_unassigned">Sin asignar</string>
     <string name="tasks_detail_task_identifier">Tarea #%1$d</string>
     <string name="tasks_state_updating">Actualizando</string>
-    <string name="tasks_status_backlog">Backlog</string>
+    <string name="tasks_status_backlog">En espera</string>
     <string name="tasks_status_unknown">Desconocido</string>
     <string name="tasks_status_todo">Pendiente</string>
     <string name="tasks_status_in_progress">En curso</string>
@@ -2140,6 +2140,11 @@
     <string name="tasks_create_from_message_title_many">Crear tareas a partir del mensaje</string>
     <string name="tasks_create_title_placeholder">Tarea %1$d</string>
     <string name="tasks_create_submit_many">Crear %1$d tareas</string>
+    <string name="tasks_create_status_applies_to_all">El estado se aplica a las %1$d tareas.</string>
+    <string name="tasks_backlog_reason_title">Mover #%1$d a En espera</string>
+    <string name="tasks_backlog_reason_label">Motivo (opcional)</string>
+    <string name="tasks_backlog_reason_placeholder">¿Qué haría que volviera?</string>
+    <string name="tasks_backlog_reason_confirm">Mover a En espera</string>
     <string name="tasks_create_failed">No se pudo crear la tarea</string>
     <string name="home_action_view">Ver</string>
     <string name="home_action_retry">Reintentar</string>

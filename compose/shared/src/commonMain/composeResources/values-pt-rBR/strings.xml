@@ -1841,7 +1841,7 @@
     <string name="tasks_create_hint">Crie uma com o botão Nova tarefa.</string>
     <string name="tasks_empty_filtered_detail">Tente outra combinação ou limpe a seleção atual.</string>
     <string name="tasks_empty_server_detail">Esta visão do servidor inteiro não inclui, intencionalmente, os quadros de tarefas de mensagens diretas e de agentes.</string>
-    <string name="tasks_empty_backlog">Nenhuma tarefa no backlog</string>
+    <string name="tasks_empty_backlog">Nenhuma tarefa em espera</string>
     <string name="tasks_empty_unknown">Nenhuma tarefa com este status</string>
     <string name="tasks_empty_todo">Nenhuma tarefa a fazer</string>
     <string name="tasks_empty_in_progress">Nenhuma tarefa em andamento</string>
@@ -1870,7 +1870,7 @@
     <string name="tasks_assignee_unassigned">Sem responsável</string>
     <string name="tasks_detail_task_identifier">Tarefa #%1$d</string>
     <string name="tasks_state_updating">Atualizando</string>
-    <string name="tasks_status_backlog">Backlog</string>
+    <string name="tasks_status_backlog">Em espera</string>
     <string name="tasks_status_unknown">Desconhecido</string>
     <string name="tasks_status_todo">A fazer</string>
     <string name="tasks_status_in_progress">Em andamento</string>
@@ -2140,6 +2140,11 @@
     <string name="tasks_create_from_message_title_many">Criar tarefas a partir da mensagem</string>
     <string name="tasks_create_title_placeholder">Tarefa %1$d</string>
     <string name="tasks_create_submit_many">Criar %1$d tarefas</string>
+    <string name="tasks_create_status_applies_to_all">O status se aplica a todas as %1$d tarefas.</string>
+    <string name="tasks_backlog_reason_title">Mover #%1$d para Em espera</string>
+    <string name="tasks_backlog_reason_label">Motivo (opcional)</string>
+    <string name="tasks_backlog_reason_placeholder">O que a traria de volta?</string>
+    <string name="tasks_backlog_reason_confirm">Mover para Em espera</string>
     <string name="tasks_create_failed">Não foi possível criar a tarefa</string>
     <string name="home_action_view">Ver</string>
     <string name="home_action_retry">Tentar novamente</string>

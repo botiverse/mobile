@@ -53,7 +53,7 @@ class SharedTasksUseCase(
         serverId: ServerId,
         request: TasksStatusUpdateRequest
     ): DataResult<TaskActionResult> =
-        repository.updateTaskStatus(serverId, request.taskId, request.status)
+        repository.updateTaskStatus(serverId, request.taskId, request.status, request.reason)
 
     /**
      * Assign/unassign a task. `assignee == null` unassigns. `expectedRevision`
@@ -74,7 +74,7 @@ class SharedTasksUseCase(
     }
 
     suspend fun createTasks(serverId: ServerId, request: TasksCreateRequest): DataResult<TaskSnapshot> =
-        repository.createTasks(serverId, request.channelId, request.titles)
+        repository.createTasks(serverId, request.channelId, request.titles, request.status)
 
     private suspend fun selectedServerIdOrError(): ServerId? =
         authStore.readSession()?.currentServerId?.let(::ServerId)

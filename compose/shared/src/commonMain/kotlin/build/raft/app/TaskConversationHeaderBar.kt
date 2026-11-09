@@ -55,7 +55,7 @@ internal fun TaskSummary.taskConversationHeaderBarModel(
         statusOptions =
             // This page is the task's own conversation, so In Review is retired here as on web
             // (`opensAsTaskConversation`): only a legacy orphan, which has no conversation, keeps it.
-            if (canEditStatus()) taskStatusOptions(status, inReviewRetired = opensAsTaskConversation(taskV2Enabled = true)) else emptyList(),
+            if (canEditStatus()) taskStatusOptions(status, v2Task = opensAsTaskConversation(taskV2Enabled = true)) else emptyList(),
         statusUpdating = statusUpdating,
         assigneeName = assignee?.displayName?.trim()?.takeIf { it.isNotBlank() },
         assigneeEditable = canEditAssignee(),

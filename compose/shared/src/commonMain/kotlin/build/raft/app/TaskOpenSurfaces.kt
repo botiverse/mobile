@@ -345,6 +345,7 @@ internal fun TaskOpenSurfaceHost(
                     onUpdateStatus = { status -> edits?.updateStatus(task, status) },
                     onAssign = { member -> edits?.assign(task, member) },
                     serverId = serverId,
+                    onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
                 )
             }
         }
@@ -392,6 +393,10 @@ internal fun rememberTaskChannelTasksViewModel(
  */
 internal class TaskHeadEdits(private val dispatch: (SharedTasksRouteIntent) -> Unit) {
     fun updateStatus(task: TaskSummary, status: TaskStatus) = dispatch(SharedTasksRouteIntent.UpdateStatus(task, status))
+
+    /** A move into Backlog with the reason asked for it (null: none). */
+    fun moveToBacklog(task: TaskSummary, reason: String?) =
+        dispatch(SharedTasksRouteIntent.UpdateStatus(task, TaskStatus.Backlog, reason))
 
     fun assign(task: TaskSummary, assignee: MemberProfile?) = dispatch(SharedTasksRouteIntent.AssignTask(task, assignee))
 }
@@ -457,6 +462,8 @@ internal fun TaskPendingConversationPage(
     headScrollState: TaskHeadScrollState = remember(task.id) { TaskHeadScrollState() },
     /** The task's server: the head's faces read its member directory. */
     serverId: String? = null,
+    /** A move into Backlog with its reason ([TaskConversationHeadRoute]); null: Backlog asks nothing. */
+    onMoveToBacklog: ((reason: String?) -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -501,6 +508,7 @@ internal fun TaskPendingConversationPage(
                 timeContext = timeContext,
                 onUpdateStatus = onUpdateStatus,
                 onAssign = onAssign,
+                onMoveToBacklog = onMoveToBacklog,
                 // Source and Earlier discussion lead into the channel from the conversation page.
                 onOpenSource = null,
                 onOpenEarlierDiscussion = null,

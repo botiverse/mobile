@@ -61,7 +61,7 @@ class TaskCreateFromMessageDialogScreenshotTest {
                     submitting = false,
                     errorText = if (failed) "Cannot create more than 50 tasks at once" else null,
                     onDismiss = {},
-                    onSubmit = {},
+                    onSubmit = { _, _ -> },
                 )
             }
         }

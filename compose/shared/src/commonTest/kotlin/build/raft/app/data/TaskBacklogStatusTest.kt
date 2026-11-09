@@ -53,7 +53,7 @@ class TaskBacklogStatusTest {
         assertNull(TaskStatus.fromWireValue(TaskStatus.UNKNOWN_WIRE_VALUE))
         assertTrue(TaskStatus.Unknown !in TaskStatus.known)
         TaskStatus.entries.forEach { current ->
-            assertTrue(TaskStatus.Unknown !in taskStatusChoices(current, inReviewRetired = false), "current=$current")
+            assertTrue(TaskStatus.Unknown !in taskStatusChoices(current, v2Task = false), "current=$current")
         }
     }
 
@@ -66,11 +66,16 @@ class TaskBacklogStatusTest {
     }
 
     @Test
-    fun backlogIsNotOfferedInTheStatusMenuYetButABacklogTaskKeepsItAsCurrent() {
-        TaskStatus.known.filter { it != TaskStatus.Backlog }.forEach { current ->
-            assertTrue(TaskStatus.Backlog !in taskStatusChoices(current, inReviewRetired = true), "current=$current")
+    fun backlogIsOfferedFirstOnATaskV2TaskOnlyAndABacklogTaskKeepsItAsCurrent() {
+        // Web getTaskStatusOptions (slock #12963): every v2 task's menu starts with Backlog.
+        TaskStatus.known.forEach { current ->
+            assertEquals(TaskStatus.Backlog, taskStatusChoices(current, v2Task = true).first(), "current=$current")
         }
-        assertTrue(TaskStatus.Backlog in taskStatusChoices(TaskStatus.Backlog, inReviewRetired = true))
+        // A pre-v2 (or legacy) task: the server refuses backlog (task_status_not_available), so it is not offered.
+        TaskStatus.known.filter { it != TaskStatus.Backlog }.forEach { current ->
+            assertTrue(TaskStatus.Backlog !in taskStatusChoices(current, v2Task = false), "current=$current")
+        }
+        assertTrue(TaskStatus.Backlog in taskStatusChoices(TaskStatus.Backlog, v2Task = false))
     }
 
     @Test

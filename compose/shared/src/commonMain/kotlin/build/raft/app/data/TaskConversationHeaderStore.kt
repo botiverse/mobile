@@ -22,28 +22,37 @@ internal data class TaskStatusOption(val status: TaskStatus, val reopensToTodo: 
 /**
  * Web `getTaskStatusOptions`: every status, from any status, for members and admins alike (the
  * server has no transition table: slock `taskService.getTaskStatusTransitionError` only refuses the
- * current status). Closed -> Todo reads "Reopen to Todo". [inReviewRetired]: see [taskStatusChoices].
+ * current status). Closed -> Todo reads "Reopen to Todo". [v2Task]: see [taskStatusChoices].
  */
-internal fun taskStatusOptions(current: TaskStatus, inReviewRetired: Boolean): List<TaskStatusOption> =
-    taskStatusChoices(current, inReviewRetired).map { status ->
+internal fun taskStatusOptions(current: TaskStatus, v2Task: Boolean): List<TaskStatusOption> =
+    taskStatusChoices(current, v2Task).map { status ->
         TaskStatusOption(status = status, reopensToTodo = current == TaskStatus.Closed && status == TaskStatus.Todo)
     }
 
 /**
- * The statuses a task's status menu offers. In Review is retired for task v2 (#wg-task-v2:f7043517,
- * raft-design decision 0043; web slock #12884 `getTaskStatusOptions`): a task that opens as its own
- * conversation ([inReviewRetired], web `opensAsTaskConversation(task, taskV2)`) is not offered it —
- * the server stores In Progress when asked for it — unless the task is still in it, where it stays as
- * the current option. A legacy task, or any task with task v2 off, keeps every status.
- * [TaskStatus.Unknown] is never a choice.
+ * The statuses a task's status menu offers, in board order (Backlog first). [v2Task]: the task opens
+ * as its own conversation (web `opensAsTaskConversation(task, taskV2)`).
+ *
+ * - In Review is retired for a task v2 task (#wg-task-v2:f7043517, raft-design decision 0043; web
+ *   slock #12884): the server stores In Progress when asked for it.
+ * - Backlog is task v2 only (slock #12963 `getTaskStatusOptions` noBacklog): the server refuses it on
+ *   a pre-v2 task with the flag off (`task_status_not_available`), so a legacy task, or any task with
+ *   task v2 off, is not offered it.
+ *
+ * A task already in either keeps it as its current option. [TaskStatus.Unknown] is never a choice.
  */
-internal fun taskStatusChoices(current: TaskStatus, inReviewRetired: Boolean): List<TaskStatus> =
+internal fun taskStatusChoices(current: TaskStatus, v2Task: Boolean): List<TaskStatus> =
     TaskStatus.known.filter { status ->
-        !(inReviewRetired && status == TaskStatus.InReview && current != TaskStatus.InReview) &&
-            // Backlog is offered with its reason input (a later version), as on web (slock #12962
-            // `getTaskStatusOptions` hideBacklog): only a task already in it keeps it as the current option.
-            !(status == TaskStatus.Backlog && current != TaskStatus.Backlog)
+        !(v2Task && status == TaskStatus.InReview && current != TaskStatus.InReview) &&
+            !(!v2Task && status == TaskStatus.Backlog && current != TaskStatus.Backlog)
     }
+
+/**
+ * A pick in a status menu that asks for a reason first (web `TaskBacklogReasonPopover`): a move into
+ * Backlog from another status. A task already in Backlog asks nothing.
+ */
+internal fun taskStatusPickAsksBacklogReason(current: TaskStatus, next: TaskStatus): Boolean =
+    next == TaskStatus.Backlog && current != TaskStatus.Backlog
 
 /**
  * Web `canEditTaskStatus`: anyone who can see the task, unless it is read-only (historical joint).

@@ -2143,6 +2143,11 @@
     <string name="tasks_create_from_message_title_many">Create Tasks from Message</string>
     <string name="tasks_create_title_placeholder">Task %1$d</string>
     <string name="tasks_create_submit_many">Create %1$d Tasks</string>
+    <string name="tasks_create_status_applies_to_all">Status applies to all %1$d tasks.</string>
+    <string name="tasks_backlog_reason_title">Move #%1$d to Backlog</string>
+    <string name="tasks_backlog_reason_label">Reason (optional)</string>
+    <string name="tasks_backlog_reason_placeholder">What would bring it back?</string>
+    <string name="tasks_backlog_reason_confirm">Move to Backlog</string>
     <string name="tasks_create_failed">Failed to create task</string>
     <string name="home_action_view">View</string>
     <string name="home_action_retry">Retry</string>
