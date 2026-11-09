@@ -104,6 +104,41 @@ class RaftComputerUpgradeModelTest {
         assertNull(raftComputerUpgradeInFlight(computer(), accepted, NOW + RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS))
     }
 
+    // botiverse/slock #13506: a Computer that waits for its agents before it installs says how many
+    // of THIS server's agents it waits for; installing, nobody left or an older server: the plain copy.
+    @Test
+    fun anUpgradeWaitingForThisServersAgentsCountsThem() {
+        val draining = request(id = "req-2", state = "pending").copy(phase = "draining", drainingAgentIds = listOf("a1", "a2"))
+        assertEquals(
+            RaftComputerCardState.Upgrading("1.0.50", waitingAgents = 2),
+            model(computer(policy = eligible("1.0.50"), row = draining)).card
+        )
+        val plain = RaftComputerCardState.Upgrading("1.0.50")
+        listOf(
+            request(id = "req-2", state = "pending"),
+            request(id = "req-2", state = "pending").copy(phase = "installing"),
+            request(id = "req-2", state = "pending").copy(phase = "draining"),
+        ).forEach { row -> assertEquals(plain, model(computer(policy = eligible("1.0.50"), row = row)).card, row.toString()) }
+    }
+
+    @Test
+    fun theAcceptedRequestFollowsTheServersOwnDeadline() {
+        // deadlineAt - requestedAt (server clock both ends) is 40 min: drain wait included.
+        val longer =
+            request(id = "req-2", state = "pending", requestedAt = "2026-10-21T01:00:00.000Z")
+                .copy(deadlineAt = "2026-10-21T01:40:00.000Z")
+        assertEquals(40L * 60_000L, raftComputerUpgradeRequestDeadlineMillis(longer))
+        val accepted = SettingsComputerAcceptedUpgrade("machine-1", longer, acceptedAtMillis = NOW)
+        assertEquals(longer, raftComputerUpgradeInFlight(computer(), accepted, NOW + RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS))
+        assertNull(raftComputerUpgradeInFlight(computer(), accepted, NOW + 40L * 60_000L))
+        // No deadlineAt (an older server), or an unreadable one: 30 min.
+        assertEquals(RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS, raftComputerUpgradeRequestDeadlineMillis(request(id = "r", state = "pending")))
+        assertEquals(
+            RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS,
+            raftComputerUpgradeRequestDeadlineMillis(request(id = "r", state = "pending").copy(deadlineAt = "2026-10-21T00:00:00.000Z"))
+        )
+    }
+
     @Test
     fun anOfflineComputerUpgradingReadsAsReconnectingUntilTheGraceRunsOut() {
         val pending = request(id = "req-2", state = "pending", requestedAt = "2026-10-21T01:00:00.000Z")

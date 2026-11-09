@@ -42,6 +42,8 @@ import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.data.MemberRemovalImpactRepository
+import build.raft.app.data.NetworkMemberRemovalImpactRepository
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -61,6 +63,8 @@ internal data class StandaloneSettingsEnvironment(
     val webBaseUrl: String,
     val serverPublicVisibilityRepository: ServerPublicVisibilityRepository,
     val serverAppearanceRepository: ServerAppearanceRepository,
+    /** Leave server's confirmation: what leaving takes offline (slock #13547). */
+    val memberRemovalImpactRepository: MemberRemovalImpactRepository? = null,
 )
 
 /**
@@ -195,10 +199,13 @@ internal fun rememberStandaloneSettingsEnvironment(
         remember(networkClient) { NetworkServerPublicVisibilityRepository(networkClient) }
     val serverAppearanceRepository =
         remember(networkClient, authStore) { NetworkServerAppearanceRepository(networkClient, authStore) }
+    val memberRemovalImpactRepository =
+        remember(networkClient) { NetworkMemberRemovalImpactRepository(networkClient) }
     return remember(
         dataSource,
         serverPublicVisibilityRepository,
         serverAppearanceRepository,
+        memberRemovalImpactRepository,
         authDataSource,
         authStore,
         serverMembersStore,
@@ -220,6 +227,7 @@ internal fun rememberStandaloneSettingsEnvironment(
             webBaseUrl = webBaseUrl,
             serverPublicVisibilityRepository = serverPublicVisibilityRepository,
             serverAppearanceRepository = serverAppearanceRepository,
+            memberRemovalImpactRepository = memberRemovalImpactRepository,
         )
     }
 }

@@ -68,6 +68,9 @@ interface SettingsRepository {
     /** `POST servers/:id/machines/:machineId/computer/upgrade` with the consented `targetVersion`. */
     suspend fun upgradeComputer(request: SettingsComputerUpgradeRequest): DataResult<SettingsComputerUpgradeRequestSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** Computer owner v1: `PUT servers/:id/machines/:machineId/owner` (`ownerUserId` null = Public). */
+    suspend fun setComputerOwner(request: SettingsComputerOwnerRequest): DataResult<SettingsComputerActionResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun getComputerRuntimeModels(
         machineId: String,
         runtime: String
@@ -964,6 +967,12 @@ data class SettingsComputerRuntimeModelsSnapshot(
 data class SettingsComputerUpgradeRequest(
     val machineId: String,
     val targetVersion: String
+)
+
+/** Computer owner v1: who Raft records as the Computer's owner; [ownerUserId] null makes it Public. */
+data class SettingsComputerOwnerRequest(
+    val machineId: String,
+    val ownerUserId: String?
 )
 
 /** A restart the server relayed (or queued); [requestId] correlates the `computer:restart:done` frame. */
