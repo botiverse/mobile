@@ -25,6 +25,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -33,8 +34,10 @@ import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -90,11 +93,13 @@ internal interface ThreadInPlaceSelectionTarget {
 /**
  * In-place text selection for chat-stream message bodies, behind the "New Message Menu" toggle.
  *
- * Gesture rule (toggle ON): a long-press that lands on the message body belongs to Compose's
- * [SelectionContainer] (select word, drag handles); the row-level long-press menu does not fire
- * there. A long-press on the rest of the row (avatar, author line, attachments, blank row space)
- * still opens the message menu. Toggle OFF: no container, no deferral, the row behaves exactly as
- * before.
+ * Gesture rule (toggle ON): a finger long-press anywhere on the row, the body included, opens the
+ * Compact New Message Menu and starts no text selection ([fingerPressOpensMessageMenu], artin
+ * dm:#99: on iOS the selection's own menu showed first and the message menu then opened over it).
+ * Picking text with a finger goes through the menu's Select Text sheet. A mouse, trackpad or
+ * stylus press on the body still belongs to Compose's [SelectionContainer] (press-drag,
+ * double-click, long press), and the row-level long-press menu does not fire there. Toggle OFF:
+ * no container, no deferral, the row behaves exactly as before.
  *
  * The platform text toolbar is replaced on both toolbar paths (Android's new text context menu,
  * [LocalTextContextMenuToolbarProvider], on by default there, and the legacy [LocalTextToolbar]
@@ -107,6 +112,12 @@ internal interface ThreadInPlaceSelectionTarget {
 internal class ThreadInPlaceTextSelectionHost(
     val enabled: Boolean,
     val copyText: (String) -> Unit,
+    /**
+     * A finger press on a message body is the row's (long press: the message menu; taps), never a
+     * text selection's. On with the New Message Menu toggle; the desktop's always-on pointer
+     * selection keeps a touchscreen finger's long press selecting when the toggle is off.
+     */
+    val fingerPressOpensMessageMenu: Boolean = false,
 ) {
     private var active: ThreadInPlaceSelectionTarget? = null
 
@@ -278,6 +289,61 @@ internal fun threadInPlaceSelectionMouseAnchorInBody(
         bottom = (y + half).coerceAtMost(height),
     )
 }
+
+/**
+ * Whether a press on a message body, by [pointerType], is left to the row instead of the body's
+ * text selection: a finger (or a down without a tool type, [raftIsTouchLike]) when
+ * [fingerPressOpensMessageMenu]. A mouse, trackpad or stylus keeps selecting text in place.
+ */
+internal fun threadInPlaceSelectionYieldsPressToRow(
+    fingerPressOpensMessageMenu: Boolean,
+    pointerType: PointerType,
+): Boolean = fingerPressOpensMessageMenu && pointerType.raftIsTouchLike()
+
+/**
+ * Whether the body's text selection owns a row press at a point: on the body, and not a press the
+ * selection yields to the row ([threadInPlaceSelectionYieldsPressToRow]).
+ */
+internal fun threadInPlaceSelectionOwnsRowPress(
+    pressOnBody: Boolean,
+    pressYieldedToRow: Boolean,
+): Boolean = pressOnBody && !pressYieldedToRow
+
+/**
+ * The long-press timeout the body's text selection sees: never reached for a press it yields to
+ * the row, so a finger long press starts no selection (no highlight, handles, haptic or toolbar)
+ * while the row's own detector opens the message menu.
+ */
+internal fun threadInPlaceSelectionLongPressTimeoutMillis(
+    platformTimeoutMillis: Long,
+    pressYieldedToRow: Boolean,
+): Long = if (pressYieldedToRow) ThreadInPlaceSelectionYieldedLongPressTimeoutMillis else platformTimeoutMillis
+
+/** Longer than any held press: the selection's long-press timeout never fires. */
+internal const val ThreadInPlaceSelectionYieldedLongPressTimeoutMillis: Long = 24L * 60L * 60L * 1000L
+
+/**
+ * What a selection that just appeared does: a finger press the body yielded to the row still
+ * started one (iOS selects a word on a double tap without a long press) → [Clear]; a finger's
+ * own selection otherwise widens to the whole message → [WidenToWholeMessage]; else [Keep].
+ */
+internal enum class ThreadInPlaceSelectionAppearedAction {
+    Keep,
+    WidenToWholeMessage,
+    Clear,
+}
+
+internal fun threadInPlaceSelectionAppearedAction(
+    pressYieldedToRow: Boolean,
+    startedByTouch: Boolean,
+    coversAll: Boolean,
+): ThreadInPlaceSelectionAppearedAction =
+    when {
+        pressYieldedToRow -> ThreadInPlaceSelectionAppearedAction.Clear
+        threadInPlaceSelectionWidensToWholeMessage(startedByTouch, coversAll) ->
+            ThreadInPlaceSelectionAppearedAction.WidenToWholeMessage
+        else -> ThreadInPlaceSelectionAppearedAction.Keep
+    }
 
 internal enum class ThreadMessageLongPressRoute {
     MessageMenu,
@@ -465,8 +531,18 @@ internal class ThreadInPlaceSelectionController(
     val mouseSelectionEnded: Boolean
         get() = mouseReleaseInBody != null
 
-    internal fun onBodyPointerPress() {
+    /**
+     * Set at every press on the body, in the Initial pass (before the text's own selection
+     * gestures and the row's detectors read it): this press is the row's, not the selection's
+     * ([threadInPlaceSelectionYieldsPressToRow]).
+     */
+    internal var bodyPressYieldedToRow = false
+        private set
+
+    internal fun onBodyPointerPress(pointerType: PointerType) {
         mouseReleaseInBody = null
+        bodyPressYieldedToRow =
+            threadInPlaceSelectionYieldsPressToRow(host.fingerPressOpensMessageMenu, pointerType)
     }
 
     internal fun onBodyMouseRelease(position: Offset) {
@@ -520,6 +596,16 @@ internal class ThreadInPlaceSelectionController(
         selectionState.selectAll()
     }
 
+    /**
+     * The row's detectors leave a press at row-local [offset] to the selection: it is on the body
+     * and not a finger press the body yields to the row (that one opens the message menu).
+     */
+    fun ownsRowPressAt(offset: Offset): Boolean =
+        threadInPlaceSelectionOwnsRowPress(
+            pressOnBody = bodyContainsRowOffset(offset),
+            pressYieldedToRow = bodyPressYieldedToRow,
+        )
+
     /** Row-local [offset] (the row long-press detector's space) lies on the selectable body. */
     fun bodyContainsRowOffset(offset: Offset): Boolean {
         val row = rowCoordinates?.takeIf { it.isAttached } ?: return false
@@ -528,17 +614,20 @@ internal class ThreadInPlaceSelectionController(
     }
 
     /** Legacy TextToolbar path: [rootRect] is in root coordinates; store it body-relative. */
-    internal fun showMenuAtRootRect(rootRect: Rect) {
-        val body = bodyCoordinates?.takeIf { it.isAttached } ?: return
+    internal fun showMenuAtRootRect(rootRect: Rect): Boolean {
+        if (bodyPressYieldedToRow) return false
+        val body = bodyCoordinates?.takeIf { it.isAttached } ?: return false
         val topLeft = body.localPositionOf(body.findRootCoordinates(), rootRect.topLeft)
         menuDataProvider = null
         menuRectInBody = Rect(topLeft, rootRect.size)
         host.activate(this)
+        return true
     }
 
     /** New context-menu path (Android default): keep the live provider and re-query each frame. */
     internal fun showMenuFromProvider(dataProvider: TextContextMenuDataProvider): Boolean {
-        if (bodyCoordinates?.isAttached != true) return false
+        // A finger press the body yielded to the row opens the message menu, never a second one.
+        if (bodyPressYieldedToRow || bodyCoordinates?.isAttached != true) return false
         menuRectInBody = null
         menuDataProvider = dataProvider
         host.activate(this)
@@ -568,14 +657,31 @@ private class ThreadInPlaceTextToolbar(
         onCutRequested: (() -> Unit)?,
         onSelectAllRequested: (() -> Unit)?
     ) {
-        controller.showMenuAtRootRect(rect)
-        status = TextToolbarStatus.Shown
+        status = if (controller.showMenuAtRootRect(rect)) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
     }
 
     override fun hide() {
         controller.hideMenu()
         status = TextToolbarStatus.Hidden
     }
+}
+
+/**
+ * The platform's view configuration, except the long-press timeout the body's text selection
+ * sees for a press it yields to the row ([threadInPlaceSelectionLongPressTimeoutMillis]). Read per
+ * gesture: the body's Initial-pass press watcher records the press type before the text's
+ * selection gesture asks for the timeout.
+ */
+private class ThreadInPlaceSelectionViewConfiguration(
+    private val platform: ViewConfiguration,
+    private val controller: ThreadInPlaceSelectionController,
+) : ViewConfiguration by platform {
+    override val longPressTimeoutMillis: Long
+        get() =
+            threadInPlaceSelectionLongPressTimeoutMillis(
+                platformTimeoutMillis = platform.longPressTimeoutMillis,
+                pressYieldedToRow = controller.bodyPressYieldedToRow,
+            )
 }
 
 private class ThreadInPlaceTextContextMenuProvider(
@@ -635,6 +741,11 @@ internal fun ThreadInPlaceSelectableBody(
         remember(themeColors) {
             TextSelectionColors(handleColor = themeColors.foreground, backgroundColor = themeColors.selection)
         }
+    val platformViewConfiguration = LocalViewConfiguration.current
+    val selectionViewConfiguration =
+        remember(platformViewConfiguration, controller) {
+            ThreadInPlaceSelectionViewConfiguration(platformViewConfiguration, controller)
+        }
     val pageActive = LocalRaftPageActive.current
     // Selectable only on the active page. Navigation 3 moves a page between scenes as movable content
     // while it is covered, revealed or in motion (never active then), and a selectable text whose row
@@ -654,13 +765,18 @@ internal fun ThreadInPlaceSelectableBody(
         // Ctrl/Cmd+C and the system text menu copy through the clipboard, not copySelection: clean them too.
         RaftCleanCopyClipboardScope {
             if (selectable) {
-                SelectionContainer(
-                    controller.selectionState,
-                    Modifier
-                        .onGloballyPositioned(controller::onBodyPositioned)
-                        .threadInPlaceMouseSelectionEnd(controller),
-                ) {
-                    movableBody(content)
+                // The text nodes' selection gestures read the long-press timeout from here; it only
+                // differs for a finger press the body yields to the row (nothing in a body but the
+                // selection waits on a long press: the row's detector lives outside).
+                CompositionLocalProvider(LocalViewConfiguration provides selectionViewConfiguration) {
+                    SelectionContainer(
+                        controller.selectionState,
+                        Modifier
+                            .onGloballyPositioned(controller::onBodyPositioned)
+                            .threadInPlaceMouseSelectionEnd(controller),
+                    ) {
+                        movableBody(content)
+                    }
                 }
             } else {
                 movableBody(content)
@@ -684,17 +800,26 @@ internal fun ThreadInPlaceSelectableBody(
     // Only for a finger: a mouse selection appears on the first drag move, and widening it there
     // moved its anchor to the message start for the rest of the drag (artin, 2026-10-29).
     val hasSelection = controller.hasSelection
+    // A finger press the body yielded to the row (the message menu's) that still started one is
+    // dropped: no selection, and no selection menu, under the message menu.
     LaunchedEffect(controller, hasSelection) {
-        if (
-            hasSelection &&
-                threadInPlaceSelectionWidensToWholeMessage(
-                    startedByTouch = controller.lastPointerDownFromTouch,
-                    coversAll =
-                        threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
-                )
+        if (!hasSelection) return@LaunchedEffect
+        when (
+            threadInPlaceSelectionAppearedAction(
+                pressYieldedToRow = controller.bodyPressYieldedToRow,
+                startedByTouch = controller.lastPointerDownFromTouch,
+                coversAll = threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
+            )
         ) {
-            diagnosticsLogger("thread_in_place_selection_default_select_all messageId=${controller.messageId}")
-            controller.selectAll()
+            ThreadInPlaceSelectionAppearedAction.Keep -> Unit
+            ThreadInPlaceSelectionAppearedAction.WidenToWholeMessage -> {
+                diagnosticsLogger("thread_in_place_selection_default_select_all messageId=${controller.messageId}")
+                controller.selectAll()
+            }
+            ThreadInPlaceSelectionAppearedAction.Clear -> {
+                diagnosticsLogger("thread_in_place_selection_finger_press_cleared messageId=${controller.messageId}")
+                controller.clear()
+            }
         }
     }
     val backOwner =
@@ -820,8 +945,8 @@ internal fun ThreadInPlaceSelectionToolbar(
 
 /**
  * Watches the body's presses without consuming them (selection keeps its gestures): any press
- * resets the mouse toolbar, and letting go of a primary mouse press records where, which shows
- * the toolbar if that gesture left a selection.
+ * records whether it is yielded to the row and resets the mouse toolbar, and letting go of a
+ * primary mouse press records where, which shows the toolbar if that gesture left a selection.
  */
 private fun Modifier.threadInPlaceMouseSelectionEnd(controller: ThreadInPlaceSelectionController): Modifier =
     pointerInput(controller) {
@@ -836,7 +961,8 @@ private fun Modifier.threadInPlaceMouseSelectionEnd(controller: ThreadInPlaceSel
                                 pointerTypes = event.changes.map { it.type },
                                 primaryPressed = event.buttons.isPrimaryPressed
                             )
-                        controller.onBodyPointerPress()
+                        val pressed = event.changes.firstOrNull { it.changedToDownIgnoreConsumed() } ?: event.changes.firstOrNull()
+                        controller.onBodyPointerPress(pressed?.type ?: PointerType.Unknown)
                     }
                     PointerEventType.Release ->
                         if (primaryMousePress && !event.buttons.isPrimaryPressed) {
