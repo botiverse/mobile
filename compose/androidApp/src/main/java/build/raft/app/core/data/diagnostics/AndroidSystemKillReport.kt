@@ -41,6 +41,13 @@ private val PackageChangeReasons =
 private val ReportedElsewhereReasons =
     setOf(ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE, ApplicationExitInfo.REASON_ANR)
 
+/**
+ * Crash signals (SIGILL 4, SIGABRT 6, SIGBUS 7, SIGFPE 8, SIGSEGV 11): some devices record a native
+ * crash as `signaled` with the signal as status instead of `crash_native`, and HandsCrash already
+ * filed it (Hands b00e67c3 and its duplicate SystemKill c9061aa6, 11-09). SIGKILL (9) stays a kill.
+ */
+private val CrashSignals = setOf(4, 6, 7, 8, 11)
+
 /** The importances that mean an activity was on screen: foreground (100) and visible (200). */
 private val VisibleImportances =
     setOf(
@@ -68,11 +75,13 @@ internal fun classifySystemKill(
     reasonCode: Int,
     importance: Int,
     telemetryForeground: Boolean?,
+    status: Int = 0,
 ): SystemKillDecision =
     when {
         reasonCode in UserInitiatedReasons -> SystemKillDecision.SkipUserInitiated
         reasonCode in PackageChangeReasons -> SystemKillDecision.SkipPackageChange
         reasonCode in ReportedElsewhereReasons -> SystemKillDecision.SkipReportedElsewhere
+        reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals -> SystemKillDecision.SkipReportedElsewhere
         telemetryForeground != null ->
             if (telemetryForeground) SystemKillDecision.Report else SystemKillDecision.SkipNotImportant
         importance in VisibleImportances -> SystemKillDecision.Report
@@ -151,7 +160,7 @@ internal fun planSystemKillReports(
         .sortedBy { it.timestampMillis }
         .map { exit ->
             val telemetry = MemoryTelemetryRing.match(snapshots, exit.pid, exit.timestampMillis)
-            val decision = classifySystemKill(exit.reasonCode, exit.importance, telemetry?.foreground)
+            val decision = classifySystemKill(exit.reasonCode, exit.importance, telemetry?.foreground, exit.status)
             val action =
                 when {
                     // Once deferred, everything after waits too: the watermark cannot skip over it.

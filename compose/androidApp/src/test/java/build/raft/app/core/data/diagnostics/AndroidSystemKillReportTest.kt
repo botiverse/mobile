@@ -295,4 +295,17 @@ class AndroidSystemKillReportTest {
         perLaunchCap: Int = 3,
         dailyCap: Int = 5,
     ) = planSystemKillReports(exits, snapshots, cutoff, watermark, recent, now, perLaunchCap, dailyCap)
+
+    @Test
+    fun aSignaledExitWithACrashSignalIsLeftToHandsCrash() {
+        val visible = android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+        listOf(4, 6, 7, 8, 11).forEach { signal ->
+            assertEquals(
+                SystemKillDecision.SkipReportedElsewhere,
+                classifySystemKill(ApplicationExitInfo.REASON_SIGNALED, visible, true, status = signal),
+            )
+        }
+        // SIGKILL is the system killing the process: still a system kill.
+        assertEquals(SystemKillDecision.Report, classifySystemKill(ApplicationExitInfo.REASON_SIGNALED, visible, true, status = 9))
+    }
 }
