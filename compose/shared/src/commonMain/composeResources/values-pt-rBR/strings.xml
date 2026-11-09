@@ -1328,8 +1328,13 @@
     <string name="member_action_stop_confirm">Parar</string>
     <string name="member_action_reset_runtime_session">Redefinir sessão do runtime</string>
     <string name="member_action_save_runtime_change">Salvar alteração do runtime</string>
-    <string name="member_runtime_switch_active_message">Isso vai trocar o runtime de %1$s para %2$s e redefinir a sessão ativa do runtime.</string>
     <string name="member_runtime_switch_inactive_message">Isso vai trocar o runtime de %1$s para %2$s.</string>
+    <string name="member_runtime_config_saved_title">Configurações de %1$s salvas</string>
+    <string name="member_runtime_config_applies_when_idle">Serão aplicadas na próxima vez que ficar ocioso.</string>
+    <string name="member_runtime_config_new_session_when_idle">Uma nova sessão começa na próxima vez que ficar ocioso.</string>
+    <string name="member_runtime_config_applies_next_start">Serão aplicadas na próxima vez que iniciar.</string>
+    <string name="member_action_restart_now">Reiniciar agora</string>
+    <string name="member_runtime_config_running_switches_when_idle">Executando %1$s · muda para %2$s quando ficar ocioso</string>
     <string name="member_action_view_service">Ver serviço</string>
     <string name="member_action_view_logs">Ver logs</string>
     <string name="member_action_refresh">Atualizar</string>
@@ -1632,7 +1637,6 @@
     <string name="member_action_issue_reported">Problema relatado</string>
     <string name="member_dialog_edit_runtime_config">Editar configuração do runtime</string>
     <string name="member_placeholder_description">Descreva este agente</string>
-    <string name="member_hint_runtime_restart">Alterar a configuração do runtime pode reiniciar o agente para que a próxima inicialização use as novas configurações.</string>
     <string name="member_hint_chat_audit_only">Exibidas aqui como registro de atividade e auditoria. Estas linhas propositalmente não são links diretos para as conversas.</string>
     <string name="member_hint_no_scheduled_reminders">Este agente ainda não agendou nada. Os lembretes aparecem aqui em tempo real assim que o agente os agenda.</string>
     <string name="member_hint_connected_apps">Apps conectados que este agente pode usar.</string>

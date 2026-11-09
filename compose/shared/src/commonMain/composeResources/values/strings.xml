@@ -1331,8 +1331,13 @@
     <string name="member_action_stop_confirm">Stop</string>
     <string name="member_action_reset_runtime_session">Reset Runtime Session</string>
     <string name="member_action_save_runtime_change">Save Runtime Change</string>
-    <string name="member_runtime_switch_active_message">This will switch the runtime from %1$s to %2$s and reset the active runtime session.</string>
     <string name="member_runtime_switch_inactive_message">This will switch the runtime from %1$s to %2$s.</string>
+    <string name="member_runtime_config_saved_title">%1$s's settings saved</string>
+    <string name="member_runtime_config_applies_when_idle">They apply when it's next idle.</string>
+    <string name="member_runtime_config_new_session_when_idle">It starts a new session when it's next idle.</string>
+    <string name="member_runtime_config_applies_next_start">They apply the next time it starts.</string>
+    <string name="member_action_restart_now">Restart now</string>
+    <string name="member_runtime_config_running_switches_when_idle">Running %1$s · switches to %2$s when idle</string>
     <string name="member_action_view_service">View service</string>
     <string name="member_action_view_logs">View logs</string>
     <string name="member_action_refresh">Refresh</string>
@@ -1635,7 +1640,6 @@
     <string name="member_action_issue_reported">Issue reported</string>
     <string name="member_dialog_edit_runtime_config">Edit Runtime Config</string>
     <string name="member_placeholder_description">Describe this agent</string>
-    <string name="member_hint_runtime_restart">Changing runtime config may restart the agent so the next launch uses the new settings.</string>
     <string name="member_hint_chat_audit_only">Visible here as an activity/audit trail. These rows are intentionally not direct conversation links.</string>
     <string name="member_hint_no_scheduled_reminders">This agent hasn't scheduled anything. Reminders appear here in real time as soon as the agent schedules them.</string>
     <string name="member_hint_connected_apps">Connected apps this agent can use.</string>

@@ -38,7 +38,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.app.components.RaftSlotIcon
 import androidx.compose.foundation.layout.widthIn
 
@@ -72,7 +71,11 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     onRuntimeSelected: () -> Unit,
     /** The computer's runtime-options rows (for the selected runtime's v2 marker), or null if unknown. */
     runtimeCatalog: suspend (machineId: String) -> SharedCreateAgentRuntimeCatalog?,
-    onSave: (submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean) -> Unit
+    /**
+     * [newSession]: the change runs on a new session (a runtime switch, or a Codex model change),
+     * so Restart now resets the session (web AgentProfileInfo `newSession`, botiverse/slock #13372).
+     */
+    onSave: (submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean, newSession: Boolean) -> Unit
 ) {
     var selectedRuntimeId by remember(access, agentId, machineId, runtimeId) { mutableStateOf(runtimeId) }
     val runtimeSwitched = membersRuntimeFormV2EditRuntimeSwitched(runtimeId, selectedRuntimeId)
@@ -134,8 +137,19 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 runtimeId = submitting.form.runtimeId,
                 formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
             )
-        // A runtime switch resets the session: confirm it first, as web does.
-        if (runtimeSwitched) pendingSwitchSubmit = submit else onSave(submit, false)
+        val newSession =
+            membersRuntimeConfigSaveStartsNewSession(
+                runtimeSwitched = runtimeSwitched,
+                runtimeId = submit.runtimeId,
+                modelChanged = values["model"] != initialValues["model"]
+            )
+        // Web (botiverse/slock #13372): only a stopped agent's runtime switch is confirmed; a
+        // running agent's change saves at once and applies when it is next idle.
+        if (membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched, activeAgent)) {
+            pendingSwitchSubmit = submit
+        } else {
+            onSave(submit, runtimeSwitched, newSession)
+        }
     }
     RaftUnifiedDialog(
         title = stringResource(Res.string.member_dialog_edit_runtime_config),
@@ -239,13 +253,6 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 ) {
                     item(key = "model-limits-defaults-warning") { MembersAgentModelLimitsWarning() }
                 }
-                item(key = "restart-hint") {
-                    Text(
-                        text = stringResource(Res.string.member_hint_runtime_restart),
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = RaftColor.TextMutedGray
-                    )
-                }
                 error?.takeIf { it.isNotBlank() }?.let { message ->
                     item(key = "save-error") {
                         Text(
@@ -276,14 +283,14 @@ internal fun MembersAgentRuntimeFormV2Dialog(
         }
 
     pendingSwitchSubmit?.let { submit ->
-        val confirmation = membersRuntimeFormV2SwitchConfirmation(runtimeId, submit.runtimeId, activeAgent)
+        val confirmation = membersRuntimeFormV2SwitchConfirmation(runtimeId, submit.runtimeId)
         MembersRuntimeSwitchConfirmationDialog(
             title = confirmation.title.localized(),
             message = confirmation.message.localized(),
             confirmLabel = confirmation.confirmLabel.localized(),
             onConfirm = {
                 pendingSwitchSubmit = null
-                onSave(submit, true)
+                onSave(submit, true, true)
             },
             onCancel = { pendingSwitchSubmit = null }
         )
@@ -369,27 +376,31 @@ internal data class MembersRuntimeFormV2SwitchConfirmation(
     val confirmLabel: StringDesc
 )
 
-/** Web `switchRuntime{Active,Inactive}Message`: only the from/to runtimes, no model copy. */
+/**
+ * Web AgentProfileInfo (botiverse/slock #13372): only a stopped agent's runtime switch is
+ * confirmed (it starts on a new session). A running agent is not interrupted: its change, a
+ * runtime switch included, saves without a confirmation and applies when it is next idle.
+ */
+internal fun membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched: Boolean, activeAgent: Boolean): Boolean =
+    runtimeSwitched && !activeAgent
+
+/**
+ * Web `newSession`: a runtime switch, or a Codex model change (Codex `thread/resume` pins the
+ * model, so the server clears the session), runs on a new session.
+ */
+internal fun membersRuntimeConfigSaveStartsNewSession(runtimeSwitched: Boolean, runtimeId: String, modelChanged: Boolean): Boolean =
+    runtimeSwitched || (runtimeId.trim() == "codex" && modelChanged)
+
+/** Web `switchRuntimeInactiveMessage` (a stopped agent's switch): only the from/to runtimes. */
 internal fun membersRuntimeFormV2SwitchConfirmation(
     fromRuntimeId: String,
-    toRuntimeId: String,
-    activeAgent: Boolean
+    toRuntimeId: String
 ): MembersRuntimeFormV2SwitchConfirmation {
     val from = runtimeCatalogDisplayName(fromRuntimeId)
     val to = runtimeCatalogDisplayName(toRuntimeId)
     return MembersRuntimeFormV2SwitchConfirmation(
         title = Res.string.member_action_switch_runtime_config.desc(),
-        message =
-            if (activeAgent) {
-                Res.string.member_runtime_switch_active_message.format(listOf(from, to))
-            } else {
-                Res.string.member_runtime_switch_inactive_message.format(listOf(from, to))
-            },
-        confirmLabel =
-            if (activeAgent) {
-                Res.string.member_action_reset_runtime_session.desc()
-            } else {
-                Res.string.member_action_save_runtime_change.desc()
-            }
+        message = Res.string.member_runtime_switch_inactive_message.format(listOf(from, to)),
+        confirmLabel = Res.string.member_action_save_runtime_change.desc()
     )
 }

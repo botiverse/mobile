@@ -1328,8 +1328,13 @@
     <string name="member_action_stop_confirm">중지</string>
     <string name="member_action_reset_runtime_session">런타임 세션 초기화</string>
     <string name="member_action_save_runtime_change">런타임 변경 사항 저장</string>
-    <string name="member_runtime_switch_active_message">런타임이 %1$s에서 %2$s(으)로 전환되고, 현재 런타임 세션이 초기화돼요.</string>
     <string name="member_runtime_switch_inactive_message">런타임이 %1$s에서 %2$s(으)로 전환돼요.</string>
+    <string name="member_runtime_config_saved_title">%1$s의 설정을 저장했어요</string>
+    <string name="member_runtime_config_applies_when_idle">다음 대기 상태에서 적용돼요.</string>
+    <string name="member_runtime_config_new_session_when_idle">다음 대기 상태에서 새 세션이 시작돼요.</string>
+    <string name="member_runtime_config_applies_next_start">다음 시작 때 적용돼요.</string>
+    <string name="member_action_restart_now">지금 재시작</string>
+    <string name="member_runtime_config_running_switches_when_idle">%1$s 실행 중 · 대기 상태가 되면 %2$s(으)로 전환</string>
     <string name="member_action_view_service">서비스 보기</string>
     <string name="member_action_view_logs">로그 보기</string>
     <string name="member_action_refresh">새로고침</string>
@@ -1632,7 +1637,6 @@
     <string name="member_action_issue_reported">문제를 신고했어요</string>
     <string name="member_dialog_edit_runtime_config">런타임 설정 편집</string>
     <string name="member_placeholder_description">이 에이전트를 설명해 주세요</string>
-    <string name="member_hint_runtime_restart">런타임 설정을 변경하면 다음 실행 시 새 설정을 사용하도록 에이전트가 재시작될 수 있어요.</string>
     <string name="member_hint_chat_audit_only">활동/감사 기록으로만 여기에 표시돼요. 이 항목들은 의도적으로 대화에 바로 연결되지 않아요.</string>
     <string name="member_hint_no_scheduled_reminders">이 에이전트가 아직 아무것도 예약하지 않았어요. 에이전트가 리마인더를 예약하면 바로 여기에 실시간으로 표시돼요.</string>
     <string name="member_hint_connected_apps">이 에이전트가 사용할 수 있는 연결된 앱이에요.</string>

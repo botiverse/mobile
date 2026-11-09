@@ -1951,7 +1951,8 @@ class SharedServerMembersStore internal constructor(
                 return DataResult.Error(ScreenError(code = "agent_profile_update_exception", retryable = true))
             }
         if (result is DataResult.Content) {
-            seedProfiles(serverId, listOf(result.data))
+            // The answer's `configApply` is for the caller only; the roster never keeps it.
+            seedProfiles(serverId, listOf(result.data.withoutConfigApply()))
         }
         return result
     }

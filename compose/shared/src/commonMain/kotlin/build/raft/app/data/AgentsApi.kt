@@ -698,7 +698,10 @@ internal data class AgentSummary(
     val toolStuck: AgentToolStuck? = null,
     /** `modelLimits.defaultsReported`: true only when the server says so; false, null or absent is false. */
     val modelLimitsDefaultsReported: Boolean = false,
-    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
+    /** What the running process reports it runs: `runtimeProfile.current.runtime` / `.model`, raw. */
+    val runningRuntime: String? = null,
+    val runningModel: String? = null
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -741,7 +744,9 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         lastRuntimeErrorClass = lastRuntimeErrorClass,
         lastRuntimeErrorReason = lastRuntimeErrorReason,
         toolStuck = toolStuck,
-        modelLimitsDefaultsReported = modelLimitsDefaultsReported
+        modelLimitsDefaultsReported = modelLimitsDefaultsReported,
+        runningRuntime = runningRuntime,
+        runningModel = runningModel
     )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
@@ -1047,7 +1052,9 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastRuntimeErrorClass = lastRuntimeError?.errorClass?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorReason = lastRuntimeError?.errorReason?.trim()?.takeIf { it.isNotEmpty() },
         toolStuck = toolStuck.toAgentToolStuck(),
-        modelLimitsDefaultsReported = modelLimits?.defaultsReported == true
+        modelLimitsDefaultsReported = modelLimits?.defaultsReported == true,
+        runningRuntime = currentProfile?.runtime?.trim()?.takeIf { it.isNotEmpty() },
+        runningModel = currentProfile?.model?.trim()?.takeIf { it.isNotEmpty() }
     )
 }
 

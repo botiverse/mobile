@@ -248,13 +248,19 @@ class MembersRuntimeSwitchEntryTest {
     }
 
     @Test
-    fun aSwitchSavesWithASessionResetAndTheNewRuntimesFormRef() {
+    fun aStoppedAgentsSwitchSavesWithASessionResetAndTheNewRuntimesFormRef() {
         val submit = RuntimeFormV2SubmitBody(runtimeId = "claude", formValues = buildJsonObject { put("model", JsonPrimitive("opus")) })
         for (active in listOf(true, false)) {
             val request = membersRuntimeFormV2UpdateRequest(AGENT, "Agent", null, submit, runtimeSwitched = true, activeAgent = active)
-            assertEquals(AgentResetMode.Session, request.runtimeResetMode, "activeAgent=$active")
             val body = Json.parseToJsonElement(buildSharedAgentProfileUpdateBody(request)).jsonObject
-            assertEquals("session", body.getValue("restartMode").jsonPrimitive.content)
+            if (active) {
+                // botiverse/slock #13372: a running agent switches when it is next idle, not now.
+                assertNull(request.runtimeResetMode)
+                assertFalse("restartMode" in body, "a running agent's switch carries no restart")
+            } else {
+                assertEquals(AgentResetMode.Session, request.runtimeResetMode)
+                assertEquals("session", body.getValue("restartMode").jsonPrimitive.content)
+            }
             assertEquals(
                 buildJsonObject {
                     put("protocolVersion", JsonPrimitive(2))
@@ -268,30 +274,43 @@ class MembersRuntimeSwitchEntryTest {
     }
 
     @Test
-    fun aSameRuntimeSaveRestartsOnlyAnActiveAgent() {
+    fun aSameRuntimeSaveNeverRestarts() {
+        // botiverse/slock #13372: a running agent's change applies when it is next idle.
         val submit = RuntimeFormV2SubmitBody(runtimeId = "codex", formValues = buildJsonObject {})
-        assertEquals(
-            AgentResetMode.Restart,
-            membersRuntimeFormV2UpdateRequest(AGENT, "Agent", null, submit, runtimeSwitched = false, activeAgent = true).runtimeResetMode
-        )
-        assertNull(membersRuntimeFormV2UpdateRequest(AGENT, "Agent", null, submit, runtimeSwitched = false, activeAgent = false).runtimeResetMode)
+        for (active in listOf(true, false)) {
+            val request = membersRuntimeFormV2UpdateRequest(AGENT, "Agent", null, submit, runtimeSwitched = false, activeAgent = active)
+            assertNull(request.runtimeResetMode, "activeAgent=$active")
+            assertFalse("restartMode" in Json.parseToJsonElement(buildSharedAgentProfileUpdateBody(request)).jsonObject)
+        }
+    }
+
+    @Test
+    fun onlyAStoppedAgentsRuntimeSwitchIsConfirmed() {
+        assertTrue(membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched = true, activeAgent = false))
+        assertFalse(membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched = true, activeAgent = true))
+        assertFalse(membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched = false, activeAgent = false))
+        assertFalse(membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched = false, activeAgent = true))
+    }
+
+    @Test
+    fun aRuntimeSwitchOrACodexModelChangeStartsANewSession() {
+        assertTrue(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = true, runtimeId = "claude", modelChanged = false))
+        assertTrue(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = false, runtimeId = "codex", modelChanged = true))
+        assertFalse(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = false, runtimeId = "codex", modelChanged = false))
+        assertFalse(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = false, runtimeId = "claude", modelChanged = true))
     }
 
     @Test
     fun theSwitchConfirmationUsesWebsFromToCopy() {
-        val active = membersRuntimeFormV2SwitchConfirmation("codex", "claude", activeAgent = true)
-        assertEquals(ResourceStringDesc(Res.string.member_action_switch_runtime_config), active.title)
+        val inactive = membersRuntimeFormV2SwitchConfirmation("codex", "claude")
+        assertEquals(ResourceStringDesc(Res.string.member_action_switch_runtime_config), inactive.title)
         assertEquals(
             ResourceFormattedStringDesc(
-                Res.string.member_runtime_switch_active_message,
+                Res.string.member_runtime_switch_inactive_message,
                 listOf(getRuntimeDisplayName("codex"), getRuntimeDisplayName("claude"))
             ),
-            active.message
+            inactive.message
         )
-        assertEquals(ResourceStringDesc(Res.string.member_action_reset_runtime_session), active.confirmLabel)
-
-        val inactive = membersRuntimeFormV2SwitchConfirmation("codex", "claude", activeAgent = false)
-        assertEquals(Res.string.member_runtime_switch_inactive_message, (inactive.message as ResourceFormattedStringDesc).stringRes)
         assertEquals(ResourceStringDesc(Res.string.member_action_save_runtime_change), inactive.confirmLabel)
     }
 

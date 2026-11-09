@@ -1328,8 +1328,13 @@
     <string name="member_action_stop_confirm">Остановить</string>
     <string name="member_action_reset_runtime_session">Сбросить сеанс среды выполнения</string>
     <string name="member_action_save_runtime_change">Сохранить смену среды выполнения</string>
-    <string name="member_runtime_switch_active_message">Среда выполнения сменится с %1$s на %2$s, а активный сеанс среды выполнения будет сброшен.</string>
     <string name="member_runtime_switch_inactive_message">Среда выполнения сменится с %1$s на %2$s.</string>
+    <string name="member_runtime_config_saved_title">Настройки %1$s сохранены</string>
+    <string name="member_runtime_config_applies_when_idle">Они применятся, когда агент в следующий раз будет простаивать.</string>
+    <string name="member_runtime_config_new_session_when_idle">Когда агент в следующий раз будет простаивать, начнётся новый сеанс.</string>
+    <string name="member_runtime_config_applies_next_start">Они применятся при следующем запуске.</string>
+    <string name="member_action_restart_now">Перезапустить сейчас</string>
+    <string name="member_runtime_config_running_switches_when_idle">Работает %1$s · при простое переключится на %2$s</string>
     <string name="member_action_view_service">Открыть сервис</string>
     <string name="member_action_view_logs">Открыть журнал</string>
     <string name="member_action_refresh">Обновить</string>
@@ -1629,7 +1634,6 @@
     <string name="member_action_issue_reported">Отчёт о проблеме отправлен</string>
     <string name="member_dialog_edit_runtime_config">Изменить конфигурацию среды выполнения</string>
     <string name="member_placeholder_description">Опишите этого агента</string>
-    <string name="member_hint_runtime_restart">После изменения конфигурации среды выполнения агент может перезапуститься, чтобы при следующем запуске применились новые настройки.</string>
     <string name="member_hint_chat_audit_only">Показаны здесь как журнал активности и аудита. Эти строки намеренно не открывают чат.</string>
     <string name="member_hint_no_scheduled_reminders">Этот агент пока ничего не запланировал. Напоминания появятся здесь сразу, как только агент их создаст.</string>
     <string name="member_hint_connected_apps">Подключённые приложения, которыми может пользоваться этот агент.</string>

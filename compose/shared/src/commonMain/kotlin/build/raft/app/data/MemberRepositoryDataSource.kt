@@ -667,7 +667,8 @@ class RealMemberRepository(
             },
             source = "agent_profile_update",
             mapper = { bodyText ->
-                parseSharedAgentProfile(bodyText)
+                // `configApply` rides along to the editor that saved (stores drop it).
+                parseSharedAgentProfile(bodyText)?.copy(configApply = parseSharedAgentConfigApply(bodyText))
                     ?: throw IllegalStateException("Agent profile update response missing agent")
             }
         )

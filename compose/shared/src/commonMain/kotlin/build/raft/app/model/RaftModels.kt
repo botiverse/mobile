@@ -493,8 +493,18 @@ data class MemberProfile(
      * role" (web `canChangeChannelRole`). Drives the flag-gated role-action UI;
      * kept as data so the gate can be enabled without another wire change.
      */
-    val canChangeChannelRole: Boolean? = null
-)
+    val canChangeChannelRole: Boolean? = null,
+    /**
+     * Only on the answer of an agent profile update (`PATCH /agents/:id` `configApply`): how the
+     * server applies a runtime config change. Never stored or cached (web #13372 keeps it off the
+     * agent too): stores drop it with [withoutConfigApply].
+     */
+    @Transient
+    val configApply: build.raft.app.data.AgentConfigApply? = null
+) {
+    /** This profile as stored: without the update answer's [configApply]. */
+    fun withoutConfigApply(): MemberProfile = if (configApply == null) this else copy(configApply = null)
+}
 
 /**
  * Slack-bridge (or future provider) participant projected into a channel's
